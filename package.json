@@ -1,0 +1,25 @@
+{
+  "name": "turbocharge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Annotation checker for TypeScript: mark a function, keep it on V8's fast path.",
+  "license": "GPL-2.0-only",
+  "bin": {
+    "turbocharge": "bin/turbocharge.ts"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^5.9.0"
+  },
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/check.test.ts",
+    "lint": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

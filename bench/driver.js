@@ -1,0 +1,147 @@
+// The measurement protocol, shared by every workload: fresh process per
+// observation, AB/BA randomized within each pair, paired bootstrap 95%
+// interval, checksums compared inside every pair. SPEC §4 is the contract this
+// file implements; a workload script is only a kernel plus a printed
+// { ns_per_op, checksum, sink }.
+
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const PAIRS = 20;
+const BOOT = 2000;
+const PIN = fs.existsSync('/usr/bin/taskset') ? ['/usr/bin/taskset', ['-c', '1']] : [null, []];
+
+let s = 12345;
+const rand = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+
+function once(script, variant, n, mode, reps, seed) {
+  const args = [script, variant, n, mode, reps, seed].map(String);
+  const [bin, pre] = PIN;
+  const out = bin
+    ? execFileSync(bin, [...pre, process.execPath, ...args], { encoding: 'utf8' })
+    : execFileSync(process.execPath, args, { encoding: 'utf8' });
+  return JSON.parse(out);
+}
+
+const TARGET_NS = 120e6;
+
+// Aim every timed region at ~120 ms so process startup is not the measurement.
+// Each side is calibrated on its own: accumulating spread is two orders of
+// magnitude slower than its baseline, and one shared rep count would either
+// run for hours or leave the fast side unmeasurably short.
+//
+// The probe ITERATES. A single reps=1 probe reads cold cost, which for an
+// interpreted-then-optimized kernel can be a thousand times its warm cost, and
+// it under-sizes worst for the slowest variant — the exact side a rule wants
+// to indict. That bias inflated a measured cell from ~6-11x to 19.73x and is
+// why this loop exists (BUGS TC-5). Iterate until two successive estimates
+// agree within 20%, so the count is derived from warm cost.
+// Each probe runs at the previous estimate's rep count, so by the third the
+// kernel is optimized and the estimate is warm cost. Then take the MEDIAN of
+// the last three rather than demanding two agree: a memory-bound kernel varies
+// more than 20% run to run, so an agreement test fails on the L3 cells for a
+// reason that has nothing to do with warmup. The achieved region is asserted
+// afterwards, and that is the guard that decides whether a cell is publishable.
+function calibrate(script, variant, n, mode) {
+  const estimates = [];
+  let reps = 1;
+  for (let i = 0; i < 6; i++) {
+    const r = once(script, variant, n, mode, reps, 1);
+    reps = Math.max(1, Math.round(TARGET_NS / (r.ns_per_op * n)));
+    estimates.push(reps);
+  }
+  const last = estimates.slice(-3).sort((a, b) => a - b);
+  return last[1] ?? reps;
+}
+
+// A cell whose timed region missed the target is not a slightly noisy result,
+// it is a different measurement. Fail loudly instead of publishing it.
+function assertRegion(label, samples, reps, n) {
+  const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
+  const achieved = mean * reps * n;
+  if (achieved < TARGET_NS / 2 || achieved > TARGET_NS * 2) {
+    throw new Error(
+      `${label}: timed region ${(achieved / 1e6).toFixed(1)} ms is outside 60-240 ms ` +
+        `(reps=${reps}, n=${n}) — the cell is void, not slow`
+    );
+  }
+}
+
+function percentile(sorted, p) {
+  return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
+}
+
+function bootstrap(base, test) {
+  const ratios = [];
+  for (let b = 0; b < BOOT; b++) {
+    let sb = 0;
+    let st = 0;
+    for (let i = 0; i < base.length; i++) {
+      const k = Math.floor(rand() * base.length);
+      sb += base[k];
+      st += test[k];
+    }
+    ratios.push(st / sb);
+  }
+  ratios.sort((a, b) => a - b);
+  return [percentile(ratios, 0.025), percentile(ratios, 0.975)];
+}
+
+export function cell({ script, baseline, variant, n, mode }) {
+  const repsBase = calibrate(script, baseline, n, mode);
+  const repsTest = calibrate(script, variant, n, mode);
+  const base = [];
+  const test = [];
+  for (let p = 0; p < PAIRS; p++) {
+    const seed = 1000 + p;
+    // AB on half the pairs, BA on the other half: order is a confound, and
+    // round 1 proved it is a large one.
+    const first = rand() < 0.5;
+    const a = () => once(script, baseline, n, mode, repsBase, seed);
+    const b = () => once(script, variant, n, mode, repsTest, seed);
+    const [ra, rb] = first ? [a(), b()] : [b(), a()].reverse();
+    if (ra.checksum !== rb.checksum) {
+      throw new Error(`checksum mismatch at ${variant} / n=${n} / ${mode}`);
+    }
+    base.push(ra.ns_per_op);
+    test.push(rb.ns_per_op);
+  }
+  assertRegion(`${variant} baseline / n=${n} / ${mode}`, base, repsBase, n);
+  assertRegion(`${variant} / n=${n} / ${mode}`, test, repsTest, n);
+  const mean = (v) => v.reduce((x, y) => x + y, 0) / v.length;
+  const [lo, hi] = bootstrap(base, test);
+  // Raw per-pair observations ship with the aggregate. Without them a reader
+  // cannot recompute the interval, and "rerunnable" is the whole claim.
+  return {
+    variant,
+    mode,
+    n,
+    repsBase,
+    repsTest,
+    ratio: mean(test) / mean(base),
+    lo,
+    hi,
+    base,
+    test,
+  };
+}
+
+// A cell that misses its timed region is void, and a void cell must be
+// visible: it is recorded and printed, not silently dropped and not allowed to
+// take the surviving cells down with it.
+export function cellOrVoid(opts) {
+  try {
+    return cell(opts);
+  } catch (err) {
+    return {
+      variant: opts.variant,
+      mode: opts.mode,
+      n: opts.n,
+      void: true,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export const workload = (name) => path.join(import.meta.dirname, name);
