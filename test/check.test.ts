@@ -22,10 +22,12 @@ test('a function is checked only where it is annotated', () => {
     [
       'collect',
       'collectByReduce',
+      'collectObject',
       'drop',
       'fiveShapes',
       'fourShapes',
       'helper',
+      'mergeOnce',
       'mixed',
       'oneStage',
       'total',
@@ -84,6 +86,16 @@ test('a single map stays silent', () => {
 // through library code and raises only where it cannot compile at all.
 test('a call into a typed dependency is where the promise stops', () => {
   assert.deepStrictEqual(rules('usesDependency'), ['closed-world']);
+});
+
+test('the object form of the accumulator fires', () => {
+  assert.deepStrictEqual(rules('collectObject'), ['accumulating-spread']);
+});
+
+// One spread with no loop to re-run it is O(n). The measurement says the cost
+// is entirely in re-copying, so the rule must not fire here.
+test('a single object spread stays silent', () => {
+  assert.deepStrictEqual(rules('mergeOnce'), []);
 });
 
 test('delete fires', () => {

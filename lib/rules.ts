@@ -39,12 +39,12 @@ export const EVIDENCE: Record<string, Evidence> = {
   },
   'accumulating-spread': {
     cost:
-      '177x at n=1000 and 2348x at n=10000 with construction counted ' +
-      '(CI 157-202 and 1837-2892) — the ratio grows with n, because the work is quadratic',
-    source: 'bench/spread.jsonl, 4 cells, 20 pairs each',
+      'array form 177x at n=1000 and 2348x at n=10000 (CI 157-202, 1837-2892); object form ' +
+      '197x at n=500 (CI 175-222) — the ratio grows with n, because the work is quadratic',
+    source: 'bench/spread.jsonl and bench/spread-object.jsonl, 20 pairs per cell',
     silent:
-      'reading the finished array costs nothing — 0.96x at n=1000 and 0.98x at n=10000 — ' +
-      'so a spread no loop re-runs is not this rule',
+      'reading the finished array or object costs nothing — 0.96x, 0.98x, and 0.87x, all ' +
+      'intervals spanning 1 — so a spread no loop re-runs is not this rule',
   },
   'chained-allocation': {
     cost:
@@ -168,18 +168,34 @@ const megamorphicElements: Rule = (ts, checker, body, add) => {
 // rule here whose cost is a complexity class rather than a constant factor,
 // which is why it is the largest effect in the project.
 const accumulatingSpread: Rule = (ts, _checker, body, add) => {
-  const spreadsSelf = (name: string, node: TS.Node): boolean =>
-    ts.isArrayLiteralExpression(node) &&
-    node.elements.some(
-      (e) => ts.isSpreadElement(e) && ts.isIdentifier(e.expression) && e.expression.text === name
-    );
+  // Both forms copy the accumulator on every pass: [...acc, v] and
+  // { ...acc, [k]: v }. Measured separately, because the constants differ.
+  const spreadsSelf = (name: string, outer: TS.Node): boolean => {
+    // `(acc, x) => ({ ...acc, k: x })` wraps the literal in parentheses.
+    let node = outer;
+    while (ts.isParenthesizedExpression(node)) node = node.expression;
+    if (ts.isArrayLiteralExpression(node)) {
+      return node.elements.some(
+        (e) => ts.isSpreadElement(e) && ts.isIdentifier(e.expression) && e.expression.text === name
+      );
+    }
+    if (ts.isObjectLiteralExpression(node)) {
+      return node.properties.some(
+        (pr) =>
+          ts.isSpreadAssignment(pr) &&
+          ts.isIdentifier(pr.expression) &&
+          pr.expression.text === name
+      );
+    }
+    return false;
+  };
 
   const report = (node: TS.Node, name: string): void =>
     add({
       ...at(body.sf, node),
       rule: 'accumulating-spread',
-      message: `${name} is rebuilt from a spread of itself; every pass copies every element it already holds`,
-      fix: `push onto ${name} instead, or build the parts and concatenate once at the end`,
+      message: `${name} is rebuilt from a spread of itself; every pass copies everything it already holds`,
+      fix: `mutate ${name} in place — push, or assign the key — instead of rebuilding it`,
     });
 
   const isLoop = (n: TS.Node): boolean =>

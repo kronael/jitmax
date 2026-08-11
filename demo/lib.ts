@@ -100,3 +100,15 @@ export function usesDependency(src: string): number {
   const file = tsapi.createSourceFile('x.ts', src, tsapi.ScriptTarget.ES2022);
   return file.statements.length;
 }
+
+/** The object form of the same quadratic trap. */
+/** @turbocharge */
+export function collectObject(rows: number[]): Record<string, number> {
+  return rows.reduce<Record<string, number>>((acc, r, i) => ({ ...acc, [`k${i}`]: r }), {});
+}
+
+/** One spread, no loop to re-run it: silent. */
+/** @turbocharge */
+export function mergeOnce(a: Record<string, number>, b: Record<string, number>) {
+  return { ...a, ...b };
+}
