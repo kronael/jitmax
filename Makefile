@@ -1,4 +1,4 @@
-.PHONY: test lint check bench bench-spread bench-chained meme meme-png clean
+.PHONY: test lint check bench bench-spread bench-chained bench-inline meme meme-png clean
 
 test:
 	node --test test/check.test.ts
@@ -17,6 +17,9 @@ bench-spread:
 
 bench-chained:
 	node bench/run-chained.js
+
+bench-inline:
+	node bench/run-inline.js
 
 meme:
 	node bench/meme.js > meme.svg
