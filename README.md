@@ -76,15 +76,17 @@ object shapes. Quadratic means the work grows with the square of the input size.
 | Rule | What it looks for | Where the measurement found no effect |
 |---|---|---|
 | `megamorphic-elements` | the fifth object shape at a load site | two to four shapes |
-| `accumulating-spread` | `acc = [...acc, v]` in a loop — quadratic | no loop re-runs the spread |
+| `accumulating-spread` | `[...acc, v]` or `{ ...acc, k: v }` in a loop — quadratic | no loop re-runs the spread |
 | `chained-allocation` | `.map().filter()` allocates between stages | one stage; large n |
 | `boxed-elements` | mixed element types cannot stay unboxed | holey arrays |
 | `delete-property` | `delete` demotes an object to dictionary mode | a single delete on one object |
-| `closed-world` | calls to code with no readable body | not measured — this one is a coverage report |
+| `closed-world` | calls to code with no readable body | a callee small enough to inline costs nothing |
 
-**Five of the six rules include the benchmark that earned them, and the case
-where the same benchmark found nothing.** `closed-world` is the exception: it
-tells you what could not be checked, and carries no performance measurement.
+**Every rule includes the benchmark that earned it, and the case where the same
+benchmark found nothing.** `closed-world` measures the mechanism a call boundary
+controls: a callee V8 refuses to inline costs 4.42-4.79x in a hot loop. Read
+that as a bound on what one unchecked call can cost, not a claim about any
+particular one.
 If a rule fires in a case a test declares silent, `make test` fails.
 Measurements have blocked a rule from shipping three times.
 
@@ -101,6 +103,7 @@ main rule fires without checking that your code loads a property at all.
 make bench          # the 24-cell object-shape sweep
 make bench-spread   # accumulating spread
 make bench-chained  # chained array passes
+make bench-inline   # the inlining boundary behind closed-world
 ```
 
 Every observation runs in a fresh OS process. An in-process A/B test shares
