@@ -166,7 +166,15 @@ function reach(
       if (ts.isCallExpression(node)) {
         const text = node.expression.getText(body.sf);
         if (!PRIMITIVES.has(text)) {
-          const decls = targetsOf(ts, checker, node.expression);
+          // An immediately-invoked function has no symbol to resolve, but its
+          // body is right there. Follow it rather than reporting it as code we
+          // cannot read.
+          let callee: TS.Expression = node.expression;
+          while (ts.isParenthesizedExpression(callee)) callee = callee.expression;
+          const decls =
+            ts.isArrowFunction(callee) || ts.isFunctionExpression(callee)
+              ? [callee as TS.Node]
+              : targetsOf(ts, checker, node.expression);
           const next = decls.filter((d) => followable(ts, d));
           for (const d of next) {
             if (seen.has(d)) continue;
