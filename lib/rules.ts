@@ -24,7 +24,9 @@ export const EVIDENCE: Record<string, Evidence> = {
       '1.45-1.89x on reads, 2.36-3.28x with construction — ONE sweep, unreplicated, ' +
       'and inside the 1.0-1.7x band a second sweep showed this harness cannot resolve',
     source: 'bench-arrays.md round 2, suite A',
-    silent: 'holey arrays (0.94-1.09, interval includes 1)',
+    silent:
+      'holey arrays (0.94-1.09, interval includes 1); also silent on `any` and on an ' +
+      'unresolved type parameter, neither of which says anything about representation',
   },
   'megamorphic-elements': {
     cost:
@@ -53,6 +55,17 @@ export const EVIDENCE: Record<string, Evidence> = {
       'reading the result costs nothing (0.98x and 1.05x, both intervals include 1), and at ' +
       'n=100000 the effect falls to 1.45x, where memory bandwidth dominates the allocation',
   },
+  'closed-world': {
+    cost:
+      'an opaque call is an inlining boundary, and a callee V8 refuses to inline costs ' +
+      '4.42-4.79x in a hot loop (CI 4.18-4.70 at n=100000, 4.56-5.05 at n=1000)',
+    source:
+      'bench/inline.jsonl, 2 cells, 20 pairs each; the inlining decision itself confirmed ' +
+      'with --trace-turbo-inlining, which reports the padded callee as "cannot consider"',
+    silent:
+      'this bounds what ONE unchecked call can cost, not what any particular one does cost ' +
+      '— a small callee is inlined and the boundary costs nothing',
+  },
   'delete-property': {
     cost: '28-67x per property load once the object is in dictionary mode',
     source: 'options.md round 3b',
@@ -73,7 +86,14 @@ const isNumeric = (ts: Ts, t: TS.Type): boolean =>
 
 function isFastElement(ts: Ts, t: TS.Type): boolean {
   const f = t.flags;
-  if (f & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return false;
+  // An unresolved type parameter is not evidence of anything. `readonly T[]`
+  // says nothing about representation, and treating it as unfast fires this
+  // rule on every function of every generic library.
+  // Neither is an unresolved type parameter nor `any`. Absence of information
+  // is not evidence of boxing, and firing on it buries a real finding under
+  // one warning per generic function.
+  if (f & (ts.TypeFlags.TypeParameter | ts.TypeFlags.TypeVariable)) return true;
+  if (f & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return true;
   // An object type is one shape, which is the fast case. Divergence across
   // several object types is megamorphic-elements' job, not this rule's.
   return Boolean(
