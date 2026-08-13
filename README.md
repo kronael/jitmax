@@ -69,15 +69,17 @@ exist returns `2`, never a clean run.
 
 ## The rules
 
-Six rules ship. The first five check every function in the call tree. The sixth
-reports where the walk stops. Megamorphic means one code location has seen many
-object shapes. Quadratic means the work grows with the square of the input size.
+Seven rules ship. The first six check every function in the call tree. The
+seventh reports where the walk stops. Megamorphic means one code location has
+seen many object shapes. Quadratic means the work grows with the square of the
+input size.
 
 | Rule | What it looks for | Where the measurement found no effect |
 |---|---|---|
 | `megamorphic-elements` | the fifth object shape at a load site | two to four shapes |
 | `accumulating-spread` | `[...acc, v]` or `{ ...acc, k: v }` in a loop — quadratic | no loop re-runs the spread |
 | `chained-allocation` | `.map().filter()` allocates between stages | one stage; large n |
+| `allocating-select` | `x = Lib.min(x, y)` in a loop returns a new object every pass | the same loop on numbers |
 | `boxed-elements` | mixed element types cannot stay unboxed | holey arrays |
 | `delete-property` | `delete` demotes an object to dictionary mode | a single delete on one object |
 | `closed-world` | calls to code with no readable body | a callee small enough to inline costs nothing |
@@ -158,4 +160,4 @@ explains why the old design failed.
 redistribute it under those terms. A derivative work carries the same licence.
 It is not published to npm. Get it by cloning the repository.
 
-Status: v0.2.0, single machine, six rules.
+Status: v0.3.0, single machine, seven rules.

@@ -6,7 +6,7 @@
 <meta name="krons:date" content="2026-08-11">
 <meta name="krons:pin"  content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Mark a TypeScript function. turbocharge checks it and every function it calls against six V8 fast-path rules, five of which carry a rerunnable benchmark and the measured case where they must stay silent.">
+<meta name="description" content="Mark a TypeScript function. turbocharge checks it and every function it calls against seven V8 fast-path rules, six of which carry a rerunnable benchmark and the measured case where they must stay silent.">
 <title>turbocharge — mark the function you need fast</title>
 <link rel="stylesheet" href="/pub/krons/assets/hub.css">
 <meta property="og:title" content="turbocharge — the fifth object shape costs 10.6x">
@@ -38,10 +38,10 @@
   <div class="tldr-label">TL;DR</div>
   <div class="tldr-text">
     Mark a function with <code>/** @turbocharge */</code>. turbocharge checks
-    that function and every function it calls against six rules, and gives you
-    the file, the line, the measured cost and the fix. Five rules carry a
+    that function and every function it calls against seven rules, and gives you
+    the file, the line, the measured cost and the fix. Six rules carry a
     rerunnable benchmark and the measured case where they must stay silent. The
-    sixth lists what could not be checked.
+    seventh lists what could not be checked.
   </div>
 </div>
 
@@ -77,6 +77,11 @@
     <td>n=100,000: 1.45x</td>
   </tr>
   <tr>
+    <td><code>allocating-select</code></td>
+    <td>2.65-2.73x, boxed value chosen in a loop</td>
+    <td>the same loop on numbers: 0.99-1.03x</td>
+  </tr>
+  <tr>
     <td><code>boxed-elements</code></td>
     <td>1.45-1.89x, one unreplicated sweep</td>
     <td>holey arrays: 0.94-1.09x</td>
@@ -103,7 +108,7 @@ export function total(rows: Row[]): number { … }</code></pre>
 <p>Point it at your sources:</p>
 
 <pre><code>$ turbocharge demo
-turbocharge — 14 annotated functions, 8 findings
+turbocharge — 18 annotated functions, 10 findings
 
   demo/lib.ts:71  viaCallee()
     delete-property
@@ -272,9 +277,9 @@ $ make bench-chained   # re-run chained allocation</code></pre>
 
 <div class="hub-footer">
   <p>
-    v0.2.0, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
+    v0.3.0, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
     those terms; a derivative work carries the same licence. Not published to
-    npm, so acquisition is by clone. Six rules, 18 tests, single
+    npm, so acquisition is by clone. Seven rules, 20 tests, single
     machine. Open defects are listed in <code>BUGS.md</code>, and the adversarial
     teardown of this project ships in the repository as
     <code>useless2.md</code>.

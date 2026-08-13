@@ -251,6 +251,37 @@ every finding.
 Open: the 64 MB cells for the object suite are still running, so the L3-to-RAM
 trend for shape divergence is not yet closed.
 
+**Choosing between two boxed values** — `b.lo = Box.min(b.lo, v)` against
+`if (v.lt(b.lo)) b.lo = v`, both keeping the same running minimum over the same
+values, Node v22.23.2, 20 pairs per cell, `bench/select.jsonl`:
+
+| Cell | Ratio | 95% CI | Verdict |
+|---|---|---|---|
+| chosen value escapes, n=10000 | **2.65** | **2.48–2.81** | **ship** |
+| chosen value escapes, n=100000 | **2.73** | **2.58–2.88** | **ship** |
+| kept in a local, n=10000 | 2.28 | 2.06–2.54 | escape analysis does not remove it |
+| kept in a local, n=100000 | 1.72 | 1.47–2.05 | same |
+| plain numbers, n=10000 | 1.03 | 0.79–1.26 | **REJ** |
+| plain numbers, n=100000 | 0.99 | 0.83–1.18 | **REJ** |
+
+The selector returns a new value on every call, including every call where the
+value already held wins. Anything ordered by time makes that nearly every call:
+the first item of a bucket is its minimum and nothing later displaces it. The
+predicate form compares and stores only on a real change.
+
+**The two number cells are the control, and they are what keeps the rule
+honest.** `Math.min` returns a primitive, TurboFan lowers it to a machine
+instruction, and replacing it with a branch buys nothing this harness can
+measure. So the rule fires on the *type of the result*, not on the shape of the
+call: an object result is an allocation, a number result is not.
+
+**The local cells answer the first objection anyone raises** — will V8 not just
+delete the allocation? Not here. With the chosen value kept in a function local
+the caller never sees, the same loop still costs 1.72–2.28x. The measurement
+does not say why escape analysis leaves it — only that the cost survives, which
+is enough: "the compiler will remove it" is not a reason to leave the code
+alone.
+
 ## 4. Benchmark methodology
 
 Non-negotiable, because the evidence *is* the product.

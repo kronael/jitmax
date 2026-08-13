@@ -2,6 +2,26 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
+## TC-10 — the walk follows calls but not constructors (2026-08-13, open)
+
+`reach()` in `lib/scan.ts` visits `ts.isCallExpression(node)` only. A
+`new Foo(...)` is a `NewExpression`, so the walk never enters the constructor
+and never reports it as unreadable either.
+
+Two consequences. A constructor in your own source is not checked, so a rule
+violation inside it is missed. A constructor from a typed dependency is not
+listed as an escape, so the closed-world report says the world is closed when
+it is not — the failure mode the whole rule exists to prevent.
+
+This matters more now that `allocating-select` ships: the pattern it detects is
+an allocation, and allocation is what constructors do.
+
+The fix is one predicate — accept `NewExpression` alongside `CallExpression`,
+since both carry `expression` and `arguments` — plus a demo function, a test,
+and a check that `usesDependency` does not double-report. Not applied: the
+closed-world report is a published contract and widening what it reports
+changes output for every existing user of the tool. Sign-off first.
+
 ## ✅ FIXED 2026-08-10 — TC-1 — SPEC §4 and bench/run.js disagreed on protocol
 
 §4 requires 10 discarded pilot pairs, 50 measured pairs, and published raw
