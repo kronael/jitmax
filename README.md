@@ -158,4 +158,4 @@ explains why the old design failed.
 redistribute it under those terms. A derivative work carries the same licence.
 It is not published to npm. Get it by cloning the repository.
 
-Status: v0.1.0, single machine, six rules.
+Status: v0.2.0, single machine, six rules.
