@@ -107,6 +107,29 @@ export function collectObject(rows: number[]): Record<string, number> {
   return rows.reduce<Record<string, number>>((acc, r, i) => ({ ...acc, [`k${i}`]: r }), {});
 }
 
+/** An immutable value type, the shape decimal.js and Temporal both have. */
+class Money {
+  constructor(readonly v: number) {}
+  lt(o: Money): boolean {
+    return this.v < o.v;
+  }
+  static min(a: Money, b: Money): Money {
+    return new Money(Math.min(a.v, b.v));
+  }
+}
+
+/** Choosing with a call that returns a new value allocates on every pass. */
+/** @turbocharge */
+export function lowest(rows: Money[], bucket: { lo: Money }): void {
+  for (const r of rows) bucket.lo = Money.min(bucket.lo, r);
+}
+
+/** The same loop on numbers: Math.min allocates nothing, so this is silent. */
+/** @turbocharge */
+export function lowestNumber(rows: number[], bucket: { lo: number }): void {
+  for (const r of rows) bucket.lo = Math.min(bucket.lo, r);
+}
+
 /** One spread, no loop to re-run it: silent. */
 /** @turbocharge */
 export function mergeOnce(a: Record<string, number>, b: Record<string, number>) {

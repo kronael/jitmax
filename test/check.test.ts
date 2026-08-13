@@ -27,6 +27,8 @@ test('a function is checked only where it is annotated', () => {
       'fiveShapes',
       'fourShapes',
       'helper',
+      'lowest',
+      'lowestNumber',
       'mergeOnce',
       'mixed',
       'oneStage',
@@ -96,6 +98,18 @@ test('the object form of the accumulator fires', () => {
 // is entirely in re-copying, so the rule must not fire here.
 test('a single object spread stays silent', () => {
   assert.deepStrictEqual(rules('mergeOnce'), []);
+});
+
+// The excerpt this rule came from: Decimal.min(a, b) never returns a, it
+// returns a fresh Decimal, so the store happens even when nothing changed.
+test('choosing between boxed values with an allocating call fires', () => {
+  assert.deepStrictEqual(rules('lowest'), ['allocating-select']);
+});
+
+// Math.min returns a number. There is no allocation to remove, and the branch
+// would only save one field store, which is what the number cell measured.
+test('the same loop on numbers stays silent', () => {
+  assert.deepStrictEqual(rules('lowestNumber'), []);
 });
 
 test('delete fires', () => {

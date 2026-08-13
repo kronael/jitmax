@@ -46,6 +46,16 @@ export const EVIDENCE: Record<string, Evidence> = {
       'reading the finished array or object costs nothing — 0.96x, 0.98x, and 0.87x, all ' +
       'intervals spanning 1 — so a spread no loop re-runs is not this rule',
   },
+  'allocating-select': {
+    cost:
+      '2.65-2.73x when the chosen value is stored somewhere that outlives the loop ' +
+      '(CI 2.48-2.81 at n=10000, 2.58-2.88 at n=100000)',
+    source: 'bench/select.jsonl, 6 cells, 20 pairs each',
+    silent:
+      'on numbers there is no effect at all — 1.03x and 0.99x, both intervals spanning 1 — ' +
+      'because Math.min allocates nothing; and escape analysis does not rescue the boxed ' +
+      'form either: kept in a local the same loop still costs 1.72-2.28x',
+  },
   'chained-allocation': {
     cost:
       '7.13x with construction counted at n=1000 (CI 6.64-7.64) — every stage ' +
@@ -75,6 +85,13 @@ export const EVIDENCE: Record<string, Evidence> = {
 
 type Add = (f: Omit<Finding, 'evidence'>) => void;
 type Rule = (ts: Ts, checker: TS.TypeChecker, body: Body, add: Add) => void;
+
+const isLoop = (ts: Ts, n: TS.Node): boolean =>
+  ts.isForStatement(n) ||
+  ts.isForOfStatement(n) ||
+  ts.isForInStatement(n) ||
+  ts.isWhileStatement(n) ||
+  ts.isDoStatement(n);
 
 const elementType = (ts: Ts, checker: TS.TypeChecker, t: TS.Type): TS.Type | undefined =>
   checker.getIndexTypeOfType(t, ts.IndexKind.Number);
@@ -198,13 +215,6 @@ const accumulatingSpread: Rule = (ts, _checker, body, add) => {
       fix: `mutate ${name} in place — push, or assign the key — instead of rebuilding it`,
     });
 
-  const isLoop = (n: TS.Node): boolean =>
-    ts.isForStatement(n) ||
-    ts.isForOfStatement(n) ||
-    ts.isForInStatement(n) ||
-    ts.isWhileStatement(n) ||
-    ts.isDoStatement(n);
-
   // The accumulator of a reduce is spread by the callback, so the loop that
   // re-runs it is inside reduce rather than in the annotated function.
   const reduceCallback = (node: TS.Node): void => {
@@ -241,7 +251,50 @@ const accumulatingSpread: Rule = (ts, _checker, body, add) => {
       report(node, node.left.text);
     }
     reduceCallback(node);
-    ts.forEachChild(node, (c) => visit(c, inLoop || isLoop(node)));
+    ts.forEachChild(node, (c) => visit(c, inLoop || isLoop(ts, node)));
+  };
+  ts.forEachChild(body.node, (c) => visit(c, false));
+};
+
+// Choosing between two boxed values with a call that returns a new one
+// allocates on every pass, including every pass that chooses the value the
+// target already held — which, for anything ordered, is nearly all of them. The
+// predicate form compares and stores only on a real change.
+//
+// The target has to appear among the arguments. That is what makes the call a
+// choice rather than arithmetic: `x = x.plus(1)` also allocates, but the value
+// genuinely changed, and an immutable type has no cheaper way to say so.
+const allocatingSelect: Rule = (ts, checker, body, add) => {
+  const allocates = (call: TS.CallExpression): boolean => {
+    const t = checker.getTypeAtLocation(call);
+    // A primitive result is not an allocation. This is the whole reason
+    // Math.min stays silent: it returns a number, and TurboFan lowers it to a
+    // machine instruction. An array result belongs to the other rules.
+    if (elementType(ts, checker, t)) return false;
+    return members(t).every((x) => Boolean(x.flags & ts.TypeFlags.Object));
+  };
+
+  const visit = (node: TS.Node, inLoop: boolean): void => {
+    if (
+      inLoop &&
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isCallExpression(node.right)
+    ) {
+      const target = node.left.getText(body.sf);
+      const call = node.right;
+      if (call.arguments.some((a) => a.getText(body.sf) === target) && allocates(call)) {
+        add({
+          ...at(body.sf, node),
+          rule: 'allocating-select',
+          message:
+            `${target} is replaced by ${call.expression.getText(body.sf)}(...), which returns a new ` +
+            'object every pass, including the passes that choose the value it already held',
+          fix: `compare first and assign only when ${target} really changes`,
+        });
+      }
+    }
+    ts.forEachChild(node, (c) => visit(c, inLoop || isLoop(ts, node)));
   };
   ts.forEachChild(body.node, (c) => visit(c, false));
 };
@@ -322,6 +375,7 @@ const RULES: Rule[] = [
   boxedElements,
   megamorphicElements,
   accumulatingSpread,
+  allocatingSelect,
   chainedAllocation,
   deleteProperty,
 ];
