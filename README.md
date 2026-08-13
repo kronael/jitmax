@@ -14,7 +14,7 @@ export function total(rows: Row[]): number { … }
 
 ```
 $ turbocharge demo
-turbocharge — 14 annotated functions, 8 findings
+turbocharge — 18 annotated functions, 10 findings
 
   demo/lib.ts:71  viaCallee()
     delete-property
@@ -102,10 +102,12 @@ main rule fires without checking that your code loads a property at all.
 ## Evidence
 
 ```sh
-make bench          # the 24-cell object-shape sweep
-make bench-spread   # accumulating spread
-make bench-chained  # chained array passes
-make bench-inline   # the inlining boundary behind closed-world
+make bench                # the 24-cell object-shape sweep
+make bench-spread         # accumulating spread, array form
+make bench-spread-object  # accumulating spread, object form
+make bench-select         # choosing between two boxed values
+make bench-chained        # chained array passes
+make bench-inline         # the inlining boundary behind closed-world
 ```
 
 Every observation runs in a fresh OS process. An in-process A/B test shares
@@ -145,7 +147,7 @@ look worth shipping. See `BUGS.md` TC-5.
 ## Development
 
 ```sh
-make test    # 16 unit tests, including the must-stay-silent cases
+make test    # 20 unit tests, including the must-stay-silent cases
 make lint    # tsc --noEmit
 make check   # run the checker against demo/
 ```
@@ -160,4 +162,4 @@ explains why the old design failed.
 redistribute it under those terms. A derivative work carries the same licence.
 It is not published to npm. Get it by cloning the repository.
 
-Status: v0.3.0, single machine, seven rules.
+Status: v0.3.1, single machine, seven rules.

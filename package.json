@@ -1,6 +1,6 @@
 {
   "name": "turbocharge",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Annotation checker for TypeScript: mark a function, keep it on V8's fast path.",
   "license": "GPL-2.0-only",

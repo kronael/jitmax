@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="krons:type" content="products">
-<meta name="krons:date" content="2026-08-11">
+<meta name="krons:date" content="2026-08-13">
 <meta name="krons:pin"  content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Mark a TypeScript function. turbocharge checks it and every function it calls against seven V8 fast-path rules, six of which carry a rerunnable benchmark and the measured case where they must stay silent.">
@@ -173,7 +173,9 @@ turbocharge — 18 annotated functions, 10 findings
   The rules are held to the same standard as the code. Each records the
   condition under which its own benchmark found no effect, and a test asserts it
   stays quiet there. A rule that fires in a case its measurement rejected fails
-  the build.
+  the build. Where a rule has an obvious objection, the objection is measured:
+  the allocation <code>allocating-select</code> reports still costs 1.72-2.28x
+  when it never leaves the function, so escape analysis does not remove it.
 </p>
 
 <div class="insight">
@@ -262,13 +264,14 @@ turbocharge — 18 annotated functions, 10 findings
 </p>
 
 <pre><code>$ turbocharge src      # check annotated functions under src/
-$ make test            # 16 tests, including the must-stay-silent cases
+$ make test            # 20 tests, including the must-stay-silent cases
 $ make bench           # re-run the 24-cell shape sweep
 $ make bench-spread    # re-run accumulating spread
+$ make bench-select    # re-run choosing between boxed values
 $ make bench-chained   # re-run chained allocation</code></pre>
 
 <p>
-  The five-file demo takes 1.7-2.0 seconds. Almost all of that is TypeScript
+  The demo run takes 1.5-2.0 seconds. Almost all of that is TypeScript
   building a program and type-checking it, which is the price of asking real
   type questions rather than matching syntax. Cost scales with your program, not
   with how many functions you annotated. Run it as a build step, not on
@@ -277,7 +280,7 @@ $ make bench-chained   # re-run chained allocation</code></pre>
 
 <div class="hub-footer">
   <p>
-    v0.3.0, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
+    v0.3.1, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
     those terms; a derivative work carries the same licence. Not published to
     npm, so acquisition is by clone. Seven rules, 20 tests, single
     machine. Open defects are listed in <code>BUGS.md</code>, and the adversarial
