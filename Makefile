@@ -1,4 +1,4 @@
-.PHONY: test lint check bench bench-spread bench-chained bench-inline meme meme-png clean
+.PHONY: test lint check bench bench-spread bench-spread-object bench-select bench-chained bench-inline meme meme-png clean
 
 test:
 	node --test test/check.test.ts
@@ -14,6 +14,12 @@ bench:
 
 bench-spread:
 	node bench/run-spread.js
+
+bench-spread-object:
+	node bench/run-spread-object.js
+
+bench-select:
+	node bench/run-select.js
 
 bench-chained:
 	node bench/run-chained.js
