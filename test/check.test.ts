@@ -31,6 +31,8 @@ test('a function is checked only where it is annotated', () => {
       'fiveShapes',
       'fourShapes',
       'helper',
+      'joinByConcat',
+      'joinByPlus',
       'keysMap',
       'lowest',
       'lowestNumber',
@@ -92,6 +94,22 @@ test('the concat form of the accumulator fires', () => {
 // two and a half orders of magnitude below the loop — so the rule stays quiet.
 test('a single concat stays silent', () => {
   assert.deepStrictEqual(rules('appendOnce'), []);
+});
+
+// A string wears the syntax of the quadratic accumulator and is not it. V8
+// appends into a cons-string instead of copying, and all three string forms BEAT
+// the push-and-join the rule would ask for: 0.27-0.54x to build, and still
+// 0.79-0.96x once the read back is counted. bench/strings.jsonl, 27 cells.
+test('building a string by appending stays silent', () => {
+  assert.deepStrictEqual(rules('joinByPlus'), []);
+});
+
+// The false positive that measurement killed. `.concat()` is a String method as
+// much as an Array one, and the rule matched it by name with no type behind it,
+// so it told anyone building a string that their code was a quadratic array
+// copy. The receiver's type is now what decides.
+test('the concat form on a STRING stays silent', () => {
+  assert.deepStrictEqual(rules('joinByConcat'), []);
 });
 
 test('a two-stage chain fires', () => {

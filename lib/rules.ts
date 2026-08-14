@@ -48,7 +48,10 @@ export const EVIDENCE: Record<string, Evidence> = {
       'a copy no loop re-runs is not this rule: with construction excluded the same four ' +
       'forms measure 0.03-1.73x, two to three orders of magnitude below the loop, so the ' +
       'cost is the re-copying and not the value it leaves behind; Object.assign(acc, …) ' +
-      'mutates in place and is the fix rather than the defect, so it stays silent too',
+      'mutates in place and is the fix rather than the defect, so it stays silent too; and ' +
+      'a STRING is not this rule at any n — s = s + x, s += x and s = s.concat(x) build in ' +
+      '0.27-0.54x of a push-and-join and 0.79-0.96x of it once the read back is counted, ' +
+      'so all three BEAT the rewrite, because V8 appends into a cons-string',
   },
   'allocating-select': {
     cost:
@@ -111,6 +114,13 @@ const elementType = (ts: Ts, checker: TS.TypeChecker, t: TS.Type): TS.Type | und
   checker.getIndexTypeOfType(t, ts.IndexKind.Number);
 
 const members = (t: TS.Type): readonly TS.Type[] => (t.isUnion() ? t.types : [t]);
+
+// Whether the value really is an array — which `elementType` cannot answer.
+// lib.es5 gives String a `readonly [index: number]: string` of its own, so a
+// string passes the numeric index-signature test every other rule uses. A rule
+// whose evidence is about Array has to ask the question directly.
+const isArray = (checker: TS.TypeChecker, t: TS.Type): boolean =>
+  members(t).every((x) => checker.isArrayType(x) || checker.isTupleType(x));
 
 const isNumeric = (ts: Ts, t: TS.Type): boolean =>
   Boolean(t.flags & (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral));
@@ -199,7 +209,7 @@ const megamorphicElements: Rule = (ts, checker, body, add) => {
 // as a spread or as a call, the mechanism is the same. This is the only
 // rule here whose cost is a complexity class rather than a constant factor,
 // which is why it is the largest effect in the project.
-const accumulatingSpread: Rule = (ts, _checker, body, add) => {
+const accumulatingSpread: Rule = (ts, checker, body, add) => {
   // Four forms copy the accumulator on every pass: [...acc, v],
   // { ...acc, [k]: v }, acc.concat(v), and Object.assign({}, acc, …). Each was
   // measured separately, because the constants differ by an order of magnitude.
@@ -220,7 +230,21 @@ const accumulatingSpread: Rule = (ts, _checker, body, add) => {
     // measured at 778x and 815x.
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const callee = node.expression;
-      if (callee.name.text === 'concat') return isAcc(callee.expression);
+      // `.concat()` belongs to String as much as to Array, and on a string it
+      // is not this defect: measured 0.27-0.54x to build and 0.79-0.96x to
+      // build and read back, FASTER than the push-and-join it would be
+      // rewritten to, because V8 appends into a cons-string instead of copying.
+      // Matching the NAME alone indicted that, and every other class that owns
+      // a `concat` — a persistent list shares structure and is not copying
+      // either. The receiver's type is what separates them, and where the type
+      // is `any` there is nothing to separate: two measured-opposite mechanisms
+      // wear this syntax, so an unknown receiver stays silent.
+      if (callee.name.text === 'concat') {
+        return (
+          isAcc(callee.expression) &&
+          isArray(checker, checker.getTypeAtLocation(callee.expression))
+        );
+      }
       // Object.assign(acc, …) mutates acc and returns it — that is the O(n)
       // fix, not the defect. Only a copy counts, and a copy is the accumulator
       // reaching Object.assign behind some other target.

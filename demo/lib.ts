@@ -70,6 +70,22 @@ export function appendOnce(rows: number[], extra: number[]): number[] {
   return acc;
 }
 
+/** Appending to a string is not the array copy: 0.27-0.54x of push-and-join. */
+/** @turbocharge */
+export function joinByPlus(parts: string[]): string {
+  let s = '';
+  for (const p of parts) s = s + p;
+  return s;
+}
+
+/** The same call the array form makes, on a string: a cons-string, not a copy. */
+/** @turbocharge */
+export function joinByConcat(parts: string[]): string {
+  let s = '';
+  for (const p of parts) s = s.concat(p);
+  return s;
+}
+
 /** A spread no loop re-runs, and one that never carries the target: silent. */
 /** @turbocharge */
 export function widen(rows: number[], extra: number[]): number[] {
