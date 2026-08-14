@@ -212,8 +212,9 @@ reversed two verdicts. Every rule benchmark runs both halves, or it is not
 evidence. This is now rule 11 in §4.
 
 **The graveyard is the launch artifact.** Published refutations — holey
-arrays, the 4-shape budget, two-shape arrays, `delete` on singletons, and
-string building, which the tool was wrongly reporting until it was measured —
+arrays, the 4-shape budget, two-shape arrays, `delete` on singletons, string
+building, which the tool was wrongly reporting until it was measured, and the
+property added after construction, the most repeated claim in V8 folklore —
 are a more credible claim than a long rule list nobody measured.
 
 **Accumulating by copying** — four ways to write one defect. Each variant is
@@ -482,6 +483,164 @@ the caller never sees, the same loop still costs 1.72–2.28x. The measurement
 does not say why escape analysis leaves it — only that the cost survives, which
 is enough: "the compiler will remove it" is not a reason to leave the code
 alone.
+
+**A property added after construction — refuted, and the mechanism was already
+wrong before the first cell ran.** The claim is the most repeated one in V8
+folklore and this project had never tested it: `const o = { a: 1 }; o.b = 2;` is
+said to be a defect, because it makes a second map and a transition to reach it.
+
+The mechanism was read out of V8 with `--allow-natives-syntax` first, and it
+does not say what the folklore says:
+
+| probe | answer |
+|---|---|
+| `{x,y,z}` literal | instance size 48, 3 in-object properties, `PropertyArray[0]` |
+| `{x,y}` then `o.z = v` | instance size 40, 2 in-object, `PropertyArray[3]`, `z` at `properties[0]` |
+| two objects, same path, `%HaveSameMap` | **true** — one final map, not two |
+| `{x}+y+z` against `{x}+z+y`, `%HaveSameMap` | false — different paths really are two maps |
+| 16 named `o.k = v`, `%HasFastProperties` | true, at any count |
+| 16 keyed `o[k] = v`, `%HasFastProperties` | **false** — dictionary mode at exactly 16 |
+
+**"A second map" is a fact about the map TREE, not about what a load site
+sees.** Every object built the same way lands on the same final map, so a site
+reading them is monomorphic and there is no polymorphism to pay for. What
+actually differs is where the field lives: an added field sits in the property
+backing store, one dereference away from the object, and that store is
+allocated in blocks of `JSObject::kFieldsAdded` = 3.
+
+53 cells, Node v22.23.2, 20 pairs each, `bench/addprop.jsonl`, none void. Every
+variant is paired against the rewrite the folklore asks for — the same
+properties, the same values, in one object literal — and the driver compares
+checksums inside every pair. Three modes: construction alone, reads alone, and
+both.
+
+**The case most real code is in — one path, one final map:**
+
+| Cell | L1 n=256 | L2 n=16384 |
+|---|---|---|
+| `{x,y}` then `o.z`, reads only | 1.25 (1.20–1.30) | 1.21 (1.15–1.27) |
+| `{x}` then `o.y`, `o.z`, reads only | 1.34 (1.27–1.42) | 1.24 (1.21–1.28) |
+| `{x,y}` then `o.z`, construction only | 1.26 (1.20–1.34) | 1.50 (1.44–1.57) |
+| `{x}` then `o.y`, `o.z`, construction only | 1.20 (1.15–1.25) | 1.28 (1.23–1.33) |
+| `{x,y}` then `o.z`, construction and read | 1.34 (1.28–1.40) | 1.62 (1.49–1.73) |
+| `{x}` then `o.y`, `o.z`, construction and read | 1.31 (1.24–1.39) | 1.41 (1.35–1.48) |
+
+**Every cell is inside the 1.0–1.7x band, and §11 is what that band means
+here.** The 24-cell shape sweep was run twice and *every* effect between 1.0x
+and 1.7x flipped between significant and rejected; only the five-shape cells
+held. These intervals exclude 1.0 and would clear §4 rule 6 on their face, and
+the project has already refused a rule on exactly this ground once: two to four
+shapes measure 1.2–2.0x, real and measured, and `megamorphic-elements` stays
+silent there because the effect it does ship on is an order of magnitude
+larger. The same judgement applies here, and it is recorded as a judgement
+rather than as an absence of evidence.
+
+A second transition costs no more than the first — 1.20–1.34x against
+1.25–1.34x — which is what the mechanism predicts, because one `PropertyArray`
+of three slots serves both.
+
+**Two paths really are two maps, and it is still small:**
+
+| Cell | L1 n=256 | L2 n=16384 | n=262144 |
+|---|---|---|---|
+| `{x}+y+z` half, `{x}+z+y` half, reads only | 1.74 (1.65–1.82) | 1.47 (1.41–1.52) | 1.91 (1.73–2.10) |
+| the same, construction only | 1.33 (1.29–1.37) | 1.27 (1.22–1.32) | — |
+| the same, construction and read | 1.47 (1.40–1.54) | 1.46 (1.38–1.56) | — |
+
+Divergence on its own is the ratio of those reads cells to the same-path ones:
+1.39x at L1 and 1.21x at L2. That lands on the two-shape numbers the object
+sweep already published — 1.34 and 1.35 — from a completely different
+construction, and it is the only independent replication of that figure this
+project has.
+
+**The optional property — `y?: number`, literally two hidden classes reaching
+one load site.** The sweep reads the property both shapes have, because reading
+the optional one would be measuring `undefined` on a quarter of the rows and no
+rewrite fixes that:
+
+| Cell | L1 n=256 | L2 n=16384 |
+|---|---|---|
+| written as two literals, reads only | 1.21 (1.10–1.32) | 1.04 (0.99–1.10) **REJ** |
+| written as two literals, construction and read | 0.97 (0.93–1.01) **REJ** | 0.90 (0.84–0.98) |
+| reached by assignment, reads only | 1.32 (1.25–1.40) | 1.14 (1.09–1.19) |
+| reached by assignment, construction and read | 1.04 (1.00–1.09) | 1.46 (1.40–1.53) |
+
+**The optional property is refused on its own evidence.** Written the way it is
+actually written — some literals carry it, some do not — it rejects outright at
+L2 on reads, and with construction counted it is *faster* than the shape that
+always carries the property, because there is less to build. A rule demanding
+`y: number` with a default would be demanding a slower program.
+
+**Added after the load site is already hot.** The sweep warms the read over the
+first shape, adds the property to every row, warms again, then times. The
+one-time deopt is deliberately outside the timed region: it is O(1) and a 120 ms
+region amortizes it to nothing. What is measured is the steady state of a site
+that has seen the old map and the new one:
+
+| Cell | L1 n=256 | L2 n=16384 | n=262144 |
+|---|---|---|---|
+| against the one-literal rewrite | 1.09 (1.03–1.16) | 0.84 (0.82–0.87) | 0.51 (0.45–0.58) |
+| against identical objects the site never saw grow | 1.10 (1.03–1.17) | 0.79 (0.76–0.81) | 0.38 (0.33–0.44) |
+
+**Refused, and the sub-1.0 cells are the interesting half.** At L1 the residual
+is 1.09–1.10x, under the 1.10x §4 rule 6 asks of a warning. At L2 and above the
+mutated objects are *faster* than identical objects built field-complete, and
+the plausible reading is allocation order rather than maps. This sweep grows the
+objects in one pass and adds the property in a second, so the objects land
+packed against each other; building them one at a time interleaves every object
+with its own property array. Both sweeps read only in-object fields, so the
+interleaved one walks further for the same data. That is inference from the
+instance sizes above, not a measurement of layout, and it is recorded as such —
+but it says the thing worth saying: at the sizes where memory dominates, field
+layout swamps anything the map bookkeeping does, and it can go either way.
+
+**The one large effect, and it is not the folklore's.**
+`fast_properties_soft_limit` is 12, and `Map::TooManyFastProperties` consults it
+only when the store origin is `kMaybeKeyed` — a **keyed** store. A named store
+never normalizes at any count. Probed at exactly 16 keyed adds on `{x:1}`, cold
+and after 20,000 builds:
+
+| Cell | n=256 | n=8192 |
+|---|---|---|
+| 12 keyed adds, reads only | 1.02 (0.99–1.06) **REJ** | 1.04 (1.01–1.06) |
+| 16 named adds, reads only | 0.92 (0.89–0.94) | 1.05 (1.03–1.08) |
+| **16 keyed adds, reads only** | **6.17 (5.94–6.41)** | **6.34 (6.14–6.57)** |
+| 12 keyed adds, construction and read | 7.19 (6.62–7.75) | 3.67 (3.39–4.00) |
+| 16 named adds, construction and read | 2.07 (1.89–2.27) | 3.33 (3.11–3.57) |
+| 16 keyed adds, construction and read | 24.61 (23.48–26.06) | 12.97 (12.35–13.64) |
+
+**Two controls pin it, and that is what makes it clean.** The same seventeen
+fields reached by *named* stores read at 0.92–1.05x — nothing. The same keyed
+syntax stopped at *twelve* reads at 1.02–1.04x — nothing. One variable moves and
+reads cost 6.17–6.34x. This is the mechanism `delete-property` ships on, reached
+by a different route, and it is the first direct measurement of dictionary mode
+in this project rather than a figure carried over from `options.md`.
+
+**It still ships no rule, for two reasons, and the first is fatal on its own.**
+The effect appears past a count no checker can see. Twelve keyed stores measured
+1.02–1.04x with an interval spanning 1; sixteen measured 6.17x. A rule firing on
+`acc[k] = v` in a loop would fire on the twelve-key case its own benchmark
+rejected, which is the one thing this project does not do, and nothing in the
+type system separates a loop that runs twelve times from one that runs sixteen.
+Second, the rewrite is unmeasured: where the keys are dynamic — the only case
+where anyone writes keyed stores — the object literal this sweep used as its
+baseline cannot be written at all, so the measured comparison names no fix a
+developer could apply. The honest baseline for that population is `Map`, and
+`Map` was not measured. Recorded as a proposal in `BUGS.md` TC-12, for the owner
+rather than for the tool.
+
+**The RAM-sized construction cells are void in everything but name, and the
+region guard did not catch it.** At n=262144 a rep builds a quarter of a million
+objects, so the 120 ms region is reached at 4 to 7 reps. Three near-identical
+constructions then disagree flatly — one added property at 1.64x, two added
+properties at 0.91x, two divergent paths at 0.89x, every interval excluding 1.0
+and no two of them able to be true together. The bootstrap interval is over
+process-to-process variation at a fixed rep count and cannot see the variance one
+GC pause introduces when there are five reps to hide in. Those cells are
+withdrawn and are not quoted above; the reads-only cells at the same size ran at
+86–312 reps and are kept. Recorded as `BUGS.md` TC-11: §4 rule 3 bounds the
+achieved region and says nothing about the rep count, and a region can be met by
+a handful of very slow reps.
 
 ## 4. Benchmark methodology
 
@@ -853,13 +1012,23 @@ bytecode size and that mapping is unmeasured. Recorded as `BUGS.md` TC-3.
 
 ### Candidates the source suggests, all unmeasured
 
-`fast_properties_soft_limit` (12) sharpens `delete-property` into a rule about
-field counts. `kMaxFastLiteralDepth` (3) suggests a rule on deeply nested object
-literals. `max_inlined_bytecode_size` (460) suggests that an annotated helper
-too large to inline silently loses the benefit of being annotated at all.
+`kMaxFastLiteralDepth` (3) suggests a rule on deeply nested object literals.
+`max_inlined_bytecode_size` (460) suggests that an annotated helper too large to
+inline silently loses the benefit of being annotated at all.
 
 None of them ship. The project rule holds: a constant in V8's source is a
 hypothesis, and only a benchmark makes it a rule.
+
+`fast_properties_soft_limit` (12) is no longer on that list: it was measured in
+the §3 sweep and it is the sharpest threshold in the project. `TooManyFastProperties`
+consults it only for a **keyed** store, so `o.k = v` never normalizes at any
+count while `o[k] = v` normalizes at exactly 16 adds on a one-field object —
+`max(12, in-object count)` external fields, with the backing store full. Reads
+past that threshold cost **6.17–6.34x**, against 1.02–1.04x for twelve keyed
+adds and 0.92–1.05x for sixteen named ones. It ships no rule because no checker
+can see the count, which is the argument in full in §3 and the proposal in
+`BUGS.md` TC-12. `max_fast_properties` (128) is defined in
+`flag-definitions.h:3332` and has no use site anywhere in `v8src/src`.
 
 ### The one identified path to a large win
 

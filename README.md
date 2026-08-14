@@ -14,7 +14,7 @@ export function total(rows: Row[]): number { … }
 
 ```
 $ turbocharge demo
-turbocharge — 28 annotated functions, 13 findings
+turbocharge — 31 annotated functions, 13 findings
 
   demo/lib.ts:87  viaCallee()
     delete-property
@@ -90,11 +90,20 @@ controls: a callee V8 refuses to inline costs 4.42-4.79x in a hot loop. Read
 that as a bound on what one unchecked call can cost, not a claim about any
 particular one.
 If a rule fires in a case a test declares silent, `make test` fails.
-Measurements have blocked a rule or a rule's extension from shipping six times.
+Measurements have blocked a rule or a rule's extension from shipping seven times.
 One went further and took a case away from a rule that was already shipping.
 `accumulating-spread` matched `.concat()` by name, so it reported `s = s.concat(x)`
 on a string as a quadratic array copy. Measured, appending to a string is
 *faster* than the rewrite the tool was demanding — `make bench-strings`.
+
+The seventh is the most repeated claim in V8 folklore, and it is the reason
+there is no rule about it here. Adding a property after you build the object —
+`const o = { a: 1 }; o.b = 2;` — is supposed to cost you a second hidden class.
+V8's own debug output says otherwise: every object built the same way ends at
+the *same* hidden class, so the code that reads them sees one, not two. Measured
+against writing both properties at once, it costs 1.21–1.34x, inside the band
+this harness has twice failed to reproduce. An optional property is no worse,
+and is *cheaper* to build. `make bench-addprop`.
 
 **Read the third column as a limit on the evidence, not as a promise about the
 code.** No rule checks the condition in its own third column at runtime. The
@@ -113,6 +122,7 @@ make bench-strings        # string building — the refutation, not a rule
 make bench-select         # choosing between two boxed values
 make bench-chained        # chained array passes
 make bench-inline         # the inlining boundary behind closed-world
+make bench-addprop        # adding a property after construction — a refutation
 ```
 
 Every observation runs in a fresh OS process. An in-process A/B test shares
@@ -152,7 +162,7 @@ look worth shipping. See `BUGS.md` TC-5.
 ## Development
 
 ```sh
-make test    # 30 unit tests, including the must-stay-silent cases
+make test    # 33 unit tests, including the must-stay-silent cases
 make lint    # tsc --noEmit
 make check   # run the checker against demo/
 ```

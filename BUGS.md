@@ -2,6 +2,47 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
+## TC-12 — a 6.3x effect nothing static can detect (2026-08-14, open, proposal)
+
+The `bench/addprop.jsonl` sweep found one large effect: an object whose
+properties are added with a **keyed** store past `fast_properties_soft_limit`
+goes to dictionary mode, and reading its fields then costs **6.17–6.34x**
+(CI 5.94–6.41 and 6.14–6.57). Two controls pin it — the same field count by
+named stores costs 0.92–1.05x, and twelve keyed stores cost 1.02–1.04x with the
+interval spanning 1.
+
+It is not shipped as a rule, and the owner should decide whether that stands:
+
+- **The count is invisible.** The threshold is 16 keyed adds on a one-field
+  object. A rule matching `acc[k] = v` inside a loop cannot know whether the
+  loop runs twelve times or sixteen, so it would fire on the case its own
+  benchmark rejected. That is TC-9 in a place where the evidence is unusually
+  sharp about where the effect is not.
+- **The rewrite is unmeasured.** The sweep's baseline is a single object
+  literal, which is only writable when the keys are static — and when the keys
+  are static nobody writes keyed stores. For the dynamic-key population the
+  honest baseline is `Map`, and `Map` was not measured. Shipping the rule would
+  mean naming a fix this project has not benchmarked.
+
+Closing it needs a `Map` sweep first, and then a decision about firing on a
+count that cannot be proven. `demo/lib.ts` `growByKey` is the fixture and a test
+locks it silent.
+
+## TC-11 — the region guard bounds the region, not the rep count (2026-08-14, open)
+
+`bench/driver.js` asserts the achieved timed region lands within 2x of 120 ms.
+A kernel slow enough can meet that with 4 to 7 reps, and then a single GC pause
+decides the cell. The `addprop` sweep's RAM-sized construction cells are the
+demonstration: three near-identical constructions measured 1.64x, 0.91x and
+0.89x, every interval excluding 1.0 and no two of them able to be true
+together. The bootstrap interval is over process-to-process variation at a fixed
+rep count and cannot see that variance.
+
+Those cells are withdrawn in SPEC §3 by hand. The guard should do it: a cell
+whose rep count is below some floor is not a measurement, the same way a cell
+outside the region window is not. The floor is unmeasured — picking it needs a
+sweep of its own — so this is recorded rather than applied.
+
 ## TC-10 — the walk follows calls but not constructors (2026-08-13, open)
 
 `reach()` in `lib/scan.ts` visits `ts.isCallExpression(node)` only. A
