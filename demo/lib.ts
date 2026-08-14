@@ -54,6 +54,22 @@ export function collectByReduce(rows: number[]): number[] {
   return rows.reduce<number[]>((acc, r) => [...acc, r], []);
 }
 
+/** The same copy written as a call: concat returns a whole new array. */
+/** @turbocharge */
+export function collectByConcat(rows: number[]): number[] {
+  let acc: number[] = [];
+  for (const r of rows) acc = acc.concat(r);
+  return acc;
+}
+
+/** One concat, no loop to re-run it: O(n), and silent. */
+/** @turbocharge */
+export function appendOnce(rows: number[], extra: number[]): number[] {
+  let acc = rows;
+  acc = acc.concat(extra);
+  return acc;
+}
+
 /** A spread no loop re-runs, and one that never carries the target: silent. */
 /** @turbocharge */
 export function widen(rows: number[], extra: number[]): number[] {
@@ -134,4 +150,20 @@ export function lowestNumber(rows: number[], bucket: { lo: number }): void {
 /** @turbocharge */
 export function mergeOnce(a: Record<string, number>, b: Record<string, number>) {
   return { ...a, ...b };
+}
+
+/** Object.assign onto a fresh target copies every key the accumulator holds. */
+/** @turbocharge */
+export function collectByAssign(rows: number[]): Record<string, number> {
+  let acc: Record<string, number> = {};
+  for (let i = 0; i < rows.length; i++) acc = Object.assign({}, acc, { [`k${i}`]: rows[i] });
+  return acc;
+}
+
+/** Object.assign onto the accumulator itself mutates it: O(n), and silent. */
+/** @turbocharge */
+export function mergeInto(rows: number[]): Record<string, number> {
+  let acc: Record<string, number> = {};
+  for (let i = 0; i < rows.length; i++) acc = Object.assign(acc, { [`k${i}`]: rows[i] });
+  return acc;
 }

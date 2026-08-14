@@ -39,12 +39,16 @@ export const EVIDENCE: Record<string, Evidence> = {
   },
   'accumulating-spread': {
     cost:
-      'array form 177x at n=1000 and 2348x at n=10000 (CI 157-202, 1837-2892); object form ' +
-      '197x at n=500 (CI 175-222) — the ratio grows with n, because the work is quadratic',
+      'array spread 156-177x at n=1000 and 1877-2348x at n=10000 across two sweeps; ' +
+      'acc.concat(v) 779x at n=1000 (CI 733-821); object spread 197-210x at n=500; ' +
+      'Object.assign({}, acc, …) 815x at n=500 (CI 769-874) — the ratio grows with n, ' +
+      'because the work is quadratic',
     source: 'bench/spread.jsonl and bench/spread-object.jsonl, 20 pairs per cell',
     silent:
-      'reading the finished array or object costs nothing — 0.96x, 0.98x, and 0.87x, all ' +
-      'intervals spanning 1 — so a spread no loop re-runs is not this rule',
+      'a copy no loop re-runs is not this rule: with construction excluded the same four ' +
+      'forms measure 0.03-1.73x, two to three orders of magnitude below the loop, so the ' +
+      'cost is the re-copying and not the value it leaves behind; Object.assign(acc, …) ' +
+      'mutates in place and is the fix rather than the defect, so it stays silent too',
   },
   'allocating-select': {
     cost:
@@ -180,29 +184,43 @@ const megamorphicElements: Rule = (ts, checker, body, add) => {
   }
 };
 
-// Rebuilding an array from a spread of itself copies every element it already
-// holds, so a loop that does it n times does quadratic work. This is the only
+// Rebuilding an array or an object from a copy of itself copies every element
+// it already holds, so a loop that does it n times does quadratic work. Written
+// as a spread or as a call, the mechanism is the same. This is the only
 // rule here whose cost is a complexity class rather than a constant factor,
 // which is why it is the largest effect in the project.
 const accumulatingSpread: Rule = (ts, _checker, body, add) => {
-  // Both forms copy the accumulator on every pass: [...acc, v] and
-  // { ...acc, [k]: v }. Measured separately, because the constants differ.
+  // Four forms copy the accumulator on every pass: [...acc, v],
+  // { ...acc, [k]: v }, acc.concat(v), and Object.assign({}, acc, …). Each was
+  // measured separately, because the constants differ by an order of magnitude.
   const spreadsSelf = (name: string, outer: TS.Node): boolean => {
     // `(acc, x) => ({ ...acc, k: x })` wraps the literal in parentheses.
     let node = outer;
     while (ts.isParenthesizedExpression(node)) node = node.expression;
+    const isAcc = (e: TS.Node): boolean => ts.isIdentifier(e) && e.text === name;
     if (ts.isArrayLiteralExpression(node)) {
-      return node.elements.some(
-        (e) => ts.isSpreadElement(e) && ts.isIdentifier(e.expression) && e.expression.text === name
-      );
+      return node.elements.some((e) => ts.isSpreadElement(e) && isAcc(e.expression));
     }
     if (ts.isObjectLiteralExpression(node)) {
-      return node.properties.some(
-        (pr) =>
-          ts.isSpreadAssignment(pr) &&
-          ts.isIdentifier(pr.expression) &&
-          pr.expression.text === name
-      );
+      return node.properties.some((pr) => ts.isSpreadAssignment(pr) && isAcc(pr.expression));
+    }
+    // The call forms. `acc.concat(v)` carries the accumulator as the RECEIVER
+    // and `Object.assign({}, acc, …)` as an argument, so neither is visible to
+    // the literal matching above — the rule walked past both until it was
+    // measured at 778x and 815x.
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      const callee = node.expression;
+      if (callee.name.text === 'concat') return isAcc(callee.expression);
+      // Object.assign(acc, …) mutates acc and returns it — that is the O(n)
+      // fix, not the defect. Only a copy counts, and a copy is the accumulator
+      // reaching Object.assign behind some other target.
+      if (
+        callee.name.text === 'assign' &&
+        ts.isIdentifier(callee.expression) &&
+        callee.expression.text === 'Object'
+      ) {
+        return node.arguments.slice(1).some(isAcc);
+      }
     }
     return false;
   };
@@ -211,7 +229,7 @@ const accumulatingSpread: Rule = (ts, _checker, body, add) => {
     add({
       ...at(body.sf, node),
       rule: 'accumulating-spread',
-      message: `${name} is rebuilt from a spread of itself; every pass copies everything it already holds`,
+      message: `${name} is rebuilt from a copy of itself; every pass copies everything it already holds`,
       fix: `mutate ${name} in place — push, or assign the key — instead of rebuilding it`,
     });
 

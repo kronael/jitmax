@@ -20,7 +20,10 @@ test('a function is checked only where it is annotated', () => {
   assert.deepStrictEqual(
     [...found.keys()].sort(),
     [
+      'appendOnce',
       'collect',
+      'collectByAssign',
+      'collectByConcat',
       'collectByReduce',
       'collectObject',
       'drop',
@@ -29,6 +32,7 @@ test('a function is checked only where it is annotated', () => {
       'helper',
       'lowest',
       'lowestNumber',
+      'mergeInto',
       'mergeOnce',
       'mixed',
       'oneStage',
@@ -74,6 +78,18 @@ test('a spread no loop re-runs stays silent', () => {
   assert.deepStrictEqual(rules('widen'), []);
 });
 
+// concat carries the accumulator as the receiver, not as an argument, which is
+// why the rule walked past this form until it was measured at 779x.
+test('the concat form of the accumulator fires', () => {
+  assert.deepStrictEqual(rules('collectByConcat'), ['accumulating-spread']);
+});
+
+// Same syntax, no loop. One concat is O(n) — the excl cells put it at 1.72x,
+// two and a half orders of magnitude below the loop — so the rule stays quiet.
+test('a single concat stays silent', () => {
+  assert.deepStrictEqual(rules('appendOnce'), []);
+});
+
 test('a two-stage chain fires', () => {
   assert.deepStrictEqual(rules('twoStages'), ['chained-allocation']);
 });
@@ -98,6 +114,16 @@ test('the object form of the accumulator fires', () => {
 // is entirely in re-copying, so the rule must not fire here.
 test('a single object spread stays silent', () => {
   assert.deepStrictEqual(rules('mergeOnce'), []);
+});
+
+test('the Object.assign copy form fires: 815x at n=500', () => {
+  assert.deepStrictEqual(rules('collectByAssign'), ['accumulating-spread']);
+});
+
+// Object.assign(acc, …) mutates acc and returns it. That is the O(n) rewrite
+// this rule asks for, so firing on it would indict its own fix.
+test('Object.assign onto the accumulator itself stays silent', () => {
+  assert.deepStrictEqual(rules('mergeInto'), []);
 });
 
 // The excerpt this rule came from: Decimal.min(a, b) never returns a, it
