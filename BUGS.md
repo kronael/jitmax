@@ -2,6 +2,38 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
+## TC-13 — a method in a field has no four-map budget (2026-08-14, open, proposal)
+
+`bench/dispatch.jsonl` split a call site into its two halves and they do not
+obey the same rule. With one shape and K different functions in the same slot
+(`tgt`), the cost is **7.68–11.93x from the second function to the sixth,
+flat** — no threshold anywhere. With K shapes and one shared function (`shr`)
+the four-map budget is intact: 2.14–2.21x at four, 6.92–8.25x at five.
+
+`megamorphic-dispatch` ships on five, which is right for a method on a
+prototype and **late** for an object carrying its own function: `lit` costs
+3.54–6.78x at two shapes and 9.11–13.02x at four, all of it below the threshold
+the rule fires at.
+
+Nothing static separates the two. `type T = { area(): number }` is satisfied by
+a class instance, whose method is one function on the prototype, and by an
+object literal with method shorthand, whose method is a fresh closure per
+literal site. The declaration is identical and the runtime layout is opposite.
+
+Two ways forward, neither taken:
+
+- **Fire on a union of two object types whose common member is declared as a
+  property of function type** (`area: () => number`) rather than a method
+  signature. That syntax is *correlated* with an own-property closure and does
+  not determine it, so it would be shipping an inference the benchmark did not
+  establish.
+- **Observe it at runtime.** This is what `DESIGN.md`'s runtime half is for: a
+  call site's targets are observable and its receiver maps are observable, and
+  the two together are exactly the decomposition this sweep did by hand.
+
+The static rule stays at five, missing the case rather than guessing at it,
+and `SPEC.md` §3 states that in the rule's own evidence.
+
 ## TC-12 — a 6.3x effect nothing static can detect (2026-08-14, open, proposal)
 
 The `bench/addprop.jsonl` sweep found one large effect: an object whose

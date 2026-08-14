@@ -642,6 +642,137 @@ withdrawn and are not quoted above; the reads-only cells at the same size ran at
 achieved region and says nothing about the rep count, and a region can be met by
 a handful of very slow reps.
 
+**Megamorphic dispatch — the same V8 constant at a call site, and the sharpest
+threshold this project has measured.** `megamorphic-elements` found
+`max_valid_polymorphic_map_count` = 4 at a *load* site, on the element type of
+an array. A call site is governed by the same four maps, and `x.step()` on a
+union-typed parameter is far more common in real TypeScript than an array of a
+five-way union. 80 cells, Node v22.23.2, 20 pairs each, `bench/dispatch.jsonl`,
+none void. One call site — `s += rows[i].step()` — with K shapes reaching it,
+every K against K = 1.
+
+A call site has **two** things that can diverge, and the folklore rolls them
+into one: the receiver's MAP, which decides where `step` is found, and the call
+TARGET, which decides what runs. Four families split them. The map questions
+were answered with `--allow-natives-syntax` before any cell ran
+(`tmp/dispatch-probe.cjs`):
+
+| probe | answer |
+|---|---|
+| two instances of one class | `%HaveSameMap` true |
+| instances of two hand-written classes, identical fields | **false** — two maps |
+| one key order, two different function values in one slot | **true** — one map |
+| two key orders, the same function value | false — two maps |
+
+| family | maps | targets | what it is |
+|---|---|---|---|
+| `cls` | K | K | K classes, method on the prototype — the TypeScript union of classes |
+| `lit` | K | K | K literal shapes, each carrying its own function |
+| `tgt` | **1** | K | one literal shape, K different functions in the same slot |
+| `shr` | K | **1** | K literal shapes, all carrying one shared function |
+
+The classes and the functions are written out rather than produced by a
+factory. Every closure one factory hands back shares a `SharedFunctionInfo`,
+and V8's call feedback treats closures of one SFI as a case of its own, so a
+generated class would not be the hand-written case this measures.
+
+**The cliff, reads only, ratio against one shape, 95% interval in brackets:**
+
+| K | `cls` L1 | `cls` L2 | `cls` L3 | `shr` L1 | `shr` L2 |
+|---|---|---|---|---|---|
+| 2 | 1.47 (1.37–1.58) | 1.21 (1.14–1.29) | 1.16 (1.12–1.20) | 1.40 (1.31–1.49) | 1.29 (1.22–1.37) |
+| 3 | 1.49 (1.34–1.63) | 1.32 (1.27–1.37) | 1.39 (1.26–1.51) | 1.93 (1.80–2.07) | 1.63 (1.58–1.68) |
+| 4 | 1.56 (1.50–1.62) | 1.38 (1.29–1.46) | 1.40 (1.34–1.46) | 2.21 (2.08–2.38) | 2.14 (2.06–2.21) |
+| **5** | **19.37** (18.12–20.59) | **14.59** (13.76–15.45) | **14.85** (13.90–15.94) | **8.25** (7.80–8.70) | **6.92** (6.67–7.16) |
+| 6 | 19.97 (18.32–21.64) | 16.44 (15.49–17.48) | 15.36 (13.96–16.82) | 8.09 (7.74–8.39) | 7.20 (6.90–7.58) |
+
+**A step, not a slope, and it is sharper than the one at a load site.** Two,
+three and four classes cost 1.16–1.56x — the same band the object sweep
+published for two-to-four shapes at a load site, 1.15–1.97x, from a completely
+different kernel. The fifth costs 14.59–19.97x, and it holds at all three
+working sets. `shr` puts the same cliff on the map side *alone*: one function,
+K maps, 2.14–2.21x at four and 6.92–8.25x at five.
+
+**The other two families say the map is only half of it:**
+
+| K | `lit` L1 | `lit` L2 | `lit` L3 | `tgt` L1 | `tgt` L2 |
+|---|---|---|---|---|---|
+| 2 | 6.78 (6.55–6.99) | 5.70 (5.49–5.94) | 3.63 (3.28–3.99) | 10.29 (8.52–11.77) | 7.90 (7.24–8.57) |
+| 3 | 6.70 (6.19–7.25) | 6.32 (5.50–7.42) | 3.54 (3.22–3.95) | 11.14 (9.59–12.55) | 8.33 (7.93–8.76) |
+| 4 | 13.02 (12.33–13.79) | 9.11 (8.46–9.72) | 4.34 (3.74–5.06) | 11.13 (9.71–12.46) | 7.68 (7.02–8.36) |
+| 5 | 14.78 (13.24–16.56) | 10.59 (9.71–11.54) | 7.51 (6.53–8.60) | 11.93 (10.73–13.09) | 8.91 (8.25–9.62) |
+| 6 | 14.46 (13.75–15.10) | 11.27 (10.64–11.84) | 7.51 (6.68–8.38) | 11.07 (9.58–12.50) | 8.58 (7.94–9.19) |
+
+**`tgt` has no threshold at all.** One map, K functions in one slot: 7.68–11.93x
+from the *second* target to the sixth, flat, every interval clear of 1.0 and no
+step anywhere. The four-map budget is a budget for the receiver's map and
+nothing else. A target that is a value loaded out of the object gets none of
+it — V8's call feedback is monomorphic or megamorphic, with no polymorphic
+middle, which is stated here as the reading of these numbers and not as
+something this sweep probed.
+
+**So `lit` is off the cliff at TWO, not at five.** A union of five object
+literal types that each carry their own function-valued property costs
+3.54–6.78x at the second shape, before any map budget is exhausted, because the
+second function has already made the call site megamorphic on its target. That
+is the form a lot of TypeScript is actually in, and it is the form no rule here
+fires on.
+
+**One anomaly, recorded rather than explained.** `tgt` costs *more* than `lit`
+at the same K — 10.29x against 6.78x at L1, 7.90x against 5.70x at L2 —
+although it has one map where `lit` has two. The intervals are tight and do not
+overlap. A plausible reading is field constness: the shared baseline `lit1`
+builds every object at one literal site with one function value, which V8 can
+track as a constant field, and the `tgt` variants generalize that slot to
+mutable while the `lit` variants keep one function per site. Not probed, so it
+is an observation, and it means the `tgt` column bounds the target effect from
+above rather than measuring it exactly.
+
+**With construction counted**, at the two sizes whose cells are measurements:
+
+| K | `cls` L1 | `cls` L2 | `lit` L1 | `lit` L2 |
+|---|---|---|---|---|
+| 2 | 3.30 (3.15–3.45) | 1.72 (1.62–1.85) | 2.90 (2.70–3.10) | 1.66 (1.56–1.75) |
+| 3 | 3.31 (3.13–3.48) | 1.74 (1.59–1.93) | 3.22 (3.07–3.34) | 1.42 (1.32–1.52) |
+| 4 | 3.27 (3.16–3.39) | 1.78 (1.67–1.91) | 3.43 (3.31–3.57) | 1.84 (1.75–1.93) |
+| 5 | **5.54** (4.85–6.34) | **2.34** (2.22–2.48) | 4.15 (3.89–4.45) | 1.89 (1.79–1.98) |
+| 6 | 5.53 (5.29–5.81) | 2.37 (2.23–2.50) | 3.76 (3.64–3.89) | 1.77 (1.67–1.86) |
+
+**The step survives construction and the level does not mean what it looks
+like.** `cls` goes 3.27x at four to 5.54x at five at L1, and 1.78x to 2.34x at
+L2, so the fifth shape is still visible with allocation counted. But the
+K = 2 row is already 3.30x, and that is not dispatch: selecting the constructor
+from a table is a second polymorphic site that the reads-only half does not
+have, and both the fourth and the second shape pay it. The rule quotes the
+reads half and says so.
+
+**Ten cells are withdrawn under TC-11.** Every `incl` cell at n = 262144 ran at
+**2 to 4 reps** — a rep builds a quarter of a million objects, so the 120 ms
+region is met by a handful of them and one GC pause decides the cell. They are
+not quoted above. The reads-only cells at the same size ran at 25 to 435 reps
+and are kept; the runner now prints the rep count with every cell so this is
+visible without opening the `.jsonl`.
+
+**`megamorphic-dispatch` ships on the fifth shape, and the threshold is wrong
+in the direction of silence.** Firing at five is supported by every family that
+has a threshold — `cls` at 14.59–19.97x and `shr` at 6.92–8.25x — and staying
+quiet at four is supported by the same two, at 1.16–1.56x and 2.14–2.21x. It is
+*not* supported for `lit`, which costs 9.11–13.02x at four; there the rule
+misses a real effect rather than inventing one, and nothing in a declared type
+separates a prototype method from a function held in a field. The rule requires
+the call: TC-8 is the flagship rule reporting a megamorphic load from a
+parameter's type without checking that anything is loaded, and a second rule
+with that hole would be the same defect twice. `demo/lib.ts` `idOfFive` is five
+object types with a field read and no call, and a test locks it silent.
+
+**A method called on the elements of an array reports once.** A parameter that
+is an array of a five-way union whose elements have methods called on them is
+one union reaching one site, and `megamorphic-elements` already reports that
+parameter. The dispatch rule steps aside there rather than billing one defect
+twice — the judgement `chained-allocation`'s `consumed` check already makes for
+a three-stage chain. `demo/lib.ts` `totalArea` is the fixture and a test locks
+it at one finding.
+
 ## 4. Benchmark methodology
 
 Non-negotiable, because the evidence *is* the product.

@@ -14,7 +14,7 @@ export function total(rows: Row[]): number { … }
 
 ```
 $ turbocharge demo
-turbocharge — 31 annotated functions, 13 findings
+turbocharge — 35 annotated functions, 15 findings
 
   demo/lib.ts:87  viaCallee()
     delete-property
@@ -69,14 +69,15 @@ exist returns `2`, never a clean run.
 
 ## The rules
 
-Seven rules ship. The first six check every function in the call tree. The
-seventh reports where the walk stops. Megamorphic means one code location has
+Eight rules ship. The first seven check every function in the call tree. The
+eighth reports where the walk stops. Megamorphic means one code location has
 seen many object shapes. Quadratic means the work grows with the square of the
 input size.
 
 | Rule | What it looks for | Where the measurement found no effect |
 |---|---|---|
 | `megamorphic-elements` | the fifth object shape at a load site | two to four shapes |
+| `megamorphic-dispatch` | `x.step()` where `x` is one of five object types | two to four types, for a method on a class |
 | `accumulating-spread` | `[...acc, v]`, `{ ...acc, k: v }`, `acc.concat(v)` or `Object.assign({}, acc, …)` in a loop — quadratic | no loop re-runs the copy; `Object.assign(acc, …)`, which mutates; strings, which V8 appends to instead of copying |
 | `chained-allocation` | `.map().filter()` or `Object.entries(o).map()` allocates between stages | one stage; large n; `Object.keys(o).map()`, `.sort()`, `.split().map().join()` |
 | `allocating-select` | `x = Lib.min(x, y)` in a loop returns a new object every pass | the same loop on numbers |
@@ -123,6 +124,7 @@ make bench-select         # choosing between two boxed values
 make bench-chained        # chained array passes
 make bench-inline         # the inlining boundary behind closed-world
 make bench-addprop        # adding a property after construction — a refutation
+make bench-dispatch       # calling a method on five object types
 ```
 
 Every observation runs in a fresh OS process. An in-process A/B test shares
@@ -150,6 +152,12 @@ look worth shipping. See `BUGS.md` TC-5.
   the parameter's type and reports. A function that only reads `rows.length`
   triggers it, even though nothing there can go megamorphic. The demo fixture
   `fiveShapes` is that false positive. `BUGS.md` TC-8.
+- `megamorphic-dispatch` fires on the fifth object type. That is right for a
+  method on a class: four types cost 1.16-1.56x and the fifth costs
+  14.6-20.0x, the sharpest step measured here. It is late for an object that
+  carries its own function in a field. There the cost starts at the *second*
+  one, 7.7-11.9x, with no threshold at all, and no declared type tells the two
+  apart. The rule misses that case rather than guessing at it.
 - A TypeScript union member is not a V8 map, which is the engine's internal
   object shape. `megamorphic-elements` estimates the shape count from the
   declared type. It can report a problem even if no load site ever sees five maps.
@@ -162,7 +170,7 @@ look worth shipping. See `BUGS.md` TC-5.
 ## Development
 
 ```sh
-make test    # 33 unit tests, including the must-stay-silent cases
+make test    # 37 unit tests, including the must-stay-silent cases
 make lint    # tsc --noEmit
 make check   # run the checker against demo/
 ```
@@ -177,4 +185,4 @@ explains why the old design failed.
 redistribute it under those terms. A derivative work carries the same licence.
 It is not published to npm. Get it by cloning the repository.
 
-Status: v0.3.1, single machine, seven rules.
+Status: v0.3.1, single machine, eight rules.
