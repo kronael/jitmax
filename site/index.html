@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="krons:type" content="products">
-<meta name="krons:date" content="2026-08-13">
+<meta name="krons:date" content="2026-08-14">
 <meta name="krons:pin"  content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Mark a TypeScript function. turbocharge checks it and every function it calls against seven V8 fast-path rules, six of which carry a rerunnable benchmark and the measured case where they must stay silent.">
+<meta name="description" content="Mark a TypeScript function. turbocharge checks it and every function it calls against eight V8 fast-path rules, seven of which carry a rerunnable benchmark and the measured case where they must stay silent.">
 <title>turbocharge — mark the function you need fast</title>
 <link rel="stylesheet" href="/pub/krons/assets/hub.css">
 <meta property="og:title" content="turbocharge — the fifth object shape costs 10.6x">
@@ -38,10 +38,10 @@
   <div class="tldr-label">TL;DR</div>
   <div class="tldr-text">
     Mark a function with <code>/** @turbocharge */</code>. turbocharge checks
-    that function and every function it calls against seven rules, and gives you
-    the file, the line, the measured cost and the fix. Six rules carry a
+    that function and every function it calls against eight rules, and gives you
+    the file, the line, the measured cost and the fix. Seven rules carry a
     rerunnable benchmark and the measured case where they must stay silent. The
-    seventh lists what could not be checked.
+    eighth lists what could not be checked.
   </div>
 </div>
 
@@ -58,13 +58,20 @@
   </tr>
   <tr>
     <td><code>accumulating-spread</code></td>
-    <td>arrays 177x at n=1,000, 2348x at n=10,000; objects 197x at n=500</td>
-    <td>reading the finished array or object: 0.87-0.98x</td>
+    <td>arrays 156-177x at n=1,000, 1877-2348x at n=10,000; <code>acc.concat(v)</code>
+        779x; objects 197-210x at n=500; <code>Object.assign({}, acc, …)</code> 815x</td>
+    <td>a copy no loop re-runs; <code>Object.assign(acc, …)</code>, which mutates;
+        and strings, which build in 0.27-0.54x of the rewrite</td>
   </tr>
   <tr>
     <td><code>delete-property</code></td>
     <td>28-67x per load, in dictionary mode</td>
     <td>one delete on one object: 0x</td>
+  </tr>
+  <tr>
+    <td><code>megamorphic-dispatch</code></td>
+    <td>14.59-19.97x on reads, a method called on five classes</td>
+    <td>two to four classes: 1.16-1.56x</td>
   </tr>
   <tr>
     <td><code>megamorphic-elements</code></td>
@@ -73,8 +80,8 @@
   </tr>
   <tr>
     <td><code>chained-allocation</code></td>
-    <td>7.13x at n=1,000</td>
-    <td>n=100,000: 1.45x</td>
+    <td>7.13-7.89x at n=1,000; <code>Object.entries(o).map(f)</code> 3.59x</td>
+    <td>n=100,000: 1.47x; <code>Object.keys(o).map(f)</code>: 0.94x, the chain is faster</td>
   </tr>
   <tr>
     <td><code>allocating-select</code></td>
@@ -108,7 +115,7 @@ export function total(rows: Row[]): number { … }</code></pre>
 <p>Point it at your sources:</p>
 
 <pre><code>$ turbocharge demo
-turbocharge — 18 annotated functions, 10 findings
+turbocharge — 35 annotated functions, 15 findings
 
   demo/lib.ts:71  viaCallee()
     delete-property
@@ -221,6 +228,37 @@ turbocharge — 18 annotated functions, 10 findings
   every rule.
 </p>
 
+<h2>What it refuses to warn about</h2>
+
+<p>
+  A measured "no" ships here the same way a rule does. Three things this tool
+  could plausibly warn about, and does not, because the benchmark said not to.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Pattern</th><th>Measured</th><th>Why no rule</th></tr>
+  <tr>
+    <td>a property added after construction, <code>o.b = 2</code></td>
+    <td>1.21-1.34x</td>
+    <td>V8's own debug output: every object built the same way ends at the
+        <em>same</em> hidden class, so a load site sees one, not two</td>
+  </tr>
+  <tr>
+    <td>building a string, <code>s = s + x</code> in a loop</td>
+    <td>0.27-0.54x</td>
+    <td>faster than the push-and-join rewrite a rule would demand — V8 appends
+        into a cons-string instead of copying</td>
+  </tr>
+  <tr>
+    <td><code>Object.keys(o).map(f)</code></td>
+    <td>0.94x</td>
+    <td>the chain beats the fused loop, while <code>Object.entries</code> — one
+        two-element array per key heavier — costs 3.59x</td>
+  </tr>
+</table>
+</div>
+
 <h2>What it does not claim</h2>
 
 <div class="callout callout-warning">
@@ -264,11 +302,14 @@ turbocharge — 18 annotated functions, 10 findings
 </p>
 
 <pre><code>$ turbocharge src      # check annotated functions under src/
-$ make test            # 20 tests, including the must-stay-silent cases
+$ make test            # 37 tests, including the must-stay-silent cases
 $ make bench           # re-run the 24-cell shape sweep
+$ make bench-dispatch  # re-run the dispatch cliff
 $ make bench-spread    # re-run accumulating spread
 $ make bench-select    # re-run choosing between boxed values
-$ make bench-chained   # re-run chained allocation</code></pre>
+$ make bench-chained   # re-run chained allocation
+$ make bench-strings   # re-run the string refutation
+$ make bench-addprop   # re-run the hidden-class refutation</code></pre>
 
 <p>
   The demo run takes 1.5-2.0 seconds. Almost all of that is TypeScript
@@ -280,9 +321,9 @@ $ make bench-chained   # re-run chained allocation</code></pre>
 
 <div class="hub-footer">
   <p>
-    v0.3.1, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
+    v0.4.0, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
     those terms; a derivative work carries the same licence. Not published to
-    npm, so acquisition is by clone. Seven rules, 20 tests, single
+    npm, so acquisition is by clone. Eight rules, 37 tests, single
     machine. Open defects are listed in <code>BUGS.md</code>, and the adversarial
     teardown of this project ships in the repository as
     <code>useless2.md</code>.
