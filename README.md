@@ -14,7 +14,7 @@ export function total(rows: Row[]): number { … }
 
 ```
 $ turbocharge demo
-turbocharge — 26 annotated functions, 13 findings
+turbocharge — 28 annotated functions, 13 findings
 
   demo/lib.ts:87  viaCallee()
     delete-property
@@ -77,7 +77,7 @@ input size.
 | Rule | What it looks for | Where the measurement found no effect |
 |---|---|---|
 | `megamorphic-elements` | the fifth object shape at a load site | two to four shapes |
-| `accumulating-spread` | `[...acc, v]`, `{ ...acc, k: v }`, `acc.concat(v)` or `Object.assign({}, acc, …)` in a loop — quadratic | no loop re-runs the copy; `Object.assign(acc, …)`, which mutates |
+| `accumulating-spread` | `[...acc, v]`, `{ ...acc, k: v }`, `acc.concat(v)` or `Object.assign({}, acc, …)` in a loop — quadratic | no loop re-runs the copy; `Object.assign(acc, …)`, which mutates; strings, which V8 appends to instead of copying |
 | `chained-allocation` | `.map().filter()` or `Object.entries(o).map()` allocates between stages | one stage; large n; `Object.keys(o).map()`, `.sort()`, `.split().map().join()` |
 | `allocating-select` | `x = Lib.min(x, y)` in a loop returns a new object every pass | the same loop on numbers |
 | `boxed-elements` | mixed element types cannot stay unboxed | holey arrays |
@@ -91,6 +91,10 @@ that as a bound on what one unchecked call can cost, not a claim about any
 particular one.
 If a rule fires in a case a test declares silent, `make test` fails.
 Measurements have blocked a rule or a rule's extension from shipping six times.
+One went further and took a case away from a rule that was already shipping.
+`accumulating-spread` matched `.concat()` by name, so it reported `s = s.concat(x)`
+on a string as a quadratic array copy. Measured, appending to a string is
+*faster* than the rewrite the tool was demanding — `make bench-strings`.
 
 **Read the third column as a limit on the evidence, not as a promise about the
 code.** No rule checks the condition in its own third column at runtime. The
@@ -105,6 +109,7 @@ main rule fires without checking that your code loads a property at all.
 make bench                # the 24-cell object-shape sweep
 make bench-spread         # accumulating spread, array form
 make bench-spread-object  # accumulating spread, object form
+make bench-strings        # string building — the refutation, not a rule
 make bench-select         # choosing between two boxed values
 make bench-chained        # chained array passes
 make bench-inline         # the inlining boundary behind closed-world
@@ -147,7 +152,7 @@ look worth shipping. See `BUGS.md` TC-5.
 ## Development
 
 ```sh
-make test    # 28 unit tests, including the must-stay-silent cases
+make test    # 30 unit tests, including the must-stay-silent cases
 make lint    # tsc --noEmit
 make check   # run the checker against demo/
 ```

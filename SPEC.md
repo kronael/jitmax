@@ -212,8 +212,9 @@ reversed two verdicts. Every rule benchmark runs both halves, or it is not
 evidence. This is now rule 11 in §4.
 
 **The graveyard is the launch artifact.** Published refutations — holey
-arrays, the 4-shape budget, two-shape arrays, `delete` on singletons — are a
-more credible claim than a long rule list nobody measured.
+arrays, the 4-shape budget, two-shape arrays, `delete` on singletons, and
+string building, which the tool was wrongly reporting until it was measured —
+are a more credible claim than a long rule list nobody measured.
 
 **Accumulating by copying** — four ways to write one defect. Each variant is
 paired against a baseline that mutates in place (`push`, `acc[k] = v`) and
@@ -267,6 +268,81 @@ evidence names construction explicitly.
 n=500. Direction and order of magnitude hold; the point estimates move 12–20%,
 which is what a three-orders-of-magnitude effect looks like when it is measured
 twice. The rule quotes both sweeps as a range rather than the newer number.
+
+**Building a string by appending — refuted, and the rule was already firing on
+it.** `s = s + x` in a loop is the same syntax the cells above measure at
+156–2348x for arrays, and `accumulating-spread` matched `.concat()` by *name*
+with no type behind it, so `s = s.concat(x)` on a string was reported as a
+quadratic array copy. Three forms against a baseline that pushes into an array
+and calls `join('')` at the end, building the identical string — the driver's
+per-pair checksum is a full character scan, so a variant that builds a different
+string is a failed run. Node v22.23.2, 20 pairs per cell, three sizes spanning
+L1 to L3 (6 KB, 60 KB, 600 KB of string), `bench/strings.jsonl`, 27 cells, none
+void. Ratios are string form / push-and-join, so **below 1.0 means the string
+form wins**:
+
+| Cell | n=1000 | n=10000 | n=100000 |
+|---|---|---|---|
+| `s = s + x`, construction only | **0.31** (0.29–0.34) | **0.33** (0.31–0.36) | **0.54** (0.51–0.57) |
+| `s += x`, construction only | **0.27** (0.25–0.29) | **0.34** (0.32–0.36) | **0.48** (0.46–0.50) |
+| `s = s.concat(x)`, construction only | **0.29** (0.26–0.31) | **0.38** (0.36–0.41) | **0.52** (0.49–0.54) |
+| `s = s + x`, construction and read back | 0.94 (0.92–0.96) | 0.97 (0.94–0.99) | 0.79 (0.76–0.81) |
+| `s += x`, construction and read back | 0.96 (0.95–0.97) | 0.97 (0.93–1.01) REJ | 0.79 (0.76–0.83) |
+| `s = s.concat(x)`, construction and read back | 0.96 (0.94–0.99) | 0.96 (0.94–0.98) | 0.79 (0.76–0.83) |
+| `s = s + x`, reads only | 1.01 (1.00–1.03) REJ | 1.06 (1.03–1.10) | 1.06 (1.02–1.10) |
+| `s += x`, reads only | 1.02 (0.98–1.06) REJ | 1.03 (1.00–1.05) REJ | 1.01 (0.98–1.04) REJ |
+| `s = s.concat(x)`, reads only | 1.02 (0.99–1.06) REJ | 1.03 (1.00–1.07) | 1.06 (1.04–1.08) |
+
+**There is no quadratic term, and the three sizes are how we know.** A copy that
+re-runs is a cost that *grows* with n: the array cells go 156x → 1877x over one
+order of magnitude. These go the other way. Every construction cell is between
+0.27x and 0.54x, and the ratio drifts *toward* 1.0 as n grows, which is the
+signature of a constant factor being diluted, not of a copy. V8 does not copy
+the accumulator here — it builds a cons-string, a node holding pointers to its
+two halves, so appending is O(1) and the loop is O(n) like the baseline.
+
+**A third mode was needed, because a cons-string moves the cost rather than
+removing it.** Flattening on first access is real work, and neither of the usual
+two modes isolates it: `excl` reads a string built once, and the warmup already
+flattened it. So construction is measured on its own, consumed by `.length`,
+which is O(1) on a cons-string and does not flatten. The gap between the two
+columns is the flatten: appending wins 3.7x at construction and gives most of it
+back on the first read, landing at 0.79–0.97x for the round trip. **It never
+lands above 1.0.** Building a string by appending and then reading it is at
+worst a wash and at best a 1.27x win, against the rewrite this rule would have
+demanded.
+
+**The read side carries a residual, and it is reported rather than shipped.**
+Once flattened, a string built by appending costs 1.01–1.06x to scan. Four of
+the nine cells exclude 1.0, so something is there — plausibly the cons-string
+wrapper surviving the flatten — but §4 rule 6 asks a warning for a point
+estimate at or above 1.10x and no cell reaches it. Recorded as an observation,
+exactly like the 1.72x concat *array* read cell above.
+
+**This is the first measurement that took output away from the tool rather than
+withholding it.** The graveyard until now was a list of rules that never
+shipped. This one un-shipped a live behaviour: `accumulating-spread` had no type
+check at all, so it told anyone building a string by appending that their code
+was a quadratic array copy — the opposite of what appending measures. The rule
+is now type-aware and a test locks it silent on strings.
+
+**Only `.concat()` had that hole, and the reason is worth stating.** `.concat`
+is a *name* shared by two prototypes whose mechanisms are opposite, and the
+receiver's type survives the loop — a string stays a string, so the wrong branch
+runs every pass. The other three forms name *one operation each*. `[...acc, v]`
+and `{ ...acc, k: v }` copy the iterable or the own enumerable properties
+whatever the receiver is; spreading a string materialises its characters, which
+really is quadratic. `Object.assign({}, acc, …)` copies own enumerable
+properties whatever `acc` is, and its result is a plain object, so the second
+pass onward is a genuine copy regardless of what the first pass received. None
+of them can be handed a receiver that makes the operation cheap. Checked against
+all three; no change made to any.
+
+The same type check silences two other false positives that were never
+measured but follow from the mechanism: a `.concat()` on an `any` receiver, where
+two measured-opposite mechanisms wear one syntax and there is nothing to tell
+them apart, and a `.concat()` on a user class — a persistent list shares
+structure and is not copying either.
 
 **Chained array passes** — `xs.map(f).filter(g)` against one fused loop that
 builds the identical array, Node v22.23.2, 20 pairs per cell,
