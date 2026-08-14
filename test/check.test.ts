@@ -20,6 +20,7 @@ test('a function is checked only where it is annotated', () => {
   assert.deepStrictEqual(
     [...found.keys()].sort(),
     [
+      'addField',
       'appendOnce',
       'collect',
       'collectByAssign',
@@ -30,6 +31,7 @@ test('a function is checked only where it is annotated', () => {
       'entriesMap',
       'fiveShapes',
       'fourShapes',
+      'growByKey',
       'helper',
       'joinByConcat',
       'joinByPlus',
@@ -40,6 +42,7 @@ test('a function is checked only where it is annotated', () => {
       'mergeOnce',
       'mixed',
       'oneStage',
+      'optionalField',
       'sortedStages',
       'splitJoin',
       'total',
@@ -149,6 +152,34 @@ test('a chain ending in sort stays silent', () => {
 // two different single-pass rewrites — under the 1.10x §4 asks of a warning.
 test('the split-map-join chain stays silent', () => {
   assert.deepStrictEqual(rules('splitJoin'), []);
+});
+
+// The next three are the measurement talking, and they are the whole of what
+// bench/addprop.jsonl bought. The most repeated claim in V8 folklore is that
+// `o.b = 2` after the literal is a defect because it makes a second map. It
+// does not: %HaveSameMap says every object taking the same path lands on the
+// SAME final map, so the load site is monomorphic and there is no polymorphism
+// to pay for. Measured, the pattern costs 1.21-1.34x on reads at L1 and L2 —
+// inside the 1.0-1.7x band SPEC §11 records this harness cannot replicate.
+test('a property added after construction stays silent', () => {
+  assert.deepStrictEqual(rules('addField'), []);
+});
+
+// `y?: number` really is two hidden classes reaching one load site, and it
+// still does not earn a rule: 1.04x REJ at L2 on reads, and 0.90-0.97x with
+// construction counted, because the shape without the property is cheaper to
+// build than the one with it.
+test('an optional property stays silent', () => {
+  assert.deepStrictEqual(rules('optionalField'), []);
+});
+
+// The one large effect in that sweep, and it still ships no rule. Sixteen
+// keyed stores cross fast_properties_soft_limit into dictionary mode and cost
+// 6.17-6.34x to read; twelve cost 1.02-1.04x, interval spanning 1. The count
+// is not visible to a checker, so a rule here would fire on the case its own
+// benchmark rejected. BUGS TC-12 carries the proposal.
+test('keyed stores in a loop stay silent: the count is not knowable', () => {
+  assert.deepStrictEqual(rules('growByKey'), []);
 });
 
 // The edge is the absence of source, not a directory name. njit compiles

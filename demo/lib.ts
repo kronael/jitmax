@@ -210,3 +210,37 @@ export function mergeInto(rows: number[]): Record<string, number> {
   for (let i = 0; i < rows.length; i++) acc = Object.assign(acc, { [`k${i}`]: rows[i] });
   return acc;
 }
+
+type Grown = { x: number; y?: number };
+
+/** The folklore's own example. Every object takes the same path, so they share
+ * one final map and the load site is monomorphic: 1.21-1.34x, refuted. */
+/** @turbocharge */
+export function addField(rows: number[]): Grown[] {
+  const out: Grown[] = [];
+  for (const r of rows) {
+    const o: Grown = { x: r };
+    o.y = r * 2;
+    out.push(o);
+  }
+  return out;
+}
+
+/** Two hidden classes at one load site, which is what `y?: number` really is.
+ * Reads measured 1.04-1.21x and building costs LESS, so this is silent. */
+/** @turbocharge */
+export function optionalField(rows: Grown[]): number {
+  let s = 0;
+  for (const r of rows) s += r.x;
+  return s;
+}
+
+/** Keyed stores past fast_properties_soft_limit reach dictionary mode and cost
+ * 6.17-6.34x to read — but twelve of them cost 1.02-1.04x and nothing static
+ * separates the two, so no rule fires here. BUGS TC-12. */
+/** @turbocharge */
+export function growByKey(keys: string[], vals: number[]): Record<string, number> {
+  const acc: Record<string, number> = {};
+  for (let i = 0; i < keys.length; i++) acc[keys[i]] = vals[i];
+  return acc;
+}
