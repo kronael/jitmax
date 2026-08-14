@@ -97,10 +97,11 @@ turbocharge — 8 annotated functions, 1 finding
   tmp/demo-real/src/object.ts:274  assign()
     accumulating-spread
       tmp/demo-real/src/object.ts:280
-      acc is rebuilt from a spread of itself; every pass copies everything it
+      acc is rebuilt from a copy of itself; every pass copies everything it
       already holds
-      measured array form 177x at n=1000 and 2348x at n=10000; object form 197x
-      at n=500 (CI 175-222)
+      measured array spread 156-177x at n=1000 and 1877-2348x at n=10000 across
+      two sweeps; acc.concat(v) 779x at n=1000 (CI 733-821); object spread
+      197-210x at n=500; Object.assign({}, acc, …) 815x at n=500 (CI 769-874)
       fix: mutate acc in place — push, or assign the key — instead of
       rebuilding it
 ```

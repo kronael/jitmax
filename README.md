@@ -14,17 +14,17 @@ export function total(rows: Row[]): number { … }
 
 ```
 $ turbocharge demo
-turbocharge — 18 annotated functions, 10 findings
+turbocharge — 22 annotated functions, 12 findings
 
-  demo/lib.ts:71  viaCallee()
+  demo/lib.ts:87  viaCallee()
     delete-property
-      demo/lib.ts:66
+      demo/lib.ts:82
       delete o[k] puts its object in dictionary mode
       measured 28-67x per property load once the object is in dictionary mode
       fix: assign undefined, or build the object without the property
 ```
 
-`viaCallee` has the annotation. Line 66 is `dropInner`. Nobody annotated it.
+`viaCallee` has the annotation. Line 82 is `dropInner`. Nobody annotated it.
 turbocharge followed the call and reported the line where the slowdown starts.
 
 V8 already has a good JIT, a compiler that speeds up code while it runs. A
@@ -77,7 +77,7 @@ input size.
 | Rule | What it looks for | Where the measurement found no effect |
 |---|---|---|
 | `megamorphic-elements` | the fifth object shape at a load site | two to four shapes |
-| `accumulating-spread` | `[...acc, v]` or `{ ...acc, k: v }` in a loop — quadratic | no loop re-runs the spread |
+| `accumulating-spread` | `[...acc, v]`, `{ ...acc, k: v }`, `acc.concat(v)` or `Object.assign({}, acc, …)` in a loop — quadratic | no loop re-runs the copy; `Object.assign(acc, …)`, which mutates |
 | `chained-allocation` | `.map().filter()` allocates between stages | one stage; large n |
 | `allocating-select` | `x = Lib.min(x, y)` in a loop returns a new object every pass | the same loop on numbers |
 | `boxed-elements` | mixed element types cannot stay unboxed | holey arrays |
@@ -147,7 +147,7 @@ look worth shipping. See `BUGS.md` TC-5.
 ## Development
 
 ```sh
-make test    # 20 unit tests, including the must-stay-silent cases
+make test    # 24 unit tests, including the must-stay-silent cases
 make lint    # tsc --noEmit
 make check   # run the checker against demo/
 ```

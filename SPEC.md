@@ -201,7 +201,7 @@ outside what any static or runtime observer can attribute.)
 
 | Rule | Measured | Verdict |
 |---|---|---|
-| Accumulating spread in a loop | 146–366x at n=10k | ship |
+| Accumulating spread in a loop | 146–366x at n=10k | ship — superseded below |
 | `delete` on per-row objects | 28–67x (1.4 to 39–92 ns/row) | ship |
 | `delete` on a singleton object | 0x — dictionary mode up to 10% *faster* | the second half of the same rule |
 | Four-shape polymorphic budget | No clean cliff at 5; K=4 the least stable config measured | graveyard |
@@ -214,6 +214,59 @@ evidence. This is now rule 11 in §4.
 **The graveyard is the launch artifact.** Published refutations — holey
 arrays, the 4-shape budget, two-shape arrays, `delete` on singletons — are a
 more credible claim than a long rule list nobody measured.
+
+**Accumulating by copying** — four ways to write one defect. Each variant is
+paired against a baseline that mutates in place (`push`, `acc[k] = v`) and
+builds the identical value, which the driver's per-pair checksum enforces. Node
+v22.23.2, 20 pairs per cell, `bench/spread.jsonl` and `bench/spread-object.jsonl`.
+With construction counted:
+
+| Cell | Ratio | 95% CI | Verdict |
+|---|---|---|---|
+| `acc = [...acc, v]`, n=1000 | 156.40 | 145.61–166.84 | **ship** |
+| `acc = [...acc, v]`, n=10000 | 1877.26 | 1715.50–2057.28 | **ship** |
+| `acc = acc.concat(v)`, n=1000 | **778.52** | **732.95–821.39** | **ship — new** |
+| `acc = acc.concat(v)`, n=10000 | — | — | VOID, region 282 ms |
+| `acc = { ...acc, [k]: v }`, n=500 | 209.89 | 195.33–229.24 | **ship** |
+| `acc = Object.assign({}, acc, {[k]: v})`, n=500 | **814.80** | **769.05–874.10** | **ship — new** |
+| either object form, n=2000 | — | — | VOID, regions 426 and 524 ms |
+
+The same four forms with construction excluded — the half that says what the
+finished value costs to read, rather than what building it costs:
+
+| Cell | n | Ratio | 95% CI | Verdict |
+|---|---|---|---|---|
+| array spread | 1000 / 10000 | 0.98 / 1.07 | 0.87–1.10 / 1.01–1.14 | REJ / marginal |
+| array concat | 1000 / 10000 | **1.72 / 1.73** | 1.60–1.82 / 1.67–1.80 | real, and not what the rule fires on |
+| object spread | 500 / 2000 | 0.03 / 0.97 | 0.03–0.03 / 0.92–1.02 | spread-built reads *faster* / REJ |
+| object `Object.assign` | 500 / 2000 | 0.94 / 1.03 | 0.90–0.97 / 0.93–1.15 | faster / REJ |
+
+**The call forms cost as much as the literal ones, so the rule may see them.**
+`acc.concat(v)` and `Object.assign({}, acc, …)` were invisible to a rule that
+matched array and object literals, and the reason to extend it is these two
+cells and nothing else. `Object.assign(acc, …)` — the accumulator as the
+*first* argument — mutates in place and is the rewrite the rule asks for, so it
+stays silent and a test locks it there.
+
+**The concat read cell withdraws a published claim.** The rule's evidence used
+to say reading the finished value costs nothing. That holds for three forms and
+not for the fourth: an array built by repeated `concat` costs **1.72–1.73x** to
+read, in both size cells, intervals well clear of 1.0. The mechanism is not
+measured here, so no rule is built on it — a plausible reading is that the
+non-array argument takes `concat` off its fast path and the result is no longer
+a packed-smi array, which would make it the same effect `boxed-elements`
+measured at 1.45–1.89x. Recorded as an observation, not a rule.
+
+**The 0.03 cell is the assign baseline, not the spread.** Five hundred keyed
+stores drive the baseline object into dictionary mode, so reading it costs ~33x
+the spread-built one. It is a fact about the *fix*, and it is why this rule's
+evidence names construction explicitly.
+
+**Replication.** This sweep re-ran the two literal forms that shipped in
+0.1: 156 against 177 at n=1000, 1877 against 2348 at n=10000, 210 against 197 at
+n=500. Direction and order of magnitude hold; the point estimates move 12–20%,
+which is what a three-orders-of-magnitude effect looks like when it is measured
+twice. The rule quotes both sweeps as a range rather than the newer number.
 
 **Chained array passes** — `xs.map(f).filter(g)` against one fused loop that
 builds the identical array, Node v22.23.2, 20 pairs per cell,
@@ -517,7 +570,7 @@ lib/ts.ts             resolves the project's own typescript, builds a Program
 lib/scan.ts           finds annotated functions, classifies every call in them
 lib/rules.ts          the four rules, each carrying its measurement
 lib/report.ts         output
-test/check.test.ts    7 tests, and the important ones assert silence
+test/check.test.ts    24 tests, and the important ones assert silence
 bench/shapes.js       one variant per process; plain JS on purpose (below)
 bench/run.js          driver: paired runs, AB/BA randomized, bootstrap interval
 bench/meme.js         renders the chart from shapes.jsonl, so it cannot drift
