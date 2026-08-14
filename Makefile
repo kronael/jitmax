@@ -1,4 +1,4 @@
-.PHONY: test lint check bench bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-dispatch meme meme-png clean
+.PHONY: test lint check v8-check bench bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-dispatch meme meme-png clean
 
 test:
 	node --test test/check.test.ts
@@ -8,6 +8,11 @@ lint:
 
 check:
 	node bin/turbocharge.ts demo
+
+# Every V8 citation in docs/v8-evidence.md against the pinned checkout. Exits
+# non-zero when v8src/ is missing rather than passing quietly.
+v8-check:
+	node bench/v8-check.js
 
 bench:
 	node bench/run.js
