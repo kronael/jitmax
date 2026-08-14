@@ -713,7 +713,7 @@ something this sweep probed.
 
 **So `lit` is off the cliff at TWO, not at five.** A union of five object
 literal types that each carry their own function-valued property costs
-3.54–6.78x at the second shape, before any map budget is exhausted, because the
+3.63–6.78x at the second shape, before any map budget is exhausted, because the
 second function has already made the call site megamorphic on its target. That
 is the form a lot of TypeScript is actually in, and it is the form no rule here
 fires on.
@@ -757,7 +757,7 @@ visible without opening the `.jsonl`.
 in the direction of silence.** Firing at five is supported by every family that
 has a threshold — `cls` at 14.59–19.97x and `shr` at 6.92–8.25x — and staying
 quiet at four is supported by the same two, at 1.16–1.56x and 2.14–2.21x. It is
-*not* supported for `lit`, which costs 9.11–13.02x at four; there the rule
+*not* supported for `lit`, which costs 4.34–13.02x at four; there the rule
 misses a real effect rather than inventing one, and nothing in a declared type
 separates a prototype method from a function held in a field. The rule requires
 the call: TC-8 is the flagship rule reporting a megamorphic load from a

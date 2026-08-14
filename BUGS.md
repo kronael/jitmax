@@ -12,7 +12,7 @@ the four-map budget is intact: 2.14–2.21x at four, 6.92–8.25x at five.
 
 `megamorphic-dispatch` ships on five, which is right for a method on a
 prototype and **late** for an object carrying its own function: `lit` costs
-3.54–6.78x at two shapes and 9.11–13.02x at four, all of it below the threshold
+3.63–6.78x at two shapes and 4.34–13.02x at four, all of it below the threshold
 the rule fires at.
 
 Nothing static separates the two. `type T = { area(): number }` is satisfied by
