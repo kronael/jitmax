@@ -655,7 +655,7 @@ A call site has **two** things that can diverge, and the folklore rolls them
 into one: the receiver's MAP, which decides where `step` is found, and the call
 TARGET, which decides what runs. Four families split them. The map questions
 were answered with `--allow-natives-syntax` before any cell ran
-(`tmp/dispatch-probe.cjs`):
+(`bench/dispatch-probe.js`, rerunnable):
 
 | probe | answer |
 |---|---|

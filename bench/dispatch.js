@@ -11,7 +11,7 @@
 // into one: the receiver's MAP, which decides where `step` is found, and the
 // call TARGET, which decides what runs. Four families separate them, and the
 // answers below were read out of V8 with --allow-natives-syntax before any
-// cell ran (tmp/dispatch-probe.cjs):
+// cell ran (bench/dispatch-probe.js):
 //
 //   cls   K classes                     K maps, K targets, method on the
 //                                       prototype — the TypeScript union of
