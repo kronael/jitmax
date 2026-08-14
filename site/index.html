@@ -6,7 +6,7 @@
 <meta name="krons:date" content="2026-08-14">
 <meta name="krons:pin"  content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Mark a TypeScript function. turbocharge checks it and every function it calls against eight V8 fast-path rules, seven of which carry a rerunnable benchmark and the measured case where they must stay silent.">
+<meta name="description" content="Mark a TypeScript function. turbocharge checks it and every function it calls against eight V8 fast-path rules. Six carry a rerunnable benchmark; every one carries its mechanism traced to V8's own source, checked line by line.">
 <title>turbocharge — mark the function you need fast</title>
 <link rel="stylesheet" href="/pub/krons/assets/hub.css">
 <meta property="og:title" content="turbocharge — the fifth object shape costs 10.6x">
@@ -39,9 +39,10 @@
   <div class="tldr-text">
     Mark a function with <code>/** @turbocharge */</code>. turbocharge checks
     that function and every function it calls against eight rules, and gives you
-    the file, the line, the measured cost and the fix. Seven rules carry a
-    rerunnable benchmark and the measured case where they must stay silent. The
-    eighth lists what could not be checked.
+    the file, the line, the measured cost and the fix. Six rules carry a
+    rerunnable benchmark and the measured case where they must stay silent; two
+    do not, and this page names them. Every rule carries its mechanism traced to
+    V8's own source, verified line by line by <code>make v8-check</code>.
   </div>
 </div>
 
@@ -65,7 +66,8 @@
   </tr>
   <tr>
     <td><code>delete-property</code></td>
-    <td>28-67x per load, in dictionary mode</td>
+    <td>28-67x per load, in dictionary mode — measured before this harness
+        existed and never re-run under it (BUGS TC-15)</td>
     <td>one delete on one object: 0x</td>
   </tr>
   <tr>
@@ -90,7 +92,9 @@
   </tr>
   <tr>
     <td><code>boxed-elements</code></td>
-    <td>1.45-1.89x, one unreplicated sweep</td>
+    <td>1.45-1.89x — <strong>the weakest number here, and the one you cannot
+        re-run</strong>: the kernel it came from is not in the repository
+        (BUGS TC-14)</td>
     <td>holey arrays: 0.94-1.09x</td>
   </tr>
   <tr>
@@ -173,6 +177,15 @@ turbocharge — 35 annotated functions, 15 findings
     <td>A mis-sized cell is a different measurement, not a noisy one, and must
         never reach publication.</td>
   </tr>
+  <tr>
+    <td>…and that guard is not enough, which is disclosed rather than hidden</td>
+    <td>It bounds the region, not the repetition count: a slow kernel can fill
+        120 ms with two passes, and then one pause decides the cell. All 329
+        published cells were audited; 35 ran under twenty repetitions. The
+        small-effect ones are withdrawn and their ranges re-derived. The
+        two-orders-of-magnitude ones keep their direction, and their intervals
+        are narrower than the truth. BUGS TC-11.</td>
+  </tr>
 </table>
 </div>
 
@@ -186,15 +199,26 @@ turbocharge — 35 annotated functions, 15 findings
 </p>
 
 <div class="insight">
-  <div class="insight-label">Independent confirmation</div>
+  <div class="insight-label">The second evidence</div>
   <p>
-    V8's source sets the same boundary the benchmark found.
-    <code>DEFAULT_MAX_POLYMORPHIC_MAP_COUNT 4</code> is defined at
-    <code>src/flags/flag-definitions.h:3320</code> and enforced at
-    <code>src/ic/ic.cc:802</code>, where the inline cache refuses to extend past
-    four valid maps. The measured cliff at the fifth shape and that constant are
-    the same fact reached from opposite directions. It is the only rule here
-    with both, and it is the one to trust most.
+    Every rule also carries its mechanism traced to V8's own source, in
+    <code>docs/v8-evidence.md</code>, pinned to V8 15.3.0.0 and verified line by
+    line — <code>make v8-check</code> re-reads 292 quoted lines across 23 files
+    and fails if any has drifted. <code>DEFAULT_MAX_POLYMORPHIC_MAP_COUNT 4</code>
+    at <code>src/flags/flag-definitions.h:3321</code>, enforced at
+    <code>src/ic/ic.cc:798</code>, is the same fact as the measured cliff at the
+    fifth shape, reached from the opposite direction.
+  </p>
+  <p>
+    A source citation is a mechanism, never a magnitude, and the document says so
+    for every rule. It is silent on all eight magnitudes. It gives
+    <code>accumulating-spread</code> no citation at all, correctly: quadratic
+    work is quadratic on any engine. And it <em>contradicts</em> one shipped
+    threshold — a call site holds one target as a weak reference and has no
+    polymorphic tier (<code>src/builtins/ic-callable.tq:107</code>), so a method
+    kept in a field, rather than on a prototype, is off the cliff at two rather
+    than five. That is BUGS TC-13, found by the benchmark and then predicted from
+    the engine.
   </p>
 </div>
 
@@ -303,6 +327,7 @@ turbocharge — 35 annotated functions, 15 findings
 
 <pre><code>$ turbocharge src      # check annotated functions under src/
 $ make test            # 37 tests, including the must-stay-silent cases
+$ make v8-check        # re-verify every V8 source citation
 $ make bench           # re-run the 24-cell shape sweep
 $ make bench-dispatch  # re-run the dispatch cliff
 $ make bench-spread    # re-run accumulating spread
@@ -321,7 +346,7 @@ $ make bench-addprop   # re-run the hidden-class refutation</code></pre>
 
 <div class="hub-footer">
   <p>
-    v0.4.0, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
+    v0.4.1, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
     those terms; a derivative work carries the same licence. Not published to
     npm, so acquisition is by clone. Eight rules, 37 tests, single
     machine. Open defects are listed in <code>BUGS.md</code>, and the adversarial
