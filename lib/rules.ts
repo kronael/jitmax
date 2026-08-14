@@ -30,8 +30,9 @@ export const EVIDENCE: Record<string, Evidence> = {
   },
   'megamorphic-elements': {
     cost:
-      '3.6-10.6x on reads across L1, L2 and L3; 1.1-3.5x once construction is counted, ' +
-      'where allocation swamps the load',
+      '3.6-10.6x on reads across L1, L2 and L3; 1.25-3.52x once construction is counted, ' +
+      'where allocation swamps the load — the RAM-sized construction cells are withdrawn ' +
+      'under TC-11, they ran at one and two repetitions',
     source: 'bench/shapes-calibrated.jsonl, 24 cells, 20 pairs each',
     silent:
       'two to four shapes cost 1.2-2.0x on reads — real, and measured, but an order of ' +
@@ -66,8 +67,9 @@ export const EVIDENCE: Record<string, Evidence> = {
       'cost is the re-copying and not the value it leaves behind; Object.assign(acc, …) ' +
       'mutates in place and is the fix rather than the defect, so it stays silent too; and ' +
       'a STRING is not this rule at any n — s = s + x, s += x and s = s.concat(x) build in ' +
-      '0.27-0.54x of a push-and-join and 0.79-0.96x of it once the read back is counted, ' +
-      'so all three BEAT the rewrite, because V8 appends into a cons-string',
+      '0.27-0.54x of a push-and-join and 0.94-0.97x of it once the read back is counted, ' +
+      'so all three BEAT the rewrite, because V8 appends into a cons-string (the n=100000 ' +
+      'read-back cells are withdrawn under TC-11, they ran at seven to ten repetitions)',
   },
   'allocating-select': {
     cost:
@@ -293,7 +295,7 @@ const accumulatingSpread: Rule = (ts, checker, body, add) => {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const callee = node.expression;
       // `.concat()` belongs to String as much as to Array, and on a string it
-      // is not this defect: measured 0.27-0.54x to build and 0.79-0.96x to
+      // is not this defect: measured 0.27-0.54x to build and 0.94-0.97x to
       // build and read back, FASTER than the push-and-join it would be
       // rewritten to, because V8 appends into a cons-string instead of copying.
       // Matching the NAME alone indicted that, and every other class that owns

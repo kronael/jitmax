@@ -60,7 +60,47 @@ Closing it needs a `Map` sweep first, and then a decision about firing on a
 count that cannot be proven. `demo/lib.ts` `growByKey` is the fixture and a test
 locks it silent.
 
-## TC-11 — the region guard bounds the region, not the rep count (2026-08-14, open)
+## TC-11 — the region guard bounds the region, not the rep count (2026-08-14, open, proposal)
+
+**Audited 2026-08-14, every cell this project has ever published.** 329 non-void
+cells across ten `.jsonl` files. **35 ran below 20 repetitions**, and the defect
+is systematic rather than scattered: it hits the largest `n` of every sweep,
+because a slow kernel fills the 120 ms region with a handful of passes.
+
+Withdrawn, because a low rep count can flip a verdict only where the effect is
+small, and every one of these is small:
+
+| Cell | reps | was | now |
+|---|---|---|---|
+| `shapes-calibrated` incl, n=262144, K=2..5 | 1–2 | 1.08–1.21x | withdrawn; the construction claim is now 1.25–3.52x from the L1 and L2 cells, which ran at 46–15181 |
+| `strings` incl and excl, n=100000 | 7–15 | 0.79x, 1.06x | withdrawn; the read-back claim is now 0.94–0.97x |
+| `addprop` build and incl, n=262144 | 5–7 | 1.64/0.91/0.89x | already withdrawn when the sweep ran |
+| `dispatch` incl, n=262144, ten cells | 2–4 | 0.84–1.79x | already withdrawn when the sweep ran |
+
+Kept, and the reason is stated rather than assumed: a cell whose effect is two
+or three orders of magnitude cannot be flipped by a GC pause inside a 120 ms
+region. `spread` incl n=10000 ran at **2** repetitions and measured 1877x and
+2348x across two sweeps; `spread-object` incl n=500 ran at 10–15 and measured
+197x and 210x; `assign-copy` ran at **4** and measured 815x. Their *direction*
+and *order of magnitude* stand. Their intervals are narrower than the truth,
+because the bootstrap resamples processes at a fixed rep count and cannot see
+within-run variance. Anyone quoting those intervals as precision is over-reading
+them, and this paragraph is the disclosure.
+
+**Proposal, not applied — it changes the protocol behind every published
+number, so it needs sign-off.** `calibrate()` should take a repetition floor
+(5 is the smallest count at which a single pause is not the measurement) and,
+when the floor cannot be met inside the 120 ms window, extend that cell's region
+up to a cap of about 1000 ms until it is. Only a cell whose single repetition
+exceeds the cap is void. That keeps the huge-effect cells measurable instead of
+deleting them, and it removes the low-rep noise from the small ones. Applying it
+means re-running every sweep and re-deriving both SPEC §3 and the shipped
+`EVIDENCE` strings — hours of machine time — which is why it is written here
+first.
+
+The original report follows.
+
+## TC-11 — the original report (2026-08-14)
 
 `bench/driver.js` asserts the achieved timed region lands within 2x of 120 ms.
 A kernel slow enough can meet that with 4 to 7 reps, and then a single GC pause
