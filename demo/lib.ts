@@ -244,3 +244,38 @@ export function growByKey(keys: string[], vals: number[]): Record<string, number
   for (let i = 0; i < keys.length; i++) acc[keys[i]] = vals[i];
   return acc;
 }
+
+type Circle = { id: number; r: number; area(): number };
+type Square = { id: number; s: number; area(): number };
+type Rect = { id: number; w: number; h: number; area(): number };
+type Tri = { id: number; b: number; t: number; area(): number };
+type Hex = { id: number; e: number; area(): number };
+
+/** Four shapes at a call site cost 1.16-1.56x, the same band four shapes cost
+ * at a load site: silent, for the same reason. */
+/** @turbocharge */
+export function areaOfFour(x: Circle | Square | Rect | Tri): number {
+  return x.area();
+}
+
+/** The fifth shape at a call site is the cliff: 14.6-20.0x on reads. */
+/** @turbocharge */
+export function areaOfFive(x: Circle | Square | Rect | Tri | Hex): number {
+  return x.area();
+}
+
+/** Five object types and nothing called on them. TC-8 is the flagship rule
+ * firing where no site exists; this rule does not repeat it. */
+/** @turbocharge */
+export function idOfFive(x: Circle | Square | Rect | Tri | Hex): number {
+  return x.id;
+}
+
+/** One union reaching one site, written as an array. megamorphic-elements has
+ * the parameter, so this reports once and not twice. */
+/** @turbocharge */
+export function totalArea(rows: (Circle | Square | Rect | Tri | Hex)[]): number {
+  let s = 0;
+  for (const r of rows) s += r.area();
+  return s;
+}

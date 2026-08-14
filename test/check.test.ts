@@ -22,6 +22,8 @@ test('a function is checked only where it is annotated', () => {
     [
       'addField',
       'appendOnce',
+      'areaOfFive',
+      'areaOfFour',
       'collect',
       'collectByAssign',
       'collectByConcat',
@@ -33,6 +35,7 @@ test('a function is checked only where it is annotated', () => {
       'fourShapes',
       'growByKey',
       'helper',
+      'idOfFive',
       'joinByConcat',
       'joinByPlus',
       'keysMap',
@@ -46,6 +49,7 @@ test('a function is checked only where it is annotated', () => {
       'sortedStages',
       'splitJoin',
       'total',
+      'totalArea',
       'twoStages',
       'usesDependency',
       'usesHelper',
@@ -67,6 +71,31 @@ test('a plain number[] stays silent', () => {
 
 test('the fifth shape fires: 3.6-10.6x on reads, the cliff', () => {
   assert.deepStrictEqual(rules('fiveShapes'), ['megamorphic-elements']);
+});
+
+// The same V8 constant at a call site, found from the other end. Four shapes
+// cost 1.16-1.56x — the band four shapes cost at a load site — and the fifth
+// costs 14.6-20.0x, because it loses the inlining as well as the cached lookup.
+test('four shapes at a call site stay silent', () => {
+  assert.deepStrictEqual(rules('areaOfFour'), []);
+});
+
+test('the fifth shape at a call site fires: 14.6-20.0x on reads', () => {
+  assert.deepStrictEqual(rules('areaOfFive'), ['megamorphic-dispatch']);
+});
+
+// TC-8 is the flagship rule reporting a megamorphic load from a parameter's
+// type without checking that anything is loaded. This rule requires the call,
+// so five object types with nothing called on them is not a finding.
+test('five object types with no method call stay silent', () => {
+  assert.deepStrictEqual(rules('idOfFive'), []);
+});
+
+// One union reaching one site is one finding. megamorphic-elements has the
+// array parameter, so the dispatch rule steps aside rather than billing it
+// twice.
+test('an array of a five-way union with method calls reports once', () => {
+  assert.deepStrictEqual(rules('totalArea'), ['megamorphic-elements']);
 });
 
 test('a union mixing primitives fires', () => {

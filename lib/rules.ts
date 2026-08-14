@@ -37,6 +37,22 @@ export const EVIDENCE: Record<string, Evidence> = {
       'two to four shapes cost 1.2-2.0x on reads — real, and measured, but an order of ' +
       'magnitude below the fifth, which is why the rule starts there and not earlier',
   },
+  'megamorphic-dispatch': {
+    cost:
+      '14.6-20.0x on reads across L1, L2 and L3 when the method is on a prototype — the ' +
+      'sharpest threshold in the project, 1.56x at four shapes and 19.37x at five; ' +
+      '6.9-8.3x when the method is one shared function held as an own property; ' +
+      '1.9-5.5x at L1 and L2 once construction is counted, where the constructor is a ' +
+      'second polymorphic site both sides pay',
+    source: 'bench/dispatch.jsonl, 80 cells, 20 pairs each, none void',
+    silent:
+      'four shapes cost 1.16-1.56x on a prototype method and 1.29-2.21x on a shared one — ' +
+      'an order of magnitude below the fifth, which is why the rule starts there; and the ' +
+      'threshold is wrong in the direction of silence for one form the same sweep measured: ' +
+      'when every shape carries its OWN function the cost starts at the SECOND target ' +
+      '(7.7-11.9x, flat from two to six, no threshold at all), and no declared type ' +
+      'separates that from a prototype method, so the rule misses it rather than guessing',
+  },
   'accumulating-spread': {
     cost:
       'array spread 156-177x at n=1000 and 1877-2348x at n=10000 across two sweeps; ' +
@@ -202,6 +218,52 @@ const megamorphicElements: Rule = (ts, checker, body, add) => {
       fix: 'get the element type to four shapes or fewer, or give it one construction path',
     });
   }
+};
+
+// The same four maps govern a CALL site. `x.step()` where x is one of five
+// classes is the form real TypeScript reaches this in — far more common than an
+// array of a five-way union — and the cliff is sharper there than at a load
+// site, because the fifth map costs the inlining as well as the cached lookup.
+//
+// This rule requires the CALL. TC-8 is the flagship rule reporting a
+// megamorphic load from the type of a parameter without checking that anything
+// is loaded, and the fixture that proves it reads `rows.length` and nothing
+// else. A rule with the same hole in it would be the same defect twice.
+const megamorphicDispatch: Rule = (ts, checker, body, add) => {
+  const shapesOf = (t: TS.Type): number =>
+    t.isUnion() ? t.types.filter((x) => x.flags & ts.TypeFlags.Object).length : 0;
+
+  // A method called on the elements of an array parameter is one union reaching
+  // one site, and `megamorphic-elements` already reports that parameter.
+  // Reporting both bills one defect twice — the mistake chained-allocation's
+  // `consumed` check exists to avoid. The shipped rule keeps the finding.
+  const claimed = new Set<TS.Type>();
+  for (const { element } of arrayParams(ts, checker, body)) {
+    if (shapesOf(element) >= 5) claimed.add(element);
+  }
+
+  const visit = (node: TS.Node): void => {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      const receiver = node.expression.expression;
+      const t = checker.getTypeAtLocation(receiver);
+      const shapes = shapesOf(t);
+      if (shapes >= 5 && !claimed.has(t)) {
+        add({
+          ...at(body.sf, node),
+          rule: 'megamorphic-dispatch',
+          // Same care as megamorphic-elements: a union member is not a V8 map
+          // (TC-2). State the count, state the mechanism, leave the judgement.
+          message:
+            `${receiver.getText(body.sf)} unions ${shapes} object types and ` +
+            `.${node.expression.name.text}() is called on it; V8 caches four maps per call ` +
+            'site, so this call goes megamorphic unless some of them share a shape',
+          fix: 'get the receiver to four object types or fewer, or give the call site one shape',
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(body.node, visit);
 };
 
 // Rebuilding an array or an object from a copy of itself copies every element
@@ -451,6 +513,7 @@ function closedWorld(mark: Mark, add: Add): void {
 const RULES: Rule[] = [
   boxedElements,
   megamorphicElements,
+  megamorphicDispatch,
   accumulatingSpread,
   allocatingSelect,
   chainedAllocation,
