@@ -125,6 +125,7 @@ make bench-chained        # chained array passes
 make bench-inline         # the inlining boundary behind closed-world
 make bench-addprop        # adding a property after construction — a refutation
 make bench-dispatch       # calling a method on five object types
+make v8-check             # every V8 citation, against the pinned checkout
 ```
 
 Every observation runs in a fresh OS process. An in-process A/B test shares
@@ -175,9 +176,13 @@ make lint    # tsc --noEmit
 make check   # run the checker against demo/
 ```
 
-`SPEC.md` defines the contract. `DESIGN.md` describes watching code while it
-runs. That design is not built yet. `BUGS.md` holds the open queue. `useless.md`
-explains why the old design failed.
+`SPEC.md` defines the contract. `docs/v8-evidence.md` is the second kind of
+evidence: one section per rule tracing the mechanism to V8's own source, with
+the quoted lines and a statement of what each citation does and does not prove.
+`make v8-check` verifies every one of them against a pinned checkout and fails
+with the drifted line. `DESIGN.md` describes watching code while it runs. That
+design is not built yet. `BUGS.md` holds the open queue. `useless.md` explains
+why the old design failed.
 
 ## Licence
 

@@ -1110,9 +1110,15 @@ preload, which would let it run under Jest and Vitest, or restricts to
 It was read to answer one question: are there other thresholds worth a rule, or
 is the megamorphic cliff the only one?
 
+The checkout is pinned at `c635f0d160b6e988b5ea5a907511a2929beb5d5e`, V8
+15.3.0.0. Every row below was re-read at that revision, and `make v8-check`
+re-checks them — and the per-rule mechanism citations in `docs/v8-evidence.md` —
+against the checkout, failing with the drifted line. It exits non-zero when
+`v8src/` is missing rather than passing quietly.
+
 | constant | value | where | meaning |
 |---|---|---|---|
-| `max_valid_polymorphic_map_count` | **4** | `flags/flag-definitions.h:3320`, used at `ic/ic.cc:802` | the fifth map at a load site forces megamorphic |
+| `max_valid_polymorphic_map_count` | **4** | `flags/flag-definitions.h:3320-3321`, used at `ic/ic.cc:802` | the fifth map at a load site forces megamorphic |
 | `max_optimized_bytecode_size` | 60 KB | `flag-definitions.h:1630` | above this TurboFan never runs |
 | `max_maglev_optimized_bytecode_size` | 512 KB | `flag-definitions.h:1634` | the same cap for Maglev |
 | `max_inlined_bytecode_size` | 460 | `flag-definitions.h:1606` | normal inlining limit |
@@ -1124,10 +1130,21 @@ is the megamorphic cliff the only one?
 | `kMaxInstanceSize` | 255 words | `objects/js-objects.h:965` | largest object with in-object properties |
 | `invocation_count_for_maglev` / `_turbofan` | 400 / 3000 | `flag-definitions.h:1187,1204` | tier-up thresholds |
 
+The first row was the one correction this re-read found: 3320 defines the value
+as `DEFAULT_MAX_POLYMORPHIC_MAP_COUNT` and 3321 is the flag that takes it. The
+other nine are exact. `invocation_count_for_maglev` is defined twice — 1184 is
+the Android branch at 1000, 1187 the one that applies here.
+
 **The first row is the important one.** The measured cliff in §11 and this
 constant are the same fact, found from opposite ends: a benchmark that knew
 nothing about the source, and a source constant that predicted the benchmark.
-That is the only rule in the project with both.
+
+Every shipped rule now has a section in `docs/v8-evidence.md` tracing its
+mechanism to the source the same way — including the two rules where the honest
+answer is that there is no mechanism to trace (`accumulating-spread` is a
+complexity class) and the one where the source contradicts the shipped threshold
+(`megamorphic-dispatch`, `BUGS.md` TC-13). A citation still proves only that the
+mechanism exists; the magnitude is always the benchmark's.
 
 ### Verified from this, but not shipped
 
