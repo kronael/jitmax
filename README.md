@@ -14,7 +14,7 @@ export function total(rows: Row[]): number { … }
 
 ```
 $ turbocharge demo
-turbocharge — 22 annotated functions, 12 findings
+turbocharge — 26 annotated functions, 13 findings
 
   demo/lib.ts:87  viaCallee()
     delete-property
@@ -78,7 +78,7 @@ input size.
 |---|---|---|
 | `megamorphic-elements` | the fifth object shape at a load site | two to four shapes |
 | `accumulating-spread` | `[...acc, v]`, `{ ...acc, k: v }`, `acc.concat(v)` or `Object.assign({}, acc, …)` in a loop — quadratic | no loop re-runs the copy; `Object.assign(acc, …)`, which mutates |
-| `chained-allocation` | `.map().filter()` allocates between stages | one stage; large n |
+| `chained-allocation` | `.map().filter()` or `Object.entries(o).map()` allocates between stages | one stage; large n; `Object.keys(o).map()`, `.sort()`, `.split().map().join()` |
 | `allocating-select` | `x = Lib.min(x, y)` in a loop returns a new object every pass | the same loop on numbers |
 | `boxed-elements` | mixed element types cannot stay unboxed | holey arrays |
 | `delete-property` | `delete` demotes an object to dictionary mode | a single delete on one object |
@@ -90,7 +90,7 @@ controls: a callee V8 refuses to inline costs 4.42-4.79x in a hot loop. Read
 that as a bound on what one unchecked call can cost, not a claim about any
 particular one.
 If a rule fires in a case a test declares silent, `make test` fails.
-Measurements have blocked a rule from shipping three times.
+Measurements have blocked a rule or a rule's extension from shipping six times.
 
 **Read the third column as a limit on the evidence, not as a promise about the
 code.** No rule checks the condition in its own third column at runtime. The
@@ -147,7 +147,7 @@ look worth shipping. See `BUGS.md` TC-5.
 ## Development
 
 ```sh
-make test    # 24 unit tests, including the must-stay-silent cases
+make test    # 28 unit tests, including the must-stay-silent cases
 make lint    # tsc --noEmit
 make check   # run the checker against demo/
 ```

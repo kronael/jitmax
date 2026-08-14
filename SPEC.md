@@ -301,6 +301,78 @@ memory bandwidth dominates and one extra allocation stops mattering. The rule
 therefore ships with its own size limit attached, which the tool prints with
 every finding.
 
+**Which other methods belong in the chain** — the 0.3 sweep, 24 cells, same
+protocol, each chain against a fused single pass building the identical value.
+The map/filter row is the shipped cell re-run. With construction counted:
+
+| Cell | n | Ratio | 95% CI | Verdict |
+|---|---|---|---|---|
+| `xs.map(f).filter(g)` | 1000 | **7.89** | 7.41–8.41 | **ship — replicates 7.64** |
+| `xs.map(f).filter(g)` | 100000 | 1.47 | 1.38–1.58 | bandwidth-bound, as before |
+| `Object.entries(o).map(f)` | 1000 | **3.59** | **3.44–3.77** | **ship — new** |
+| `Object.entries(o).map(f)` | 10000 | **2.65** | **2.56–2.74** | **ship — new** |
+| `Object.keys(o).map(f)` | 1000 | 0.94 | 0.88–1.00 | the chain is *faster* — refused |
+| `Object.keys(o).map(f)` | 10000 | 0.95 | 0.91–1.00 | same — refused |
+| `xs.map(f).sort(c)` | 1000 | 1.05 | 0.99–1.12 | **REJ** — refused |
+| `xs.map(f).sort(c)` | 10000 | 1.04 | 1.00–1.08 | **REJ** — refused |
+| `s.split(sep).map(f).join(sep)` vs full scan | 1000 | 1.09 | 1.06–1.13 | under 1.10x — refused |
+| `s.split(sep).map(f).join(sep)` vs full scan | 10000 | 1.00 | 0.95–1.05 | **REJ** — refused |
+| `s.split(sep).map(f).join(sep)` vs one array | 1000 | 1.08 | 1.04–1.13 | under 1.10x — refused |
+| `s.split(sep).map(f).join(sep)` vs one array | 10000 | 1.06 | 1.02–1.11 | under 1.10x — refused |
+
+Every reads-only cell rejects — 0.94 to 1.03 across all six forms — which says
+the same thing the original pair said: the cost is the allocation, not the
+value it leaves behind.
+
+**Only `Object.entries` was added, and the keys row is why.** Both chains have
+the same shape and the same fused baseline, a `for...in` loop. `entries` costs
+3.59x and `keys` costs 0.94x against it. The difference is exactly what
+`entries` allocates that `keys` does not: a two-element array *per key* on top
+of the array itself. So the rule's own claim — one array between stages — is an
+understatement for `entries` and simply false for `keys`, where the loop this
+rule would ask for is *slower than the chain*. A rule that fired on `keys`
+would be demanding a pessimization on its own evidence.
+
+**`.sort()` and `.reverse()` are not stages.** Both sort in place and return
+the *same array reference*, which is verifiable in one line and was verified
+before any cell was run. `xs.map(f).sort(c)` therefore allocates exactly one
+array — what `xs.map(f)` alone allocates, which is this rule's baseline, not
+its defect. The measurement agrees: 1.04–1.05x, both intervals spanning 1. The
+sort also dominates the runtime, so these two cells could not have resolved a
+small effect; they are reported as consistent with the mechanism rather than as
+independent proof of it. The mechanism is the reason, and it is the stronger
+one. `radash`'s own `array.slice().sort(...)` is the case this protects: one
+array, deliberately, so the input is not mutated.
+
+**The split chain allocates and still does not clear the bar.** It gets two
+baselines because there is no way to remove `split`'s array without hand-scanning
+the string in JS, and that scan is a cost of its own. The strongest fusion —
+no arrays at all, result string appended to directly — wins 1.09x at n=1000 and
+nothing at n=10000. The weaker one, which drops only `split`'s array and keeps
+`join`, wins 1.06–1.08x. §4 rule 6 asks a broad warning for a point estimate at
+or above 1.10x; no cell reaches it. The arrays are real and the string work
+simply costs more than they do. Refused, and a test locks it silent.
+
+**`.reduce()` is refused as unmeasured.** It has the shape of a terminal stage
+— it reads the array before it once — but it was not measured, and it returns
+whatever the callback returns, which need not be an array. Shipping it on
+`join`'s reasoning would be shipping an analogy. It is also what keeps the
+`radash` run at one finding: `Object.entries({ ...a, ...b }).reduce(...)` would
+otherwise report twice at one site.
+
+**A note on the harness, because it nearly published a wrong number.** The
+first run of this sweep used a kernel that dispatched on `switch (variant)`
+inside the timed loop. TurboFan miscompiled that switch: the `default` arm ran
+on a value the very next statement reported as strictly equal to its own case
+label, on roughly one run in four above ~150 reps, and never under `--no-opt`
+or `--no-turbofan`. It surfaced as a thrown error only because the default arm
+threw; a mis-dispatch into a *different* variant would have corrupted the
+timing while the end-of-run checksum still matched. Those 24 rows are void and
+are kept in `bench/chained.jsonl` without the `kernel` field that marks the
+re-run. The lesson is narrower than "V8 has a bug": **variant dispatch does not
+belong inside the timed region**, and hoisting it to a table resolved once is
+the fix.
+
 Open: the 64 MB cells for the object suite are still running, so the L3-to-RAM
 trend for shape divergence is not yet closed.
 
