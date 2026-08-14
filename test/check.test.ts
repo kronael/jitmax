@@ -27,15 +27,19 @@ test('a function is checked only where it is annotated', () => {
       'collectByReduce',
       'collectObject',
       'drop',
+      'entriesMap',
       'fiveShapes',
       'fourShapes',
       'helper',
+      'keysMap',
       'lowest',
       'lowestNumber',
       'mergeInto',
       'mergeOnce',
       'mixed',
       'oneStage',
+      'sortedStages',
+      'splitJoin',
       'total',
       'twoStages',
       'usesDependency',
@@ -98,6 +102,35 @@ test('a two-stage chain fires', () => {
 // against, so firing here would contradict the measurement.
 test('a single map stays silent', () => {
   assert.deepStrictEqual(rules('oneStage'), []);
+});
+
+// Object.entries is a call, not a property access on the chain, so the rule
+// walked past it until it was measured at 3.59x.
+test('a chain that starts at Object.entries fires', () => {
+  assert.deepStrictEqual(rules('entriesMap'), ['chained-allocation']);
+});
+
+// The next three are the measurement talking. Each is a form this sweep
+// refused, and a rule that fires here contradicts bench/chained.jsonl.
+
+// Object.keys allocates one array, not one per key, and the for-in loop that
+// would fuse it away is SLOWER: 0.94x and 0.95x. The fix would be a
+// pessimization, so the rule must not ask for it.
+test('the same chain on Object.keys stays silent', () => {
+  assert.deepStrictEqual(rules('keysMap'), []);
+});
+
+// sort sorts in place and returns the same array reference, so map().sort()
+// allocates exactly what map() alone allocates — and that is the baseline.
+// Measured at 1.04-1.05x, both intervals spanning 1.
+test('a chain ending in sort stays silent', () => {
+  assert.deepStrictEqual(rules('sortedStages'), []);
+});
+
+// split and join do allocate, but fusing them away measured 1.06-1.09x against
+// two different single-pass rewrites — under the 1.10x §4 asks of a warning.
+test('the split-map-join chain stays silent', () => {
+  assert.deepStrictEqual(rules('splitJoin'), []);
 });
 
 // The edge is the absence of source, not a directory name. njit compiles

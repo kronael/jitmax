@@ -62,12 +62,22 @@ export const EVIDENCE: Record<string, Evidence> = {
   },
   'chained-allocation': {
     cost:
-      '7.13x with construction counted at n=1000 (CI 6.64-7.64) — every stage ' +
-      'allocates a whole array that the next stage immediately discards',
-    source: 'bench/chained.jsonl, 4 cells, 20 pairs each',
+      'map then filter 7.64x and 7.89x with construction counted at n=1000 across two ' +
+      'sweeps (CI 7.20-8.09 and 7.41-8.41); Object.entries(o).map(f) 3.59x at n=1000 ' +
+      '(CI 3.44-3.77) and 2.65x at n=10000 (CI 2.56-2.74), where the waste is a ' +
+      'two-element array per key on top of the array itself — every stage allocates a ' +
+      'whole array that the next stage immediately discards',
+    source: 'bench/chained.jsonl, 24 cells in the 0.3 sweep, 20 pairs each',
     silent:
-      'reading the result costs nothing (0.98x and 1.05x, both intervals include 1), and at ' +
-      'n=100000 the effect falls to 1.45x, where memory bandwidth dominates the allocation',
+      'reading the finished array costs nothing (0.94-1.03x across all six forms), and at ' +
+      'n=100000 map-then-filter falls to 1.47x, where memory bandwidth dominates the ' +
+      'allocation; Object.keys(o).map(f) is FASTER than the for-in loop that fuses it ' +
+      '(0.94x and 0.95x), so keys stays out and the rule would be wrong to ask for that ' +
+      'rewrite; .sort() and .reverse() sort in place and hand back the same array, so ' +
+      'xs.map(f).sort() allocates no more than xs.map(f) does and measured 1.04-1.05x, ' +
+      'both intervals spanning 1; and the split chain s.split(sep).map(f).join(sep) ' +
+      'measured 1.06-1.09x against two different fusions, every point estimate under the ' +
+      '1.10x a broad warning needs',
   },
   'closed-world': {
     cost:
@@ -319,6 +329,22 @@ const allocatingSelect: Rule = (ts, checker, body, add) => {
 
 const CHAINABLE = new Set(['map', 'filter', 'flatMap', 'concat', 'slice', 'flat']);
 
+// A chain can also START at a call rather than at a value, and the one that was
+// measured is Object.entries: it allocates the array AND a two-element array
+// per key, all of it read once by the next stage. It is a call on the Object
+// namespace, not a method on the chain's value, so the property-access matching
+// below cannot see it without being told.
+//
+// Object.keys and Object.values are deliberately absent. keys was measured, and
+// the chain BEAT the for-in loop that fuses it away — 0.94x and 0.95x — so the
+// rewrite this rule asks for is a pessimization there. values was never
+// measured. `sort`, `reverse` and `reduce` are absent for their own reasons,
+// recorded in EVIDENCE.
+const OBJECT_SOURCE = new Set(['entries']);
+
+const stageText = (name: string): string =>
+  name.startsWith('Object.') ? `${name}()` : `.${name}()`;
+
 // Each stage of a chain allocates a whole array that the next stage reads once
 // and discards. Fusing the stages into one pass allocates once. The cost is
 // allocation, which is why it shows up with construction counted and washes out
@@ -328,7 +354,14 @@ const chainedAllocation: Rule = (ts, _checker, body, add) => {
     if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) {
       return undefined;
     }
-    const name = node.expression.name.text;
+    const callee = node.expression;
+    const name = callee.name.text;
+    // Object.entries(o) is a namespace call. Reaching it through the same
+    // helper is what keeps a three-stage chain one finding: the consumed check
+    // below asks this function what the neighbouring calls are.
+    if (ts.isIdentifier(callee.expression) && callee.expression.text === 'Object') {
+      return OBJECT_SOURCE.has(name) ? `Object.${name}` : undefined;
+    }
     return CHAINABLE.has(name) ? name : undefined;
   };
 
@@ -346,7 +379,9 @@ const chainedAllocation: Rule = (ts, _checker, body, add) => {
         add({
           ...at(body.sf, node),
           rule: 'chained-allocation',
-          message: `.${inner}() then .${outer}() allocates a whole array between the stages`,
+          message:
+            `${stageText(inner)} then ${stageText(outer)} allocates a whole array ` +
+            'between the stages',
           fix: 'do the stages in one pass, or one loop',
         });
       }

@@ -110,6 +110,33 @@ export function oneStage(rows: number[]): number[] {
   return rows.map((v) => v * 2);
 }
 
+/** entries allocates a pair array per key before map allocates again: 3.59x. */
+/** @turbocharge */
+export function entriesMap(o: Record<string, number>): number[] {
+  return Object.entries(o).map(([, v]) => v * 3 + 1);
+}
+
+/** The same chain on keys BEAT its fused loop, 0.94-0.95x, so this is silent. */
+/** @turbocharge */
+export function keysMap(o: Record<string, number>): number[] {
+  return Object.keys(o).map((k) => o[k] * 3 + 1);
+}
+
+/** sort returns the array it was given, so there is no second array: silent. */
+/** @turbocharge */
+export function sortedStages(rows: number[]): number[] {
+  return rows.map((v) => v * 3 + 1).sort((a, b) => a - b);
+}
+
+/** The split chain measured 1.06-1.09x, under the bar a warning needs: silent. */
+/** @turbocharge */
+export function splitJoin(s: string): string {
+  return s
+    .split(',')
+    .map((t) => String(Number(t) * 3 + 1))
+    .join(',');
+}
+
 /** A typed dependency ships a .d.ts and no body: this is where it stops. */
 /** @turbocharge */
 export function usesDependency(src: string): number {
