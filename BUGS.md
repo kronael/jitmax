@@ -2,6 +2,66 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
+## TC-15 — delete-property's number predates the current protocol (2026-08-14, open)
+
+`EVIDENCE['delete-property']` quotes **28-67x per property load**, sourced to
+`options.md round 3b`. That round is the probe appendix at the bottom of
+`options.md`: an ad-hoc median-of-runs on a noisy VM, taken before
+`bench/driver.js` existed.
+
+It has none of the six things every other shipped number has: fresh process per
+observation, AB/BA randomization, 20 paired runs, a bootstrap interval, a
+recorded rep count, a per-pair checksum. There is no `bench/delete*.jsonl` and
+no `bench/delete*.js`, so `make bench-…` cannot re-run it and a skeptic cannot
+either. The README's "every rule includes the benchmark that earned it" is
+false for this rule in the same way it was false for `closed-world` before
+`bench/inline.js` was written.
+
+V8's source is *strongly* on the rule's side about the mechanism — every named
+`delete` on a fast object normalizes it unconditionally
+(`src/objects/lookup.cc:843`), a dictionary receiver loses inlined property
+access (`src/compiler/access-info.cc:57`), and nothing in normal execution puts
+it back (`src/objects/js-objects.cc:5097` is the only automatic caller of
+`MigrateSlowToFast`, and it is for prototypes). See `docs/v8-evidence.md`.
+
+That makes this a provenance defect, not a refutation: the mechanism is real and
+the magnitude is unverified. Closing it means writing `bench/delete.js` with
+both populations the old probe measured — singleton (0x, dictionary up to 10%
+*faster*) and per-row over 100k objects (28-67x) — and re-deriving the EVIDENCE
+string from the `.jsonl`. Until then the number should be read as a decorated
+memory of a probe, not as this project's evidence standard. Related: TC-9,
+which is about the rule firing on the singleton case regardless.
+
+## TC-14 — boxed-elements cannot be re-run, and its trigger is an inference (2026-08-14, open)
+
+Two defects in one rule, both found while tracing mechanisms to V8's source.
+
+**The benchmark is not in the repository.** `EVIDENCE['boxed-elements']` cites
+`bench-arrays.md round 2, suite A` for 1.45-1.89x on reads and 2.36-3.28x with
+construction. `bench-arrays.md` §Results says, in full: *"(filled in after the
+runs; raw observations in `bench/results.jsonl`)"*. There is no
+`bench/results.jsonl`, and the kernels that file names — `bench/arrays_kind.js`,
+`bench/arrays_obj.js` — do not exist either. The numbers survive only as a table
+in SPEC §3. This is the project's central claim ("a rerunnable benchmark per
+rule") failing for the rule with the weakest number: one sweep, unreplicated,
+inside the 1.0-1.7x band SPEC §11 says this harness cannot resolve.
+
+**And V8's source does not support the trigger.** The elements kind is decided
+by the values actually stored — `Object::OptimalElementsKind`
+(`src/objects/objects-inl.h:700`) is called per store from
+`LookupIterator::PrepareForDataProperty` (`src/objects/lookup.cc:449`). The rule
+fires on the *declared* element type. A `(number | string)[]` that only ever
+holds numbers stays `PACKED_DOUBLE_ELEMENTS` and pays nothing, exactly as a
+five-member union can reach a load site as one map. That is TC-2 in a second
+rule, and the mechanism citation makes it concrete rather than theoretical.
+
+Not fixed, and the two halves have different remedies: the first needs a
+`bench/arrays.js` sweep written and run (and the rule's numbers re-derived or
+withdrawn); the second is unfixable statically and belongs to the runtime half
+in `DESIGN.md`, which observes elements kinds instead of inferring them.
+
+Full write-up in `docs/v8-evidence.md`, section `boxed-elements`.
+
 ## TC-13 — a method in a field has no four-map budget (2026-08-14, open, proposal)
 
 `bench/dispatch.jsonl` split a call site into its two halves and they do not
@@ -33,6 +93,19 @@ Two ways forward, neither taken:
 
 The static rule stays at five, missing the case rather than guessing at it,
 and `SPEC.md` §3 states that in the rule's own evidence.
+
+**V8's source now says the same thing, independently (2026-08-14).** A call
+site's feedback slot does not hold maps and has no polymorphic tier at all: it
+holds one target function as a weak reference
+(`src/builtins/ic-callable.tq:14`), and `CollectCallFeedback` offers exactly
+three outcomes — same target, already megamorphic, or uninitialized
+(`src/builtins/ic-callable.tq:107-109`). A second, different target goes
+straight to the megamorphic sentinel, and the only escape is two closures
+sharing one `FeedbackCell`. So the four-map budget the rule's message quotes
+governs the *load* of the method, and the *call* has a budget of one. This is
+the sweep's `tgt` result predicted from the engine's source, and it raises the
+proposal from "measured once on this machine" to "measured, and the mechanism
+is in the source". Citations in `docs/v8-evidence.md`.
 
 ## TC-12 — a 6.3x effect nothing static can detect (2026-08-14, open, proposal)
 
