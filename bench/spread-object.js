@@ -2,14 +2,18 @@
 // array form, different constant, so it needs its own measurement before any
 // rule may fire on it.
 //
-//   assign  — acc[k] = v                 O(n)
-//   spread  — acc = { ...acc, [k]: v }   O(n squared), every pass copies the
-//                                        keys already there
+//   assign       — acc[k] = v                              O(n)
+//   spread       — acc = { ...acc, [k]: v }                O(n squared), every
+//                                                          pass copies the keys
+//                                                          already there
+//   assign-copy  — acc = Object.assign({}, acc, {[k]: v})  O(n squared), the
+//                                                          same copy written as
+//                                                          a call
 //
-// Both build the identical object; the checksum is the sum of its values and is
-// compared inside every pair.
+// All three build the identical object; the checksum is the sum of its values
+// and is compared inside every pair.
 //
-//   node bench/spread-object.js <assign|spread> <n> <mode> <reps> <seed>
+//   node bench/spread-object.js <assign|spread|assign-copy> <n> <mode> <reps> <seed>
 
 const [variant, n, mode, reps, seed] = [
   process.argv[2],
@@ -29,6 +33,8 @@ function build() {
   let acc = {};
   if (variant === 'spread') {
     for (let i = 0; i < n; i++) acc = { ...acc, [keys[i]]: values[i] };
+  } else if (variant === 'assign-copy') {
+    for (let i = 0; i < n; i++) acc = Object.assign({}, acc, { [keys[i]]: values[i] });
   } else {
     for (let i = 0; i < n; i++) acc[keys[i]] = values[i];
   }

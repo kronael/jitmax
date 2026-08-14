@@ -1,10 +1,12 @@
-// Workload for accumulating-spread. Two variants build the identical array:
+// Workload for accumulating-spread. Three variants build the identical array:
 //   push    — acc.push(v)          O(n)
 //   spread  — acc = [...acc, v]    O(n squared), because every pass copies
 //                                  everything already in acc
+//   concat  — acc = acc.concat(v)  O(n squared), the same copy written as a
+//                                  call, with the accumulator as the receiver
 // The checksum is compared inside every pair, so a variant that builds a
 // different array is a failed run rather than a fast one.
-//   node bench/spread.js <push|spread> <n> <mode> <reps> <seed>
+//   node bench/spread.js <push|spread|concat> <n> <mode> <reps> <seed>
 
 const [variant, n, mode, reps, seed] = [
   process.argv[2],
@@ -23,6 +25,11 @@ function build() {
   let acc = [];
   if (variant === 'spread') {
     for (const v of source) acc = [...acc, v];
+  } else if (variant === 'concat') {
+    // concat flattens array arguments; source holds numbers, so each pass
+    // appends exactly one element and the result matches push element for
+    // element. The pair's checksum comparison is what enforces that.
+    for (const v of source) acc = acc.concat(v);
   } else {
     for (const v of source) acc.push(v);
   }

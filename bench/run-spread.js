@@ -13,18 +13,24 @@ const script = workload('spread.js');
 // sweep if it is interrupted.
 const outPath = path.join(import.meta.dirname, 'spread.jsonl');
 
-for (const mode of ['excl', 'incl']) {
-  for (const n of [1000, 10000]) {
-    const r = cellOrVoid({ script, baseline: 'push', variant: 'spread', n, mode });
-    fs.appendFileSync(outPath, JSON.stringify(r) + '\n');
-    if (r.void) {
-      process.stdout.write(`${r.mode} n=${String(r.n).padEnd(6)} VOID  ${r.error}\n`);
-      continue;
+// Both variants are measured against the same push baseline, because both make
+// the same claim: the accumulator is copied whole on every pass.
+for (const variant of ['spread', 'concat']) {
+  for (const mode of ['excl', 'incl']) {
+    for (const n of [1000, 10000]) {
+      const r = cellOrVoid({ script, baseline: 'push', variant, n, mode });
+      fs.appendFileSync(outPath, JSON.stringify(r) + '\n');
+      if (r.void) {
+        process.stdout.write(
+          `${r.mode} n=${String(r.n).padEnd(6)} ${variant}: VOID  ${r.error}\n`
+        );
+        continue;
+      }
+      const rej = r.lo <= 1 && r.hi >= 1 ? ' REJ' : '';
+      process.stdout.write(
+        `${r.mode} n=${String(r.n).padEnd(6)} ${r.variant}: ` +
+          `${r.ratio.toFixed(2)}x  CI ${r.lo.toFixed(2)}-${r.hi.toFixed(2)}${rej}\n`
+      );
     }
-    const rej = r.lo <= 1 && r.hi >= 1 ? ' REJ' : '';
-    process.stdout.write(
-      `${r.mode} n=${String(r.n).padEnd(6)} ${r.variant}: ` +
-        `${r.ratio.toFixed(2)}x  CI ${r.lo.toFixed(2)}-${r.hi.toFixed(2)}${rej}\n`
-    );
   }
 }
