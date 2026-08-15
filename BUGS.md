@@ -2,6 +2,53 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
+## TC-26 — the strings clause's read-back half no longer says what it says (2026-08-15, open, proposal)
+
+`accumulating-spread` ships this, hand-typed:
+
+> a STRING is not this rule at any n — `s = s + x`, `s += x` and
+> `s = s.concat(x)` build in **0.27-0.56x** of a push-and-join and **0.74-0.97x**
+> of it once the read back is counted, so **all three BEAT the rewrite**
+
+`bench/strings.jl` is now re-measured whole under the r2 runner: 27 cells, three
+sweeps each, 81 rows, no voids.
+
+| half | published | re-measured | verdict |
+|---|---|---|---|
+| build only | 0.27-0.56x | **0.26-0.52x** | holds, and tightens |
+| with the read back | 0.74-0.97x | **0.78-1.13x** | **does not hold** |
+
+The build half is the rule's actual argument and it got *stronger*: every one of
+the nine build cells is far below 1, from 0.26x at n=1000 to 0.52x at n=100000,
+and eight of the nine replicate.
+
+The read-back half is the problem, and not because the range moved. **Seven of
+its nine cells now have an interval that spans 1.0**, which by protocol rule 6
+is a rejection — no measurable difference in either direction. Only
+`plus incl n=100000` (0.76-0.92) and `concat incl n=100000` (0.76-0.86) clear
+it. And the top of the new range, 1.13x, is a sweep in which the string form was
+*slower*: `plus incl n=1000` measured 0.98x, 1.13x, 0.99x.
+
+So "all three BEAT the rewrite" is true of building and is not true once the
+caller reads the result back, where at n=1000 and n=10000 the two are
+indistinguishable. The clause states as a measured fact something six of its own
+cells now refuse.
+
+**Not fixed**, on the TC-23 precedent: `EVIDENCE.silent` is prose making an
+argument about where a rule must stay quiet, `lib/derive.ts` deliberately
+exempts it from derivation, and rewriting it is a judgement about a shipped
+rule's scope. Two proposals:
+
+1. Replace the read-back sentence with what the rows say — indistinguishable at
+   n=1000 and n=10000, 0.76-0.92x only at n=100000 — and keep the build half,
+   which carries the rule's silence on its own.
+2. Derive both ranges instead, the way every other published number is derived.
+   The clause is exempt because it is an argument; the numbers *inside* it are
+   not arguments, and these two have now drifted from their rows twice.
+
+The rule's behaviour does not change either way: it stays silent on strings, and
+the build half is why.
+
 ## TC-25 — a row's `load1` cannot be compared to the `maxLoad` beside it (2026-08-15, open)
 
 Every row the runner writes carries both `env.maxLoad`, the gate it declared,
@@ -262,18 +309,34 @@ ratio. That is the comparison the question needed and nobody had.
 |---|---|---|---|
 | `select` heap n=100000 | 2.56x 2.87x 2.65x | **yes**, 2.30-3.09 | 53/66, 41/66, **47/41** |
 | `select` number n=100000 | 0.88x 0.94x 1.00x | **yes**, 0.84-1.10 | 101/47, 81/66, **101/101** |
+| `strings` concat build n=100000 | 0.49x 0.52x 0.51x | **yes**, 0.41-0.57 | 8/0, 8/0, **21/0** |
+| `strings` plus build n=100000 | 0.52x 0.50x 0.48x | **yes**, 0.41-0.57 | 8/0, **22/0**, 8/0 |
+| `strings` pluseq build n=100000 | 0.52x 0.50x 0.51x | **yes**, 0.48-0.55 | 8/0, 8/0, 8/0 |
+| `strings` concat incl n=100000 | 0.80x 0.82x 0.81x | **yes**, 0.76-0.86 | 8/0, **0/0**, 8/0 |
+| `strings` plus incl n=100000 | 0.79x 0.81x 0.83x | **yes**, 0.76-0.92 | 8/0, 7/0, 7/0 |
+| `strings` pluseq incl n=100000 | 0.80x 0.78x 0.90x | **yes**, 0.76-1.04 | 7/0, 7/0, 8/0 |
 | `inline` excl n=100000 | 4.73x 4.68x 3.21x | **no** | **0/0, 0/0, 0/0** |
+| `strings` pluseq build n=1000 | 0.27x 0.27x 0.31x | **no** | **0/0, 0/0, 0/0** |
+| `strings` concat excl n=1000 | 1.02x 0.98x 1.08x | **no** | **0/0, 0/0, 0/0** |
 
 Read the two columns against each other. In `select number` the asymmetry runs
 from 101-against-47 to 101-against-101 — it *disappears* between sweeps — and
 the ratio does not move out of a common interval. In `select heap` the side that
-storms harder changes between sweeps, and the ratio does not care. The storm
+storms harder changes between sweeps, and the ratio does not care.
+
+`strings concat incl n=100000` is the cleanest instance in the table: the storm
+is 8 deopts against 0, then **none at all**, then 8 against 0, and the three
+ratios are 0.80x, 0.82x, 0.81x. The contamination was removed and the number did
+not move. `plus build n=100000` runs the same experiment the other way, 8 to 22
+and back to 8 against a silent baseline, for 0.52x, 0.50x, 0.48x. The storm
 varies far more between sweeps than the number it is supposed to be corrupting.
 
-And the one cell in the whole re-measurement that failed to replicate has **no
-deopt at all**, on either side, in any of its three sweeps. A void rule keyed on
-asymmetric storms would have thrown away two cells that replicate and kept the
-one that does not. That is not a filter, it is noise with a threshold on it.
+And **every cell in the re-measurement that failed to replicate has no deopt at
+all**, on either side, in any of its sweeps — three of them now, from two
+different sweeps. Eight storming cells, eight that replicate; three cells that
+do not replicate, zero deopts between them. A void rule keyed on asymmetric
+storms would have thrown away eight cells that replicate and kept all three that
+do not. That is not a filter, it is noise with a threshold on it.
 
 Three further reasons, none of which needed the data:
 
