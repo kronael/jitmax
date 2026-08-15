@@ -446,6 +446,11 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
 - These ratios come from a microbenchmark, a small speed test, on one machine
   (Node v22.23.2, V8 12.4). They show that a pattern *can* cost that much. They
   do not say it costs that much in your workload.
+- **One of V8's two optimizing tiers was switched off the whole time.** This
+  Node reports `--maglev` as `default: --no-maglev`, so the ladder under every
+  number here is Ignition → Sparkplug → TurboFan, with no Maglev in it. A tier
+  that compiles faster and optimizes less is exactly the one that could move a
+  ratio, and nothing in this repo has ever run on it. `BUGS.md` TC-21.
 - The recursive walk has limits. A visited set stops cycles. Each annotation
   also has a hard cap of 200 function bodies. When the walk hits the cap, it
   prints `WALK TRUNCATED` and exits `1`. The run is not reported as clean, in

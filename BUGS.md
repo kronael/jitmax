@@ -91,10 +91,14 @@ sized at two repetitions is still measuring optimized code.
 Two facts that belong next to that, because they were assumed and are not true:
 
 - **Maglev is off.** This Node reports `--maglev` as `default: --no-maglev`, so
-  the tier ladder here is Ignition → Sparkplug → TurboFan and
-  `invocation_count_for_maglev` — cited in README's V8 table and verified by
-  `make v8-check` — describes a tier no measurement in this repo has ever
-  entered. The citation is still true about V8; it is not true about these runs.
+  the tier ladder here is Ignition → Sparkplug → TurboFan and every number in
+  this repo was measured with one of V8's two optimizing tiers switched off.
+  Where a reader will see it: README's honest limits, next to the Node and V8
+  versions. **This bullet first said that `invocation_count_for_maglev` was
+  "cited in README's V8 table and verified by `make v8-check`". It is not, and
+  never was** — `git log -S maglev -- README.md` is empty, and the V8 table
+  cites seven mechanisms, none of them a tier-up budget. The fact about the
+  machine was right; the claim about where it was published was invented.
 - **Sparkplug is invisible.** `--trace-opt` traces the optimizing tiers only. A
   function this diagnostic calls `none` was in Ignition or in Sparkplug and the
   diagnostic cannot say which.
