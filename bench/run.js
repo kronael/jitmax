@@ -171,6 +171,7 @@ function sweep(name, env) {
 
   const started = Date.now();
   let ran = 0;
+  let measured = 0;
   let skipped = 0;
   let voids = 0;
   const seen = new Map();
@@ -182,9 +183,14 @@ function sweep(name, env) {
 
     const row = { ...opts, ...extra, baseline: opts.baseline };
     const have = already.get(key(row)) ?? 0;
-    const need = times - have;
+    // `--force` means measure it again, all of it. Subtracting what is already
+    // there would ask for zero runs of a cell that already has three, which is
+    // the one thing --force exists not to do.
+    const need = force ? times : times - have;
+    // Estimated from CELLS finished, not rows written: a replicated cell writes
+    // three rows and the estimate was three times short.
     const at = `[${i + 1}/${cells.length} ${hms(Date.now() - started)}` +
-      `${ran ? ` ~${hms(((Date.now() - started) / ran) * (cells.length - i))} left` : ''}]`;
+      `${measured ? ` ~${hms(((Date.now() - started) / measured) * (cells.length - i))} left` : ''}]`;
 
     if (!force && need <= 0) {
       skipped++;
@@ -238,6 +244,7 @@ function sweep(name, env) {
     if (times === 1) {
       const r = cellOrVoid({ script, ...opts }, report);
       write(r);
+      measured++;
       out(`      ${line(r)}\n`);
       continue;
     }
@@ -248,6 +255,7 @@ function sweep(name, env) {
       write(r);
       out(`      #${r.replicate}: ${line(r)}\n`);
     }, need, report);
+    measured++;
     const shown = runs.map((r) => (r.void ? 'VOID' : `${r.ratio.toFixed(2)}x`)).join(' ');
     out(`      => ${replicates(runs) ? 'REPLICATES' : 'DISAGREES'}  ${shown}\n\n`);
   }
