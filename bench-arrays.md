@@ -116,4 +116,26 @@ Notes committed with the predictions:
 
 ## Results
 
-(filled in after the runs; raw observations in `bench/results.jsonl`)
+**This section was never filled in, and the runs it describes were never made.**
+It read, in full, *"(filled in after the runs; raw observations in
+`bench/results.jsonl`)"*. There is no `bench/results.jsonl`, and neither
+`bench/arrays_kind.js` nor `bench/arrays_obj.js` — the kernels named in
+§Methodology above — was ever written. The suite A figures that reached
+`SPEC.md` §3 and `boxed-elements`' `EVIDENCE` string, 1.45-1.89x on reads and
+2.36-3.28x with construction, survived only as a table. Recorded as `BUGS.md`
+TC-14 on 2026-08-14.
+
+**Suite A was run on 2026-08-15 and is in `bench/arrays.jl`** — `bench/arrays.js`,
+`bench/run-arrays.js`, `make bench-arrays`, 20 cells, 20 pairs each, every cell
+replicated three times per SPEC §4 rule 13. The results and what they did to the
+rule are in SPEC §3; in brief, the committed prediction of 2-5x for boxed reads
+and 2-5x with construction was too high on both halves (1.39-1.66x and
+1.07-1.69x), the holey and `Float64Array` burials held, and the rule was
+withdrawn — not for its magnitude but for its trigger, which is the declared
+element type and does not decide the elements kind.
+
+**Suite B has not been run.** The arrays-of-objects shape question it predicts
+was answered instead by `bench/shapes-calibrated.jl` and `bench/dispatch.jl`,
+which measure shape count at a load site and at a call site directly. The
+locality-versus-shape adjudication this suite was designed for is still
+unmeasured, and no claim in this project rests on it.
