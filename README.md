@@ -1,19 +1,27 @@
 # turbocharge
 
-Add a `@turbocharge` comment to a TypeScript function. turbocharge checks that
-function and every function it calls. It reports code patterns that measurements
-show can push V8, Node's JavaScript engine, off its fast path.
+Mark a TypeScript function. Get the lines in it, and in everything it calls,
+that stop V8 from optimising your code — with the measurement behind each one
+and the fix.
 
-The engine puts some objects in dictionary mode, which stores properties in a
-lookup table instead of a fixed layout. The report below shows one example.
+## Use it
+
+Mark the function you need fast:
 
 ```ts
 /** @turbocharge */
 export function total(rows: Row[]): number { … }
 ```
 
+Point it at your sources:
+
+```sh
+turbocharge src
 ```
-$ turbocharge demo
+
+## What you get
+
+```
 turbocharge — 35 annotated functions, 15 findings
 
   demo/lib.ts:87  viaCallee()
@@ -24,40 +32,38 @@ turbocharge — 35 annotated functions, 15 findings
       fix: assign undefined, or build the object without the property
 ```
 
-`viaCallee` has the annotation. Line 82 is `dropInner`. Nobody annotated it.
-turbocharge followed the call and reported the line where the slowdown starts.
+Four things, and the second is the point:
 
-V8 already has a good JIT, a compiler that speeds up code while it runs. A
-hidden class, also called an object shape, records which properties an object
-has. An inline cache remembers what a code location has seen, so the engine can
-reuse a fast lookup. A packed array has no missing slots. The engine uses all of
-these. It also has two more stages that speed up code that runs often.
+- **the line**, `demo/lib.ts:82` — which is inside `dropInner`, a function
+  nobody annotated. `viaCallee` has the annotation; turbocharge followed the
+  call and reported where the cost actually is.
+- **the measurement**, so you can judge whether it is worth your time, and
+  re-run it yourself with `make bench-*`.
+- **the fix**, concretely, not "consider optimising".
+- **what it could not check** — every call with no readable body is listed by
+  name, and a walk that hits its limit prints `WALK TRUNCATED` and is never
+  reported as clean.
 
-The engine usually makes your code fast. But a short list of ordinary-looking
-patterns can quietly turn off those speedups. JavaScript does not warn you when
-this happens.
+Exit codes: `0` clean, `1` findings, `2` the tool itself failed. A path that
+does not exist is a `2`, never a clean run.
 
-turbocharge contains that measured list. Its checker looks for each pattern in
-the function you marked and in every function called from it. It follows a
-callee, the function being called, when TypeScript can connect it to real source
-code. A package that ships a `.d.ts`, a file that describes types without the
-source body, stops that walk. Most typed dependencies are therefore a stopping
-point, not code turbocharge can enter. It reports every call it cannot follow by
-name. The report shows what went unchecked instead of pretending it was checked.
+## Requirements
+
+Node `>=22.18`, which strips types itself, so there is no build step.
+TypeScript `>=5.0.0` as a peer dependency — turbocharge loads *your* copy, so it
+sees the same code and types your build sees.
+
+## Why this exists
+
+V8 already optimises your code well. But a short list of ordinary-looking
+patterns quietly turns those optimisations off, and nothing warns you. This is
+that list, measured.
 
 *Where the idea came from:* Numba's `@njit` marks one Python function and pulls
-in its whole call tree, the chain of functions it calls. Numba compiles that
-tree or stops with a line and a reason. turbocharge borrows the annotation and
-call-tree design. The jobs differ. CPython does not JIT, so Numba must compile.
-V8 already compiles code while it runs, so turbocharge only tells you where your
-code blocks its optimizations.
-
-## Install and run
-
-Requires Node `>=22.18`. Node strips types on its own, so you do not need a
-build step. It also requires TypeScript `>=5.0.0` as a peer dependency, which
-means your project provides that package. turbocharge loads *your* copy of
-TypeScript. It sees the same code and types as your build.
+in its whole call tree. It compiles that tree or stops with a line and a reason.
+turbocharge borrows the annotation and the call-tree walk. The jobs differ:
+CPython does not JIT, so Numba must compile; V8 does, so turbocharge only tells
+you where your code blocks it.
 
 ```sh
 turbocharge src        # check annotated functions under src/
