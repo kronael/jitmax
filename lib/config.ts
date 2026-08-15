@@ -71,6 +71,14 @@ export function loadConfig(configPath: string): Config {
     throw new Error(`no such file: ${configPath}`);
   }
   const tables = parseToml(text, configPath);
+  // A misspelled table disabled nothing, silently — `[rulez]` read as a clean
+  // config and every rule stayed on. That is the same lie an unknown rule name
+  // tells in resolveDisabled(), which throws, so this throws too.
+  for (const name of Object.keys(tables)) {
+    if (name !== 'rules') {
+      throw new Error(`${configPath}: unknown table [${name}] — the only table is [rules]`);
+    }
+  }
   const rules = tables.rules ?? {};
   const disabled = new Set<string>();
   for (const [key, value] of Object.entries(rules)) {

@@ -179,7 +179,14 @@ function reach(
   const reported = new Set<string>();
   let truncated = false;
 
-  for (let i = 0; i < reached.length && reached.length < MAX_BODIES; i++) {
+  // Every body that made it into `reached` is walked. Stopping the loop at the
+  // cap instead left the last bodies pushed sitting unvisited with `truncated`
+  // still false, so a call tree 250 deep — which fills `reached` at the END of
+  // a body, never refusing a callee — printed "every annotated function is
+  // clean" for a walk that had checked 200 of them. That is TC-7 again, in the
+  // one shape its fix did not cover. The push below is what the cap gates, and
+  // refusing a push is what makes the walk truncated.
+  for (let i = 0; i < reached.length; i++) {
     const body = reached[i];
     if (!body) continue;
     const visit = (node: TS.Node): void => {

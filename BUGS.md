@@ -2,6 +2,34 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
+## TC-17 — a truncated walk prints "not a clean run" and exits 0 (2026-08-15, open)
+
+TC-7 taught the *report* to refuse the word "clean" when a walk hit the cap. It
+never reached the exit code. `bin/turbocharge.ts` sets it from
+`findings.length > 0` alone, so a run that prints
+
+    no findings, but 1 walk truncated: this is not a clean run.
+
+exits `0` — and a CI gate reads exit codes, not prose. README's "a walk that
+hits its limit prints `WALK TRUNCATED` and is never reported as clean" is true
+of the text and false of the contract underneath it.
+
+Found while fixing the detection half of the same defect: the walk stopped at
+the cap without setting `Mark.truncated` whenever `reached` filled at the END
+of a body rather than mid-body, so a 250-deep call chain printed "every
+annotated function is clean" outright. That part is a plain bug and is fixed —
+`lib/scan.ts` now walks every body it admitted. What remains is the exit code,
+and only the shapes that DO set the flag ever reached it.
+
+**Not fixed inline: the three exit codes are the tool's public contract.**
+`0` clean, `1` findings, `2` the tool failed. Making a truncated walk exit `1`
+overloads "findings" with "unproven", and a fourth code is a new contract. Both
+are a change to what a CI gate means, so: **owner signs off before anything
+ships**.
+
+Reproduce: a call chain deeper than `MAX_BODIES` (200) with no finding in it —
+`node bin/turbocharge.ts <dir>; echo $?` prints the truncation warning and `0`.
+
 ## TC-16 — the fix a rule prints can cost more than the defect (2026-08-15, open)
 
 Found by `bench/example.jl` — the first sweep in this project that applies a
@@ -289,7 +317,7 @@ mechanism, and thresholding it would have treated the symptom.
 Fixed three ways, none of them a threshold:
 
 - `bench/driver.js` records the achieved region in milliseconds beside the rep
-  count in every cell — `msBase` and `msTest` — and `bench/run-tc11.js` prints
+  count in every cell — `msBase` and `msTest` — and `bench/run.js` prints
   both with every sweep. Facts in the file, no cut-off.
 - `driver.js` gains `replicate()` and `replicates()`. A cell is run **whole,
   three times**, and agreement is a value common to all three 95% intervals: a

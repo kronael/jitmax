@@ -55,7 +55,7 @@ disables that rule; a defect code (`TC-9`) disables every rule that carries it
 names. An unknown name or code fails loudly with exit `2`, the same as a
 missing path. Suppression is never silent: the report always says how many
 findings were removed and by what, e.g.
-`3 findings suppressed (megamorphic-elements, TC-9)` — a clean run that is
+`3 findings suppressed (TC-9, megamorphic-elements)` — a clean run that is
 clean because rules were switched off says so.
 
 ## What you get
@@ -335,7 +335,7 @@ Two things in that table are about the tool rather than the libraries.
 **`closed-world` is 501 of the 529 findings**, nearly all of them a builtin the
 walk cannot read into; that is the honest shape of the rule on real code, and
 `BUGS.md` TC-10. And **`megamorphic-elements` and `megamorphic-dispatch` never
-fired once** across 534 annotated functions in four libraries — the two rules
+fired once** across 534 annotated functions in five libraries — the two rules
 with the sharpest measured cliffs in the project found nothing to say about any
 of them.
 
