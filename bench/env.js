@@ -35,6 +35,12 @@ export const load1 = () => +os.loadavg()[0].toFixed(2);
 // `flags` is the V8 flags the MEASURED children run with, which is the empty
 // list: the tier diagnostic's --trace-opt runs in its own process precisely
 // because protocol rule 8 keeps it out of this one.
+//
+// What is NOT here is `load1`. A sweep runs for hours and the load it started
+// at stops being true within minutes: ten rows were written claiming 0.91 while
+// the machine climbed to 4.55, and a recorded environment that is false is worse
+// than none. The runner stamps the load onto each row as it writes it, and
+// `loadStart` is what the gate let the sweep begin at.
 export function environment(maxLoad) {
   return {
     node: process.versions.node,
@@ -43,7 +49,6 @@ export function environment(maxLoad) {
     pin: PIN_AVAILABLE ? 'taskset -c 1' : 'none',
     cores: CORES,
     cpu: os.cpus()[0]?.model ?? 'unknown',
-    load1: load1(),
     maxLoad,
   };
 }

@@ -35,7 +35,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { cellOrVoid, replicate, replicates } from './driver.js';
 import { BENCHMARKS, plan, label } from './sweeps.js';
-import { environment, gate, MAX_LOAD, CORES } from './env.js';
+import { environment, gate, load1, MAX_LOAD, CORES } from './env.js';
 import { tierPair } from './tiers.js';
 
 // The marker that says a row came from this runner: it carries the environment,
@@ -167,7 +167,7 @@ function sweep(name, env) {
 
   out(`${name}: ${bench.what}\n`);
   out(`  ${cells.length} cells x ${times} run${times > 1 ? 's' : ''}, ` +
-    `node ${env.node} / v8 ${env.v8}, pin ${env.pin}, load ${env.load1} (gate ${env.maxLoad})\n`);
+    `node ${env.node} / v8 ${env.v8}, pin ${env.pin}, load ${env.loadStart} (gate ${env.maxLoad})\n`);
 
   const started = Date.now();
   let ran = 0;
@@ -193,6 +193,20 @@ function sweep(name, env) {
     }
     out(`${at} ${label(opts)}\n`);
 
+    // The gate again, before every cell. Checking it once at the start of a
+    // four-hour sweep does not do what the gate says it does — the machine that
+    // was quiet at cell 1 was at load 4.55 by cell 3, and the rows written there
+    // recorded the load from cell 1. Stopping here loses nothing: resume picks
+    // the sweep up at the cell that did not run.
+    try {
+      gate({ maxLoad: env.maxLoad, waitFor: num('wait-load', 0), log: (m) => out(`      ${m}\n`) });
+    } catch (err) {
+      out(`\n${name}: stopped at cell ${i + 1} of ${cells.length}\n` +
+        `  ${err instanceof Error ? err.message : String(err)}\n` +
+        `  ${ran} rows written. Re-run the same command to continue from here.\n`);
+      break;
+    }
+
     const write = (r) => {
       // The environment travels with every row, and the tier of each side sits
       // next to the rep counts that bought it — recorded as a fact, never as a
@@ -202,8 +216,10 @@ function sweep(name, env) {
       const t = tiers && !r.void
         ? tierPair({ script, ...opts, repsBase: r.repsBase, repsTest: r.repsTest })
         : {};
+      // `load1` is read HERE, as the row is written, because that is what "the
+      // load at the time" means for a sweep that runs for hours.
       fs.appendFileSync(file, JSON.stringify({ ...r, ...extra, baseline: opts.baseline,
-        runner: RUNNER, env, ...t }) + '\n');
+        runner: RUNNER, load1: load1(), env, ...t }) + '\n');
       if (t.tierMismatch) out(`      TIER MISMATCH on ${t.tierMismatch.join(', ')}\n`);
       if (r.void) voids++;
       ran++;
@@ -276,7 +292,7 @@ try {
 } catch (err) {
   die(err instanceof Error ? err.message : String(err));
 }
-const env = { ...environment(maxLoad), load1: startedAt };
+const env = { ...environment(maxLoad), loadStart: startedAt };
 out(`${CORES} cores, load ${startedAt} at start, gate ${maxLoad}\n\n`);
 
 // Rule 9 again, at the level of a release: one artifact that says what ran,
