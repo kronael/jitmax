@@ -46,11 +46,11 @@ export const N: Record<string, string> = {
   // spread-object.jl: Object.assign({}, acc, …) at n=500, the three replications
   'spread.assign': '846-875x',
   // select.jl: the chosen value stored where it outlives the loop, both sizes
-  'select.heap': '2.65-2.73x',
-  // select.jl: the interval at n=10000
-  'select.heap.ci10k': '2.48-2.81',
-  // select.jl: the interval at n=100000
-  'select.heap.ci100k': '2.58-2.88',
+  'select.heap': '2.56-2.87x',
+  // select.jl: the intervals at n=10000, across the first sweep and the three replications
+  'select.heap.ci10k': '2.48-2.92',
+  // select.jl: the intervals at n=100000, across the first sweep and the three replications
+  'select.heap.ci100k': '2.30-3.09',
   // select.jl: the whole sweep
   'select.cells': '6',
   // chained.jl: xs.map(f).filter(g) against one fused pass at n=1000, construction counted

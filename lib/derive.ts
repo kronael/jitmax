@@ -49,8 +49,13 @@ interface Citation {
   // point  one cell's ratio
   // points every matching ratio, ascending — "1877x and 2348x"
   // ci     one cell's bootstrap interval, printed without the x
+  // cispan the same for a cell measured more than once: the lowest lower bound
+  //        to the highest upper bound across the sweeps. `ci` is the interval of
+  //        ONE sweep and rule 13 is that one sweep cannot see what varies
+  //        between two, so a replicated cell has no single interval to quote and
+  //        quoting one of the three would be picking the flattering one.
   // count  how many distinct cells (variant, baseline, mode, n) matched
-  agg: 'range' | 'point' | 'points' | 'ci' | 'count';
+  agg: 'range' | 'point' | 'points' | 'ci' | 'cispan' | 'count';
   // Decimal places. The default scales with magnitude; an override is here
   // where the published string does not.
   dp?: number;
@@ -221,15 +226,15 @@ export const CITATIONS: Record<string, Citation> = {
   },
   'select.heap.ci10k': {
     file: 'select.jl',
-    cells: 'the interval at n=10000',
+    cells: 'the intervals at n=10000, across the first sweep and the three replications',
     pick: (r) => r.mode === 'heap' && r.n === 10000,
-    agg: 'ci',
+    agg: 'cispan',
   },
   'select.heap.ci100k': {
     file: 'select.jl',
-    cells: 'the interval at n=100000',
+    cells: 'the intervals at n=100000, across the first sweep and the three replications',
     pick: (r) => r.mode === 'heap' && r.n === 100000,
-    agg: 'ci',
+    agg: 'cispan',
   },
   'select.cells': {
     file: 'select.jl',
@@ -406,7 +411,17 @@ const places = (v: number): number => (v < 10 ? 2 : v < 100 ? 1 : 0);
 function render(key: string, c: Citation, matched: Row[]): string {
   const live = matched.filter((r) => !r.void && r.ratio !== undefined);
   if (c.agg === 'count') {
-    const cells = new Set(matched.map((r) => `${r.variant}|${r.baseline}|${r.mode}|${r.n}`));
+    // How many distinct CELLS, not how many rows: a cell measured three times is
+    // one cell. The baseline is part of a cell's identity only where the sweep
+    // recorded it — `chained` and `delete` pair one variant against several
+    // baselines and would collapse without it — and only where EVERY matched row
+    // has it. The runner started recording it in sweeps that never did, and
+    // without this the same six select cells counted as twelve: six spelled with
+    // a baseline and six spelled without.
+    const everywhere = matched.every((r) => r.baseline !== undefined);
+    const cells = new Set(
+      matched.map((r) => `${r.variant}|${everywhere ? r.baseline : ''}|${r.mode}|${r.n}`)
+    );
     return String(cells.size);
   }
   if (live.length === 0) throw new Error(`${key}: no rows match — the citation is stale`);
@@ -416,6 +431,10 @@ function render(key: string, c: Citation, matched: Row[]): string {
     const r = live[0]!;
     const hi = r.hi!;
     return `${fmt(r.lo!, hi)}-${fmt(hi, hi)}`;
+  }
+  if (c.agg === 'cispan') {
+    const hi = Math.max(...live.map((r) => r.hi!));
+    return `${fmt(Math.min(...live.map((r) => r.lo!)), hi)}-${fmt(hi, hi)}`;
   }
   const ratios = live.map((r) => r.ratio!).sort((a, b) => a - b);
   const top = ratios[ratios.length - 1]!;

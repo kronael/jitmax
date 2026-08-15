@@ -219,9 +219,9 @@ published number is no longer what its rows say.
 | `0.02-0.03x` | `bench/spread-object.jl` — the finished object read back, spread against keyed assignment, n=500 |
 | `188-203x` | `bench/spread-object.jl` — object spread against keyed assignment at n=500, the three replications |
 | `846-875x` | `bench/spread-object.jl` — Object.assign({}, acc, …) at n=500, the three replications |
-| `2.65-2.73x` | `bench/select.jl` — the chosen value stored where it outlives the loop, both sizes |
-| `2.48-2.81` | `bench/select.jl` — the interval at n=10000 |
-| `2.58-2.88` | `bench/select.jl` — the interval at n=100000 |
+| `2.56-2.87x` | `bench/select.jl` — the chosen value stored where it outlives the loop, both sizes |
+| `2.48-2.92` | `bench/select.jl` — the intervals at n=10000, across the first sweep and the three replications |
+| `2.30-3.09` | `bench/select.jl` — the intervals at n=100000, across the first sweep and the three replications |
 | `6` | `bench/select.jl` — the whole sweep |
 | `7.89x` | `bench/chained.jl` — xs.map(f).filter(g) against one fused pass at n=1000, construction counted |
 | `7.41-8.41` | `bench/chained.jl` — the interval of that cell |
