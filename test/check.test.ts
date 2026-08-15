@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs';
 import path from 'node:path';
+import { CITATIONS, derive, markdown, withoutBlock } from '../lib/derive.ts';
+import { N } from '../lib/numbers.ts';
 import { load, program } from '../lib/ts.ts';
 import { scan, type Mark } from '../lib/scan.ts';
 import { check, resolveDisabled } from '../lib/rules.ts';
@@ -169,8 +172,8 @@ test('a two-stage chain fires', () => {
   assert.deepStrictEqual(rules('twoStages'), ['chained-allocation']);
 });
 
-// One stage allocates once. That is the baseline the 7.64x was measured
-// against, so firing here would contradict the measurement.
+// One stage allocates once. That is the baseline the map-then-filter cell was
+// measured against, so firing here would contradict the measurement.
 test('a single map stays silent', () => {
   assert.deepStrictEqual(rules('oneStage'), []);
 });
@@ -359,6 +362,32 @@ test('the report says how many findings were suppressed and by what', () => {
 test('a finding prints the defects its rule carries', () => {
   const out = render(root, [{ mark: markFor('drop'), findings: rawFindings('drop') }]);
   assert.match(out, /known defect: TC-9 — rules fire outside the conditions their own evidence establishes/);
+});
+
+// The published numbers. A ratio used to be typed into `EVIDENCE`, into a spec
+// table and into README prose, and the three contradicted each other twice in
+// one day. Now every one of them is derived from the `.jl` rows, and this test
+// is what makes that true rather than intended: re-derive from the data, and
+// fail if the generated module, the generated README block, or the prose that
+// quotes a number has fallen behind it. `make numbers` is the fix.
+
+test('every published number is what its own data file says', () => {
+  assert.deepStrictEqual(derive(root), N, 'lib/numbers.ts is stale — run `make numbers`');
+
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  assert.ok(
+    readme.includes(markdown(root)),
+    "README.md's generated block is stale — run `make numbers`"
+  );
+
+  // The prose quotes some of these in sentences. Checked with the generated
+  // block cut out, or the block would only be matching itself, and with the
+  // typographic dash normalised, because prose uses one and code does not.
+  const prose = withoutBlock(readme).replace(/[–—]/g, '-');
+  for (const [key, c] of Object.entries(CITATIONS)) {
+    if (!c.readme) continue;
+    assert.ok(prose.includes(N[key]), `README prose no longer quotes ${key} = ${N[key]}`);
+  }
 });
 
 // The end-to-end examples. Each `.before.ts` is a function a library ships and

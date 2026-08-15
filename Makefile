@@ -1,4 +1,4 @@
-.PHONY: test lint check v8-check bench bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-dispatch bench-delete bench-arrays bench-tc11 example meme meme-png clean
+.PHONY: test lint check v8-check numbers bench bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-dispatch bench-delete bench-arrays bench-tc11 example meme meme-png clean
 
 test:
 	node --test test/check.test.ts
@@ -13,6 +13,11 @@ check:
 # non-zero when v8src/ is missing rather than passing quietly.
 v8-check:
 	node bench/v8-check.js
+
+# Every published ratio, re-derived from the .jl sweeps into lib/numbers.ts and
+# README's generated block. `make test` fails when they are out of date.
+numbers:
+	node lib/derive.ts --write
 
 bench:
 	node bench/run.js shapes

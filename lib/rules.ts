@@ -1,6 +1,7 @@
 import type * as TS from 'typescript';
 import type { Ts } from './ts.ts';
 import { at, type Body, type Mark, type Site } from './scan.ts';
+import { N } from './numbers.ts';
 
 export interface Evidence {
   cost: string;
@@ -35,12 +36,13 @@ export interface Finding extends Site {
 export const EVIDENCE: Record<string, Evidence> = {
   'megamorphic-elements': {
     cost:
-      '3.6-10.6x on reads across L1, L2 and L3; 1.25-3.52x once construction is counted at ' +
-      'L1 and L2, where allocation swamps the load, and nothing at RAM size — 1.05-1.20x ' +
-      'there, flat from two shapes to five, each cell replicated three times',
-    source:
-      'bench/shapes-calibrated.jl, 24 cells, 20 pairs each, the four at RAM size ' +
+      `${N['elem.reads']} on reads across L1, L2 and L3; ${N['elem.constr.l1l2']} once ` +
+      'construction is counted at L1 and L2, where allocation swamps the load, and nothing ' +
+      `at RAM size — ${N['elem.constr.l3']} there, flat from two shapes to five, each cell ` +
       'replicated three times',
+    source:
+      `bench/shapes-calibrated.jl, ${N['elem.cells']} cells, 20 pairs each, the four at RAM ` +
+      'size replicated three times',
     silent:
       'two to four shapes cost 1.2-2.0x on reads — real, and measured, but an order of ' +
       'magnitude below the fifth, which is why the rule starts there and not earlier',
@@ -48,15 +50,17 @@ export const EVIDENCE: Record<string, Evidence> = {
   },
   'megamorphic-dispatch': {
     cost:
-      '14.6-20.0x on reads across L1, L2 and L3 when the method is on a prototype — the ' +
-      'sharpest threshold in the project, 1.56x at four shapes and 19.37x at five; ' +
-      '6.9-8.3x when the method is one shared function held as an own property; ' +
-      '1.9-5.5x at L1 and L2 once construction is counted, where the constructor is a ' +
-      'second polymorphic site both sides pay, and 1.46-1.94x at RAM size against ' +
-      '0.93-1.20x at two to four shapes, each of those cells replicated three times',
-    source:
-      'bench/dispatch.jl, 80 cells, 20 pairs each, the ten at RAM size replicated ' +
+      `${N['disp.proto.reads']} on reads across L1, L2 and L3 when the method is on a ` +
+      `prototype — the sharpest threshold in the project, ${N['disp.proto.four']} at four ` +
+      `shapes and ${N['disp.proto.five']} at five; ${N['disp.shared.reads']} when the method ` +
+      `is one shared function held as an own property; ${N['disp.constr.l1l2']} at L1 and L2 ` +
+      'once construction is counted, where the constructor is a second polymorphic site both ' +
+      `sides pay, and ${N['disp.constr.l3.five']} at RAM size against ` +
+      `${N['disp.constr.l3.four']} at two to four shapes, each of those cells replicated ` +
       'three times',
+    source:
+      `bench/dispatch.jl, ${N['disp.cells']} cells, 20 pairs each, the ten at RAM size ` +
+      'replicated three times',
     silent:
       'four shapes cost 1.16-1.56x on a prototype method and 1.29-2.21x on a shared one — ' +
       'an order of magnitude below the fifth, which is why the rule starts there; and the ' +
@@ -68,11 +72,12 @@ export const EVIDENCE: Record<string, Evidence> = {
   },
   'accumulating-spread': {
     cost:
-      'array spread 156-177x at n=1000 and 1750-2011x at n=10000 over three replications ' +
-      '(two earlier sweeps read 1877x and 2348x); acc.concat(v) 779x at n=1000 ' +
-      '(CI 733-821); object spread 188-203x and Object.assign({}, acc, …) 846-875x at ' +
-      'n=500, three replications each — the ratio grows with n, because the work is ' +
-      'quadratic',
+      `array spread ${N['spread.array.n1000']} at n=1000 and ${N['spread.array.n10000']} at ` +
+      'n=10000 over three replications (two earlier sweeps read ' +
+      `${N['spread.array.n10000.earlier']}); acc.concat(v) ${N['spread.concat']} at n=1000 ` +
+      `(CI ${N['spread.concat.ci']}); object spread ${N['spread.object']} and ` +
+      `Object.assign({}, acc, …) ${N['spread.assign']} at n=500, three replications each — ` +
+      'the ratio grows with n, because the work is quadratic',
     source:
       'bench/spread.jl and bench/spread-object.jl, 20 pairs per cell, the three ' +
       'cells quoted as ranges replicated three times',
@@ -90,9 +95,9 @@ export const EVIDENCE: Record<string, Evidence> = {
   },
   'allocating-select': {
     cost:
-      '2.65-2.73x when the chosen value is stored somewhere that outlives the loop ' +
-      '(CI 2.48-2.81 at n=10000, 2.58-2.88 at n=100000)',
-    source: 'bench/select.jl, 6 cells, 20 pairs each',
+      `${N['select.heap']} when the chosen value is stored somewhere that outlives the loop ` +
+      `(CI ${N['select.heap.ci10k']} at n=10000, ${N['select.heap.ci100k']} at n=100000)`,
+    source: `bench/select.jl, ${N['select.cells']} cells, 20 pairs each`,
     silent:
       'on numbers there is no effect at all — 1.03x and 0.99x, both intervals spanning 1 — ' +
       'because Math.min allocates nothing; and escape analysis does not rescue the boxed ' +
@@ -100,13 +105,17 @@ export const EVIDENCE: Record<string, Evidence> = {
     defects: [],
   },
   'chained-allocation': {
+    // The 0.2 sweep read this cell at 7.64x and that number is not quoted here.
+    // It was measured under the single cold calibration probe TC-5 rejected,
+    // and its rows are in bench/chained-oldcal.jl as history, not as evidence.
     cost:
-      'map then filter 7.64x and 7.89x with construction counted at n=1000 across two ' +
-      'sweeps (CI 7.20-8.09 and 7.41-8.41); Object.entries(o).map(f) 3.59x at n=1000 ' +
-      '(CI 3.44-3.77) and 2.65x at n=10000 (CI 2.56-2.74), where the waste is a ' +
-      'two-element array per key on top of the array itself — every stage allocates a ' +
-      'whole array that the next stage immediately discards',
-    source: 'bench/chained.jl, 24 cells in the 0.3 sweep, 20 pairs each',
+      `map then filter ${N['chained.mapfilter']} with construction counted at n=1000 ` +
+      `(CI ${N['chained.mapfilter.ci']}); Object.entries(o).map(f) ` +
+      `${N['chained.entries.n1000']} at n=1000 (CI ${N['chained.entries.n1000.ci']}) and ` +
+      `${N['chained.entries.n10000']} at n=10000 (CI ${N['chained.entries.n10000.ci']}), ` +
+      'where the waste is a two-element array per key on top of the array itself — every ' +
+      'stage allocates a whole array that the next stage immediately discards',
+    source: `bench/chained.jl, ${N['chained.cells']} cells in the 0.3 sweep, 20 pairs each`,
     silent:
       'reading the finished array costs nothing (0.94-1.03x across all six forms), and at ' +
       'n=100000 map-then-filter falls to 1.47x, where memory bandwidth dominates the ' +
@@ -122,10 +131,12 @@ export const EVIDENCE: Record<string, Evidence> = {
   'closed-world': {
     cost:
       'an opaque call is an inlining boundary, and a callee V8 refuses to inline costs ' +
-      '4.42-4.79x in a hot loop (CI 4.18-4.70 at n=100000, 4.56-5.05 at n=1000)',
+      `${N['inline.reads']} in a hot loop (CI ${N['inline.ci100k']} at n=100000, ` +
+      `${N['inline.ci1000']} at n=1000)`,
     source:
-      'bench/inline.jl, 2 cells, 20 pairs each; the inlining decision itself confirmed ' +
-      'with --trace-turbo-inlining, which reports the padded callee as "cannot consider"',
+      `bench/inline.jl, ${N['inline.cells']} cells, 20 pairs each; the inlining decision ` +
+      'itself confirmed with --trace-turbo-inlining, which reports the padded callee as ' +
+      '"cannot consider"',
     silent:
       'this bounds what ONE unchecked call can cost, not what any particular one does cost ' +
       '— a small callee is inlined and the boundary costs nothing',
@@ -133,15 +144,17 @@ export const EVIDENCE: Record<string, Evidence> = {
   },
   'delete-property': {
     cost:
-      '12.6-17.1x per property load once the object is in dictionary mode (n=16384 and ' +
-      'n=262144, three replications each), and 12.4-12.9x against assigning undefined ' +
-      'instead — and 13.3-15.6x for ONE object with a single delete, at every working ' +
-      'set and in all nine of its sweeps, which overturns the 0x this project published ' +
-      'for that case since round 1; with construction counted 23.2-24.3x at n=256, where ' +
-      'the delete is paid on every object built, and 3.2-7.0x for the single object',
+      `${N['delete.rows']} per property load once the object is in dictionary mode (n=16384 ` +
+      `and n=262144, three replications each), and ${N['delete.vs.undefined']} against ` +
+      `assigning undefined instead — and ${N['delete.single']} for ONE object with a single ` +
+      'delete, at every working set and in all nine of its sweeps, which overturns the 0x ' +
+      'this project published for that case since round 1; with construction counted ' +
+      `${N['delete.rows.constr']} at n=256, where the delete is paid on every object built, ` +
+      `and ${N['delete.single.constr']} for the single object`,
     source:
-      'bench/delete.jl, 16 cells, 20 pairs each, every cell replicated three times; ' +
-      'three cells disagree across sweeps and one is void, and all four are in the file',
+      `bench/delete.jl, ${N['delete.cells']} cells, 20 pairs each, every cell replicated ` +
+      'three times; three cells disagree across sweeps and one is void, and all four are in ' +
+      'the file',
     silent:
       'assigning undefined instead of deleting is the fix and not the defect — it costs ' +
       '1.01-1.10x on reads with two of three intervals spanning 1, and 1.07-1.19x to ' +

@@ -1,0 +1,483 @@
+// Every ratio this project publishes, and the query over the sweep data that
+// produces it. Run it to regenerate `lib/numbers.ts`:
+//
+//   make numbers
+//
+// A number used to be typed out three times — in `EVIDENCE`, in a table, and in
+// README prose — and the three drifted apart twice in one day. Now there is one
+// place a number comes from: the `.jl` file it was measured into. `EVIDENCE`
+// interpolates the generated strings, README quotes them, and `make test` fails
+// when a quoted string is no longer what its rows say.
+//
+// What stays hand-written: `EVIDENCE.silent`. That clause is an argument about
+// where a rule must not fire, not a measurement, and the numbers inside it are
+// there to carry the argument.
+//
+// A citation names its rows exactly. Where a file holds more than one sweep of
+// the same cell — every runner appends, so it usually does — the discriminator
+// is part of the query and is stated in `cells`, because "which rows" is the
+// half of a published number that is easiest to get wrong.
+
+import fs from 'node:fs';
+import path from 'node:path';
+
+export interface Row {
+  variant: string;
+  mode: string;
+  n: number;
+  ratio?: number;
+  lo?: number;
+  hi?: number;
+  baseline?: string;
+  family?: string;
+  k?: number;
+  size?: string;
+  shapes?: number;
+  kernel?: string;
+  protocol?: string;
+  replicate?: number;
+  void?: boolean;
+}
+
+interface Citation {
+  file: string;
+  // Which rows, in words. This is the provenance a reader checks.
+  cells: string;
+  pick: (r: Row) => boolean;
+  // range  min..max of the ratio, the form a replicated or swept claim takes
+  // point  one cell's ratio
+  // points every matching ratio, ascending — "1877x and 2348x"
+  // ci     one cell's bootstrap interval, printed without the x
+  // count  how many distinct cells (variant, baseline, mode, n) matched
+  agg: 'range' | 'point' | 'points' | 'ci' | 'count';
+  // Decimal places. The default scales with magnitude; an override is here
+  // where the published string does not.
+  dp?: number;
+  // Quoted verbatim in README as well as in EVIDENCE.
+  readme?: boolean;
+}
+
+const fresh = (r: Row): boolean => r.replicate === undefined;
+const replicated = (r: Row): boolean => r.protocol === 'replicated';
+
+export const CITATIONS: Record<string, Citation> = {
+  // megamorphic-elements
+  'elem.reads': {
+    file: 'shapes-calibrated.jl',
+    cells: 'five shapes, reads only, L1 through RAM',
+    pick: (r) => r.mode === 'excl' && r.shapes === 5 && fresh(r),
+    agg: 'range',
+    dp: 1,
+  },
+  'elem.constr.l1l2': {
+    file: 'shapes-calibrated.jl',
+    cells: 'construction counted, L1 and L2, two to five shapes',
+    pick: (r) => r.mode === 'incl' && (r.size === 'L1' || r.size === 'L2') && fresh(r),
+    agg: 'range',
+  },
+  'elem.constr.l3': {
+    file: 'shapes-calibrated.jl',
+    cells: 'construction counted at RAM size, the four replicated cells only',
+    pick: (r) => r.mode === 'incl' && r.size === 'L3' && replicated(r),
+    agg: 'range',
+  },
+  'elem.cells': {
+    file: 'shapes-calibrated.jl',
+    cells: 'the whole sweep',
+    pick: () => true,
+    agg: 'count',
+  },
+
+  // megamorphic-dispatch
+  'disp.proto.reads': {
+    file: 'dispatch.jl',
+    cells: 'a method on a prototype, five and six shapes, reads only',
+    pick: (r) => r.family === 'cls' && r.mode === 'excl' && (r.k ?? 0) >= 5 && fresh(r),
+    agg: 'range',
+    dp: 1,
+    readme: true,
+  },
+  'disp.proto.four': {
+    file: 'dispatch.jl',
+    cells: 'a method on a prototype, four shapes, reads only at L1',
+    pick: (r) => r.family === 'cls' && r.mode === 'excl' && r.size === 'L1' && r.k === 4,
+    agg: 'point',
+  },
+  'disp.proto.five': {
+    file: 'dispatch.jl',
+    cells: 'a method on a prototype, five shapes, reads only at L1',
+    pick: (r) => r.family === 'cls' && r.mode === 'excl' && r.size === 'L1' && r.k === 5,
+    agg: 'point',
+    // Two places against the 1.56x it is quoted next to: the pair is the step.
+    dp: 2,
+  },
+  'disp.shared.reads': {
+    file: 'dispatch.jl',
+    cells: 'one shared function held as an own property, five and six shapes, reads only',
+    pick: (r) => r.family === 'shr' && r.mode === 'excl' && (r.k ?? 0) >= 5,
+    agg: 'range',
+    dp: 1,
+  },
+  'disp.constr.l1l2': {
+    file: 'dispatch.jl',
+    cells: 'five shapes with construction counted, prototype and own-property, L1 and L2',
+    pick: (r) =>
+      (r.family === 'cls' || r.family === 'lit') &&
+      r.mode === 'incl' &&
+      r.k === 5 &&
+      (r.size === 'L1' || r.size === 'L2') &&
+      fresh(r),
+    agg: 'range',
+    dp: 1,
+  },
+  'disp.constr.l3.five': {
+    file: 'dispatch.jl',
+    cells: 'a method on a prototype at RAM size, five and six shapes, the replicated cells',
+    pick: (r) =>
+      r.family === 'cls' && r.mode === 'incl' && r.size === 'L3' && (r.k ?? 0) >= 5 && replicated(r),
+    agg: 'range',
+  },
+  'disp.constr.l3.four': {
+    file: 'dispatch.jl',
+    cells: 'the same cells at two to four shapes',
+    pick: (r) =>
+      r.family === 'cls' && r.mode === 'incl' && r.size === 'L3' && (r.k ?? 0) <= 4 && replicated(r),
+    agg: 'range',
+  },
+  'disp.cells': {
+    file: 'dispatch.jl',
+    cells: 'the whole sweep',
+    pick: () => true,
+    agg: 'count',
+  },
+
+  // accumulating-spread
+  'spread.array.n1000': {
+    file: 'spread.jl',
+    cells: 'array spread against push at n=1000, construction counted, both sweeps',
+    pick: (r) => r.variant === 'spread' && r.mode === 'incl' && r.n === 1000,
+    agg: 'range',
+  },
+  'spread.array.n10000': {
+    file: 'spread.jl',
+    cells: 'the same at n=10000, the three replications',
+    pick: (r) => r.variant === 'spread' && r.mode === 'incl' && r.n === 10000 && replicated(r),
+    agg: 'range',
+  },
+  'spread.array.n10000.earlier': {
+    file: 'spread.jl',
+    cells: 'the two sweeps of that cell that predate the replication',
+    pick: (r) => r.variant === 'spread' && r.mode === 'incl' && r.n === 10000 && !replicated(r),
+    agg: 'points',
+  },
+  'spread.concat': {
+    file: 'spread.jl',
+    cells: 'acc.concat(v) against push at n=1000, construction counted',
+    pick: (r) => r.variant === 'concat' && r.mode === 'incl' && r.n === 1000,
+    agg: 'point',
+  },
+  'spread.concat.ci': {
+    file: 'spread.jl',
+    cells: 'the interval of that cell',
+    pick: (r) => r.variant === 'concat' && r.mode === 'incl' && r.n === 1000,
+    agg: 'ci',
+  },
+  'spread.object': {
+    file: 'spread-object.jl',
+    cells: 'object spread against keyed assignment at n=500, the three replications',
+    pick: (r) => r.variant === 'spread' && r.mode === 'incl' && r.n === 500 && replicated(r),
+    agg: 'range',
+    readme: true,
+  },
+  'spread.assign': {
+    file: 'spread-object.jl',
+    cells: 'Object.assign({}, acc, …) at n=500, the three replications',
+    pick: (r) => r.variant === 'assign-copy' && r.mode === 'incl' && r.n === 500 && replicated(r),
+    agg: 'range',
+  },
+
+  // allocating-select
+  'select.heap': {
+    file: 'select.jl',
+    cells: 'the chosen value stored where it outlives the loop, both sizes',
+    pick: (r) => r.mode === 'heap',
+    agg: 'range',
+  },
+  'select.heap.ci10k': {
+    file: 'select.jl',
+    cells: 'the interval at n=10000',
+    pick: (r) => r.mode === 'heap' && r.n === 10000,
+    agg: 'ci',
+  },
+  'select.heap.ci100k': {
+    file: 'select.jl',
+    cells: 'the interval at n=100000',
+    pick: (r) => r.mode === 'heap' && r.n === 100000,
+    agg: 'ci',
+  },
+  'select.cells': {
+    file: 'select.jl',
+    cells: 'the whole sweep',
+    pick: () => true,
+    agg: 'count',
+  },
+
+  // chained-allocation. The 0.3 sweep carries `kernel`; the rows before it are
+  // from the switch-dispatched kernel TurboFan miscompiled and are void.
+  'chained.mapfilter': {
+    file: 'chained.jl',
+    cells: 'xs.map(f).filter(g) against one fused pass at n=1000, construction counted',
+    pick: (r) =>
+      r.variant === 'chained' &&
+      r.baseline === 'fused' &&
+      r.mode === 'incl' &&
+      r.n === 1000 &&
+      r.kernel === 'dispatch-table',
+    agg: 'point',
+  },
+  'chained.mapfilter.ci': {
+    file: 'chained.jl',
+    cells: 'the interval of that cell',
+    pick: (r) =>
+      r.variant === 'chained' &&
+      r.baseline === 'fused' &&
+      r.mode === 'incl' &&
+      r.n === 1000 &&
+      r.kernel === 'dispatch-table',
+    agg: 'ci',
+  },
+  'chained.entries.n1000': {
+    file: 'chained.jl',
+    cells: 'Object.entries(o).map(f) against a for-in walk at n=1000, construction counted',
+    pick: (r) =>
+      r.variant === 'entriesmap' && r.mode === 'incl' && r.n === 1000 && r.kernel === 'dispatch-table',
+    agg: 'point',
+  },
+  'chained.entries.n1000.ci': {
+    file: 'chained.jl',
+    cells: 'the interval of that cell',
+    pick: (r) =>
+      r.variant === 'entriesmap' && r.mode === 'incl' && r.n === 1000 && r.kernel === 'dispatch-table',
+    agg: 'ci',
+  },
+  'chained.entries.n10000': {
+    file: 'chained.jl',
+    cells: 'the same at n=10000',
+    pick: (r) =>
+      r.variant === 'entriesmap' &&
+      r.mode === 'incl' &&
+      r.n === 10000 &&
+      r.kernel === 'dispatch-table',
+    agg: 'point',
+  },
+  'chained.entries.n10000.ci': {
+    file: 'chained.jl',
+    cells: 'the interval of that cell',
+    pick: (r) =>
+      r.variant === 'entriesmap' &&
+      r.mode === 'incl' &&
+      r.n === 10000 &&
+      r.kernel === 'dispatch-table',
+    agg: 'ci',
+  },
+  'chained.cells': {
+    file: 'chained.jl',
+    cells: 'the 0.3 sweep, which is every row the dispatch-table kernel wrote',
+    pick: (r) => r.kernel === 'dispatch-table',
+    agg: 'count',
+  },
+
+  // closed-world
+  'inline.reads': {
+    file: 'inline.jl',
+    cells: 'a callee past the inlining budget against the same callee under it',
+    pick: () => true,
+    agg: 'range',
+    readme: true,
+  },
+  'inline.ci100k': {
+    file: 'inline.jl',
+    cells: 'the interval at n=100000',
+    pick: (r) => r.n === 100000,
+    agg: 'ci',
+  },
+  'inline.ci1000': {
+    file: 'inline.jl',
+    cells: 'the interval at n=1000',
+    pick: (r) => r.n === 1000,
+    agg: 'ci',
+  },
+  'inline.cells': {
+    file: 'inline.jl',
+    cells: 'the whole sweep',
+    pick: () => true,
+    agg: 'count',
+  },
+
+  // delete-property
+  'delete.rows': {
+    file: 'delete.jl',
+    cells: 'one delete per object, reads only, at n=16384 and n=262144',
+    pick: (r) =>
+      r.variant === 'rowdel' &&
+      r.baseline === 'rowbase' &&
+      r.mode === 'excl' &&
+      (r.n === 16384 || r.n === 262144),
+    agg: 'range',
+    dp: 1,
+    readme: true,
+  },
+  'delete.vs.undefined': {
+    file: 'delete.jl',
+    cells: 'the same delete against assigning undefined instead, n=16384',
+    pick: (r) =>
+      r.variant === 'rowdel' && r.baseline === 'rowundef' && r.mode === 'excl' && r.n === 16384,
+    agg: 'range',
+    dp: 1,
+  },
+  'delete.single': {
+    file: 'delete.jl',
+    cells: 'one object with one delete, reads only, every size and every sweep',
+    pick: (r) => r.variant === 'shdel' && r.mode === 'excl',
+    agg: 'range',
+    dp: 1,
+    readme: true,
+  },
+  'delete.rows.constr': {
+    file: 'delete.jl',
+    cells: 'one delete per object with construction counted, n=256',
+    pick: (r) =>
+      r.variant === 'rowdel' && r.baseline === 'rowbase' && r.mode === 'incl' && r.n === 256,
+    agg: 'range',
+    dp: 1,
+  },
+  'delete.single.constr': {
+    file: 'delete.jl',
+    cells: 'the single object with construction counted, every size',
+    pick: (r) => r.variant === 'shdel' && r.mode === 'incl',
+    agg: 'range',
+    dp: 1,
+  },
+  'delete.cells': {
+    file: 'delete.jl',
+    cells: 'the whole sweep',
+    pick: () => true,
+    agg: 'count',
+  },
+};
+
+export function rows(root: string, file: string): Row[] {
+  const p = path.join(root, 'bench', file);
+  const text = fs.readFileSync(p, 'utf8').trim();
+  return text.split('\n').map((line) => JSON.parse(line) as Row);
+}
+
+// Two decimals below ten, one below a hundred, none above: the precision the
+// published strings carry, which is the precision the harness can defend.
+const places = (v: number): number => (v < 10 ? 2 : v < 100 ? 1 : 0);
+
+function render(key: string, c: Citation, matched: Row[]): string {
+  const live = matched.filter((r) => !r.void && r.ratio !== undefined);
+  if (c.agg === 'count') {
+    const cells = new Set(matched.map((r) => `${r.variant}|${r.baseline}|${r.mode}|${r.n}`));
+    return String(cells.size);
+  }
+  if (live.length === 0) throw new Error(`${key}: no rows match — the citation is stale`);
+  const fmt = (v: number, ref: number): string => v.toFixed(c.dp ?? places(ref));
+  if (c.agg === 'ci') {
+    if (live.length !== 1) throw new Error(`${key}: an interval needs one cell, matched ${live.length}`);
+    const r = live[0]!;
+    const hi = r.hi!;
+    return `${fmt(r.lo!, hi)}-${fmt(hi, hi)}`;
+  }
+  const ratios = live.map((r) => r.ratio!).sort((a, b) => a - b);
+  const top = ratios[ratios.length - 1]!;
+  if (c.agg === 'point') {
+    if (live.length !== 1) throw new Error(`${key}: a point needs one cell, matched ${live.length}`);
+    return `${fmt(top, top)}x`;
+  }
+  if (c.agg === 'points') return ratios.map((v) => `${fmt(v, top)}x`).join(' and ');
+  const lo = fmt(ratios[0]!, top);
+  const hi = fmt(top, top);
+  return lo === hi ? `${lo}x` : `${lo}-${hi}x`;
+}
+
+export function derive(root: string): Record<string, string> {
+  const cache = new Map<string, Row[]>();
+  const out: Record<string, string> = {};
+  for (const [key, c] of Object.entries(CITATIONS)) {
+    let all = cache.get(c.file);
+    if (!all) {
+      all = rows(root, c.file);
+      cache.set(c.file, all);
+    }
+    out[key] = render(key, c, all.filter(c.pick));
+  }
+  return out;
+}
+
+const HEADER = `// GENERATED by \`make numbers\` from the .jl sweeps. Do not edit by hand:
+// lib/derive.ts holds the query behind every string here, and \`make test\`
+// fails when this file and the data disagree.
+`;
+
+export function generate(root: string): string {
+  const values = derive(root);
+  const lines = Object.entries(CITATIONS).map(([key, c]) => {
+    return `  // ${c.file}: ${c.cells}\n  '${key}': '${values[key]}',`;
+  });
+  return `${HEADER}\nexport const N: Record<string, string> = {\n${lines.join('\n')}\n};\n`;
+}
+
+// README carries the same numbers, so README gets them from here too. The block
+// between these markers is written by `make numbers` and asserted by `make
+// test`; the prose around it quotes the same strings, and the test checks the
+// ones it quotes.
+const BEGIN = '<!-- generated: numbers -->';
+const END = '<!-- /generated -->';
+
+export function markdown(root: string): string {
+  const values = derive(root);
+  const rows_ = Object.entries(CITATIONS).map(
+    ([key, c]) => `| \`${values[key]}\` | \`bench/${c.file}\` — ${c.cells} |`
+  );
+  return [
+    BEGIN,
+    '',
+    '| Number | The rows it is |',
+    '|---|---|',
+    ...rows_,
+    '',
+    END,
+  ].join('\n');
+}
+
+// README's prose with the generated block cut out of it. The prose quotes some
+// of these numbers in sentences, and a check that the block contains them would
+// only ever be checking the block against itself.
+export function withoutBlock(text: string): string {
+  const from = text.indexOf(BEGIN);
+  const to = text.indexOf(END);
+  if (from === -1 || to === -1) throw new Error('README.md has lost its generated-numbers markers');
+  return text.slice(0, from) + text.slice(to + END.length);
+}
+
+export function spliceReadme(text: string, block: string): string {
+  const from = text.indexOf(BEGIN);
+  const to = text.indexOf(END);
+  if (from === -1 || to === -1) throw new Error('README.md has lost its generated-numbers markers');
+  return text.slice(0, from) + block + text.slice(to + END.length);
+}
+
+if (process.argv[2] === '--write') {
+  const root = path.join(import.meta.dirname, '..');
+  fs.writeFileSync(path.join(root, 'lib', 'numbers.ts'), generate(root));
+  const readmePath = path.join(root, 'README.md');
+  fs.writeFileSync(
+    readmePath,
+    spliceReadme(fs.readFileSync(readmePath, 'utf8'), markdown(root))
+  );
+  process.stdout.write(
+    `numbers: ${Object.keys(CITATIONS).length} citations -> lib/numbers.ts, README.md\n`
+  );
+}

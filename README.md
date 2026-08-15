@@ -185,6 +185,58 @@ make example              # three shipped library functions, before and after
 make v8-check             # every V8 citation, against the pinned checkout
 ```
 
+**Every number this project publishes, and the rows it is.** `make numbers`
+writes the table below, and the `EVIDENCE` strings the tool prints, straight
+from the `.jl` files. Nothing here is typed twice, and `make test` fails when a
+published number is no longer what its rows say.
+
+<!-- generated: numbers -->
+
+| Number | The rows it is |
+|---|---|
+| `3.6-10.6x` | `bench/shapes-calibrated.jl` — five shapes, reads only, L1 through RAM |
+| `1.25-3.52x` | `bench/shapes-calibrated.jl` — construction counted, L1 and L2, two to five shapes |
+| `1.05-1.20x` | `bench/shapes-calibrated.jl` — construction counted at RAM size, the four replicated cells only |
+| `24` | `bench/shapes-calibrated.jl` — the whole sweep |
+| `14.6-20.0x` | `bench/dispatch.jl` — a method on a prototype, five and six shapes, reads only |
+| `1.56x` | `bench/dispatch.jl` — a method on a prototype, four shapes, reads only at L1 |
+| `19.37x` | `bench/dispatch.jl` — a method on a prototype, five shapes, reads only at L1 |
+| `6.9-8.2x` | `bench/dispatch.jl` — one shared function held as an own property, five and six shapes, reads only |
+| `1.9-5.5x` | `bench/dispatch.jl` — five shapes with construction counted, prototype and own-property, L1 and L2 |
+| `1.46-1.94x` | `bench/dispatch.jl` — a method on a prototype at RAM size, five and six shapes, the replicated cells |
+| `0.93-1.20x` | `bench/dispatch.jl` — the same cells at two to four shapes |
+| `80` | `bench/dispatch.jl` — the whole sweep |
+| `156-177x` | `bench/spread.jl` — array spread against push at n=1000, construction counted, both sweeps |
+| `1750-2011x` | `bench/spread.jl` — the same at n=10000, the three replications |
+| `1877x and 2348x` | `bench/spread.jl` — the two sweeps of that cell that predate the replication |
+| `779x` | `bench/spread.jl` — acc.concat(v) against push at n=1000, construction counted |
+| `733-821` | `bench/spread.jl` — the interval of that cell |
+| `188-203x` | `bench/spread-object.jl` — object spread against keyed assignment at n=500, the three replications |
+| `846-875x` | `bench/spread-object.jl` — Object.assign({}, acc, …) at n=500, the three replications |
+| `2.65-2.73x` | `bench/select.jl` — the chosen value stored where it outlives the loop, both sizes |
+| `2.48-2.81` | `bench/select.jl` — the interval at n=10000 |
+| `2.58-2.88` | `bench/select.jl` — the interval at n=100000 |
+| `6` | `bench/select.jl` — the whole sweep |
+| `7.89x` | `bench/chained.jl` — xs.map(f).filter(g) against one fused pass at n=1000, construction counted |
+| `7.41-8.41` | `bench/chained.jl` — the interval of that cell |
+| `3.59x` | `bench/chained.jl` — Object.entries(o).map(f) against a for-in walk at n=1000, construction counted |
+| `3.44-3.77` | `bench/chained.jl` — the interval of that cell |
+| `2.65x` | `bench/chained.jl` — the same at n=10000 |
+| `2.56-2.74` | `bench/chained.jl` — the interval of that cell |
+| `24` | `bench/chained.jl` — the 0.3 sweep, which is every row the dispatch-table kernel wrote |
+| `4.42-4.79x` | `bench/inline.jl` — a callee past the inlining budget against the same callee under it |
+| `4.18-4.70` | `bench/inline.jl` — the interval at n=100000 |
+| `4.56-5.05` | `bench/inline.jl` — the interval at n=1000 |
+| `2` | `bench/inline.jl` — the whole sweep |
+| `12.6-17.1x` | `bench/delete.jl` — one delete per object, reads only, at n=16384 and n=262144 |
+| `12.4-12.9x` | `bench/delete.jl` — the same delete against assigning undefined instead, n=16384 |
+| `13.3-15.6x` | `bench/delete.jl` — one object with one delete, reads only, every size and every sweep |
+| `23.2-24.3x` | `bench/delete.jl` — one delete per object with construction counted, n=256 |
+| `3.2-7.0x` | `bench/delete.jl` — the single object with construction counted, every size |
+| `16` | `bench/delete.jl` — the whole sweep |
+
+<!-- /generated -->
+
 Every observation runs in a fresh OS process. An in-process A/B test shares
 inline caches. That polluted the results and made an earlier round invalid.
 Each cell uses 20 paired runs. AB/BA randomisation swaps which version runs
@@ -364,8 +416,9 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
 ## Development
 
 ```sh
-make test    # 45 unit tests, including the must-stay-silent cases
+make test    # 46 unit tests, including the must-stay-silent cases
 make lint    # tsc --noEmit
+make numbers # re-derive every published number from the .jl sweeps
 make check   # run the checker against demo/
 make example # the checker against examples/, then the end-to-end sweep
 ```
