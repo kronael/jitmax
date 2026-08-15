@@ -42,7 +42,7 @@ const source = Array.from({ length: n }, () =>
 
 // One function per variant, and the variant is resolved ONCE below. A `switch`
 // on the variant inside the timed region put a string comparison in every rep
-// and TurboFan miscompiled it — SPEC §3, and the reason this is a table.
+// and TurboFan miscompiled it — a rule of the repo, and why this is a table.
 const BUILD = {
   joined: () => {
     const parts = [];

@@ -33,7 +33,7 @@
 // lit, tgt and shr share the baseline `lit1`: one key order, one function.
 //
 // Two modes, because measuring one half reversed two verdicts in round 2
-// (SPEC §4 rule 11):
+// (protocol rule 11):
 //   excl — repeated reads of rows built once. What dispatch costs.
 //   incl — construction and a full read, every rep.
 'use strict';
@@ -84,7 +84,7 @@ const SHAPES = [
 
 // One function per family, resolved ONCE below. A `switch` on the variant
 // inside the timed region put a string comparison in every rep and TurboFan
-// miscompiled it — SPEC §3, and the reason this is a table.
+// miscompiled it — a rule of the repo, and the reason this is a table.
 const BUILD = {
   cls: () => {
     const r = rng(seed);

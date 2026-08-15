@@ -213,7 +213,7 @@ test('the split-map-join chain stays silent', () => {
 // does not: %HaveSameMap says every object taking the same path lands on the
 // SAME final map, so the load site is monomorphic and there is no polymorphism
 // to pay for. Measured, the pattern costs 1.21-1.34x on reads at L1 and L2 —
-// inside the 1.0-1.7x band SPEC §11 records this harness cannot replicate.
+// inside the 1.0-1.7x band this harness has twice failed to replicate.
 test('a property added after construction stays silent', () => {
   assert.deepStrictEqual(rules('addField'), []);
 });

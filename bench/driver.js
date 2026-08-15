@@ -1,13 +1,14 @@
-// The measurement protocol, shared by every workload: fresh process per
-// observation, AB/BA randomized within each pair, paired bootstrap 95%
-// interval, checksums compared inside every pair. SPEC §4 is the contract this
-// file implements; a workload script is only a kernel plus a printed
-// { ns_per_op, checksum, sink }.
+// The measurement protocol, shared by every workload. CLAUDE.md's numbered
+// protocol is the contract; this file implements it, and the rule numbers below
+// mark the code that enforces each one. A workload script is only a kernel plus
+// a printed { ns_per_op, checksum, sink } — see bench/kernel.js.
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Rule 4: twenty measured pairs, declared before the run — 40 processes per
+// cell. No opportunistic sampling when a result is close.
 const PAIRS = 20;
 const BOOT = 2000;
 const PIN = fs.existsSync('/usr/bin/taskset') ? ['/usr/bin/taskset', ['-c', '1']] : [null, []];
@@ -15,6 +16,9 @@ const PIN = fs.existsSync('/usr/bin/taskset') ? ['/usr/bin/taskset', ['-c', '1']
 let s = 12345;
 const rand = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
 
+// Rule 1: one fresh OS process per observation, one variant per process. An
+// in-process A/B shares inline caches, and that contamination invalidated a
+// whole round of this project.
 function once(script, variant, n, mode, reps, seed) {
   const args = [script, variant, n, mode, reps, seed].map(String);
   const [bin, pre] = PIN;
@@ -26,7 +30,8 @@ function once(script, variant, n, mode, reps, seed) {
 
 const TARGET_NS = 120e6;
 
-// Aim every timed region at ~120 ms so process startup is not the measurement.
+// Rule 3. Aim every timed region at ~120 ms so process startup is not the
+// measurement.
 // Each side is calibrated on its own: accumulating spread is two orders of
 // magnitude slower than its baseline, and one shared rep count would either
 // run for hours or leave the fast side unmeasurably short.
@@ -64,7 +69,7 @@ function calibrate(script, variant, n, mode) {
 // threshold on it would be anything but a constant nobody measured. What the
 // low-rep cells actually exposed is a run-to-run component this interval cannot
 // see — the bootstrap resamples pairs inside ONE sweep — so the answer is to run
-// the cell again and publish the spread across sweeps (SPEC §4 rule 13). The
+// the cell again and publish the spread across sweeps (rule 13). The
 // achieved region is returned and recorded so a reader can see what was bought
 // with how many repetitions.
 function assertRegion(label, samples, reps, n) {
@@ -99,19 +104,21 @@ function bootstrap(base, test) {
   return [percentile(ratios, 0.025), percentile(ratios, 0.975)];
 }
 
-export function cell({ script, baseline, variant, n, mode }) {
+function cell({ script, baseline, variant, n, mode }) {
   const repsBase = calibrate(script, baseline, n, mode);
   const repsTest = calibrate(script, variant, n, mode);
   const base = [];
   const test = [];
   for (let p = 0; p < PAIRS; p++) {
     const seed = 1000 + p;
-    // AB on half the pairs, BA on the other half: order is a confound, and
-    // round 1 proved it is a large one.
+    // Rule 2: AB on half the pairs, BA on the other half, same seed to both.
+    // Order is a confound, and round 1 proved it is a large one.
     const first = rand() < 0.5;
     const a = () => once(script, baseline, n, mode, repsBase, seed);
     const b = () => once(script, variant, n, mode, repsTest, seed);
     const [ra, rb] = first ? [a(), b()] : [b(), a()].reverse();
+    // Rule 7: the checksum is compared inside every pair, so a variant that
+    // computes something else is a failed run rather than a fast one.
     if (ra.checksum !== rb.checksum) {
       throw new Error(`checksum mismatch at ${variant} / n=${n} / ${mode}`);
     }
@@ -122,7 +129,7 @@ export function cell({ script, baseline, variant, n, mode }) {
   const regionTest = assertRegion(`${variant} / n=${n} / ${mode}`, test, repsTest, n);
   const mean = (v) => v.reduce((x, y) => x + y, 0) / v.length;
   const [lo, hi] = bootstrap(base, test);
-  // Raw per-pair observations ship with the aggregate. Without them a reader
+  // Rule 5. Raw per-pair observations ship with the aggregate. Without them a reader
   // cannot recompute the interval, and "rerunnable" is the whole claim. The
   // achieved region in ms travels with the rep count that bought it: 120 ms
   // reached in two passes and 120 ms reached in three hundred are different
@@ -160,7 +167,7 @@ export function cellOrVoid(opts) {
   }
 }
 
-// SPEC §4 rule 13. The bootstrap interval is over the 20 pairs of ONE sweep, so
+// Rule 13. The bootstrap interval is over the 20 pairs of ONE sweep, so
 // it sees the noise between two processes and is blind to anything that varies
 // between two sweeps — calibration landing on a different rep count, a heap
 // that grew differently, a machine that is not the machine it was ten minutes

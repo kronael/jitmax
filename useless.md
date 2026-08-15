@@ -1,5 +1,13 @@
 # tierlock is useless — kill it
 
+> **Provenance note, 2026-08-15.** The documents this review cites — the spec,
+> the design and the product-design notes — were deleted when the specs came out
+> of the repository ("remove all specs, focus on finishing the tool"). Their
+> quotations and line numbers below are left exactly as they were written and
+> resolve against git history. What replaced them: `CLAUDE.md` carries the
+> measurement protocol, `lib/derive.ts` derives every published number from the
+> `.jl` sweeps, and README carries the V8 citation table.
+
 Adversarial review of `SPEC.md` (2026-08-09). Every runtime claim below was
 tested on this machine: Node v22.23.2, V8 12.4.254.21. Probe scripts:
 `/tmp/claude-1001/-home-onvos-sandbox-turbo/a9300ef7-fedd-451c-9e70-d6227b7de3be/scratchpad/p1_status.js`

@@ -1,8 +1,8 @@
-// Workload for boxed-elements. The rule ships 1.45-1.89x on reads and
-// 2.36-3.28x with construction, cited to `bench-arrays.md round 2, suite A` —
-// a document whose Results section reads, in full, "(filled in after the runs;
-// raw observations in `bench/results.jsonl`)". Neither that file nor the
-// kernels it named were ever written (BUGS TC-14). This is the sweep.
+// Workload for boxed-elements. The rule shipped 1.45-1.89x on reads and
+// 2.36-3.28x with construction, cited to a benchmark write-up whose Results
+// section read, in full, "(filled in after the runs; raw observations in
+// `bench/results.jsonl`)". Neither that file nor the kernels it named were ever
+// written, and the write-up is gone (BUGS TC-14). This is the sweep.
 //
 // One kernel, `s += a[i]`, over five arrays holding the SAME doubles in the
 // same order. Only the elements kind varies:
@@ -39,7 +39,7 @@ const maybeString = (v) => (STRINGY ? String(v) : v);
 
 // One function per variant, resolved ONCE below. A `switch` on the variant
 // inside the timed region put a string comparison in every rep and TurboFan
-// miscompiled it — SPEC §3, and the reason this is a table.
+// miscompiled it — a rule of the repo, and the reason this is a table.
 const BUILD = {
   double: () => {
     const r = rng(seed);
@@ -94,7 +94,8 @@ const sum = (a) => {
 };
 
 // `kinds` is a diagnostic and never an evidence run: it needs
-// --allow-natives-syntax, which SPEC §4.8 forbids in a measured process. The
+// --allow-natives-syntax, which protocol rule 8 forbids in a measured process.
+// The
 // natives go through a direct eval so this file still parses without the flag.
 //   node --allow-natives-syntax bench/arrays.js unionnum 8 kinds 1 1
 if (mode === 'kinds') {

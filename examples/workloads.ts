@@ -26,9 +26,9 @@
 // results forces a real load per iteration on both sides. 64 is the size of a
 // page of rows, which is the shape the caller of any of these three is in.
 
-export type Cfg = Record<string, any>;
+type Cfg = Record<string, any>;
 
-export const BATCH = 64;
+const BATCH = 64;
 
 const lcg = (seed: number): (() => number) => {
   let s = seed;
@@ -47,7 +47,7 @@ const hash = (key: PropertyKey): number => {
 // than a saving. Every intermediate is reduced under 10^6 before it is
 // multiplied, so the sum stays an exact integer and a real difference cannot
 // round away.
-export const digest = (v: unknown): number => {
+const digest = (v: unknown): number => {
   if (typeof v === 'number') return Number.isFinite(v) ? Math.round(v * 1000) % 1000003 : 7;
   if (typeof v === 'string') return hash(v);
   if (typeof v === 'boolean') return v ? 1 : 2;

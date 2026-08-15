@@ -1,5 +1,13 @@
 # Turbocharge is bullshit: a second autopsy
 
+> **Provenance note, 2026-08-15.** The documents this review cites — the spec,
+> the design and the product-design notes — were deleted when the specs came out
+> of the repository ("remove all specs, focus on finishing the tool"). Their
+> quotations and line numbers below are left exactly as they were written and
+> resolve against git history. What replaced them: `CLAUDE.md` carries the
+> measurement protocol, `lib/derive.ts` derives every published number from the
+> `.jl` sweeps, and README carries the V8 citation table.
+
 ## Verdict
 
 Turbocharge does not measure whether code is hot, does not observe V8 inline caches, does not identify runtime hidden classes, does not test the user’s workload, and does not demonstrate an application-level speedup.

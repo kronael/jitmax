@@ -46,7 +46,7 @@
 //          count, so the gap between them is the dictionary transition alone.
 //
 // Three modes, because construction and reads answer different questions and
-// measuring one half reversed two verdicts in round 2 (SPEC §4 rule 11):
+// measuring one half reversed two verdicts in round 2 (protocol rule 11):
 //   build — construction only, consumed by one field of one row.
 //   excl  — repeated reads of rows built once. What the FINISHED objects cost.
 //   incl  — construction and a full read, every rep.
@@ -85,7 +85,7 @@ const KEYS = ['k0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9', 'k10',
 
 // One function per variant, resolved ONCE below. A `switch` on the variant
 // inside the timed region put a string comparison in every rep and TurboFan
-// miscompiled it — SPEC §3, and the reason this is a table.
+// miscompiled it — a rule of the repo, and the reason this is a table.
 const BUILD = {
   literal: () => {
     const r = rng(seed);

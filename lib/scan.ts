@@ -4,7 +4,7 @@ import type { Ts } from './ts.ts';
 // Calls that TurboFan lowers to inline machine code. Reaching one of these is
 // not a hole in the promise. Anything not listed here is user code, and the
 // promise stops at its edge until it is annotated too.
-export const PRIMITIVES = new Set([
+const PRIMITIVES = new Set([
   'Math.abs', 'Math.acos', 'Math.asin', 'Math.atan', 'Math.atan2', 'Math.cbrt',
   'Math.ceil', 'Math.clz32', 'Math.cos', 'Math.cosh', 'Math.exp', 'Math.expm1',
   'Math.floor', 'Math.fround', 'Math.hypot', 'Math.imul', 'Math.log',

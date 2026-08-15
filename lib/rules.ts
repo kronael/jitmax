@@ -213,7 +213,7 @@ function arrayParams(
 // and it measured 0.96-1.08x over six cells and eighteen sweeps with seventeen
 // intervals spanning 1.0. Nothing static separates the array that will hold a
 // string from the one that will not, so there is no narrower trigger to retreat
-// to. SPEC §3 keeps the effect; the tool no longer reports it.
+// to. bench/arrays.jl keeps the effect; the tool no longer reports it.
 
 // V8's inline cache holds four maps. The fifth costs 3.6-10.6x on reads. Two
 // to four shapes cost 1.2-2.0x — measurable, and an order of magnitude

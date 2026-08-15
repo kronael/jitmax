@@ -1,6 +1,7 @@
-// Workload for delete-property. The rule ships 28-67x, and that number comes
-// from an ad-hoc probe in `options.md` taken before this harness existed
-// (BUGS TC-15). This file is the measurement that number should have had.
+// Workload for delete-property. The rule shipped 28-67x, and that number came
+// from an ad-hoc probe appendix in a product-design document, written before
+// this harness existed (BUGS TC-15). This file is the measurement it should
+// have had.
 //
 // The probe measured TWO populations and they disagreed, which is the whole
 // point and is reproduced here:
@@ -66,7 +67,7 @@ const ONE = {
 
 // One function per variant, resolved ONCE below. A `switch` on the variant
 // inside the timed region put a string comparison in every rep and TurboFan
-// miscompiled it — SPEC §3, and the reason this is a table.
+// miscompiled it — a rule of the repo, and the reason this is a table.
 const BUILD = {
   rowbase: () => {
     const r = rng(seed);
@@ -102,7 +103,8 @@ const read = (rows) => {
 };
 
 // `kinds` is a diagnostic and never an evidence run: it needs
-// --allow-natives-syntax, which SPEC §4.8 forbids in a measured process. The
+// --allow-natives-syntax, which protocol rule 8 forbids in a measured process.
+// The
 // natives go through a direct eval so this file still parses without the flag.
 //   node --allow-natives-syntax bench/delete.js rowdel 4 kinds 1 1
 if (mode === 'kinds') {

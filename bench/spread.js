@@ -43,7 +43,7 @@ let t1;
 
 // 'excl' times the sum over an array built once; 'incl' times construction as
 // well. Every rule benchmark runs both halves — measuring one half reversed two
-// verdicts in round 2, and that is now rule 11 in SPEC §4.
+// verdicts in round 2, and that is now rule 11 of the protocol.
 if (mode === 'excl') {
   const acc = build();
   for (let w = 0; w < 3; w++) sink += sum(acc);

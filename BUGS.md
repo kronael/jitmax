@@ -68,7 +68,7 @@ kernel over an array of the same length (`sh` fills n slots with n references to
 one object), so the only variable is how many distinct receivers reach the load
 site, and the answer is that it does not matter.
 
-`options.md` guessed why its own singleton read 0x — *"TurboFan appears to
+The old probe guessed why its own singleton read 0x — *"TurboFan appears to
 specialize the constant object"* — and that guess is the explanation for the
 whole discrepancy. A bare loop over one object in a local has nothing the
 optimizer cannot see through; the fast side can be served by a load hoisted out
@@ -86,15 +86,15 @@ The fix the rule names holds: `o.tmp = undefined` costs 1.01-1.10x on reads
 to build, and `delete` measured against *that* rather than against never adding
 the property still costs 12.38-12.86x.
 
-EVIDENCE re-derived from the file, `make bench-delete` re-runs it, SPEC §3 has
-the table. TC-9's delete bullet goes with it — see TC-9 below.
+EVIDENCE is derived from the file by `lib/derive.ts`, and `make bench-delete`
+re-runs it. TC-9's delete bullet goes with it — see TC-9 below.
 
 ## TC-15 — the original entry (2026-08-14)
 
 `EVIDENCE['delete-property']` quotes **28-67x per property load**, sourced to
-`options.md round 3b`. That round is the probe appendix at the bottom of
-`options.md`: an ad-hoc median-of-runs on a noisy VM, taken before
-`bench/driver.js` existed.
+"round 3b" of the product-design document — the probe appendix at the bottom of
+it: an ad-hoc median-of-runs on a noisy VM, taken before `bench/driver.js`
+existed. That document is gone; `bench/delete.jl` is the sweep that replaced it.
 
 It has none of the six things every other shipped number has: fresh process per
 observation, AB/BA randomization, 20 paired runs, a bootstrap interval, a
@@ -152,7 +152,7 @@ applies is the case where nothing is wrong.
 
 The rule is gone from `lib/rules.ts`, TC-14 is gone from the `DEFECT` map,
 `demo/lib.ts` `mixed` is a must-stay-silent fixture with a test on it, and the
-effect stays published in SPEC §3 as a measured cost that ships no rule —
+effect stays published in `bench/arrays.jl` as a measured cost that ships no rule —
 the same shape as TC-12. The controls reproduce as well: holey 0.93-1.06x on
 reads (and faster to build, though that cell compares a preallocated array
 against a grown one and measures allocation strategy too), `Float64Array`
@@ -166,14 +166,15 @@ RAM size, where round 2 reported roughly 3x rather than 2x.
 Two defects in one rule, both found while tracing mechanisms to V8's source.
 
 **The benchmark is not in the repository.** `EVIDENCE['boxed-elements']` cites
-`bench-arrays.md round 2, suite A` for 1.45-1.89x on reads and 2.36-3.28x with
-construction. `bench-arrays.md` §Results says, in full: *"(filled in after the
-runs; raw observations in `bench/results.jsonl`)"*. There is no
-`bench/results.jsonl`, and the kernels that file names — `bench/arrays_kind.js`,
+"round 2, suite A" of a benchmark write-up for 1.45-1.89x on reads and
+2.36-3.28x with construction. That write-up's §Results says, in full:
+*"(filled in after the runs; raw observations in `bench/results.jsonl`)"*. There
+is no `bench/results.jsonl`, and the kernels it names — `bench/arrays_kind.js`,
 `bench/arrays_obj.js` — do not exist either. The numbers survive only as a table
-in SPEC §3. This is the project's central claim ("a rerunnable benchmark per
+in the spec. This is the project's central claim ("a rerunnable benchmark per
 rule") failing for the rule with the weakest number: one sweep, unreplicated,
-inside the 1.0-1.7x band SPEC §11 says this harness cannot resolve.
+inside the 1.0-1.7x band this harness has twice failed to resolve. Both
+documents are gone; `bench/arrays.jl` is the sweep that replaced them.
 
 **And V8's source does not support the trigger.** The elements kind is decided
 by the values actually stored — `Object::OptimalElementsKind`
@@ -186,8 +187,9 @@ rule, and the mechanism citation makes it concrete rather than theoretical.
 
 Not fixed, and the two halves have different remedies: the first needs a
 `bench/arrays.js` sweep written and run (and the rule's numbers re-derived or
-withdrawn); the second is unfixable statically and belongs to the runtime half
-in `DESIGN.md`, which observes elements kinds instead of inferring them.
+withdrawn); the second is unfixable statically and belongs to a runtime half
+this project does not have — one that asks V8 for the elements kind instead of
+inferring it from a declared type.
 
 Full write-up in the V8 table in `README.md`.
 
@@ -216,12 +218,12 @@ Two ways forward, neither taken:
   signature. That syntax is *correlated* with an own-property closure and does
   not determine it, so it would be shipping an inference the benchmark did not
   establish.
-- **Observe it at runtime.** This is what `DESIGN.md`'s runtime half is for: a
+- **Observe it at runtime.** This is what a runtime half would be for: a
   call site's targets are observable and its receiver maps are observable, and
   the two together are exactly the decomposition this sweep did by hand.
 
-The static rule stays at five, missing the case rather than guessing at it,
-and `SPEC.md` §3 states that in the rule's own evidence.
+The static rule stays at five, missing the case rather than guessing at it, and
+the rule's own `silent` clause says so.
 
 **V8's source now says the same thing, independently (2026-08-14).** A call
 site's feedback slot does not hold maps and has no polymorphic tier at all: it
@@ -292,10 +294,10 @@ Fixed three ways, none of them a threshold:
 - `driver.js` gains `replicate()` and `replicates()`. A cell is run **whole,
   three times**, and agreement is a value common to all three 95% intervals: a
   criterion the intervals supply rather than one this project picks.
-- SPEC §4 rule 13 is the contract, and it says in as many words that there is no
-  floor on the repetition count.
+- Protocol rule 13 (`CLAUDE.md`) is the contract, and it says in as many words
+  that there is no floor on the repetition count.
 
-**33 flagged cells, three sweeps each, 99 sweeps, `bench/run-tc11.js`.** Every
+**33 flagged cells, three sweeps each, 99 sweeps, `make bench-tc11`.** Every
 row is appended to the sweep's own `.jl` and carries `protocol: "replicated"`,
 so nothing that was published before is overwritten or hidden:
 
@@ -332,9 +334,10 @@ which cells they are allowed to quote at all. `megamorphic-elements`,
 
 Still open after this: the three cells this sweep left VOID under the region
 guard are void because their single repetition overshoots 240 ms, which is a
-different guard (TC-5) and is not touched here. `bench/run.js`,
-`bench/run-spread.js` and the rest still run one sweep per cell — rule 13 binds
-what is published, and only the flagged cells have been re-run under it.
+different guard (TC-5) and is not touched here. Every benchmark in
+`bench/run.js` that is not marked `replicated` still runs one sweep per cell —
+rule 13 binds what is published, and only the flagged cells have been re-run
+under it.
 
 The audit follows, then the original report.
 
@@ -387,7 +390,8 @@ demonstration: three near-identical constructions measured 1.64x, 0.91x and
 together. The bootstrap interval is over process-to-process variation at a fixed
 rep count and cannot see that variance.
 
-Those cells are withdrawn in SPEC §3 by hand. The guard should do it: a cell
+Those cells are withdrawn by hand in the rule's own evidence. The guard should
+do it: a cell
 whose rep count is below some floor is not a measurement, the same way a cell
 outside the region window is not. The floor is unmeasured — picking it needs a
 sweep of its own — so this is recorded rather than applied.
@@ -416,18 +420,18 @@ and a check that `usesDependency` does not double-report. Not applied: the
 closed-world report is a published contract and widening what it reports
 changes output for every existing user of the tool. Sign-off first.
 
-## ✅ FIXED 2026-08-10 — TC-1 — SPEC §4 and bench/run.js disagreed on protocol
+## ✅ FIXED 2026-08-10 — TC-1 — the protocol and bench/run.js disagreed
 
-§4 requires 10 discarded pilot pairs, 50 measured pairs, and published raw
+The protocol required 10 discarded pilot pairs, 50 measured pairs, and raw
 observations. `bench/run.js` runs 1 calibration process, 20 measured pairs, and
 writes only per-cell aggregates to `bench/shapes.jl`.
 
-`bench-arrays.md` already declared a sanctioned reduction to 20 pairs on
+The array sweep's write-up already declared a sanctioned reduction to 20 pairs on
 wall-clock grounds, so the pair count is defensible; the 1-vs-10 pilot gap and
 the missing raw observations are not. A reader cannot recompute the intervals
 from what is published, which is the one thing this project claims to offer.
 
-Found by: codex round 5. Fixed both ways: §4 now states the sanctioned
+Found by: codex round 5. Fixed both ways: the protocol now states the sanctioned
 reduction to 20 pairs and one calibration run, and requires any near-1.0 cell
 to be re-run at fifty before a rule ships on it; `bench/run.js` now writes the
 raw per-pair `base` and `test` arrays next to each aggregate, so the interval
@@ -439,7 +443,7 @@ Fixed in `bench/driver.js`: `calibrate()` now iterates the probe until two
 successive rep-count estimates agree within 20%, so the count is derived from
 warm cost; and `cell()` asserts the achieved timed region landed within 2x of
 the 120 ms target, throwing when it did not. A mis-sized cell can no longer be
-published as a result. SPEC §4 rule 3 states both.
+published as a result. Protocol rule 3 states both.
 
 `bench/spread.jl` was re-run under the fix and the old file kept as
 `bench/spread-precal.jl`. The re-run changed the published claims: the
@@ -468,7 +472,7 @@ Measured on `bench/chained.js`, n=1000, construction included:
 | fused | 91–128 ns/op | ~2.8 ns/op | 1294 | 14.4 ms |
 | chained | 1,000–20,600 ns/op | ~21 ns/op | 11 | **2.4 ms** |
 
-The target is 120 ms (`driver.js`, and SPEC §4 rule 3). The chained side got
+The target is 120 ms (`driver.js`, protocol rule 3). The chained side got
 2.4 ms. The cell reported **19.73x, CI 12.42-33.73**; sized from warm cost on
 both sides it is roughly **6-11x**. The probe is not merely biased, it is
 unstable — a 20x spread across five repeats decides the rep count from one
@@ -480,8 +484,8 @@ this project's standard, and its `excl` cells sit near 1.0 where this defect
 bites hardest.
 
 Not fixed inline: iterating the calibration changes the method behind every
-published figure and requires re-running `spread.jl` and re-deriving both
-the SPEC §3 tables and the shipped `EVIDENCE` strings. Proposal: iterate
+published figure and requires re-running `spread.jl` and re-deriving both the
+published tables and the shipped `EVIDENCE` strings. Proposal: iterate
 `calibrate()` until two successive probes agree within 20%, then assert the
 achieved region is within 2x of 120 ms and **fail the cell loudly** when it is
 not, so a mis-sized cell can never again be published as a result. Then re-run
@@ -518,8 +522,7 @@ stopped part-way lost all twelve cells it had measured — half an hour of
 machine time, gone, with the numbers visible in the log but not recorded
 anywhere a tool could read.
 
-Fixed: `bench/run.js`, `bench/run-spread.js` and `bench/run-chained.js` now
-`fs.appendFileSync` one row per cell, so a cell is durable the moment it is
+Fixed: the runners now `fs.appendFileSync` one row per cell, so a cell is durable the moment it is
 measured and an interrupted sweep keeps everything it finished.
 
 ## ✅ FIXED 2026-08-11 — TC-4 — two copies of the measurement protocol
@@ -634,8 +637,9 @@ factory can share fewer maps; one declared type built two ways can be two maps.
 
 Partially addressed: the finding now says "unions N object types", states the
 four-map mechanism, and leaves the judgement to the reader. The rule can still
-fire where no load site ever sees five maps. The real fix is the runtime half
-in `DESIGN.md`, which observes maps instead of inferring them.
+fire where no load site ever sees five maps. The real fix belongs to a runtime
+half this project does not have — one that observes the maps instead of
+inferring them.
 
 Found by: codex round 5, which argued for downgrading or deleting the rule.
 

@@ -17,7 +17,7 @@ import path from 'node:path';
 import { cellOrVoid, replicate, replicates, workload } from './driver.js';
 
 // Three sizes span L1 to RAM, because a cost that is about memory and a cost
-// that is about work look identical at one size (SPEC §4 rule 12 → CLAUDE.md).
+// that is about work look identical at one size (protocol rule 12).
 const WIDE = [256, 16384, 262144];
 const ENDS = [256, 262144];
 const MID = [16384];
@@ -461,7 +461,7 @@ for (const { script, out, opts, extra } of plan(bench)) {
     process.stdout.write(`${label(opts)}: ${line(r)}\n`);
     continue;
   }
-  // Three whole sweeps per published cell (SPEC §4 rule 13 → CLAUDE.md), each
+  // Three whole sweeps per published cell (protocol rule 13), each
   // written as it finishes. Agreement is a value common to all three intervals;
   // its absence says the sweeps cannot all be describing the same quantity.
   const runs = replicate({ script, ...opts }, (r) => {
