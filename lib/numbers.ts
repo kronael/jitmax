@@ -39,12 +39,12 @@ export const N: Record<string, string> = {
   'spread.concat.ci': '733-821',
   // spread.jl: the finished array read back, spread against push, both sizes and both sweeps — the older sweep, not re-measured under r2
   'spread.array.reads': '0.96-1.07x',
-  // spread-object.jl: the finished object read back, spread against keyed assignment, n=500 — the older sweep, not re-measured under r2
-  'spread.object.reads': '0.02-0.03x',
-  // spread-object.jl: object spread against keyed assignment at n=500, the three replications — the older sweep, not re-measured under r2
-  'spread.object': '188-203x',
-  // spread-object.jl: Object.assign({}, acc, …) at n=500, the three replications — the older sweep, not re-measured under r2
-  'spread.assign': '846-875x',
+  // spread-object.jl: the finished object read back, spread against keyed assignment, n=500
+  'spread.object.reads': '0.03x',
+  // spread-object.jl: object spread against keyed assignment at n=500, the three replications
+  'spread.object': '186-200x',
+  // spread-object.jl: Object.assign({}, acc, …) at n=500, the three replications
+  'spread.assign': '814-887x',
   // select.jl: the chosen value stored where it outlives the loop, both sizes
   'select.heap': '2.56-2.87x',
   // select.jl: the intervals at n=10000, across the first sweep and the three replications

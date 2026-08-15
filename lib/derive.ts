@@ -90,7 +90,7 @@ const current = (r: Row): boolean => r.runner === RUNNER;
 //
 // One list rather than a flag on each of forty citations: a sweep is finished
 // or it is not, and forty places to remember is forty places to forget.
-const REMEASURED = new Set(['inline.jl', 'select.jl']);
+const REMEASURED = new Set(['inline.jl', 'select.jl', 'spread-object.jl']);
 
 // Does this citation read rows the current runner did not write? Either because
 // its sweep is still on the old protocol, or because the citation is ABOUT a

@@ -220,9 +220,9 @@ published number is no longer what its rows say.
 | `779x` | `bench/spread.jl` — acc.concat(v) against push at n=1000, construction counted — the older sweep, not re-measured under r2 |
 | `733-821` | `bench/spread.jl` — every interval measured for that cell — the older sweep, not re-measured under r2 |
 | `0.96-1.07x` | `bench/spread.jl` — the finished array read back, spread against push, both sizes and both sweeps — the older sweep, not re-measured under r2 |
-| `0.02-0.03x` | `bench/spread-object.jl` — the finished object read back, spread against keyed assignment, n=500 — the older sweep, not re-measured under r2 |
-| `188-203x` | `bench/spread-object.jl` — object spread against keyed assignment at n=500, the three replications — the older sweep, not re-measured under r2 |
-| `846-875x` | `bench/spread-object.jl` — Object.assign({}, acc, …) at n=500, the three replications — the older sweep, not re-measured under r2 |
+| `0.03x` | `bench/spread-object.jl` — the finished object read back, spread against keyed assignment, n=500 |
+| `186-200x` | `bench/spread-object.jl` — object spread against keyed assignment at n=500, the three replications |
+| `814-887x` | `bench/spread-object.jl` — Object.assign({}, acc, …) at n=500, the three replications |
 | `2.56-2.87x` | `bench/select.jl` — the chosen value stored where it outlives the loop, both sizes |
 | `2.59-2.92` | `bench/select.jl` — the intervals at n=10000, across the first sweep and the three replications |
 | `2.30-3.09` | `bench/select.jl` — the intervals at n=100000, across the first sweep and the three replications |
@@ -312,7 +312,7 @@ cost is actually paid — by the caller, not inside the function:
 | zod `cleanEnum` | 256 | 1.02 / 0.98 / 0.96 | **0.98–1.03, REJECTED** |
 
 **The honesty condition.** An end-to-end number is far below the microbenchmark
-ratio, always. `accumulating-spread` cites 188–203x for an object spread at
+ratio, always. `accumulating-spread` cites 186–200x for an object spread at
 n=500; applied to radash's `assign` it moves the whole call 3.2–4.9x, because
 the function around that one line also allocates, recurses and branches. That
 gap is the most useful thing in this table: it is what a reader gets, and the
