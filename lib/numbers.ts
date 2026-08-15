@@ -37,6 +37,10 @@ export const N: Record<string, string> = {
   'spread.concat': '779x',
   // spread.jl: the interval of that cell
   'spread.concat.ci': '733-821',
+  // spread.jl: the finished array read back, spread against push, both sizes and both sweeps
+  'spread.array.reads': '0.96-1.07x',
+  // spread-object.jl: the finished object read back, spread against keyed assignment, n=500
+  'spread.object.reads': '0.02-0.03x',
   // spread-object.jl: object spread against keyed assignment at n=500, the three replications
   'spread.object': '188-203x',
   // spread-object.jl: Object.assign({}, acc, …) at n=500, the three replications
@@ -83,4 +87,6 @@ export const N: Record<string, string> = {
   'delete.single.constr': '3.2-7.0x',
   // delete.jl: the whole sweep
   'delete.cells': '16',
+  // example.jl: remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps
+  'ex.mergeall.reads': '0.11-0.12x',
 };

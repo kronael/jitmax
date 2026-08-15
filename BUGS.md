@@ -40,7 +40,7 @@ code is 1 with `0 findings` in the output, so the contract is tested where a CI
 gate reads it rather than in the library beneath it. README's exit-code
 paragraph and `CLAUDE.md` say the same thing.
 
-## TC-16 — the fix a rule prints can cost more than the defect (2026-08-15, open)
+## ✅ FIXED 2026-08-15 — TC-16 — the fix a rule printed could cost more than the defect
 
 Found by `bench/example.jl` — the first sweep in this project that applies a
 printed fix to a function somebody else shipped and measures the whole call.
@@ -81,6 +81,39 @@ edit: **owner signs off before anything ships**.
 
 Reproduce: `make example`; `node --allow-natives-syntax` over the pairs for the
 properties state. Data in `bench/example.jl`, all 36 sweeps.
+
+**Fixed 2026-08-15, signed off: the advice changed, the detection did not.**
+Both rules now print the condition their own measurement established, and
+neither fires anywhere it did not fire before.
+
+`accumulating-spread` prints **two** fix lines, because it always knew which of
+the four forms it matched and was throwing that away:
+
+- array (`[...acc, v]`, `acc.concat(v)`) — *"push onto acc instead of rebuilding
+  it — the finished array reads the same either way, 0.96-1.07x"*. No condition,
+  because the sweep found none: `bench/spread.jl`'s reads-only cells are
+  0.96-1.07x across both sizes and both sweeps.
+- object (`{ ...acc, k: v }`, `Object.assign({}, acc, …)`) — *"assign the key on
+  acc instead of rebuilding it — but that fills the result key by key, which
+  normalizes it: its reads measured 0.11-0.12x of the spread-built object's
+  (remeda mergeAll)"*.
+
+`delete-property` prints *"assign undefined where the key may stay present, or
+build the object without it — the rebuild helps at 12 keys and not at 48, where
+filling it key by key normalizes it too"*. The first branch is conditioned on
+what `omit` proved: it computes a different object when the key must go. The
+second carries the width the sweep bracketed.
+
+Both quoted ratios are derived from the `.jl` rows like every other published
+number — `spread.array.reads`, `spread.object.reads` and `ex.mergeall.reads` in
+`lib/derive.ts` — so a re-run that moves them moves the printed advice, and
+`make test` fails if the two ever disagree. Two tests assert the sentences.
+`EVIDENCE.silent` for `accumulating-spread` was reading its own 0.03x as
+evidence that the value left behind does not matter, when that number IS the fix
+reading slower; it now says so.
+
+What is NOT fixed, and stays with TC-9: neither rule can see the width or the
+reads at check time. The fix line states the condition; it does not evaluate it.
 
 ## ✅ FIXED 2026-08-15 — TC-15 — delete-property's number predates the current protocol
 

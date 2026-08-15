@@ -84,7 +84,11 @@ export const EVIDENCE: Record<string, Evidence> = {
     silent:
       'a copy no loop re-runs is not this rule: with construction excluded the same four ' +
       'forms measure 0.03-1.73x, two to three orders of magnitude below the loop, so the ' +
-      'cost is the re-copying and not the value it leaves behind; Object.assign(acc, …) ' +
+      'cost is the re-copying and not the value it leaves behind — but read the bottom of ' +
+      'that range the other way round, because it is the FIX being slower and not the ' +
+      `defect being cheap: an object filled key by key reads ${N['spread.object.reads']} of ` +
+      'the spread-built one, which is why the object form of the fix line carries a ' +
+      'condition and the array form does not (TC-16); Object.assign(acc, …) ' +
       'mutates in place and is the fix rather than the defect, so it stays silent too; and ' +
       'a STRING is not this rule at any n — s = s + x, s += x and s = s.concat(x) build in ' +
       '0.27-0.56x of a push-and-join and 0.74-0.97x of it once the read back is counted, ' +
@@ -313,6 +317,10 @@ const megamorphicDispatch: Rule = (ts, checker, body, add) => {
   });
 };
 
+// An accumulator is rebuilt as an array or as an object, and the fix for one is
+// not the fix for the other.
+type Form = 'array' | 'object';
+
 // Rebuilding an array or an object from a copy of itself copies every element
 // it already holds, so a loop that does it n times does quadratic work. Written
 // as a spread or as a call, the mechanism is the same. This is the only
@@ -322,16 +330,26 @@ const accumulatingSpread: Rule = (ts, checker, body, add) => {
   // Four forms copy the accumulator on every pass: [...acc, v],
   // { ...acc, [k]: v }, acc.concat(v), and Object.assign({}, acc, …). Each was
   // measured separately, because the constants differ by an order of magnitude.
-  const spreadsSelf = (name: string, outer: TS.Node): boolean => {
+  //
+  // Which form matched is carried out of here, because the FIX differs by form
+  // and the measurement says so (BUGS TC-16). An array pushed to reads exactly
+  // like an array spread into. An object filled key by key does not: V8
+  // normalizes it, and remeda's mergeAll got a faster build and reads an order
+  // of magnitude slower out of this rule's own advice.
+  const spreadsSelf = (name: string, outer: TS.Node): Form | undefined => {
     // `(acc, x) => ({ ...acc, k: x })` wraps the literal in parentheses.
     let node = outer;
     while (ts.isParenthesizedExpression(node)) node = node.expression;
     const isAcc = (e: TS.Node): boolean => ts.isIdentifier(e) && e.text === name;
     if (ts.isArrayLiteralExpression(node)) {
-      return node.elements.some((e) => ts.isSpreadElement(e) && isAcc(e.expression));
+      return node.elements.some((e) => ts.isSpreadElement(e) && isAcc(e.expression))
+        ? 'array'
+        : undefined;
     }
     if (ts.isObjectLiteralExpression(node)) {
-      return node.properties.some((pr) => ts.isSpreadAssignment(pr) && isAcc(pr.expression));
+      return node.properties.some((pr) => ts.isSpreadAssignment(pr) && isAcc(pr.expression))
+        ? 'object'
+        : undefined;
     }
     // The call forms. `acc.concat(v)` carries the accumulator as the RECEIVER
     // and `Object.assign({}, acc, …)` as an argument, so neither is visible to
@@ -349,10 +367,10 @@ const accumulatingSpread: Rule = (ts, checker, body, add) => {
       // is `any` there is nothing to separate: two measured-opposite mechanisms
       // wear this syntax, so an unknown receiver stays silent.
       if (callee.name.text === 'concat') {
-        return (
-          isAcc(callee.expression) &&
+        return isAcc(callee.expression) &&
           isArray(checker, checker.getTypeAtLocation(callee.expression))
-        );
+          ? 'array'
+          : undefined;
       }
       // Object.assign(acc, …) mutates acc and returns it — that is the O(n)
       // fix, not the defect. Only a copy counts, and a copy is the accumulator
@@ -362,18 +380,30 @@ const accumulatingSpread: Rule = (ts, checker, body, add) => {
         ts.isIdentifier(callee.expression) &&
         callee.expression.text === 'Object'
       ) {
-        return node.arguments.slice(1).some(isAcc);
+        return node.arguments.slice(1).some(isAcc) ? 'object' : undefined;
       }
     }
-    return false;
+    return undefined;
   };
 
-  const report = (node: TS.Node, name: string): void =>
+  // Where each half of the advice stops paying, in the words of the sweeps that
+  // established it. The array half has no condition — the finished array reads
+  // the same whichever way it was built. The object half does, and it is not a
+  // caveat: taking it cost remeda's caller more on reads than the quadratic
+  // build ever cost, and this rule shipped for months without saying so.
+  const FIX: Record<Form, string> = {
+    array: `push onto NAME instead of rebuilding it — the finished array reads the same either way, ${N['spread.array.reads']}`,
+    object:
+      'assign the key on NAME instead of rebuilding it — but that fills the result key by key, which ' +
+      `normalizes it: its reads measured ${N['ex.mergeall.reads']} of the spread-built object's (remeda mergeAll)`,
+  };
+
+  const report = (node: TS.Node, name: string, form: Form): void =>
     add({
       ...at(body.sf, node),
       rule: 'accumulating-spread',
       message: `${name} is rebuilt from a copy of itself; every pass copies everything it already holds`,
-      fix: `mutate ${name} in place — push, or assign the key — instead of rebuilding it`,
+      fix: FIX[form].replaceAll('NAME', name),
     });
 
   // The accumulator of a reduce is spread by the callback, so the loop that
@@ -387,25 +417,23 @@ const accumulatingSpread: Rule = (ts, checker, body, add) => {
       const acc = arg.parameters[0];
       if (!acc || !ts.isIdentifier(acc.name)) continue;
       const name = acc.name.text;
-      if (spreadsSelf(name, arg.body)) {
-        report(node, name);
+      const direct = spreadsSelf(name, arg.body);
+      if (direct) {
+        report(node, name, direct);
         continue;
       }
       walk(ts, arg.body, (n) => {
-        if (ts.isReturnStatement(n) && n.expression && spreadsSelf(name, n.expression)) {
-          report(node, name);
-        }
+        if (!ts.isReturnStatement(n) || !n.expression) return;
+        const form = spreadsSelf(name, n.expression);
+        if (form) report(node, name, form);
       });
     }
   };
 
   walkLoops(ts, body.node, (node, inLoop) => {
-    if (
-      reassignedInLoop(ts, node, inLoop) &&
-      ts.isIdentifier(node.left) &&
-      spreadsSelf(node.left.text, node.right)
-    ) {
-      report(node, node.left.text);
+    if (reassignedInLoop(ts, node, inLoop) && ts.isIdentifier(node.left)) {
+      const form = spreadsSelf(node.left.text, node.right);
+      if (form) report(node, node.left.text, form);
     }
     reduceCallback(node);
   });
@@ -511,6 +539,13 @@ const chainedAllocation: Rule = (ts, _checker, body, add) => {
 
 // delete is the one operation that moves an object to dictionary mode and does
 // not move back.
+//
+// The second half of the fix has a width, measured (BUGS TC-16). Applied to
+// es-toolkit's `omit`, building the object without the property made the
+// caller's reads 11x faster on a 12-key record and nothing at all on a 48-key
+// one — `%HasFastProperties` is false on BOTH sides there, because a wide
+// object filled key by key normalizes exactly as `delete` does. The rule cannot
+// see the width, so the fix line states it instead of pretending it away.
 const deleteProperty: Rule = (ts, _checker, body, add) => {
   walk(ts, body.node, (node) => {
     if (ts.isDeleteExpression(node)) {
@@ -518,7 +553,9 @@ const deleteProperty: Rule = (ts, _checker, body, add) => {
         ...at(body.sf, node),
         rule: 'delete-property',
         message: `delete ${node.expression.getText(body.sf)} puts its object in dictionary mode`,
-        fix: 'assign undefined, or build the object without the property',
+        fix:
+          'assign undefined where the key may stay present, or build the object without it — ' +
+          'the rebuild helps at 12 keys and not at 48, where filling it key by key normalizes it too',
       });
     }
   });

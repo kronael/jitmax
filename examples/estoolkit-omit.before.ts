@@ -13,7 +13,13 @@
 //       delete-property
 //         tmp/lib-estoolkit/src/object/omit.ts:23
 //         delete result[key] puts its object in dictionary mode
-//         fix: assign undefined, or build the object without the property
+//         fix: assign undefined where the key may stay present, or build the
+//         object without it — the rebuild helps at 12 keys and not at 48,
+//         where filling it key by key normalizes it too
+//
+// The 12 and the 48 in that line are this example's own two sizes (BUGS
+// TC-16). The rule printed the two branches with no width on either until the
+// pair below was measured at both.
 //
 // The cost this rule reports is paid by the CALLER, not inside `omit`: once the
 // returned object is in dictionary mode, every property load on it costs

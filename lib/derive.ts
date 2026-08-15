@@ -29,6 +29,7 @@ export interface Row {
   lo?: number;
   hi?: number;
   baseline?: string;
+  example?: string;
   family?: string;
   k?: number;
   size?: string;
@@ -181,6 +182,21 @@ export const CITATIONS: Record<string, Citation> = {
     cells: 'the interval of that cell',
     pick: (r) => r.variant === 'concat' && r.mode === 'incl' && r.n === 1000,
     agg: 'ci',
+  },
+  // The read half of both spread forms, which is what the `fix:` line costs a
+  // caller (BUGS TC-16). An array pushed to reads like an array spread into; an
+  // object filled key by key does not.
+  'spread.array.reads': {
+    file: 'spread.jl',
+    cells: 'the finished array read back, spread against push, both sizes and both sweeps',
+    pick: (r) => r.variant === 'spread' && r.mode === 'excl',
+    agg: 'range',
+  },
+  'spread.object.reads': {
+    file: 'spread-object.jl',
+    cells: 'the finished object read back, spread against keyed assignment, n=500',
+    pick: (r) => r.variant === 'spread' && r.mode === 'excl' && r.n === 500,
+    agg: 'range',
   },
   'spread.object': {
     file: 'spread-object.jl',
@@ -363,6 +379,17 @@ export const CITATIONS: Record<string, Citation> = {
     cells: 'the whole sweep',
     pick: () => true,
     agg: 'count',
+  },
+
+  // The end-to-end examples, where a printed `fix:` line was applied to
+  // somebody else's function and the whole call was timed. This one is here
+  // because a rule QUOTES it: the object form of accumulating-spread's fix
+  // makes the caller's reads slower, and the fix line has to say so (TC-16).
+  'ex.mergeall.reads': {
+    file: 'example.jl',
+    cells: "remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps",
+    pick: (r) => r.example === 'remeda-merge-all' && r.mode === 'excl',
+    agg: 'range',
   },
 };
 

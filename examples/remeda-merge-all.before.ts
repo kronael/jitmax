@@ -15,8 +15,14 @@
 //         tmp/lib-remeda/packages/remeda/src/mergeAll.ts:64
 //         out is rebuilt from a copy of itself; every pass copies everything
 //         it already holds
-//         fix: mutate acc in place — push, or assign the key — instead of
-//         rebuilding it
+//         fix: assign the key on out instead of rebuilding it — but that
+//         fills the result key by key, which normalizes it: its reads
+//         measured 0.11-0.12x of the spread-built object's (remeda mergeAll)
+//
+// That fix line quotes this example back at itself, and it should: the rule
+// printed "mutate acc in place" with no condition until this pair was measured
+// (BUGS TC-16). The after half is the fix; the clause after the dash is what
+// the fix cost.
 //
 // THE INPUT: `mergeAll(objects)` over a list of partial configuration objects,
 // which is what the function is for — remeda's own example is

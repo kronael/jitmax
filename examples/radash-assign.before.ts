@@ -10,8 +10,13 @@
 //         tmp/demo-real/src/object.ts:280
 //         acc is rebuilt from a copy of itself; every pass copies everything
 //         it already holds
-//         fix: mutate acc in place — push, or assign the key — instead of
-//         rebuilding it
+//         fix: assign the key on acc instead of rebuilding it — but that
+//         fills the result key by key, which normalizes it: its reads
+//         measured 0.11-0.12x of the spread-built object's (remeda mergeAll)
+//
+// The second half of that line is what this example and the remeda one bought
+// (BUGS TC-16): the rule used to print "mutate acc in place" with no condition
+// on it, and on remeda's `mergeAll` the condition is the whole result.
 //
 // `demo-real.md` is the full record of that run, including the three
 // false-positive classes it took to get down to this one finding.

@@ -8,7 +8,9 @@
 // `Object.keys` still lists it — so it does not compute what `omit` computes,
 // and the driver's per-pair checksum would throw rather than report a speedup.
 // That is the honest half of this example: the cheap fix is not a fix for this
-// function. What is left is "build the object without the property".
+// function. What is left is "build the object without it", and the finding now
+// says where that branch stops paying — 12 keys and not 48 — because of what
+// was measured here (BUGS TC-16).
 //
 // The membership test is a linear scan over `keys`, not a Set, on purpose. A
 // Set would take the loop from O(n·k) to O(n+k), and that is an improvement
@@ -29,8 +31,8 @@
 // At 48 keys that read advantage is GONE: 0.94-1.02x, an interval spanning 1.0
 // in all three sweeps, so the cell is rejected. `%HasFastProperties` says why —
 // false on both sides. Building a 46-key object one key at a time normalizes it
-// too, so the fix stops fixing the read somewhere between 12 keys and 48, and
-// nothing in the rule knows that.
+// too, so the fix stops fixing the read somewhere between 12 keys and 48. The
+// rule still cannot see the width — it says it instead.
 
 /** @turbocharge */
 export function omit<T extends Record<string, any>, K extends keyof T>(obj: T, keys: readonly K[]): Omit<T, K> {

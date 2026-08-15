@@ -68,7 +68,8 @@ turbocharge — 37 annotated functions, 14 findings
       demo/lib.ts:111
       delete o[k] puts its object in dictionary mode
       measured 12.6-17.1x per property load once the object is in dictionary mode … [bench/delete.jl]
-      fix: assign undefined, or build the object without the property
+      fix: assign undefined where the key may stay present, or build the object without it —
+      the rebuild helps at 12 keys and not at 48, where filling it key by key normalizes it too
       known defect: TC-9 — rules fire outside the conditions their own evidence establishes
 ```
 
@@ -79,7 +80,8 @@ Four things, and the second is the point:
   call and reported where the cost actually is.
 - **the measurement**, so you can judge whether it is worth your time, and
   re-run it yourself with `make bench-*`.
-- **the fix**, concretely, not "consider optimising".
+- **the fix**, concretely, not "consider optimising" — and where the fix itself
+  stops paying, wherever applying it to somebody else's function found a limit.
 - **what it could not check** — every call with no readable body is listed by
   name, and a walk that hits its limit prints `WALK TRUNCATED`, exits `1`, and
   is never reported as clean.
@@ -213,6 +215,8 @@ published number is no longer what its rows say.
 | `1877x and 2348x` | `bench/spread.jl` — the two sweeps of that cell that predate the replication |
 | `779x` | `bench/spread.jl` — acc.concat(v) against push at n=1000, construction counted |
 | `733-821` | `bench/spread.jl` — the interval of that cell |
+| `0.96-1.07x` | `bench/spread.jl` — the finished array read back, spread against push, both sizes and both sweeps |
+| `0.02-0.03x` | `bench/spread-object.jl` — the finished object read back, spread against keyed assignment, n=500 |
 | `188-203x` | `bench/spread-object.jl` — object spread against keyed assignment at n=500, the three replications |
 | `846-875x` | `bench/spread-object.jl` — Object.assign({}, acc, …) at n=500, the three replications |
 | `2.65-2.73x` | `bench/select.jl` — the chosen value stored where it outlives the loop, both sizes |
@@ -236,6 +240,7 @@ published number is no longer what its rows say.
 | `23.2-24.3x` | `bench/delete.jl` — one delete per object with construction counted, n=256 |
 | `3.2-7.0x` | `bench/delete.jl` — the single object with construction counted, every size |
 | `16` | `bench/delete.jl` — the whole sweep |
+| `0.11-0.12x` | `bench/example.jl` — remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps |
 
 <!-- /generated -->
 
@@ -310,16 +315,24 @@ size as the wins:
 - **`omit` at 48 keys rejects on reads** — 0.94–1.02x, an interval spanning 1.0
   in all three sweeps. `%HasFastProperties` is false on *both* sides: building a
   46-key object one key at a time normalizes it just as `delete` does. The fix
-  stops fixing the read somewhere between 12 keys and 48, and the rule has no
-  idea.
+  stops fixing the read somewhere between 12 keys and 48, and the rule still
+  cannot see the width — so the `fix:` line says it: *"the rebuild helps at 12
+  keys and not at 48, where filling it key by key normalizes it too"*.
 - **`mergeAll` at n=64 does not replicate** — 17.34x, 19.34x, 20.10x, with no
   value inside all three intervals. Under rule 13 that is not a published
   number, and it is printed here rather than dropped.
 - **`mergeAll` reads are 8x slower after the fix**, 0.11–0.12x at both sizes in
   all six sweeps. `Object.assign(out, item)` in a loop — the form this project's
   own evidence names as the fix — returns a `[DictionaryProperties]` object,
-  where the spread returns a `[FastProperties]` one. `accumulating-spread` fixes
-  a quadratic build and creates a per-load cost it never mentions.
+  where the spread returns a `[FastProperties]` one. `accumulating-spread` fixed
+  a quadratic build and created a per-load cost it never mentioned, so the rule
+  now prints a different fix for each form: pushing onto an **array** costs the
+  reader nothing (0.96-1.07x) and carries no condition, and the **object** form
+  says *"that fills the result key by key, which normalizes it: its reads
+  measured 0.11-0.12x of the spread-built object's"*. Same detection, honest
+  advice — radash's `assign` is the same fix with the reads coming out
+  1.58–2.08x *faster*, which is why it is a condition to check and not a rule to
+  apply. `BUGS.md` TC-16.
 
 **The whole survey, so the three examples are not three picks out of a hat.**
 No library produced nothing; ramda and just produced no pattern the three

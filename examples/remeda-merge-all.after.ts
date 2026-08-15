@@ -3,9 +3,9 @@
 // examples/remeda-merge-all.before.ts with turbocharge's fix applied, and
 // nothing else.
 //
-// The finding's fix is "mutate acc in place — push, or assign the key —
-// instead of rebuilding it". `Object.assign(out, item)` assigns exactly the
-// keys `{ ...item }` would have spread, own and enumerable, string and symbol,
+// The finding's fix is "assign the key on out instead of rebuilding it".
+// `Object.assign(out, item)` assigns exactly the keys
+// `{ ...item }` would have spread, own and enumerable, string and symbol,
 // so the result is the same object with the same insertion order. The project's
 // own evidence names this form as the fix rather than the defect: bench
 // /spread-object.jl measures `Object.assign(acc, …)` mutating in place as the
@@ -24,8 +24,9 @@
 // says `[FastProperties]`. Adding keys one at a time normalizes the object, and
 // every later property load on it pays dictionary cost — which is the same
 // mechanism `delete-property` fires on, arrived at through the fix for a
-// different rule. `accumulating-spread` fixes a quadratic build and says
-// nothing about the read it leaves behind.
+// different rule. `accumulating-spread` fixed a quadratic build and said
+// nothing about the read it left behind — until this pair. The rule's object
+// form now prints that clause, and cites this measurement in it (BUGS TC-16).
 
 /** @turbocharge */
 export function mergeAll(objects: readonly object[]): object {

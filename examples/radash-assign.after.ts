@@ -5,6 +5,11 @@
 // built from a copy of `acc` and assigns the key on `acc` instead, which is
 // what the finding's `fix:` line asks for word for word.
 //
+// The fix line warns that filling an object key by key can normalize it and
+// cost the caller's reads (BUGS TC-16). Here it did not: the reads got FASTER,
+// 1.93-2.08x and 1.58-1.71x. Both halves of that clause are in this directory,
+// which is why it is a condition to check and not a rule to apply.
+//
 // Everything else is left as radash ships it, including the IIFE, the commented
 // -out line, and the outer `{ ...initial, ...override }` — that one is a single
 // copy outside any loop, so the rule did not report it and improving it here

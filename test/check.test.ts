@@ -169,6 +169,31 @@ test('the concat form on a STRING stays silent', () => {
   assert.deepStrictEqual(rules('joinByConcat'), []);
 });
 
+// BUGS TC-16: the printed fix is a contract, and one sentence was wrong for
+// half the cases it was printed on. An array pushed to reads exactly like an
+// array spread into (0.96-1.07x); an object filled key by key is normalized,
+// and remeda's mergeAll bought a faster build and reads an order of magnitude
+// slower by following this rule. The two forms therefore print two fixes, and
+// the conditional one is the object.
+test('the fix differs by form: the array half is unconditional and the object half is not', () => {
+  const fixFor = (name: string): string => {
+    const f = rawFindings(name).find((x) => x.rule === 'accumulating-spread');
+    return f?.fix ?? assert.fail(`no accumulating-spread finding on ${name}`);
+  };
+  assert.match(fixFor('collect'), /^push onto acc /);
+  assert.doesNotMatch(fixFor('collect'), /normalizes/);
+  assert.match(fixFor('collectByConcat'), /^push onto acc /);
+  assert.match(fixFor('collectObject'), /^assign the key on acc .* normalizes it/);
+  assert.match(fixFor('collectByAssign'), /normalizes it/);
+});
+
+// The other half of TC-16, and the only place the width is stated: "build the
+// object without the property" was measured working at 12 keys and not at 48.
+test('the delete fix says where the rebuild stops paying', () => {
+  const f = rawFindings('drop').find((x) => x.rule === 'delete-property');
+  assert.match(f?.fix ?? '', /12 keys and not at 48/);
+});
+
 test('a two-stage chain fires', () => {
   assert.deepStrictEqual(rules('twoStages'), ['chained-allocation']);
 });
