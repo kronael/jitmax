@@ -70,7 +70,7 @@ export function appendOnce(rows: number[], extra: number[]): number[] {
   return acc;
 }
 
-/** Appending to a string is not the array copy: 0.27-0.54x of push-and-join. */
+/** Appending to a string is not the array copy: 0.27-0.56x of push-and-join. */
 /** @turbocharge */
 export function joinByPlus(parts: string[]): string {
   let s = '';

@@ -30,10 +30,12 @@ export const EVIDENCE: Record<string, Evidence> = {
   },
   'megamorphic-elements': {
     cost:
-      '3.6-10.6x on reads across L1, L2 and L3; 1.25-3.52x once construction is counted, ' +
-      'where allocation swamps the load — the RAM-sized construction cells are withdrawn ' +
-      'under TC-11, they ran at one and two repetitions',
-    source: 'bench/shapes-calibrated.jsonl, 24 cells, 20 pairs each',
+      '3.6-10.6x on reads across L1, L2 and L3; 1.25-3.52x once construction is counted at ' +
+      'L1 and L2, where allocation swamps the load, and nothing at RAM size — 1.05-1.20x ' +
+      'there, flat from two shapes to five, each cell replicated three times',
+    source:
+      'bench/shapes-calibrated.jsonl, 24 cells, 20 pairs each, the four at RAM size ' +
+      'replicated three times',
     silent:
       'two to four shapes cost 1.2-2.0x on reads — real, and measured, but an order of ' +
       'magnitude below the fifth, which is why the rule starts there and not earlier',
@@ -44,8 +46,11 @@ export const EVIDENCE: Record<string, Evidence> = {
       'sharpest threshold in the project, 1.56x at four shapes and 19.37x at five; ' +
       '6.9-8.3x when the method is one shared function held as an own property; ' +
       '1.9-5.5x at L1 and L2 once construction is counted, where the constructor is a ' +
-      'second polymorphic site both sides pay',
-    source: 'bench/dispatch.jsonl, 80 cells, 20 pairs each, none void',
+      'second polymorphic site both sides pay, and 1.46-1.94x at RAM size against ' +
+      '0.93-1.20x at two to four shapes, each of those cells replicated three times',
+    source:
+      'bench/dispatch.jsonl, 80 cells, 20 pairs each, the ten at RAM size replicated ' +
+      'three times',
     silent:
       'four shapes cost 1.16-1.56x on a prototype method and 1.29-2.21x on a shared one — ' +
       'an order of magnitude below the fifth, which is why the rule starts there; and the ' +
@@ -56,20 +61,24 @@ export const EVIDENCE: Record<string, Evidence> = {
   },
   'accumulating-spread': {
     cost:
-      'array spread 156-177x at n=1000 and 1877-2348x at n=10000 across two sweeps; ' +
-      'acc.concat(v) 779x at n=1000 (CI 733-821); object spread 197-210x at n=500; ' +
-      'Object.assign({}, acc, …) 815x at n=500 (CI 769-874) — the ratio grows with n, ' +
-      'because the work is quadratic',
-    source: 'bench/spread.jsonl and bench/spread-object.jsonl, 20 pairs per cell',
+      'array spread 156-177x at n=1000 and 1750-2011x at n=10000 over three replications ' +
+      '(two earlier sweeps read 1877x and 2348x); acc.concat(v) 779x at n=1000 ' +
+      '(CI 733-821); object spread 188-203x and Object.assign({}, acc, …) 846-875x at ' +
+      'n=500, three replications each — the ratio grows with n, because the work is ' +
+      'quadratic',
+    source:
+      'bench/spread.jsonl and bench/spread-object.jsonl, 20 pairs per cell, the three ' +
+      'cells quoted as ranges replicated three times',
     silent:
       'a copy no loop re-runs is not this rule: with construction excluded the same four ' +
       'forms measure 0.03-1.73x, two to three orders of magnitude below the loop, so the ' +
       'cost is the re-copying and not the value it leaves behind; Object.assign(acc, …) ' +
       'mutates in place and is the fix rather than the defect, so it stays silent too; and ' +
       'a STRING is not this rule at any n — s = s + x, s += x and s = s.concat(x) build in ' +
-      '0.27-0.54x of a push-and-join and 0.94-0.97x of it once the read back is counted, ' +
+      '0.27-0.56x of a push-and-join and 0.74-0.97x of it once the read back is counted, ' +
       'so all three BEAT the rewrite, because V8 appends into a cons-string (the n=100000 ' +
-      'read-back cells are withdrawn under TC-11, they ran at seven to ten repetitions)',
+      'cells are replicated three times; one of the nine, s += x at construction, spread ' +
+      '0.40-0.54x across the three and is withdrawn as unreplicable)',
   },
   'allocating-select': {
     cost:
@@ -291,11 +300,11 @@ const accumulatingSpread: Rule = (ts, checker, body, add) => {
     // The call forms. `acc.concat(v)` carries the accumulator as the RECEIVER
     // and `Object.assign({}, acc, …)` as an argument, so neither is visible to
     // the literal matching above — the rule walked past both until it was
-    // measured at 778x and 815x.
+    // measured at 778x and 846-875x.
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const callee = node.expression;
       // `.concat()` belongs to String as much as to Array, and on a string it
-      // is not this defect: measured 0.27-0.54x to build and 0.94-0.97x to
+      // is not this defect: measured 0.27-0.56x to build and 0.74-0.97x to
       // build and read back, FASTER than the push-and-join it would be
       // rewritten to, because V8 appends into a cons-string instead of copying.
       // Matching the NAME alone indicted that, and every other class that owns

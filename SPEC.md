@@ -187,6 +187,27 @@ on cost/benefit; that is a judgement, and it is recorded here as one.
 The pre-fix numbers, kept for comparison: 5.05 / 7.65 / 2.75 for five shapes,
 and 1.32 REJ / 1.05 REJ / 0.96 REJ for two.
 
+**With construction counted the cliff is gone by RAM size, and that cell is now
+replicated rather than withdrawn.** The four `incl` cells at n=262144 were
+measured once each and set aside under TC-11 for running at one and two
+repetitions. Re-measured three times each under §4 rule 13, all four replicate,
+and they say the same thing at every K:
+
+| Comparison, construction included, n=262144 | three sweeps | was |
+|---|---|---|
+| 5 shapes / 1 shape | 1.14–1.20 | 1.08 |
+| 4 shapes / 1 shape | 1.05–1.12 | 1.21 |
+| 3 shapes / 1 shape | 1.11–1.20 | 1.15 |
+| 2 shapes / 1 shape | 1.11–1.13 | 1.12 |
+
+**There is no fifth-shape step here at all** — 1.05x to 1.20x from two shapes to
+five, and the fifth is inside the band the second occupies. At L1 and L2 the same
+cells run 1.25–3.52x. So allocation swamps the load at RAM size, which is what
+the reads column already showed falling from 10.59x to 3.61x, and the rule's
+construction caveat now has a measured floor under it rather than a hole. Two of
+the four single-sweep numbers it replaces were outside the replicated range
+(4 shapes read 1.21x, five read 1.08x), which is the ordering inverted by noise.
+
 | Comparison | L1 | L2 | L3 | Verdict |
 |---|---|---|---|---|
 | scattered / contiguous, same shape | 0.98 REJ | 1.09 REJ | 1.10 REJ | not a read cost |
@@ -226,12 +247,18 @@ With construction counted:
 | Cell | Ratio | 95% CI | Verdict |
 |---|---|---|---|
 | `acc = [...acc, v]`, n=1000 | 156.40 | 145.61–166.84 | **ship** |
-| `acc = [...acc, v]`, n=10000 | 1877.26 | 1715.50–2057.28 | **ship** |
+| `acc = [...acc, v]`, n=10000 | **1749.89–2010.98** | 1600.94–2179.81 | **ship — replicated ×3** |
 | `acc = acc.concat(v)`, n=1000 | **778.52** | **732.95–821.39** | **ship — new** |
 | `acc = acc.concat(v)`, n=10000 | — | — | VOID, region 282 ms |
-| `acc = { ...acc, [k]: v }`, n=500 | 209.89 | 195.33–229.24 | **ship** |
-| `acc = Object.assign({}, acc, {[k]: v})`, n=500 | **814.80** | **769.05–874.10** | **ship — new** |
+| `acc = { ...acc, [k]: v }`, n=500 | **187.65–203.27** | 178.56–215.96 | **ship — replicated ×3** |
+| `acc = Object.assign({}, acc, {[k]: v})`, n=500 | **845.53–874.66** | 796.63–913.58 | **ship — replicated ×3** |
 | either object form, n=2000 | — | — | VOID, regions 426 and 524 ms |
+
+The three replicated rows are the ones §4 rule 13 re-measured under TC-11: the
+ratio column is the spread across three whole sweeps and the interval column is
+the envelope of their three bootstrap intervals, not one interval. All three
+replicate — a value common to all three intervals exists in each — and the
+`spread` row at n=10000 is the number this project quotes most often.
 
 The same four forms with construction excluded — the half that says what the
 finished value costs to read, rather than what building it costs:
@@ -264,40 +291,54 @@ stores drive the baseline object into dictionary mode, so reading it costs ~33x
 the spread-built one. It is a fact about the *fix*, and it is why this rule's
 evidence names construction explicitly.
 
-**Replication.** This sweep re-ran the two literal forms that shipped in
-0.1: 156 against 177 at n=1000, 1877 against 2348 at n=10000, 210 against 197 at
-n=500. Direction and order of magnitude hold; the point estimates move 12–20%,
-which is what a three-orders-of-magnitude effect looks like when it is measured
-twice. The rule quotes both sweeps as a range rather than the newer number.
+**Replication.** The array form at n=10000 has now been measured five times:
+2348, 1877, and then 2011, 1758 and 1750 under §4 rule 13. The three new sweeps
+agree with each other and the published upper end does not sit inside them —
+**2348x is outside the replicated range and is no longer quoted**. The object
+form at n=500 has been measured five times too (210, 197, then 203, 188, 196),
+and `Object.assign` three (815, then 875, 859, 846), where the re-measurement
+moved the number *up* past its old interval. Direction and order of magnitude
+hold everywhere; the point estimates move 8–20%, which is what a
+three-orders-of-magnitude effect looks like when it is measured five times. The
+rule quotes the replicated range rather than any single sweep.
 
 **Building a string by appending — refuted, and the rule was already firing on
 it.** `s = s + x` in a loop is the same syntax the cells above measure at
-156–2348x for arrays, and `accumulating-spread` matched `.concat()` by *name*
+156–2011x for arrays, and `accumulating-spread` matched `.concat()` by *name*
 with no type behind it, so `s = s.concat(x)` on a string was reported as a
 quadratic array copy. Three forms against a baseline that pushes into an array
 and calls `join('')` at the end, building the identical string — the driver's
 per-pair checksum is a full character scan, so a variant that builds a different
 string is a failed run. Node v22.23.2, 20 pairs per cell, three sizes spanning
 L1 to L3 (6 KB, 60 KB, 600 KB of string), `bench/strings.jsonl`, 27 cells, none
-void. Ratios are string form / push-and-join, so **below 1.0 means the string
-form wins**:
+void, and the nine at n=100000 re-measured three times each. Ratios are string
+form / push-and-join, so **below 1.0 means the string form wins**:
 
-| Cell | n=1000 | n=10000 | n=100000 |
+| Cell | n=1000 | n=10000 | n=100000, three sweeps |
 |---|---|---|---|
-| `s = s + x`, construction only | **0.31** (0.29–0.34) | **0.33** (0.31–0.36) | **0.54** (0.51–0.57) |
-| `s += x`, construction only | **0.27** (0.25–0.29) | **0.34** (0.32–0.36) | **0.48** (0.46–0.50) |
-| `s = s.concat(x)`, construction only | **0.29** (0.26–0.31) | **0.38** (0.36–0.41) | **0.52** (0.49–0.54) |
-| `s = s + x`, construction and read back | 0.94 (0.92–0.96) | 0.97 (0.94–0.99) | 0.79 (0.76–0.81) |
-| `s += x`, construction and read back | 0.96 (0.95–0.97) | 0.97 (0.93–1.01) REJ | 0.79 (0.76–0.83) |
-| `s = s.concat(x)`, construction and read back | 0.96 (0.94–0.99) | 0.96 (0.94–0.98) | 0.79 (0.76–0.83) |
-| `s = s + x`, reads only | 1.01 (1.00–1.03) REJ | 1.06 (1.03–1.10) | 1.06 (1.02–1.10) |
-| `s += x`, reads only | 1.02 (0.98–1.06) REJ | 1.03 (1.00–1.05) REJ | 1.01 (0.98–1.04) REJ |
-| `s = s.concat(x)`, reads only | 1.02 (0.99–1.06) REJ | 1.03 (1.00–1.07) | 1.06 (1.04–1.08) |
+| `s = s + x`, construction only | **0.31** (0.29–0.34) | **0.33** (0.31–0.36) | **0.46–0.56** |
+| `s += x`, construction only | **0.27** (0.25–0.29) | **0.34** (0.32–0.36) | 0.40 / 0.52 / 0.54 — **withdrawn** |
+| `s = s.concat(x)`, construction only | **0.29** (0.26–0.31) | **0.38** (0.36–0.41) | **0.49–0.54** |
+| `s = s + x`, construction and read back | 0.94 (0.92–0.96) | 0.97 (0.94–0.99) | 0.77–0.87 |
+| `s += x`, construction and read back | 0.96 (0.95–0.97) | 0.97 (0.93–1.01) REJ | 0.74–0.86 |
+| `s = s.concat(x)`, construction and read back | 0.96 (0.94–0.99) | 0.96 (0.94–0.98) | 0.76–0.81 |
+| `s = s + x`, reads only | 1.01 (1.00–1.03) REJ | 1.06 (1.03–1.10) | 1.03–1.04 |
+| `s += x`, reads only | 1.02 (0.98–1.06) REJ | 1.03 (1.00–1.05) REJ | 1.00–1.11 |
+| `s = s.concat(x)`, reads only | 1.02 (0.99–1.06) REJ | 1.03 (1.00–1.07) | 1.01–1.08 |
+
+The n=100000 column is nine cells re-measured three times each under §4 rule 13,
+and it is the spread of the three ratios rather than one ratio with an interval.
+**Eight of the nine replicate.** `s += x` at construction does not — 0.40, 0.52
+and 0.54, with the first sweep's interval (0.36–0.43) excluding the other two
+entirely — so that cell is withdrawn, and it is withdrawn on the evidence of
+three sweeps rather than on its rep count. Its two neighbours, measuring the same
+mechanism with the same baseline, replicate at 0.46–0.56 and 0.49–0.54, which is
+where the withdrawn cell would have landed.
 
 **There is no quadratic term, and the three sizes are how we know.** A copy that
-re-runs is a cost that *grows* with n: the array cells go 156x → 1877x over one
-order of magnitude. These go the other way. Every construction cell is between
-0.27x and 0.54x, and the ratio drifts *toward* 1.0 as n grows, which is the
+re-runs is a cost that *grows* with n: the array cells go 156x → 1750–2011x over
+one order of magnitude. These go the other way. Every construction cell is
+between 0.27x and 0.56x, and the ratio drifts *toward* 1.0 as n grows, which is the
 signature of a constant factor being diluted, not of a copy. V8 does not copy
 the accumulator here — it builds a cons-string, a node holding pointers to its
 two halves, so appending is O(1) and the loop is O(n) like the baseline.
@@ -308,17 +349,21 @@ two modes isolates it: `excl` reads a string built once, and the warmup already
 flattened it. So construction is measured on its own, consumed by `.length`,
 which is O(1) on a cons-string and does not flatten. The gap between the two
 columns is the flatten: appending wins 3.7x at construction and gives most of it
-back on the first read, landing at 0.79–0.97x for the round trip. **It never
-lands above 1.0.** Building a string by appending and then reading it is at
-worst a wash and at best a 1.27x win, against the rewrite this rule would have
-demanded.
+back on the first read, landing at 0.74–0.97x for the round trip. **It never
+lands above 1.0**, in any of the eighteen sweeps behind that column. Building a
+string by appending and then reading it is at worst a wash and at best a 1.35x
+win, against the rewrite this rule would have demanded.
 
-**The read side carries a residual, and it is reported rather than shipped.**
-Once flattened, a string built by appending costs 1.01–1.06x to scan. Four of
-the nine cells exclude 1.0, so something is there — plausibly the cons-string
-wrapper surviving the flatten — but §4 rule 6 asks a warning for a point
-estimate at or above 1.10x and no cell reaches it. Recorded as an observation,
-exactly like the 1.72x concat *array* read cell above.
+**The read side carries a residual, and replication made it smaller.** Once
+flattened, a string built by appending costs 1.00–1.11x to scan. Four of the nine
+cells excluded 1.0 when each was measured once; the three at n=100000 have since
+been measured three times each, and **six of those nine sweeps have an interval
+spanning 1.0**. One sweep of `s += x` came out at 1.11x, above the 1.10x §4 rule
+6 asks of a broad warning, and its two replications read 1.00x and 1.04x — which
+is exactly the case rule 13 exists to catch. Something may be there — plausibly
+the cons-string wrapper surviving the flatten — but nothing that replicates above
+1.10x. Recorded as an observation, exactly like the 1.72x concat *array* read
+cell above.
 
 **This is the first measurement that took output away from the tool rather than
 withholding it.** The graveyard until now was a list of rules that never
@@ -607,7 +652,15 @@ and after 20,000 builds:
 | **16 keyed adds, reads only** | **6.17 (5.94–6.41)** | **6.34 (6.14–6.57)** |
 | 12 keyed adds, construction and read | 7.19 (6.62–7.75) | 3.67 (3.39–4.00) |
 | 16 named adds, construction and read | 2.07 (1.89–2.27) | 3.33 (3.11–3.57) |
-| 16 keyed adds, construction and read | 24.61 (23.48–26.06) | 12.97 (12.35–13.64) |
+| 16 keyed adds, construction and read | 24.61 (23.48–26.06) | **withdrawn** — 8.46 / 9.41 / 11.86 |
+
+**The one withdrawn cell is a construction cell, and the reads are untouched.**
+`keyed16` with construction counted at n=8192 was the one cell in this sweep
+outside n=262144 that ran on a handful of repetitions — six, against its
+baseline's seventy-eight. Three sweeps under §4 rule 13 read 8.46x, 9.41x and
+11.86x, the first two intervals excluding the third, so the 12.97x is withdrawn.
+Its rep count is not why: the reads-only cells that carry the 6.17–6.34x claim
+ran at hundreds of repetitions and were never in question.
 
 **Two controls pin it, and that is what makes it clean.** The same seventeen
 fields reached by *named* stores read at 0.92–1.05x — nothing. The same keyed
@@ -629,18 +682,31 @@ developer could apply. The honest baseline for that population is `Map`, and
 `Map` was not measured. Recorded as a proposal in `BUGS.md` TC-12, for the owner
 rather than for the tool.
 
-**The RAM-sized construction cells are void in everything but name, and the
-region guard did not catch it.** At n=262144 a rep builds a quarter of a million
-objects, so the 120 ms region is reached at 4 to 7 reps. Three near-identical
-constructions then disagree flatly — one added property at 1.64x, two added
-properties at 0.91x, two divergent paths at 0.89x, every interval excluding 1.0
-and no two of them able to be true together. The bootstrap interval is over
-process-to-process variation at a fixed rep count and cannot see the variance one
-GC pause introduces when there are five reps to hide in. Those cells are
-withdrawn and are not quoted above; the reads-only cells at the same size ran at
-86–312 reps and are kept. Recorded as `BUGS.md` TC-11: §4 rule 3 bounds the
-achieved region and says nothing about the rep count, and a region can be met by
-a handful of very slow reps.
+**The RAM-sized construction cells do not replicate, and now that is measured
+rather than suspected.** At n=262144 a rep builds a quarter of a million objects,
+so the 120 ms region is reached at 4 to 7 reps. Three near-identical
+constructions disagreed flatly on the first sweep — one added property at 1.64x,
+two added properties at 0.91x, two divergent paths at 0.89x, every interval
+excluding 1.0 and no two of them able to be true together. Each of those six
+cells has since been run three more times under §4 rule 13:
+
+| Cell, n=262144 | three sweeps | was | replicates |
+|---|---|---|---|
+| `{x,y}` then `o.z`, construction only | 1.29 / 1.61 / 1.74 | 1.64 | **no** |
+| `{x,y}` then `o.z`, construction and read | 1.57 / VOID / 1.31 | 0.71 | **no** |
+| `{x}` then `o.y`, `o.z`, construction only | 0.88 / 1.19 / 1.60 | 0.91 | **no** |
+| `{x}` then `o.y`, `o.z`, construction and read | 1.34 / 1.44 / 1.69 | 1.72 | **no** |
+| two paths, construction only | 1.14 / 1.21 / 1.34 | 0.89 | yes |
+| two paths, construction and read | 1.19 / VOID / 1.15 | 1.37 | **no** |
+
+**Five of the six do not replicate, and the sixth contradicts the number it
+replaces.** Two divergent paths measured 0.89x once and 1.14–1.34x on three
+consecutive sweeps — a published cell that was on the wrong side of 1.0. Two
+sweeps failed the region guard outright at 3 and 7 reps. All six stay withdrawn
+and none is quoted above; the reads-only cells at the same size ran at 86–312
+reps and are kept. This is the evidence behind `BUGS.md` TC-11's correction: the
+defect was never the rep count, it was that one sweep's interval cannot see what
+varies between sweeps.
 
 **Megamorphic dispatch — the same V8 constant at a call site, and the sharpest
 threshold this project has measured.** `megamorphic-elements` found
@@ -728,7 +794,7 @@ mutable while the `lit` variants keep one function per site. Not probed, so it
 is an observation, and it means the `tgt` column bounds the target effect from
 above rather than measuring it exactly.
 
-**With construction counted**, at the two sizes whose cells are measurements:
+**With construction counted**, at L1 and L2 — the RAM-sized cells follow below:
 
 | K | `cls` L1 | `cls` L2 | `lit` L1 | `lit` L2 |
 |---|---|---|---|---|
@@ -746,12 +812,29 @@ from a table is a second polymorphic site that the reads-only half does not
 have, and both the fourth and the second shape pay it. The rule quotes the
 reads half and says so.
 
-**Ten cells are withdrawn under TC-11.** Every `incl` cell at n = 262144 ran at
-**2 to 4 reps** — a rep builds a quarter of a million objects, so the 120 ms
-region is met by a handful of them and one GC pause decides the cell. They are
-not quoted above. The reads-only cells at the same size ran at 25 to 435 reps
-and are kept; the runner now prints the rep count with every cell so this is
-visible without opening the `.jsonl`.
+**The ten cells withdrawn under TC-11 are back, and nine of them replicate.**
+Every `incl` cell at n = 262144 ran at 2 to 4 reps — a rep builds a quarter of a
+million objects — and each was set aside on that count alone. Each has since been
+run three times under §4 rule 13, at RAM size, construction included:
+
+| K | `cls` L3, three sweeps | was | `lit` L3, three sweeps | was |
+|---|---|---|---|---|
+| 2 | 1.12–1.16 | 1.01 | 1.63–2.01 | 1.15 |
+| 3 | 0.93–1.20 | 1.05 | 1.09 / VOID / 0.92 — **withdrawn** | 0.84 |
+| 4 | 1.01–1.15 | 1.12 | 0.89–1.03 | 0.90 |
+| **5** | **1.46–1.86** | 1.79 | 1.25–1.86 | 1.19 |
+| 6 | 1.66–1.94 | 1.51 | 1.39–1.52 | 1.39 |
+
+**The step is at five for `cls` at RAM size too, and that is a working set the
+construction half did not have before.** Two, three and four classes cost
+0.93–1.20x with allocation counted; the fifth costs 1.46–1.86x and the sixth
+1.66–1.94x. It is a fifth of the size of the same step at L1 (3.27x → 5.54x),
+which is what memory bandwidth does to every effect in this project, but it is
+the same step and it replicates three times at each K. The `lit` column has no
+step, as it has none at any other size: two shapes already cost 1.63–2.01x.
+One cell, `lit` at K = 3, does not replicate — 1.09x, a sweep that failed the
+region guard at one rep, and 0.92x — and it is withdrawn. The reads-only cells at
+the same size ran at 25 to 435 reps and were never in question.
 
 **`megamorphic-dispatch` ships on the fifth shape, and the threshold is wrong
 in the direction of silence.** Firing at five is supported by every family that
@@ -821,6 +904,25 @@ Non-negotiable, because the evidence *is* the product.
     A rule that wins only at construction is still a rule — but it must say so.
 12. Sweep the working set (L1, L2, L3, RAM). A single size hides
     bandwidth-bound flattening, which is how round 1 buried boxed elements.
+13. **Replicate the cell, and publish the spread across sweeps.** The interval
+    in rule 5 resamples the twenty pairs of ONE sweep. It sees what varies
+    between two processes and nothing that varies between two sweeps —
+    calibration landing on a different rep count, a heap that grew differently,
+    a machine ten minutes older. Three `addprop` constructions differing only in
+    which property is added measured 1.64x, 0.91x and 0.89x, every interval
+    excluding 1.0 and no two of them able to be true together; that is what the
+    blind spot looks like from outside. So a cell behind a published number is
+    run **three times, whole**, and the three ratios are published beside the
+    interval of one. Agreement is a value common to all three intervals — a
+    criterion the intervals supply rather than one this project picks. Where
+    there is none the cell is **withdrawn as unreplicable**, with the three
+    numbers printed rather than hidden.
+    **There is no floor on the repetition count**, and the first fix proposed
+    for `BUGS.md` TC-11 was wrong to want one. A kernel that fits two passes
+    into the 120 ms region has been measured for 120 ms; how many passes that
+    took is a fact about the kernel. Every cell records the achieved region in
+    milliseconds next to the rep count that bought it, and a threshold on either
+    would be a constant nobody measured.
 
 Results apply only to the engines and hardware tested. An "all TypeScript"
 runtime claim from one Node build on x64 is unverified and must not be made.

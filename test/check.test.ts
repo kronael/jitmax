@@ -130,8 +130,9 @@ test('a single concat stays silent', () => {
 
 // A string wears the syntax of the quadratic accumulator and is not it. V8
 // appends into a cons-string instead of copying, and all three string forms BEAT
-// the push-and-join the rule would ask for: 0.27-0.54x to build, and still
-// 0.79-0.96x once the read back is counted. bench/strings.jsonl, 27 cells.
+// the push-and-join the rule would ask for: 0.27-0.56x to build, and still
+// 0.74-0.96x once the read back is counted. bench/strings.jsonl, 27 cells plus
+// three replications of each of the nine at n=100000.
 test('building a string by appending stays silent', () => {
   assert.deepStrictEqual(rules('joinByPlus'), []);
 });
@@ -227,7 +228,7 @@ test('a single object spread stays silent', () => {
   assert.deepStrictEqual(rules('mergeOnce'), []);
 });
 
-test('the Object.assign copy form fires: 815x at n=500', () => {
+test('the Object.assign copy form fires: 846-875x at n=500', () => {
   assert.deepStrictEqual(rules('collectByAssign'), ['accumulating-spread']);
 });
 

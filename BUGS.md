@@ -133,7 +133,82 @@ Closing it needs a `Map` sweep first, and then a decision about firing on a
 count that cannot be proven. `demo/lib.ts` `growByKey` is the fixture and a test
 locks it silent.
 
-## TC-11 — the region guard bounds the region, not the rep count (2026-08-14, open, proposal)
+## ✅ FIXED 2026-08-15 — TC-11 — one sweep's interval cannot see between two sweeps
+
+**The audit below stands. The diagnosis under it was wrong, and it was mine.**
+It said a cell whose rep count falls below some floor is not a measurement, and
+proposed a floor of five repetitions with the region extended to a cap of about
+1000 ms to reach it. Five and 1000 are numbers nobody measured, and a constant
+nobody measured is a hypothesis, not a protocol — the same objection this project
+raises against every rule it refuses to ship. A kernel that fits two passes into
+the 120 ms region has been measured for 120 ms; how many passes that took is a
+fact about the kernel. The floor was written into `driver.js` and reverted before
+a single cell ran under it.
+
+What the audit actually found is in the original report, mis-read there as a rep
+count problem: three near-identical `addprop` constructions measured 1.64x, 0.91x
+and 0.89x, every interval excluding 1.0 and no two of them able to be true
+together. **The bootstrap resamples the twenty pairs of ONE sweep.** It sees what
+varies between two processes and is blind to what varies between two sweeps — a
+different calibration, a heap that grew differently, a machine ten minutes older.
+A low rep count travels with that blind spot, because a slow cell has fewer and
+larger passes and each one lands somewhere different. It is a correlate, not the
+mechanism, and thresholding it would have treated the symptom.
+
+Fixed three ways, none of them a threshold:
+
+- `bench/driver.js` records the achieved region in milliseconds beside the rep
+  count in every cell — `msBase` and `msTest` — and `bench/run-tc11.js` prints
+  both with every sweep. Facts in the file, no cut-off.
+- `driver.js` gains `replicate()` and `replicates()`. A cell is run **whole,
+  three times**, and agreement is a value common to all three 95% intervals: a
+  criterion the intervals supply rather than one this project picks.
+- SPEC §4 rule 13 is the contract, and it says in as many words that there is no
+  floor on the repetition count.
+
+**33 flagged cells, three sweeps each, 99 sweeps, `bench/run-tc11.js`.** Every
+row is appended to the sweep's own `.jsonl` and carries `protocol: "replicated"`,
+so nothing that was published before is overwritten or hidden:
+
+| Sweep | cells | replicate | do not |
+|---|---|---|---|
+| `shapes-calibrated` incl, n=262144 | 4 | 4 | — |
+| `spread` incl, n=10000 | 1 | 1 | — |
+| `spread-object` incl, n=500 | 2 | 2 | — |
+| `strings`, n=100000 | 9 | 8 | `s += x` at construction |
+| `addprop`, n=262144 and `keyed16` n=8192 | 7 | 1 | 6 |
+| `dispatch` incl, n=262144 | 10 | 9 | `lit3` |
+
+**The addprop cells are the result.** Five of six do not replicate, and the sixth
+contradicts what it replaces: two divergent construction paths published 0.89x
+and then measured 1.14x, 1.21x and 1.34x on three consecutive sweeps — a cell
+that was on the wrong side of 1.0. Two sweeps failed the region guard outright.
+Those cells were already withdrawn by hand; they are now withdrawn on evidence.
+
+**Everything else came back, and eight published numbers moved.** The most quoted
+number in the project, accumulating array spread at n=10000, replicates at
+1750–2011x — so **2348x is outside the replicated range and is no longer
+quoted**. `Object.assign` copying at n=500 moved *up*, from 815x to 846–875x.
+The ten `dispatch` and four `shapes` cells withdrawn under the old diagnosis are
+measurements again: at RAM size the five-shape step survives construction for
+`cls` (1.46–1.86x against 0.93–1.20x below it) and there is no step at all for
+the object-shape load sweep (1.05–1.20x flat from two shapes to five). The
+`strings` read-back cells came back at 0.74–0.87x.
+
+**No rule's verdict moved.** Every rule that shipped still ships and every
+refusal still refuses; what changed is the ranges they quote and, in four places,
+which cells they are allowed to quote at all. `megamorphic-elements`,
+`megamorphic-dispatch` and `accumulating-spread` carry new `EVIDENCE` strings.
+
+Still open after this: the three cells this sweep left VOID under the region
+guard are void because their single repetition overshoots 240 ms, which is a
+different guard (TC-5) and is not touched here. `bench/run.js`,
+`bench/run-spread.js` and the rest still run one sweep per cell — rule 13 binds
+what is published, and only the flagged cells have been re-run under it.
+
+The audit follows, then the original report.
+
+## TC-11 — the audit (2026-08-14)
 
 **Audited 2026-08-14, every cell this project has ever published.** 329 non-void
 cells across ten `.jsonl` files. **35 ran below 20 repetitions**, and the defect
@@ -160,16 +235,15 @@ because the bootstrap resamples processes at a fixed rep count and cannot see
 within-run variance. Anyone quoting those intervals as precision is over-reading
 them, and this paragraph is the disclosure.
 
-**Proposal, not applied — it changes the protocol behind every published
-number, so it needs sign-off.** `calibrate()` should take a repetition floor
-(5 is the smallest count at which a single pause is not the measurement) and,
-when the floor cannot be met inside the 120 ms window, extend that cell's region
-up to a cap of about 1000 ms until it is. Only a cell whose single repetition
-exceeds the cap is void. That keeps the huge-effect cells measurable instead of
-deleting them, and it removes the low-rep noise from the small ones. Applying it
-means re-running every sweep and re-deriving both SPEC §3 and the shipped
-`EVIDENCE` strings — hours of machine time — which is why it is written here
-first.
+**Superseded 2026-08-15 by the entry above.** The proposal recorded here was a
+repetition floor of 5 with the region extended to a cap of about 1000 ms, voiding
+only a cell whose single repetition exceeded the cap. It was signed off, written,
+and reverted before it ran: both constants were invented, and the two tables
+above are wrong about which cells survive — `strings` and `dispatch` and
+`shapes-calibrated` all came back, and `spread-object`'s `assign-copy` moved
+*further from* 1.0 rather than closer. The disclosure paragraph about intervals
+being "narrower than the truth" is the one thing here that was right, and rule 13
+is what replaced it.
 
 The original report follows.
 
@@ -187,6 +261,10 @@ Those cells are withdrawn in SPEC §3 by hand. The guard should do it: a cell
 whose rep count is below some floor is not a measurement, the same way a cell
 outside the region window is not. The floor is unmeasured — picking it needs a
 sweep of its own — so this is recorded rather than applied.
+
+*(That last paragraph is the wrong diagnosis, kept as written. The sentence
+after it — that the bootstrap "cannot see that variance" — is the right one, and
+it is what the fix acted on.)*
 
 ## TC-10 — the walk follows calls but not constructors (2026-08-13, open)
 

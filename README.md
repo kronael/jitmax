@@ -147,6 +147,13 @@ benchmark **throws** instead of publishing. This guard exists because an older
 harness inflated a result by more than double. Worse, the error made a rule
 look worth shipping. See `BUGS.md` TC-5.
 
+That interval is calculated from the 20 pairs of one sweep, so it cannot see
+anything that changes between two sweeps. Six cells proved it: near-identical
+work measured 1.64x, 0.91x and 0.89x, and no two of those can both be true. So a
+cell behind a published number is run three times over, and the three answers are
+published next to each other. Where they disagree, the cell is dropped and the
+three numbers are printed anyway — `make bench-tc11`, `BUGS.md` TC-11.
+
 ## What V8's source says
 
 Each rule carries a second, independent evidence: the mechanism, in the engine's
