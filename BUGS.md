@@ -2,7 +2,52 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
-## TC-15 — delete-property's number predates the current protocol (2026-08-14, open)
+## ✅ FIXED 2026-08-15 — TC-15 — delete-property's number predates the current protocol
+
+**Closed by `bench/delete.jl`: 16 cells, 20 pairs each, every cell replicated
+three times. The audit below was right, and the probe it doubted was wrong in
+both directions.**
+
+The number moved down. 28-67x becomes **12.6-17.1x per property load** —
+13.35-16.32x at n=16384 and 12.57-17.14x at n=262144, both replicating; the
+n=256 cell spread 10.75-14.49x with mutually exclusive intervals and is
+withdrawn. With construction counted it is 23.22-24.33x at n=256, where the
+delete is paid on every object built; the n=16384 construction cell disagrees
+across sweeps (11.68/16.79/12.89) and is withdrawn, and at n=262144 one rep
+builds 262144 dictionary objects and overruns the 240 ms region guard, so all
+three sweeps are void. Void and printed, not rounded into the range.
+
+**And the singleton half of the probe is refuted, which is the bigger result.**
+The audit above asked for both populations to be reproduced, expecting the 0x to
+stand. It does not: ONE object with ONE delete, read in a loop, costs
+**13.32-15.57x** — at every working set, in all nine of its sweeps, with tighter
+intervals than the per-row population manages. Both families run the identical
+kernel over an array of the same length (`sh` fills n slots with n references to
+one object), so the only variable is how many distinct receivers reach the load
+site, and the answer is that it does not matter.
+
+`options.md` guessed why its own singleton read 0x — *"TurboFan appears to
+specialize the constant object"* — and that guess is the explanation for the
+whole discrepancy. A bare loop over one object in a local has nothing the
+optimizer cannot see through; the fast side can be served by a load hoisted out
+of the loop while the dictionary side keeps calling into the runtime.
+
+The probe's stated *mechanism* is wrong too. `%HaveSameMap` reports that every
+normalized object in the per-row population shares one map
+(`node --allow-natives-syntax bench/delete.js rowdel 262144 kinds 1 1`), so
+"every dictionary-mode object gets its own map, so the site goes megamorphic" is
+false: the site is not megamorphic and what costs is the dictionary lookup — the
+reason one object pays as much as a quarter of a million.
+
+The fix the rule names holds: `o.tmp = undefined` costs 1.01-1.10x on reads
+(withdrawn — two of three intervals span 1.0 and they disagree) and 1.07-1.19x
+to build, and `delete` measured against *that* rather than against never adding
+the property still costs 12.38-12.86x.
+
+EVIDENCE re-derived from the file, `make bench-delete` re-runs it, SPEC §3 has
+the table. TC-9's delete bullet goes with it — see TC-9 below.
+
+## TC-15 — the original entry (2026-08-14)
 
 `EVIDENCE['delete-property']` quotes **28-67x per property load**, sourced to
 `options.md round 3b`. That round is the probe appendix at the bottom of
@@ -32,7 +77,49 @@ string from the `.jl`. Until then the number should be read as a decorated
 memory of a probe, not as this project's evidence standard. Related: TC-9,
 which is about the rule firing on the singleton case regardless.
 
-## TC-14 — boxed-elements cannot be re-run, and its trigger is an inference (2026-08-14, open)
+## ✅ FIXED 2026-08-15 — TC-14 — boxed-elements cannot be re-run, and its trigger is an inference
+
+**Closed by withdrawing the rule.** Both halves of the audit below were right,
+and `bench/arrays.jl` — 20 cells, 20 pairs each, every cell replicated three
+times — settles which half is fatal.
+
+**The first half: the numbers were re-derived and they moved.** A genuinely
+boxed array (PACKED_ELEMENTS holding doubles, so every element is a pointer to a
+HeapNumber) costs **1.39-1.66x** to read against PACKED_DOUBLE across n=256,
+16384 and 262144 — nine sweeps, no rejecting interval. The published 1.45-1.89x
+overstates the top. The construction claim was simply wrong: 2.36-3.28x was
+quoted, and it measures 1.07-1.23x in cache and 1.58-1.69x at RAM size, where
+allocating a quarter of a million HeapNumbers is the whole difference. So the
+effect is real, replicates, and is *not* lost inside the 1.0-1.7x band §11 warns
+about — the reads are not the problem.
+
+**The second half is the one that kills it.** The rule fires on the declared
+element type. `node --allow-natives-syntax bench/arrays.js unionnum 8 kinds 1 1`
+reports `%HasDoubleElements` **true** for an array built exactly the way
+`(number | string)[]` code builds one when it only ever stores numbers, and the
+benchmark agrees: **0.96-1.08x** over six cells and eighteen sweeps, seventeen of
+them with an interval spanning 1.0. The single sweep that excluded 1.0 read
+1.08x and its own two replications read 1.00x and 0.99x.
+
+There is no narrower trigger to retreat to, and that is why this is a withdrawal
+rather than a re-derivation. What decides the representation is what gets
+stored; no annotation decides that. An array that really does hold both types is
+a different kernel, and "give the array one element type" is not a rewrite
+available to code whose data is genuinely mixed — so the case where the fix
+applies is the case where nothing is wrong.
+
+The rule is gone from `lib/rules.ts`, TC-14 is gone from the `DEFECT` map,
+`demo/lib.ts` `mixed` is a must-stay-silent fixture with a test on it, and the
+effect stays published in SPEC §3 as a measured cost that ships no rule —
+the same shape as TC-12. The controls reproduce as well: holey 0.93-1.06x on
+reads (and faster to build, though that cell compares a preallocated array
+against a grown one and measures allocation strategy too), `Float64Array`
+0.97-1.10x on reads with every interval spanning 1.0 and 0.44-0.53x to build at
+RAM size, where round 2 reported roughly 3x rather than 2x.
+
+`make bench-arrays` re-runs it. The audit that found this stands below.
+
+## TC-14 — the original entry (2026-08-14)
 
 Two defects in one rule, both found while tracing mechanisms to V8's source.
 
@@ -437,12 +524,17 @@ excludes.
   implementation matches two chained calls and cannot know n, the callback
   cost, or whether the result escapes. It cannot implement its stated boundary,
   and the docs claim it stays silent at large n.
-- **`delete-property`** cites 28-67x for repeated per-row deletion, and this
-  project separately measured a single delete on a singleton object at 0x —
-  up to 10% *faster*. The rule flags every `delete` expression with no loop, no
-  repetition, and no receiver population. The demo fixture `drop` deletes one
-  property from one object and is reported.
+- **`delete-property`** — **this bullet is withdrawn on evidence, 2026-08-15.**
+  It said the rule fires on a singleton delete the project had measured at 0x.
+  `bench/delete.jl` measures that exact case at 13.32-15.57x, in all nine of its
+  sweeps, so `drop` is a true positive and the boundary the bullet invoked does
+  not exist. See TC-15. What the rule still carries under this heading is
+  narrower and was not the original complaint: the cost is per property *load*
+  on the demoted object, and the rule fires on the `delete` without knowing
+  whether anything reads the object afterwards.
 - **`megamorphic-elements`** is TC-8, the same defect in its sharpest form.
+- **`boxed-elements`** was a fourth entry here by way of TC-14 and is gone with
+  the rule, 2026-08-15.
 
 **And `closed-world` has no evidence at all.** `EVIDENCE` has five entries;
 `closed-world` is not among them, so its findings carry `evidence: null`. It

@@ -99,7 +99,7 @@ where it stops and report `unknown` rather than guess.
 
 It reports patterns measured to be slow, in code the developer marked as
 needing speed. It does **not** measure the user's program, so it cannot claim
-a speedup for it. The claim it makes is: *this pattern cost 28-67x in this
+a speedup for it. The claim it makes is: *this pattern cost 12.6-17.1x in this
 published benchmark, under these conditions, and you have it inside a function
 you flagged as hot.*
 
@@ -151,7 +151,14 @@ construction-included, fresh process per observation, 20 measured pairs,
 95% bootstrap intervals) **reversed two of round 1's burials**. Ratios are
 violating/compliant; `REJ` means the interval spans 1.0.
 
-**Array element representation** — reads only, then with construction:
+**Array element representation** — reads only, then with construction.
+
+**Superseded 2026-08-15 by `bench/arrays.jl`, and the round-2 table below was
+never reproducible in the first place.** It was published from a `bench-arrays.md`
+whose Results section reads, in full, *"(filled in after the runs; raw
+observations in `bench/results.jsonl`)"* — for kernels (`bench/arrays_kind.js`,
+`bench/arrays_obj.js`) and a data file that were never written. It is kept here
+as the record of what was published, not as evidence:
 
 | Comparison | L1 4KB | L2 256KB | L3 4MB | with construction | Verdict |
 |---|---|---|---|---|---|
@@ -159,8 +166,55 @@ violating/compliant; `REJ` means the interval spans 1.0.
 | boxed / packed double | 1.45 | 1.47 | 1.89 | 2.36–3.28 | **ship — revived** |
 | `Float64Array` / packed double | 1.17 REJ | 1.05 | 1.04 REJ | **0.29–0.31** | **ship — revived, opposite rationale** |
 
-Typed arrays buy nothing on reads. They win roughly 3x at *construction*.
-Round 1 measured only the half where the win is absent and buried the rule.
+The re-measurement, 20 cells and 60 sweeps, every cell run three times whole
+per §4 rule 13. `n` rather than a nominal byte class, because the payload is
+doubles and the class follows from it: 256 / 16384 / 262144. Ratio against a
+PACKED_DOUBLE_ELEMENTS `number[]`, the range across the three sweeps in
+brackets:
+
+| Comparison | n=256 reads | n=16384 reads | n=262144 reads | with construction | Verdict |
+|---|---|---|---|---|---|
+| boxed / packed double | **1.61–1.66** | **1.47–1.63** | **1.39–1.46** | 1.08–1.22 / 1.07–1.23 / **1.58–1.69** | real, and **no rule** — see below |
+| **`(number\|string)[]` holding only numbers** / packed double | 0.98–1.03 REJ | 0.97–0.99 REJ | 0.99–1.08 | 0.98–1.01 REJ / 0.96–1.04 REJ / 0.98–0.99 REJ | **graveyard — this is the rule's trigger** |
+| holey / packed double | 0.97–1.04 REJ | — | 0.93–1.06 REJ | 0.71–0.75 / — / 0.76–0.86 (holey *faster*) | **graveyard, confirmed a second time** |
+| `Float64Array` / packed double | 1.01–1.04 REJ | — | 0.97–1.10 REJ | 0.79–0.88 / — / **0.44–0.53** | refuted on reads, ~2x at construction |
+
+**The effect is real and the trigger is not, so `boxed-elements` is withdrawn.**
+A genuinely boxed array — PACKED_ELEMENTS holding doubles, so every element is a
+pointer to a HeapNumber — costs 1.39–1.66x to read, in nine sweeps with no
+rejecting interval. That is a smaller effect than the 1.45–1.89x published, and
+the construction claim is simply wrong: 2.36–3.28x was quoted, 1.07–1.23x is
+measured in cache and 1.58–1.69x at RAM size, where allocating a quarter of a
+million HeapNumbers is the whole difference.
+
+But the rule fired on the *declared* element type, and V8 picks the elements
+kind from the value being stored, one store at a time
+(`Object::OptimalElementsKind`, `src/objects/objects-inl.h:700`). An array whose
+TypeScript type is `(number | string)[]` and whose contents are all numbers is
+PACKED_DOUBLE_ELEMENTS — checked directly with `%HasDoubleElements` via
+`node --allow-natives-syntax bench/arrays.js unionnum 8 kinds 1 1`, and measured
+at 0.96–1.08x over six cells and eighteen sweeps, seventeen of them with an
+interval spanning 1.0. The one sweep that excluded 1.0 read 1.08x and its own
+two replications read 1.00x and 0.99x.
+
+There is no narrower trigger to retreat to. What decides the representation is
+what gets stored, and no annotation decides that; an array that really does hold
+both types is a different kernel, and "give the array one element type" is not a
+rewrite available to code whose data is genuinely mixed. So this joins TC-12's
+keyed-store effect: a real, measured cost that ships no rule because nothing
+static can find it.
+
+**The construction column for holey and `Float64Array` carries a confound, and
+it is the same one round 2 had.** A HOLEY_DOUBLE array is reached by
+`new Array(n)` and filling it, while the packed baseline grows by `push`, so the
+`incl` cells compare a preallocated array against a grown one and measure
+allocation strategy alongside elements kind. The reads-only cells have no such
+confound: both sides are finished arrays of the same length.
+
+Typed arrays buy nothing on reads, confirmed a second time with every interval
+spanning 1.0. They win at *construction* — roughly 2x at RAM size here, where
+round 2 reported roughly 3x. Round 1 measured only the half where the win is
+absent and buried the rule.
 
 **Arrays of objects** — the case a rule would actually target:
 
@@ -223,8 +277,8 @@ outside what any static or runtime observer can attribute.)
 | Rule | Measured | Verdict |
 |---|---|---|
 | Accumulating spread in a loop | 146–366x at n=10k | ship — superseded below |
-| `delete` on per-row objects | 28–67x (1.4 to 39–92 ns/row) | ship |
-| `delete` on a singleton object | 0x — dictionary mode up to 10% *faster* | the second half of the same rule |
+| `delete` on per-row objects | 28–67x (1.4 to 39–92 ns/row) | ship — **superseded 2026-08-15 at 12.6–17.1x** |
+| `delete` on a singleton object | 0x — dictionary mode up to 10% *faster* | **refuted 2026-08-15 at 13.3–15.6x**; the probe's fast side was a loop-invariant load |
 | Four-shape polymorphic budget | No clean cliff at 5; K=4 the least stable config measured | graveyard |
 | Smi-to-double field widening | Undetectable — TS `number` erases the distinction | graveyard |
 
@@ -233,10 +287,16 @@ reversed two verdicts. Every rule benchmark runs both halves, or it is not
 evidence. This is now rule 11 in §4.
 
 **The graveyard is the launch artifact.** Published refutations — holey
-arrays, the 4-shape budget, two-shape arrays, `delete` on singletons, string
-building, which the tool was wrongly reporting until it was measured, and the
-property added after construction, the most repeated claim in V8 folklore —
-are a more credible claim than a long rule list nobody measured.
+arrays, the 4-shape budget, two-shape arrays, string building, which the tool
+was wrongly reporting until it was measured, the property added after
+construction, the most repeated claim in V8 folklore, and the declared element
+type, which took a whole rule with it — are a more credible claim than a long
+rule list nobody measured.
+
+**It has to work in both directions, and it now has.** `delete` on singletons
+stood in that list for a month and is the one entry the graveyard got wrong: a
+re-measurement moved it out, at 13.3–15.6x. A refutation is only worth
+publishing if it can itself be refuted, and this one was.
 
 **Accumulating by copying** — four ways to write one defect. Each variant is
 paired against a baseline that mutates in place (`push`, `acc[k] = v`) and
@@ -283,8 +343,9 @@ not for the fourth: an array built by repeated `concat` costs **1.72–1.73x** t
 read, in both size cells, intervals well clear of 1.0. The mechanism is not
 measured here, so no rule is built on it — a plausible reading is that the
 non-array argument takes `concat` off its fast path and the result is no longer
-a packed-smi array, which would make it the same effect `boxed-elements`
-measured at 1.45–1.89x. Recorded as an observation, not a rule.
+a packed-smi array, which would make it the same effect `bench/arrays.jl`
+measures at 1.39–1.66x for a boxed array. Recorded as an observation, not a
+rule — and that boxed effect ships no rule either, for the reason above.
 
 **The 0.03 cell is the assign baseline, not the spread.** Five hundred keyed
 stores drive the baseline object into dictionary mode, so reading it costs ~33x
@@ -856,6 +917,74 @@ twice — the judgement `chained-allocation`'s `consumed` check already makes fo
 a three-stage chain. `demo/lib.ts` `totalArea` is the fixture and a test locks
 it at one finding.
 
+**`delete`, and the exception that did not survive.** Until 2026-08-15 this rule
+shipped 28–67x sourced to `options.md round 3b` — the probe appendix, an ad-hoc
+median-of-runs on a noisy VM taken before `bench/driver.js` existed, with no
+pairing, no interval, no rep count and no data file. The same probe published a
+*second* number this project has quoted ever since: a singleton object measured
+**0x**, with dictionary mode up to 10% *faster*, and that pair of numbers was the
+rule's whole differentiator. `bench/delete.jl` re-measures both, 16 cells, 20
+pairs each, every cell run three times whole. Ratio is dictionary/fast, the
+range across the three sweeps in brackets:
+
+| Comparison | n=256 | n=16384 | n=262144 |
+|---|---|---|---|
+| **n objects, one delete each** — reads | 10.75–14.49 — **withdrawn** | **13.35–16.32** | **12.57–17.14** |
+| **ONE object, one delete** — reads | **14.27–14.61** | **14.32–15.57** | **13.32–13.61** |
+| n objects, reads and construction | **23.22–24.33** | 11.68–16.79 — **withdrawn** | **void** at 1 rep |
+| ONE object, reads and construction | **6.84–7.01** | **3.19–3.45** | **3.54–3.85** |
+| against `o.tmp = undefined` — reads | — | **12.38–12.86** | — |
+| `o.tmp = undefined` against never adding it | — | 1.01–1.10, 2 REJ — **withdrawn** | — |
+
+**The singleton refutation is itself refuted, and that is the result.** One
+object with one delete, read in a loop, costs 13.3–15.6x — at every working set,
+in all nine of its sweeps, with tighter intervals than the per-row population
+manages. The rule has been firing on `demo/lib.ts` `drop` for a month with
+`BUGS.md` TC-9 recording that as a defect. It is not one.
+
+**Why the old probe read 0x is a fact about the probe.** `options.md` guessed at
+it in the same sentence that reported it — *"TurboFan appears to specialize the
+constant object"*. A bare loop over one object in a local has nothing the
+optimizer cannot see through, so its fast side can be served by a load hoisted
+out of the loop while the dictionary side, whose lookup is a runtime call, keeps
+paying per iteration. This sweep gives both sides the same kernel: the object is
+reached through `rows[i]`, so a load happens every pass on both sides. That is
+the array's only job here, and it is why the two populations can be compared at
+all — the `sh` family fills n slots with n references to ONE object, so the
+kernel, the length and the working set are identical to `row`'s and the only
+variable is how many distinct receivers reach the load site.
+
+**And the receivers are not the mechanism.** `%HaveSameMap` says every
+normalized object in the per-row population shares one map — checked with
+`node --allow-natives-syntax bench/delete.js rowdel 262144 kinds 1 1`, which also
+reports `%HasFastProperties` false. So `options.md`'s stated mechanism, *"every
+dictionary-mode object gets its own map, so the site goes megamorphic"*, is
+wrong twice over: the maps are shared, the site is not megamorphic, and the cost
+that remains is the dictionary lookup itself. Which is exactly why one object
+pays it as fully as a quarter of a million do.
+
+**28–67x is gone.** The honest figure is 12.6–17.1x per property load, roughly a
+third to a half of what was published, in the same direction and the same order
+of magnitude. Construction is where the number is largest — 23.2–24.3x at n=256,
+because there the delete is paid on every object built rather than amortized
+over reads — and where it is least stable: the n=16384 cell spread 11.68–16.79x
+with mutually exclusive intervals and is withdrawn, and at n=262144 a single
+rep builds 262144 dictionary objects and overruns the 240 ms guard, so all three
+sweeps are void. Void, printed, and not quietly rounded into the range.
+
+**The fix the rule names is a fix.** `o.tmp = undefined` instead of
+`delete o.tmp` costs 1.01–1.10x on reads — two of three intervals span 1.0 and
+the three disagree, so the cell is withdrawn and the honest statement is that
+this harness finds nothing there. Building it costs 1.07–1.19x, which is one
+extra field and one extra store. Against that fix rather than against never
+adding the property at all, `delete` still costs 12.38–12.86x, so the advice
+survives the stricter comparison.
+
+**What this sweep does not measure.** The cost is per property *load* on the
+demoted object. A `delete` on an object nothing reads afterwards costs whatever
+the delete itself costs and no more, and the rule fires without knowing which
+case it is in. That is the part of `BUGS.md` TC-9 this rule still carries.
+
 ## 4. Benchmark methodology
 
 Non-negotiable, because the evidence *is* the product.
@@ -1122,14 +1251,17 @@ bench/meme.js         renders the chart from shapes.jl, so it cannot drift
 measurement should read exactly what V8 executes, with no type-stripping step
 between the source and the engine.
 
-### The four rules
+### The rules of the first build, three of four surviving
 
 | rule | fires on | measured cost | must stay silent on |
 |---|---|---|---|
-| `boxed-elements` | array parameter of `any`, `unknown`, or a union mixing primitives | 1.45-1.89x reads, 2.36-3.28x with construction | holey arrays (0.94-1.09) |
 | `megamorphic-elements` | array parameter with 5+ object shapes | 4.01-8.28x reads; 1.07-1.63x with construction | 2 to 4 shapes (1.18-1.58x) |
-| `delete-property` | `delete` inside the region | 28-67x per load | plain property assignment |
+| `delete-property` | `delete` inside the region | 12.6-17.1x per load | assigning `undefined` instead (1.01-1.10x) |
 | `closed-world` | call to an unannotated user function | none — a coverage fact | primitives, annotated callees |
+
+`boxed-elements` was the fourth and is withdrawn as of 2026-08-15: the boxing
+effect it named is real at 1.39-1.66x, and the declared element type it fired on
+does not predict boxing. See the elements-kind sweep in §3.
 
 The "must stay silent" column is enforced by tests, not by intent. A rule that
 fires there contradicts this project's own evidence, and the test fails.
@@ -1160,9 +1292,11 @@ quoted as a replicated range, and the 2-to-4-shape numbers are withdrawn as
 point estimates. The rule stays silent below five for a better reason than
 before — not "the effect is small" but "we cannot measure it".
 
-That also puts a caveat on `boxed-elements`, whose 1.45-1.89x comes from one
-unreplicated sweep inside exactly that unresolvable band. The tool now says so
-in its own output.
+That also put a caveat on `boxed-elements`, whose 1.45-1.89x came from one
+unreplicated sweep inside exactly that unresolvable band — and which turned out
+to come from a sweep that was never run at all. Re-measured three times per cell
+under §4 rule 13, the boxed reads are 1.39-1.66x with no rejecting interval, so
+the band is not why that rule is gone. The trigger is.
 
 ### The rule this caught in its own tool
 

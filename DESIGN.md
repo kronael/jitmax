@@ -201,8 +201,8 @@ turbocharge — 2 annotated function(s), observations from 1 node build(s)
 
   demo/lib.cjs:4  totalScore() argument 0: 21/66 sampled elements are in
                   dictionary mode
-        measured: 28-67x per property load when spread across many objects
-        [options.md R3b] — usually caused by 'delete' on a per-row object
+        measured: 12.6-17.1x per property load, and 13.3-15.6x for a single
+        object [bench/delete.jl] — usually caused by 'delete'
 
   esm/lib.mjs:2   sumPoints() argument 0: array elements have 2 distinct object
                   shapes (64 elements sampled across 1 arrays)
@@ -214,10 +214,10 @@ The finding classes, each mapping to one self-contained rule (§4):
 | finding | V8 fact observed | measured cost cited | status |
 |---|---|---|---|
 | mixed-shape array | >1 distinct element maps via `%HaveSameMap` exemplars | 5-shape reads **5.17x** vs 1-shape, 95% CI 4.84-5.47, 512 elements, reads only (`bench-arrays.md` round 2, **partial — sweep still running**); same objects merely scattered in memory: 1.06x, CI 0.98-1.15 — the cost is shape, not locality, which is exactly the detectable part | ship |
-| dictionary-mode population | `%HasFastProperties` false across many observed objects | **28-67x** per property load (options.md R3b); the same rule states the counter-case: a *singleton* dictionary object measured ~free, up to 10% faster (R3) | ship |
+| dictionary-mode population | `%HasFastProperties` false across many observed objects | **12.6-17.1x** per property load (`bench/delete.jl`, three replications per cell); the counter-case this rule used to state — a *singleton* dictionary object measured ~free, up to 10% faster (options.md R3) — is **refuted** at 13.3-15.6x, so a population count is not what the runtime half needs to observe here | ship |
 | shape divergence across calls | >1 distinct maps for one parameter across calls | **~2.3-2.4x** at 5+ shapes vs mono (options.md R1); no clean cliff at any K — labelled modest | ship, informational |
 | sparse / dictionary elements | `%HasDictionaryElements` true on an array | **unmeasured — no number is claimed**; the harness pair is written during build; if its band spans 1.0 it ships as a graveyard entry and the finding reports kind only | measure first |
-| holey / boxed elements | `%HasHoleyElements` etc. | measured ~no effect (0.65 vs 0.67 ns/elem; 1.2x boxed — options.md R2) | **silent**; graveyard entry cited in docs, pending the in-cache sweep |
+| holey / boxed elements | `%HasHoleyElements`, `%HasObjectElements` | holey ~no effect, 0.93-1.06x on reads; boxed **1.39-1.66x** on reads and 1.58-1.69x to build at RAM size (`bench/arrays.jl`, three replications per cell) | holey **silent**; boxed is the one finding the runtime half can make that the static rule could not, because it observes the kind instead of inferring it from the declared type — which is why `boxed-elements` was withdrawn statically (TC-14) |
 | accumulating spread | scan-time syntax match inside the annotated function only (`[...acc, x]` in a loop) — no CFG, the obvious form only | **146-366x** at n=10k (options.md R4) | ship (scan-time; cuttable without touching the mechanism) |
 | annotated, never observed | wrapper never invoked by the test command | — | reported as absence of data, never as absence of problems |
 
