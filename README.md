@@ -465,7 +465,7 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
   declared type. It can report a problem even if no load site ever sees five maps.
   `BUGS.md` TC-2.
 - One measured effect ships no rule, because nothing static can find it. A
-  boxed array costs 1.39-1.66x to read and 1.58-1.69x to build at RAM size, and
+  boxed array costs 1.39-1.66x to read, and 1.58-1.69x to build at RAM size, and
   whether an array is boxed depends on what was stored in it, which a type
   annotation does not decide. `make bench-arrays`, `BUGS.md` TC-14. The same
   shape as the 6.17-6.34x dictionary effect in TC-12.
@@ -477,7 +477,7 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
 ## Development
 
 ```sh
-make test    # 46 unit tests, including the must-stay-silent cases
+make test    # 49 unit tests, including the must-stay-silent cases
 make lint    # tsc --noEmit
 make numbers # re-derive every published number from the .jl sweeps
 make check   # run the checker against demo/
@@ -496,9 +496,9 @@ redistribute it under those terms. A derivative work carries the same licence.
 It is not published to npm. Get it by cloning the repository.
 
 `examples/` is the exception, and deliberately so: the `.before.ts` files are
-functions vendored verbatim from radash, remeda and es-toolkit, all **MIT**, and
-each file carries its upstream's copyright line, version and commit. MIT is
-compatible with the GPL, and the point of the whole exercise is that the code
-measured there is somebody else's.
+functions vendored verbatim from radash, remeda, es-toolkit and zod, all
+**MIT**, and each file carries its upstream's copyright line, version and
+commit. MIT is compatible with the GPL, and the point of the whole exercise is
+that the code measured there is somebody else's.
 
 Status: v0.5.1, single machine, seven rules.
