@@ -114,7 +114,6 @@ if (mode === 'kinds') {
   const a = build();
   const ask = (expr) => {
     try {
-      // eslint-disable-next-line no-eval
       return eval(expr);
     } catch {
       return 'needs --allow-natives-syntax';
