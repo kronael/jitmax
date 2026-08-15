@@ -65,14 +65,6 @@ turbocharge borrows the annotation and the call-tree walk. The jobs differ:
 CPython does not JIT, so Numba must compile; V8 does, so turbocharge only tells
 you where your code blocks it.
 
-```sh
-turbocharge src        # check annotated functions under src/
-```
-
-Exit codes tell scripts what happened: `0` means clean, `1` means turbocharge
-found problems, and `2` means the tool itself failed. A path that does not
-exist returns `2`, never a clean run.
-
 ## The rules
 
 Eight rules ship. The first seven check every function in the call tree. The
