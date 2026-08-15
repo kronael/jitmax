@@ -3,90 +3,90 @@
 // fails when this file and the data disagree.
 
 export const N: Record<string, string> = {
-  // shapes-calibrated.jl: five shapes, reads only, L1 through RAM
+  // shapes-calibrated.jl: five shapes, reads only, L1 through RAM — the older sweep, not re-measured under r2
   'elem.reads': '3.6-10.6x',
-  // shapes-calibrated.jl: construction counted, L1 and L2, two to five shapes
+  // shapes-calibrated.jl: construction counted, L1 and L2, two to five shapes — the older sweep, not re-measured under r2
   'elem.constr.l1l2': '1.25-3.52x',
-  // shapes-calibrated.jl: construction counted at RAM size, the four replicated cells only
+  // shapes-calibrated.jl: construction counted at RAM size, the four replicated cells only — the older sweep, not re-measured under r2
   'elem.constr.l3': '1.05-1.20x',
-  // shapes-calibrated.jl: the whole sweep
+  // shapes-calibrated.jl: the whole sweep — the older sweep, not re-measured under r2
   'elem.cells': '24',
-  // dispatch.jl: a method on a prototype, five and six shapes, reads only
+  // dispatch.jl: a method on a prototype, five and six shapes, reads only — the older sweep, not re-measured under r2
   'disp.proto.reads': '14.6-20.0x',
-  // dispatch.jl: a method on a prototype, four shapes, reads only at L1
+  // dispatch.jl: a method on a prototype, four shapes, reads only at L1 — the older sweep, not re-measured under r2
   'disp.proto.four': '1.56x',
-  // dispatch.jl: a method on a prototype, five shapes, reads only at L1
+  // dispatch.jl: a method on a prototype, five shapes, reads only at L1 — the older sweep, not re-measured under r2
   'disp.proto.five': '19.37x',
-  // dispatch.jl: one shared function held as an own property, five and six shapes, reads only
+  // dispatch.jl: one shared function held as an own property, five and six shapes, reads only — the older sweep, not re-measured under r2
   'disp.shared.reads': '6.9-8.2x',
-  // dispatch.jl: five shapes with construction counted, prototype and own-property, L1 and L2
+  // dispatch.jl: five shapes with construction counted, prototype and own-property, L1 and L2 — the older sweep, not re-measured under r2
   'disp.constr.l1l2': '1.9-5.5x',
-  // dispatch.jl: a method on a prototype at RAM size, five and six shapes, the replicated cells
+  // dispatch.jl: a method on a prototype at RAM size, five and six shapes, the replicated cells — the older sweep, not re-measured under r2
   'disp.constr.l3.five': '1.46-1.94x',
-  // dispatch.jl: the same cells at two to four shapes
+  // dispatch.jl: the same cells at two to four shapes — the older sweep, not re-measured under r2
   'disp.constr.l3.four': '0.93-1.20x',
-  // dispatch.jl: the whole sweep
+  // dispatch.jl: the whole sweep — the older sweep, not re-measured under r2
   'disp.cells': '80',
-  // spread.jl: array spread against push at n=1000, construction counted, both sweeps
+  // spread.jl: array spread against push at n=1000, construction counted, both sweeps — the older sweep, not re-measured under r2
   'spread.array.n1000': '156-177x',
-  // spread.jl: the same at n=10000, the three replications
+  // spread.jl: the same at n=10000, the three replications — the older sweep, not re-measured under r2
   'spread.array.n10000': '1750-2011x',
-  // spread.jl: the two sweeps of that cell that predate the replication
+  // spread.jl: the two sweeps of that cell that predate the replication — the older sweep, not re-measured under r2
   'spread.array.n10000.earlier': '1877x and 2348x',
-  // spread.jl: acc.concat(v) against push at n=1000, construction counted
+  // spread.jl: acc.concat(v) against push at n=1000, construction counted — the older sweep, not re-measured under r2
   'spread.concat': '779x',
-  // spread.jl: the interval of that cell
+  // spread.jl: every interval measured for that cell — the older sweep, not re-measured under r2
   'spread.concat.ci': '733-821',
-  // spread.jl: the finished array read back, spread against push, both sizes and both sweeps
+  // spread.jl: the finished array read back, spread against push, both sizes and both sweeps — the older sweep, not re-measured under r2
   'spread.array.reads': '0.96-1.07x',
-  // spread-object.jl: the finished object read back, spread against keyed assignment, n=500
+  // spread-object.jl: the finished object read back, spread against keyed assignment, n=500 — the older sweep, not re-measured under r2
   'spread.object.reads': '0.02-0.03x',
-  // spread-object.jl: object spread against keyed assignment at n=500, the three replications
+  // spread-object.jl: object spread against keyed assignment at n=500, the three replications — the older sweep, not re-measured under r2
   'spread.object': '188-203x',
-  // spread-object.jl: Object.assign({}, acc, …) at n=500, the three replications
+  // spread-object.jl: Object.assign({}, acc, …) at n=500, the three replications — the older sweep, not re-measured under r2
   'spread.assign': '846-875x',
   // select.jl: the chosen value stored where it outlives the loop, both sizes
   'select.heap': '2.56-2.87x',
   // select.jl: the intervals at n=10000, across the first sweep and the three replications
-  'select.heap.ci10k': '2.48-2.92',
+  'select.heap.ci10k': '2.59-2.92',
   // select.jl: the intervals at n=100000, across the first sweep and the three replications
   'select.heap.ci100k': '2.30-3.09',
   // select.jl: the whole sweep
   'select.cells': '6',
-  // chained.jl: xs.map(f).filter(g) against one fused pass at n=1000, construction counted
+  // chained.jl: xs.map(f).filter(g) against one fused pass at n=1000, construction counted — the older sweep, not re-measured under r2
   'chained.mapfilter': '7.89x',
-  // chained.jl: the interval of that cell
+  // chained.jl: every interval measured for that cell — the older sweep, not re-measured under r2
   'chained.mapfilter.ci': '7.41-8.41',
-  // chained.jl: Object.entries(o).map(f) against a for-in walk at n=1000, construction counted
+  // chained.jl: Object.entries(o).map(f) against a for-in walk at n=1000, construction counted — the older sweep, not re-measured under r2
   'chained.entries.n1000': '3.59x',
-  // chained.jl: the interval of that cell
+  // chained.jl: every interval measured for that cell — the older sweep, not re-measured under r2
   'chained.entries.n1000.ci': '3.44-3.77',
-  // chained.jl: the same at n=10000
+  // chained.jl: the same at n=10000 — the older sweep, not re-measured under r2
   'chained.entries.n10000': '2.65x',
-  // chained.jl: the interval of that cell
+  // chained.jl: every interval measured for that cell — the older sweep, not re-measured under r2
   'chained.entries.n10000.ci': '2.56-2.74',
-  // chained.jl: the 0.3 sweep, which is every row the dispatch-table kernel wrote
+  // chained.jl: the 0.3 sweep, which is every row the dispatch-table kernel wrote — the older sweep, not re-measured under r2
   'chained.cells': '24',
   // inline.jl: a callee past the inlining budget against the same callee under it
-  'inline.reads': '4.42-4.79x',
+  'inline.reads': '3.21-4.95x',
   // inline.jl: the interval at n=100000
-  'inline.ci100k': '4.18-4.70',
+  'inline.ci100k': '2.54-5.58',
   // inline.jl: the interval at n=1000
-  'inline.ci1000': '4.56-5.05',
+  'inline.ci1000': '4.34-5.22',
   // inline.jl: the whole sweep
   'inline.cells': '2',
-  // delete.jl: one delete per object, reads only, at n=16384 and n=262144
+  // delete.jl: one delete per object, reads only, at n=16384 and n=262144 — the older sweep, not re-measured under r2
   'delete.rows': '12.6-17.1x',
-  // delete.jl: the same delete against assigning undefined instead, n=16384
+  // delete.jl: the same delete against assigning undefined instead, n=16384 — the older sweep, not re-measured under r2
   'delete.vs.undefined': '12.4-12.9x',
-  // delete.jl: one object with one delete, reads only, every size and every sweep
+  // delete.jl: one object with one delete, reads only, every size and every sweep — the older sweep, not re-measured under r2
   'delete.single': '13.3-15.6x',
-  // delete.jl: one delete per object with construction counted, n=256
+  // delete.jl: one delete per object with construction counted, n=256 — the older sweep, not re-measured under r2
   'delete.rows.constr': '23.2-24.3x',
-  // delete.jl: the single object with construction counted, every size
+  // delete.jl: the single object with construction counted, every size — the older sweep, not re-measured under r2
   'delete.single.constr': '3.2-7.0x',
-  // delete.jl: the whole sweep
+  // delete.jl: the whole sweep — the older sweep, not re-measured under r2
   'delete.cells': '16',
-  // example.jl: remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps
+  // example.jl: remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps — the older sweep, not re-measured under r2
   'ex.mergeall.reads': '0.11-0.12x',
 };

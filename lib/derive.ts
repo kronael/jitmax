@@ -22,6 +22,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export interface Row {
+  runner?: string;
   variant: string;
   mode: string;
   n: number;
@@ -46,22 +47,55 @@ interface Citation {
   cells: string;
   pick: (r: Row) => boolean;
   // range  min..max of the ratio, the form a replicated or swept claim takes
-  // point  one cell's ratio
   // points every matching ratio, ascending — "1877x and 2348x"
-  // ci     one cell's bootstrap interval, printed without the x
-  // cispan the same for a cell measured more than once: the lowest lower bound
-  //        to the highest upper bound across the sweeps. `ci` is the interval of
-  //        ONE sweep and rule 13 is that one sweep cannot see what varies
+  // cispan the lowest lower bound to the highest upper bound across every
+  //        matching sweep. Rule 13 is that one sweep cannot see what varies
   //        between two, so a replicated cell has no single interval to quote and
   //        quoting one of the three would be picking the flattering one.
   // count  how many distinct cells (variant, baseline, mode, n) matched
-  agg: 'range' | 'point' | 'points' | 'ci' | 'cispan' | 'count';
+  //
+  // `point` and `ci` were the singular forms of `range` and `cispan`, and every
+  // published cell is now measured three times over, so both of them asked the
+  // data for something it no longer has. They did not need replacing — `range`
+  // and `cispan` render a single row identically — they needed deleting, and a
+  // citation that still wants ONE number out of three sweeps is a citation
+  // picking the flattering one.
+  agg: 'range' | 'points' | 'cispan' | 'count';
   // Decimal places. The default scales with magnitude; an override is here
   // where the published string does not.
   dp?: number;
   // Quoted verbatim in README as well as in EVIDENCE.
   readme?: boolean;
+  // This citation is ABOUT a superseded sweep and must keep reading it even
+  // after its file is re-measured — `spread.array.n10000.earlier` exists to
+  // show what the replication withdrew. A citation that is merely waiting for
+  // its sweep does NOT set this: `REMEASURED` decides that one.
+  history?: true;
 }
+
+// Rows the current runner wrote. CLAUDE.md: a superseded sweep is history,
+// never a source for a published number — so a citation reads this protocol's
+// rows unless it says otherwise, and one whose cells have not been re-measured
+// fails loudly at `no rows match` rather than quietly averaging two protocols
+// together. `bench/run.js` owns this string; it is repeated rather than
+// imported because that file is an ESM script with a `process.exit` in it.
+const RUNNER = 'r2';
+const current = (r: Row): boolean => r.runner === RUNNER;
+
+// The sweeps that have been re-measured under it, whole. A file moves in here
+// when every cell `bench/sweeps.js` declares for it has three sweeps under the
+// current runner — not when the first cell lands, because a range derived from
+// the four cells that finished is a range that silently changed what it is
+// about. Until then its citations read the older rows and say so.
+//
+// One list rather than a flag on each of forty citations: a sweep is finished
+// or it is not, and forty places to remember is forty places to forget.
+const REMEASURED = new Set(['inline.jl', 'select.jl']);
+
+// Does this citation read rows the current runner did not write? Either because
+// its sweep is still on the old protocol, or because the citation is ABOUT a
+// superseded sweep.
+const readsHistory = (c: Citation): boolean => Boolean(c.history) || !REMEASURED.has(c.file);
 
 const fresh = (r: Row): boolean => r.replicate === undefined;
 const replicated = (r: Row): boolean => r.protocol === 'replicated';
@@ -107,13 +141,13 @@ export const CITATIONS: Record<string, Citation> = {
     file: 'dispatch.jl',
     cells: 'a method on a prototype, four shapes, reads only at L1',
     pick: (r) => r.family === 'cls' && r.mode === 'excl' && r.size === 'L1' && r.k === 4,
-    agg: 'point',
+    agg: 'range',
   },
   'disp.proto.five': {
     file: 'dispatch.jl',
     cells: 'a method on a prototype, five shapes, reads only at L1',
     pick: (r) => r.family === 'cls' && r.mode === 'excl' && r.size === 'L1' && r.k === 5,
-    agg: 'point',
+    agg: 'range',
     // Two places against the 1.56x it is quoted next to: the pair is the step.
     dp: 2,
   },
@@ -180,13 +214,13 @@ export const CITATIONS: Record<string, Citation> = {
     file: 'spread.jl',
     cells: 'acc.concat(v) against push at n=1000, construction counted',
     pick: (r) => r.variant === 'concat' && r.mode === 'incl' && r.n === 1000,
-    agg: 'point',
+    agg: 'range',
   },
   'spread.concat.ci': {
     file: 'spread.jl',
-    cells: 'the interval of that cell',
+    cells: 'every interval measured for that cell',
     pick: (r) => r.variant === 'concat' && r.mode === 'incl' && r.n === 1000,
-    agg: 'ci',
+    agg: 'cispan',
   },
   // The read half of both spread forms, which is what the `fix:` line costs a
   // caller (BUGS TC-16). An array pushed to reads like an array spread into; an
@@ -254,32 +288,32 @@ export const CITATIONS: Record<string, Citation> = {
       r.mode === 'incl' &&
       r.n === 1000 &&
       r.kernel === 'dispatch-table',
-    agg: 'point',
+    agg: 'range',
   },
   'chained.mapfilter.ci': {
     file: 'chained.jl',
-    cells: 'the interval of that cell',
+    cells: 'every interval measured for that cell',
     pick: (r) =>
       r.variant === 'chained' &&
       r.baseline === 'fused' &&
       r.mode === 'incl' &&
       r.n === 1000 &&
       r.kernel === 'dispatch-table',
-    agg: 'ci',
+    agg: 'cispan',
   },
   'chained.entries.n1000': {
     file: 'chained.jl',
     cells: 'Object.entries(o).map(f) against a for-in walk at n=1000, construction counted',
     pick: (r) =>
       r.variant === 'entriesmap' && r.mode === 'incl' && r.n === 1000 && r.kernel === 'dispatch-table',
-    agg: 'point',
+    agg: 'range',
   },
   'chained.entries.n1000.ci': {
     file: 'chained.jl',
-    cells: 'the interval of that cell',
+    cells: 'every interval measured for that cell',
     pick: (r) =>
       r.variant === 'entriesmap' && r.mode === 'incl' && r.n === 1000 && r.kernel === 'dispatch-table',
-    agg: 'ci',
+    agg: 'cispan',
   },
   'chained.entries.n10000': {
     file: 'chained.jl',
@@ -289,17 +323,17 @@ export const CITATIONS: Record<string, Citation> = {
       r.mode === 'incl' &&
       r.n === 10000 &&
       r.kernel === 'dispatch-table',
-    agg: 'point',
+    agg: 'range',
   },
   'chained.entries.n10000.ci': {
     file: 'chained.jl',
-    cells: 'the interval of that cell',
+    cells: 'every interval measured for that cell',
     pick: (r) =>
       r.variant === 'entriesmap' &&
       r.mode === 'incl' &&
       r.n === 10000 &&
       r.kernel === 'dispatch-table',
-    agg: 'ci',
+    agg: 'cispan',
   },
   'chained.cells': {
     file: 'chained.jl',
@@ -320,13 +354,13 @@ export const CITATIONS: Record<string, Citation> = {
     file: 'inline.jl',
     cells: 'the interval at n=100000',
     pick: (r) => r.n === 100000,
-    agg: 'ci',
+    agg: 'cispan',
   },
   'inline.ci1000': {
     file: 'inline.jl',
     cells: 'the interval at n=1000',
     pick: (r) => r.n === 1000,
-    agg: 'ci',
+    agg: 'cispan',
   },
   'inline.cells': {
     file: 'inline.jl',
@@ -426,22 +460,12 @@ function render(key: string, c: Citation, matched: Row[]): string {
   }
   if (live.length === 0) throw new Error(`${key}: no rows match — the citation is stale`);
   const fmt = (v: number, ref: number): string => v.toFixed(c.dp ?? places(ref));
-  if (c.agg === 'ci') {
-    if (live.length !== 1) throw new Error(`${key}: an interval needs one cell, matched ${live.length}`);
-    const r = live[0]!;
-    const hi = r.hi!;
-    return `${fmt(r.lo!, hi)}-${fmt(hi, hi)}`;
-  }
   if (c.agg === 'cispan') {
     const hi = Math.max(...live.map((r) => r.hi!));
     return `${fmt(Math.min(...live.map((r) => r.lo!)), hi)}-${fmt(hi, hi)}`;
   }
   const ratios = live.map((r) => r.ratio!).sort((a, b) => a - b);
   const top = ratios[ratios.length - 1]!;
-  if (c.agg === 'point') {
-    if (live.length !== 1) throw new Error(`${key}: a point needs one cell, matched ${live.length}`);
-    return `${fmt(top, top)}x`;
-  }
   if (c.agg === 'points') return ratios.map((v) => `${fmt(v, top)}x`).join(' and ');
   const lo = fmt(ratios[0]!, top);
   const hi = fmt(top, top);
@@ -457,7 +481,10 @@ export function derive(root: string): Record<string, string> {
       all = rows(root, c.file);
       cache.set(c.file, all);
     }
-    out[key] = render(key, c, all.filter(c.pick));
+    // Never both. A range that spans two protocols is a range whose ends were
+    // measured under different rules, and the file gives no sign of it.
+    const want = !readsHistory(c);
+    out[key] = render(key, c, all.filter((r) => current(r) === want && c.pick(r)));
   }
   return out;
 }
@@ -467,10 +494,18 @@ const HEADER = `// GENERATED by \`make numbers\` from the .jl sweeps. Do not edi
 // fails when this file and the data disagree.
 `;
 
+// The provenance a reader checks, with the protocol on the end of it. Written
+// here rather than typed into each `cells` string: which protocol a number came
+// from is derived from the same flag that decides which rows it reads, so the
+// two cannot drift, and a citation that gets re-measured stops claiming to be
+// old the moment its flag comes off.
+const provenance = (c: Citation): string =>
+  `${c.cells}${readsHistory(c) ? ` — the older sweep, not re-measured under ${RUNNER}` : ''}`;
+
 export function generate(root: string): string {
   const values = derive(root);
   const lines = Object.entries(CITATIONS).map(([key, c]) => {
-    return `  // ${c.file}: ${c.cells}\n  '${key}': '${values[key]}',`;
+    return `  // ${c.file}: ${provenance(c)}\n  '${key}': '${values[key]}',`;
   });
   return `${HEADER}\nexport const N: Record<string, string> = {\n${lines.join('\n')}\n};\n`;
 }
@@ -485,7 +520,7 @@ const END = '<!-- /generated -->';
 export function markdown(root: string): string {
   const values = derive(root);
   const lines = Object.entries(CITATIONS).map(
-    ([key, c]) => `| \`${values[key]}\` | \`bench/${c.file}\` — ${c.cells} |`
+    ([key, c]) => `| \`${values[key]}\` | \`bench/${c.file}\` — ${provenance(c)} |`
   );
   return [
     BEGIN,
