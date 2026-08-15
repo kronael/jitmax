@@ -2,6 +2,53 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
+## TC-23 — re-measuring select contradicts its own silent clause (2026-08-15, open, proposal)
+
+`allocating-select` ships this, hand-typed:
+
+> on numbers there is no effect at all — **1.03x and 0.99x, both intervals
+> spanning 1** — because Math.min allocates nothing; and escape analysis does not
+> rescue the boxed form either: kept in a local the same loop still costs
+> **1.72-2.28x**
+
+Both numbers are from single sweeps. Re-measured through the new runner — three
+whole sweeps per cell, under the load gate, every cell replicating:
+
+| cell | published | three replications | intervals |
+|---|---|---|---|
+| number n=10000 | 1.03x | **1.13x 1.21x 1.22x** | 1.06-1.21, 1.13-1.30, 1.15-1.30 |
+| number n=100000 | 0.99x | 0.88x 0.94x 1.00x | 0.84-0.92, 0.88-0.98, 0.90-1.10 |
+| local n=10000 | 2.28x | 2.45x 2.36x 2.40x | — |
+| local n=100000 | 1.72x | 2.13x 2.02x 2.01x | — |
+
+"No effect at all, both intervals spanning 1" is not what the data says any
+more. At n=10000 **not one of the three intervals spans 1**, the point estimates
+are 1.13-1.22x, and every lower bound clears 1.05 — which is the bar protocol
+rule 6 sets for a broad warning. At n=100000 the effect reverses to 0.88-1.00x.
+So the honest reading is not "no effect" but "an effect that changes sign with
+the working set", and that is a different sentence with a different consequence
+for where the rule should fire.
+
+`1.72-2.28x` for the local case is now `2.01-2.45x`.
+
+Why the drift, and it is not mysterious: these were one sweep each, and rule 13
+exists because one sweep cannot see what varies between two. The old rows also
+predate the load gate and carry no record of what the machine was doing.
+
+**Not fixed.** The derived numbers were re-derived by `make numbers`, which is
+mechanical. This clause is prose making an argument about where a rule must stay
+quiet, `lib/derive.ts` deliberately exempts it from derivation, and changing it
+is a judgement about a shipped rule's scope. Two proposals:
+
+1. Rewrite the clause to what the rows say, and decide whether an effect of
+   1.13-1.22x at L1 that reverses at RAM is still a case the rule stays silent
+   in. It probably is — the rule is about *allocation*, and the number case
+   allocates nothing — but the sentence has to stop claiming a measurement it no
+   longer has.
+2. Derive it. Every number in `silent` could come from `lib/derive.ts` the way
+   `cost` does, leaving only the argument hand-written. That is the change that
+   stops this recurring, and it is bigger than this entry.
+
 ## TC-22 — three workloads still dispatch on the variant string inside the timed region (2026-08-15, open)
 
 The repo has a rule about this — *"Never dispatch on a variant string inside a
