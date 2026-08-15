@@ -17,9 +17,12 @@ demo/lib.ts   every rule's fixture, including the must-stay-silent ones
 examples/     real library functions, before and after the printed fix, MIT
 test/         one test per rule, plus one per silent case; fixtures/ holds the
               config and the call chain longer than the walk's cap
-bench/        driver.js (the protocol), run.js (every sweep's cells, one table),
-              kernel.js (the argv/PRNG/result contract a workload meets),
-              one workload + one .jl per measured claim
+bench/        driver.js (the protocol), sweeps.js (every sweep's cells, one table),
+              run.js (the runner around the measurement — selection, the load
+              gate, resume, progress, the manifest), env.js (what a row records
+              about the machine), kernel.js (the argv/PRNG/result contract a
+              workload meets), tiers.js + region-marker.cjs (the tier
+              diagnostic), one workload + one .jl per measured claim
 README.md     how to use it, the rules, and the V8 citation table
 BUGS.md       the review queue. Found during audits, fixed only when asked
 ```
@@ -59,7 +62,8 @@ correct the citation, never the other way round.
 
 Non-negotiable, because the evidence *is* the product. `bench/driver.js`
 implements it and names these numbers next to the code that enforces each one;
-`bench/run.js` holds the cells, `bench/kernel.js` the contract a workload meets.
+`bench/sweeps.js` holds the cells, `bench/run.js` is the runner around it, and
+`bench/kernel.js` the contract a workload meets.
 
 1. **One fresh OS process per observation**, one variant per process. An
    in-process A/B shares inline caches, and that contamination invalidated a
@@ -86,9 +90,21 @@ implements it and names these numbers next to the code that enforces each one;
    region. The driver compares checksums inside every pair.
 8. **No tracing, profiling, forced GC or `%GetOptimizationStatus` in an evidence
    run.** A `kinds` mode that needs `--allow-natives-syntax` is a diagnostic and
-   never a measurement.
+   never a measurement, and so is `bench/tiers.js`: it re-runs a cell's exact
+   shape under `--trace-opt --trace-deopt` in its **own** processes, and the
+   tier it finds is written into the row as a fact next to `repsBase`/`repsTest`.
+   A pair whose two sides reach different tiers has a ratio that is partly a
+   measurement of tiering, and `tierMismatch` says so in the row. It is recorded,
+   never gated on.
 9. **Publish the environment with the numbers**: Node and V8 version, flags,
-   seeds, warmup counts, core affinity.
+   seeds, warmup counts, core affinity — in **every row**, not in a report
+   beside it. `bench/env.js` writes them, and the row also carries the load the
+   sweep started at and **the gate it was allowed to start under**. The gate is
+   `nproc - 1`: the driver pins every observation to one core, the remaining
+   cores absorb the rest of the machine, and a one-minute load above that means
+   something is contending for the pinned core. That is a model and not a
+   measurement — it is written here so it can be argued with rather than
+   discovered in an `if`. `--max-load` overrides it and the override is recorded.
 10. **Report failures in the same format as wins** — `REJ`, and a void cell
     printed with its error.
 11. **Both halves, always**: reads-only and with construction. Measuring one

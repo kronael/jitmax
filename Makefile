@@ -1,4 +1,4 @@
-.PHONY: test lint check v8-check numbers bench bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-dispatch bench-delete bench-arrays bench-tc11 example meme meme-png clean
+.PHONY: test lint check v8-check numbers bench bench-all bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-dispatch bench-delete bench-arrays bench-tc11 tiers example meme meme-png clean
 
 test:
 	node --test test/check.test.ts
@@ -55,6 +55,20 @@ bench-arrays:
 # The TC-11 cells, three sweeps each. Appends to the sweeps' own .jl files.
 bench-tc11:
 	node bench/run.js tc11
+
+# Every sweep, in the order bench/run.js declares, appending a manifest row per
+# sweep to bench/manifest.jsonl — what ran, when, on what, and how long, so a
+# release can point at one artifact instead of twelve terminal logs. Hours. The
+# load gate refuses to start on a busy machine; --wait-load makes it wait
+# instead.
+bench-all:
+	node bench/run.js --all
+
+# Which tier the measured code was actually in — the diagnostic, never an
+# evidence run (protocol rule 8). Reads every published cell's shape, at the
+# rep count that cell was published at, and appends to bench/tiers.jl.
+tiers:
+	node bench/tiers.js all
 
 # The end-to-end examples: four real library functions, the finding turbocharge
 # printed on each, and what applying that fix is worth to a caller. The check
