@@ -1,4 +1,4 @@
-.PHONY: test lint check v8-check bench bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-dispatch bench-tc11 meme meme-png clean
+.PHONY: test lint check v8-check bench bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-dispatch bench-delete bench-arrays bench-tc11 meme meme-png clean
 
 test:
 	node --test test/check.test.ts
@@ -40,6 +40,12 @@ bench-addprop:
 
 bench-dispatch:
 	node bench/run-dispatch.js
+
+bench-delete:
+	node bench/run-delete.js
+
+bench-arrays:
+	node bench/run-arrays.js
 
 # The TC-11 cells, three sweeps each. Appends to the sweeps' own .jsonl files.
 bench-tc11:
