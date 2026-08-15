@@ -360,6 +360,14 @@ turbocharge — 37 annotated functions, 14 findings
     claims a speedup for it.
   </p>
   <p>
+    <strong>A truncated walk says so in words and still exits <code>0</code>.</strong>
+    The report refuses to call that run clean; the exit code is set from the
+    finding count alone, and a CI gate reads the code, not the prose. Tracked as
+    BUGS TC-17. The detection half of the same defect — a deep call chain that
+    filled the 200-body cap and reported clean outright — was found and fixed on
+    2026-08-15.
+  </p>
+  <p>
     <strong><code>megamorphic-elements</code> does not check that you load
     anything.</strong> It reads the parameter's type and reports. A function
     that only reads <code>rows.length</code> triggers it, though nothing there
@@ -414,7 +422,7 @@ $ make bench-addprop   # re-run the hidden-class refutation</code></pre>
 
 <div class="hub-footer">
   <p>
-    v0.5.0, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
+    v0.5.1, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
     those terms; a derivative work carries the same licence. Not published to
     npm, so acquisition is by clone. Seven rules, 46 tests, single
     machine. Open defects are listed in <code>BUGS.md</code>, and the adversarial
