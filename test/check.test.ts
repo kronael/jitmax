@@ -114,8 +114,12 @@ test('an array of a five-way union with method calls reports once', () => {
   assert.deepStrictEqual(rules('totalArea'), ['megamorphic-elements']);
 });
 
-test('a union mixing primitives fires', () => {
-  assert.deepStrictEqual(rules('mixed'), ['boxed-elements']);
+// bench/arrays.jl withdrew boxed-elements. The array a `(number | string)[]`
+// annotation describes is PACKED_DOUBLE_ELEMENTS while only numbers are stored
+// in it, and it measured 0.96-1.08x against a plain number[] — so the case the
+// rule fired on is a case its own benchmark rejects.
+test('a union mixing primitives stays silent: the declared type is not the kind', () => {
+  assert.deepStrictEqual(rules('mixed'), []);
 });
 
 test('rebuilding the accumulator inside a loop fires', () => {
@@ -292,8 +296,9 @@ test('a missing path fails loudly instead of reporting a clean run', () => {
 // resolveDisabled() is the one place both forms are expanded and validated.
 
 test('a defect code expands to every rule that carries it', () => {
-  assert.deepStrictEqual([...resolveDisabled(['TC-2'])].sort(), [
-    'boxed-elements',
+  assert.deepStrictEqual([...resolveDisabled(['TC-9'])].sort(), [
+    'chained-allocation',
+    'delete-property',
     'megamorphic-elements',
   ]);
 });
@@ -325,7 +330,7 @@ test('an annotation disable by rule name silences its own function and leaves it
 
 test('an annotation disable by defect code reaches through the walk, and does not leak into its sibling', () => {
   const quiet = markFor('viaCalleeQuiet');
-  assert.deepStrictEqual(quiet.disabled, ['TC-15']);
+  assert.deepStrictEqual(quiet.disabled, ['TC-9']);
   const disabled = resolveDisabled(quiet.disabled);
   assert.deepStrictEqual(
     rawFindings('viaCalleeQuiet').filter((f) => !disabled.has(f.rule)),
@@ -353,6 +358,5 @@ test('the report says how many findings were suppressed and by what', () => {
 
 test('a finding prints the defects its rule carries', () => {
   const out = render(root, [{ mark: markFor('drop'), findings: rawFindings('drop') }]);
-  assert.match(out, /known defect: TC-15 — delete-property's number predates the current protocol/);
   assert.match(out, /known defect: TC-9 — rules fire outside the conditions their own evidence establishes/);
 });

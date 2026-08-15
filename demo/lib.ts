@@ -30,11 +30,18 @@ export function fiveShapes(rows: (A | B | C | D | E)[]): number {
   return rows.length;
 }
 
+/** The trigger `boxed-elements` used to fire on. V8 picks the elements kind
+ * from the values stored, so this array is PACKED_DOUBLE unless a string is
+ * actually put in it: 0.96-1.08x, seventeen of eighteen intervals spanning 1.
+ * Silent, and the rule that reported it is withdrawn. */
 /** @turbocharge */
 export function mixed(vals: (number | string)[]): number {
   return vals.length;
 }
 
+/** One object, one delete. This was published as the case delete-property must
+ * stay silent on — 0x, dictionary mode up to 10% faster — and it measures
+ * 13.3-15.6x on reads, in all nine of its sweeps. */
 /** @turbocharge */
 export function drop(o: Record<string, number>, k: string): void {
   delete o[k];
@@ -112,7 +119,7 @@ export function viaCallee(o: Record<string, number>, k: string): void {
 
 /** Same callee as viaCallee, disabled by defect code here only — proves the
  * override reaches through the walk and does not leak into viaCallee. */
-/** @turbocharge -TC-15 */
+/** @turbocharge -TC-9 */
 export function viaCalleeQuiet(o: Record<string, number>, k: string): void {
   dropInner(o, k);
 }

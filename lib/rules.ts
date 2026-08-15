@@ -20,8 +20,6 @@ export const DEFECT: Record<string, string> = {
   'TC-9': 'rules fire outside the conditions their own evidence establishes',
   'TC-10': 'the walk follows calls but not constructors',
   'TC-13': 'a method in a field has no four-map budget',
-  'TC-14': 'boxed-elements cannot be re-run, and its trigger is an inference',
-  'TC-15': "delete-property's number predates the current protocol",
 };
 
 export interface Finding extends Site {
@@ -35,16 +33,6 @@ export interface Finding extends Site {
 // must stay quiet. `silent` is not a caveat, it is a test: a rule that fires
 // there is contradicting this project's own evidence.
 export const EVIDENCE: Record<string, Evidence> = {
-  'boxed-elements': {
-    cost:
-      '1.45-1.89x on reads, 2.36-3.28x with construction — ONE sweep, unreplicated, ' +
-      'and inside the 1.0-1.7x band a second sweep showed this harness cannot resolve',
-    source: 'bench-arrays.md round 2, suite A',
-    silent:
-      'holey arrays (0.94-1.09, interval includes 1); also silent on `any` and on an ' +
-      'unresolved type parameter, neither of which says anything about representation',
-    defects: ['TC-14', 'TC-2'],
-  },
   'megamorphic-elements': {
     cost:
       '3.6-10.6x on reads across L1, L2 and L3; 1.25-3.52x once construction is counted at ' +
@@ -144,10 +132,24 @@ export const EVIDENCE: Record<string, Evidence> = {
     defects: ['TC-10'],
   },
   'delete-property': {
-    cost: '28-67x per property load once the object is in dictionary mode',
-    source: 'options.md round 3b',
-    silent: 'assigning a new property is not this; only delete demotes',
-    defects: ['TC-15', 'TC-9'],
+    cost:
+      '12.6-17.1x per property load once the object is in dictionary mode (n=16384 and ' +
+      'n=262144, three replications each), and 12.4-12.9x against assigning undefined ' +
+      'instead — and 13.3-15.6x for ONE object with a single delete, at every working ' +
+      'set and in all nine of its sweeps, which overturns the 0x this project published ' +
+      'for that case since round 1; with construction counted 23.2-24.3x at n=256, where ' +
+      'the delete is paid on every object built, and 3.2-7.0x for the single object',
+    source:
+      'bench/delete.jl, 16 cells, 20 pairs each, every cell replicated three times; ' +
+      'three cells disagree across sweeps and one is void, and all four are in the file',
+    silent:
+      'assigning undefined instead of deleting is the fix and not the defect — it costs ' +
+      '1.01-1.10x on reads with two of three intervals spanning 1, and 1.07-1.19x to ' +
+      'build; so is adding a property, which never demotes at any count. The old ' +
+      'singleton exception is withdrawn: it was measured on a probe whose fast side a ' +
+      'loop-invariant load could serve, and a kernel that has to load the object every ' +
+      'pass says a single delete costs the same as a hundred thousand of them',
+    defects: ['TC-9'],
   },
 };
 
@@ -173,32 +175,6 @@ const members = (t: TS.Type): readonly TS.Type[] => (t.isUnion() ? t.types : [t]
 const isArray = (checker: TS.TypeChecker, t: TS.Type): boolean =>
   members(t).every((x) => checker.isArrayType(x) || checker.isTupleType(x));
 
-const isNumeric = (ts: Ts, t: TS.Type): boolean =>
-  Boolean(t.flags & (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral));
-
-function isFastElement(ts: Ts, t: TS.Type): boolean {
-  const f = t.flags;
-  // An unresolved type parameter is not evidence of anything. `readonly T[]`
-  // says nothing about representation, and treating it as unfast fires this
-  // rule on every function of every generic library.
-  // Neither is an unresolved type parameter nor `any`. Absence of information
-  // is not evidence of boxing, and firing on it buries a real finding under
-  // one warning per generic function.
-  if (f & (ts.TypeFlags.TypeParameter | ts.TypeFlags.TypeVariable)) return true;
-  if (f & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return true;
-  // An object type is one shape, which is the fast case. Divergence across
-  // several object types is megamorphic-elements' job, not this rule's.
-  return Boolean(
-    f &
-      (ts.TypeFlags.Number |
-        ts.TypeFlags.NumberLiteral |
-        ts.TypeFlags.String |
-        ts.TypeFlags.StringLiteral |
-        ts.TypeFlags.BooleanLike |
-        ts.TypeFlags.Object)
-  );
-}
-
 // Parameters of every body in the closed world, not just the annotated root.
 // A helper three calls deep receives the same arrays and pays the same costs,
 // which is the entire reason the walk recurses.
@@ -216,22 +192,15 @@ function arrayParams(
   return out;
 }
 
-// A boxed element forces V8 out of PACKED_DOUBLE into a pointer array: every
-// read becomes a load plus a dereference.
-const boxedElements: Rule = (ts, checker, body, add) => {
-  for (const { p, type, element } of arrayParams(ts, checker, body)) {
-    const parts = members(element);
-    const unfast = parts.some((x) => !isFastElement(ts, x));
-    const mixed = parts.length > 1 && parts.some((x) => isNumeric(ts, x)) && parts.some((x) => !isNumeric(ts, x));
-    if (!unfast && !mixed) continue;
-    add({
-      ...at(body.sf, p),
-      rule: 'boxed-elements',
-      message: `${p.name.getText(body.sf)} is ${checker.typeToString(type)}; its elements cannot stay unboxed`,
-      fix: 'give the array one element type, or use a typed array',
-    });
-  }
-};
+// `boxed-elements` was here, and `bench/arrays.jl` withdrew it. A genuinely
+// boxed array does cost 1.39-1.66x to read — but the rule fired on the DECLARED
+// element type, and V8 picks the elements kind from the values actually stored
+// (`src/objects/objects-inl.h:700`). A `(number | string)[]` holding only
+// numbers is PACKED_DOUBLE_ELEMENTS, byte for byte the array `number[]` builds,
+// and it measured 0.96-1.08x over six cells and eighteen sweeps with seventeen
+// intervals spanning 1.0. Nothing static separates the array that will hold a
+// string from the one that will not, so there is no narrower trigger to retreat
+// to. SPEC §3 keeps the effect; the tool no longer reports it.
 
 // V8's inline cache holds four maps. The fifth costs 3.6-10.6x on reads. Two
 // to four shapes cost 1.2-2.0x — measurable, and an order of magnitude
@@ -546,7 +515,6 @@ function closedWorld(mark: Mark, add: Add): void {
 }
 
 const RULES: Rule[] = [
-  boxedElements,
   megamorphicElements,
   megamorphicDispatch,
   accumulatingSpread,
