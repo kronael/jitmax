@@ -1,6 +1,6 @@
 // The benchmark behind the accumulating-spread rule.
 //   node bench/run-spread.js
-// Writes bench/spread.jsonl (aggregate + raw per-pair observations).
+// Writes bench/spread.jl (aggregate + raw per-pair observations).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,7 +11,7 @@ const script = workload('spread.js');
 // event loop in execFileSync, so a stream's async open never fires and
 // every row would sit in memory until the run ends — losing the whole
 // sweep if it is interrupted.
-const outPath = path.join(import.meta.dirname, 'spread.jsonl');
+const outPath = path.join(import.meta.dirname, 'spread.jl');
 
 // Both variants are measured against the same push baseline, because both make
 // the same claim: the accumulator is copied whole on every pass.

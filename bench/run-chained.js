@@ -1,6 +1,6 @@
 // The benchmark behind the chained-allocation rule.
 //   node bench/run-chained.js
-// Appends to bench/chained.jsonl (aggregate + raw per-pair observations).
+// Appends to bench/chained.jl (aggregate + raw per-pair observations).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,7 +11,7 @@ const script = workload('chained.js');
 // event loop in execFileSync, so a stream's async open never fires and
 // every row would sit in memory until the run ends — losing the whole
 // sweep if it is interrupted.
-const outPath = path.join(import.meta.dirname, 'chained.jsonl');
+const outPath = path.join(import.meta.dirname, 'chained.jl');
 
 // Each row is a chained form and the fused single pass it is measured against.
 // The map/filter row keeps the sizes the 0.2 sweep used, so re-running it

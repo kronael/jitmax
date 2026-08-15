@@ -1,7 +1,7 @@
 // Does adding a property after construction cost anything? The claim is the
 // most repeated one in V8 folklore and this project had never tested it.
 //   node bench/run-addprop.js
-// Appends to bench/addprop.jsonl (aggregate + raw per-pair observations).
+// Appends to bench/addprop.jl (aggregate + raw per-pair observations).
 //
 // Every variant is paired against the rewrite a rule would demand: the same
 // properties, with the same values, written in one object literal. The driver
@@ -35,7 +35,7 @@ const script = workload('addprop.js');
 // loop in execFileSync, so a stream's async open never fires and every row
 // would sit in memory until the run ends — losing the whole sweep if it is
 // interrupted.
-const outPath = path.join(import.meta.dirname, 'addprop.jsonl');
+const outPath = path.join(import.meta.dirname, 'addprop.jl');
 
 // Three sizes span L1 to RAM for the three-field families (SPEC §4 rule 12).
 // The many-field families stop at 8192 because a seventeen-field object is

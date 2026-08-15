@@ -1,13 +1,13 @@
 // The benchmark behind the object form of accumulating-spread.
 //   node bench/run-spread-object.js
-// Writes bench/spread-object.jsonl.
+// Writes bench/spread-object.jl.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { cellOrVoid, workload } from './driver.js';
 
 const script = workload('spread-object.js');
-const outPath = path.join(import.meta.dirname, 'spread-object.jsonl');
+const outPath = path.join(import.meta.dirname, 'spread-object.jl');
 
 // Both variants are measured against the same assign baseline: whether the copy
 // is written as a spread or as Object.assign, the claim under test is the same.

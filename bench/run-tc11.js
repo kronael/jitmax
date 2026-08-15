@@ -2,7 +2,7 @@
 // cells that ran on a handful of repetitions, always at the largest n of their
 // sweep — and it runs each of them three times.
 //   node bench/run-tc11.js
-// APPENDS to each sweep's own .jsonl. Nothing is overwritten: the old rows are
+// APPENDS to each sweep's own .jl. Nothing is overwritten: the old rows are
 // the record of what was published and they stay, distinguished by the
 // `protocol: 'replicated'` and `replicate` fields the new rows carry.
 //
@@ -25,7 +25,7 @@ const KERNEL = { kernel: 'dispatch-table' };
 // the old ones (bench/meme.js reads `shapes` and `size`).
 const GROUPS = [
   {
-    file: 'shapes-calibrated.jsonl',
+    file: 'shapes-calibrated.jl',
     script: 'shapes.js',
     cells: [2, 3, 4, 5].map((shapes) => ({
       opts: { baseline: '1', variant: String(shapes), n: 262144, mode: 'incl' },
@@ -33,12 +33,12 @@ const GROUPS = [
     })),
   },
   {
-    file: 'spread.jsonl',
+    file: 'spread.jl',
     script: 'spread.js',
     cells: [{ opts: { baseline: 'push', variant: 'spread', n: 10000, mode: 'incl' }, extra: {} }],
   },
   {
-    file: 'spread-object.jsonl',
+    file: 'spread-object.jl',
     script: 'spread-object.js',
     cells: ['spread', 'assign-copy'].map((variant) => ({
       opts: { baseline: 'assign', variant, n: 500, mode: 'incl' },
@@ -46,7 +46,7 @@ const GROUPS = [
     })),
   },
   {
-    file: 'strings.jsonl',
+    file: 'strings.jl',
     script: 'strings.js',
     cells: ['plus', 'pluseq', 'concat'].flatMap((variant) =>
       ['build', 'excl', 'incl'].map((mode) => ({
@@ -56,7 +56,7 @@ const GROUPS = [
     ),
   },
   {
-    file: 'addprop.jsonl',
+    file: 'addprop.jl',
     script: 'addprop.js',
     cells: [
       ...['added', 'added2', 'diverge'].flatMap((variant) =>
@@ -75,7 +75,7 @@ const GROUPS = [
     ],
   },
   {
-    file: 'dispatch.jsonl',
+    file: 'dispatch.jl',
     script: 'dispatch.js',
     cells: [
       ...[2, 3, 4, 5, 6].map((k) => ({

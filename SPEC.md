@@ -164,7 +164,7 @@ Round 1 measured only the half where the win is absent and buried the rule.
 
 **Arrays of objects** — the case a rule would actually target:
 
-Superseded 2026-08-11 by `bench/shapes-calibrated.jsonl`, the same 24 cells
+Superseded 2026-08-11 by `bench/shapes-calibrated.jl`, the same 24 cells
 re-run after TC-5 fixed the calibration probe. Reads only, ratio against one
 shape, 95% interval in brackets:
 
@@ -241,7 +241,7 @@ are a more credible claim than a long rule list nobody measured.
 **Accumulating by copying** — four ways to write one defect. Each variant is
 paired against a baseline that mutates in place (`push`, `acc[k] = v`) and
 builds the identical value, which the driver's per-pair checksum enforces. Node
-v22.23.2, 20 pairs per cell, `bench/spread.jsonl` and `bench/spread-object.jsonl`.
+v22.23.2, 20 pairs per cell, `bench/spread.jl` and `bench/spread-object.jl`.
 With construction counted:
 
 | Cell | Ratio | 95% CI | Verdict |
@@ -310,7 +310,7 @@ quadratic array copy. Three forms against a baseline that pushes into an array
 and calls `join('')` at the end, building the identical string — the driver's
 per-pair checksum is a full character scan, so a variant that builds a different
 string is a failed run. Node v22.23.2, 20 pairs per cell, three sizes spanning
-L1 to L3 (6 KB, 60 KB, 600 KB of string), `bench/strings.jsonl`, 27 cells, none
+L1 to L3 (6 KB, 60 KB, 600 KB of string), `bench/strings.jl`, 27 cells, none
 void, and the nine at n=100000 re-measured three times each. Ratios are string
 form / push-and-join, so **below 1.0 means the string form wins**:
 
@@ -392,7 +392,7 @@ structure and is not copying either.
 
 **Chained array passes** — `xs.map(f).filter(g)` against one fused loop that
 builds the identical array, Node v22.23.2, 20 pairs per cell,
-`bench/chained.jsonl`:
+`bench/chained.jl`:
 
 | Cell | Ratio | 95% CI | Verdict |
 |---|---|---|---|
@@ -490,7 +490,7 @@ label, on roughly one run in four above ~150 reps, and never under `--no-opt`
 or `--no-turbofan`. It surfaced as a thrown error only because the default arm
 threw; a mis-dispatch into a *different* variant would have corrupted the
 timing while the end-of-run checksum still matched. Those 24 rows are void and
-are kept in `bench/chained.jsonl` without the `kernel` field that marks the
+are kept in `bench/chained.jl` without the `kernel` field that marks the
 re-run. The lesson is narrower than "V8 has a bug": **variant dispatch does not
 belong inside the timed region**, and hoisting it to a table resolved once is
 the fix.
@@ -500,7 +500,7 @@ trend for shape divergence is not yet closed.
 
 **Choosing between two boxed values** — `b.lo = Box.min(b.lo, v)` against
 `if (v.lt(b.lo)) b.lo = v`, both keeping the same running minimum over the same
-values, Node v22.23.2, 20 pairs per cell, `bench/select.jsonl`:
+values, Node v22.23.2, 20 pairs per cell, `bench/select.jl`:
 
 | Cell | Ratio | 95% CI | Verdict |
 |---|---|---|---|
@@ -553,7 +553,7 @@ actually differs is where the field lives: an added field sits in the property
 backing store, one dereference away from the object, and that store is
 allocated in blocks of `JSObject::kFieldsAdded` = 3.
 
-53 cells, Node v22.23.2, 20 pairs each, `bench/addprop.jsonl`, none void. Every
+53 cells, Node v22.23.2, 20 pairs each, `bench/addprop.jl`, none void. Every
 variant is paired against the rewrite the folklore asks for — the same
 properties, the same values, in one object literal — and the driver compares
 checksums inside every pair. Three modes: construction alone, reads alone, and
@@ -713,7 +713,7 @@ threshold this project has measured.** `megamorphic-elements` found
 `max_valid_polymorphic_map_count` = 4 at a *load* site, on the element type of
 an array. A call site is governed by the same four maps, and `x.step()` on a
 union-typed parameter is far more common in real TypeScript than an array of a
-five-way union. 80 cells, Node v22.23.2, 20 pairs each, `bench/dispatch.jsonl`,
+five-way union. 80 cells, Node v22.23.2, 20 pairs each, `bench/dispatch.jl`,
 none void. One call site — `s += rows[i].step()` — with K shapes reaching it,
 every K against K = 1.
 
@@ -1113,7 +1113,7 @@ lib/report.ts         output
 test/check.test.ts    24 tests, and the important ones assert silence
 bench/shapes.js       one variant per process; plain JS on purpose (below)
 bench/run.js          driver: paired runs, AB/BA randomized, bootstrap interval
-bench/meme.js         renders the chart from shapes.jsonl, so it cannot drift
+bench/meme.js         renders the chart from shapes.jl, so it cannot drift
 ```
 
 `make test`, `make lint` (`tsc --noEmit`, clean), `make check`, `make bench`.
@@ -1168,7 +1168,7 @@ in its own output.
 
 `megamorphic-elements` shipped its first draft firing at **three** shapes and
 quoting a **five**-shape cost, across a gap nobody had measured. Measuring 3
-and 4 (`bench/shapes.jsonl`, 24 cells) killed that threshold:
+and 4 (`bench/shapes.jl`, 24 cells) killed that threshold:
 
 | shapes | L1, 256 rows | L2, 16k rows | L3, 262k rows |
 |---|---|---|---|

@@ -18,7 +18,7 @@ const read = (f) =>
 // One sweep, one method, and the bar shows that cell's own 95% interval. The
 // earlier version plotted the range across two sweeps measured by the old
 // calibration, which mixed two methods inside one bar.
-const sweep = read('shapes-calibrated.jsonl');
+const sweep = read('shapes-calibrated.jl');
 
 const bars = [1, 2, 3, 4, 5].map((shapes) => {
   if (shapes === 1) return { shapes, lo: 1, hi: 1 };

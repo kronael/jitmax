@@ -1,13 +1,13 @@
 // The benchmark behind allocating-select.
 //   node bench/run-select.js
-// Writes bench/select.jsonl.
+// Writes bench/select.jl.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { cellOrVoid, workload } from './driver.js';
 
 const script = workload('select.js');
-const outPath = path.join(import.meta.dirname, 'select.jsonl');
+const outPath = path.join(import.meta.dirname, 'select.jl');
 
 for (const mode of ['heap', 'local', 'number']) {
   for (const n of [10000, 100000]) {

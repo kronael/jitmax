@@ -1,6 +1,6 @@
 // The benchmark behind closed-world.
 //   node bench/run-inline.js
-// Writes bench/inline.jsonl.
+// Writes bench/inline.jl.
 //
 // closed-world reports calls the checker cannot see into. It has never carried
 // a performance number, because "we could not read this" is a coverage fact,
@@ -17,7 +17,7 @@ import path from 'node:path';
 import { cellOrVoid, workload } from './driver.js';
 
 const script = workload('inline.js');
-const outPath = path.join(import.meta.dirname, 'inline.jsonl');
+const outPath = path.join(import.meta.dirname, 'inline.jl');
 
 // One mode only: there is nothing to construct in this kernel, so an
 // 'incl' cell would be the same measurement under a different name.

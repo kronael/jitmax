@@ -60,7 +60,7 @@ test('a function is checked only where it is annotated', () => {
 });
 
 // The next two are the measurements talking. A rule that fires here contradicts
-// bench/shapes.jsonl, and the rule is wrong, not the code under test.
+// bench/shapes.jl, and the rule is wrong, not the code under test.
 test('four shapes stay silent: no effect two sweeps could resolve', () => {
   assert.deepStrictEqual(rules('fourShapes'), []);
 });
@@ -131,7 +131,7 @@ test('a single concat stays silent', () => {
 // A string wears the syntax of the quadratic accumulator and is not it. V8
 // appends into a cons-string instead of copying, and all three string forms BEAT
 // the push-and-join the rule would ask for: 0.27-0.56x to build, and still
-// 0.74-0.96x once the read back is counted. bench/strings.jsonl, 27 cells plus
+// 0.74-0.96x once the read back is counted. bench/strings.jl, 27 cells plus
 // three replications of each of the nine at n=100000.
 test('building a string by appending stays silent', () => {
   assert.deepStrictEqual(rules('joinByPlus'), []);
@@ -162,7 +162,7 @@ test('a chain that starts at Object.entries fires', () => {
 });
 
 // The next three are the measurement talking. Each is a form this sweep
-// refused, and a rule that fires here contradicts bench/chained.jsonl.
+// refused, and a rule that fires here contradicts bench/chained.jl.
 
 // Object.keys allocates one array, not one per key, and the for-in loop that
 // would fuse it away is SLOWER: 0.94x and 0.95x. The fix would be a
@@ -185,7 +185,7 @@ test('the split-map-join chain stays silent', () => {
 });
 
 // The next three are the measurement talking, and they are the whole of what
-// bench/addprop.jsonl bought. The most repeated claim in V8 folklore is that
+// bench/addprop.jl bought. The most repeated claim in V8 folklore is that
 // `o.b = 2` after the literal is a defect because it makes a second map. It
 // does not: %HaveSameMap says every object taking the same path lands on the
 // SAME final map, so the load site is monomorphic and there is no polymorphism

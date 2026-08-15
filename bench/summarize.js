@@ -1,13 +1,13 @@
 // Turn a sweep's raw cells into the ranges a rule may quote, so the EVIDENCE
 // strings and the published table are derived from the data instead of read
 // off a log by hand.
-//   node bench/summarize.js shapes-calibrated.jsonl
+//   node bench/summarize.js shapes-calibrated.jl
 
 import fs from 'node:fs';
 import path from 'node:path';
 
 const file = process.argv[2];
-if (!file) throw new Error('usage: node bench/summarize.js <file.jsonl>');
+if (!file) throw new Error('usage: node bench/summarize.js <file.jl>');
 
 const rows = fs
   .readFileSync(path.join(import.meta.dirname, file), 'utf8')

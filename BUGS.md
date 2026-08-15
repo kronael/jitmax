@@ -11,7 +11,7 @@ Review queue. Found during audits, fixed only when the owner asks.
 
 It has none of the six things every other shipped number has: fresh process per
 observation, AB/BA randomization, 20 paired runs, a bootstrap interval, a
-recorded rep count, a per-pair checksum. There is no `bench/delete*.jsonl` and
+recorded rep count, a per-pair checksum. There is no `bench/delete*.jl` and
 no `bench/delete*.js`, so `make bench-…` cannot re-run it and a skeptic cannot
 either. The README's "every rule includes the benchmark that earned it" is
 false for this rule in the same way it was false for `closed-world` before
@@ -28,7 +28,7 @@ That makes this a provenance defect, not a refutation: the mechanism is real and
 the magnitude is unverified. Closing it means writing `bench/delete.js` with
 both populations the old probe measured — singleton (0x, dictionary up to 10%
 *faster*) and per-row over 100k objects (28-67x) — and re-deriving the EVIDENCE
-string from the `.jsonl`. Until then the number should be read as a decorated
+string from the `.jl`. Until then the number should be read as a decorated
 memory of a probe, not as this project's evidence standard. Related: TC-9,
 which is about the rule firing on the singleton case regardless.
 
@@ -64,7 +64,7 @@ Full write-up in the V8 table in `README.md`.
 
 ## TC-13 — a method in a field has no four-map budget (2026-08-14, open, proposal)
 
-`bench/dispatch.jsonl` split a call site into its two halves and they do not
+`bench/dispatch.jl` split a call site into its two halves and they do not
 obey the same rule. With one shape and K different functions in the same slot
 (`tgt`), the cost is **7.68–11.93x from the second function to the sixth,
 flat** — no threshold anywhere. With K shapes and one shared function (`shr`)
@@ -109,7 +109,7 @@ is in the source". Citations in `README.md`.
 
 ## TC-12 — a 6.3x effect nothing static can detect (2026-08-14, open, proposal)
 
-The `bench/addprop.jsonl` sweep found one large effect: an object whose
+The `bench/addprop.jl` sweep found one large effect: an object whose
 properties are added with a **keyed** store past `fast_properties_soft_limit`
 goes to dictionary mode, and reading its fields then costs **6.17–6.34x**
 (CI 5.94–6.41 and 6.14–6.57). Two controls pin it — the same field count by
@@ -167,7 +167,7 @@ Fixed three ways, none of them a threshold:
   floor on the repetition count.
 
 **33 flagged cells, three sweeps each, 99 sweeps, `bench/run-tc11.js`.** Every
-row is appended to the sweep's own `.jsonl` and carries `protocol: "replicated"`,
+row is appended to the sweep's own `.jl` and carries `protocol: "replicated"`,
 so nothing that was published before is overwritten or hidden:
 
 | Sweep | cells | replicate | do not |
@@ -212,7 +212,7 @@ The audit follows, then the original report.
 ## TC-11 — the audit (2026-08-14)
 
 **Audited 2026-08-14, every cell this project has ever published.** 329 non-void
-cells across ten `.jsonl` files. **35 ran below 20 repetitions**, and the defect
+cells across ten `.jl` files. **35 ran below 20 repetitions**, and the defect
 is systematic rather than scattered: it hits the largest `n` of every sweep,
 because a slow kernel fills the 120 ms region with a handful of passes.
 
@@ -291,7 +291,7 @@ changes output for every existing user of the tool. Sign-off first.
 
 §4 requires 10 discarded pilot pairs, 50 measured pairs, and published raw
 observations. `bench/run.js` runs 1 calibration process, 20 measured pairs, and
-writes only per-cell aggregates to `bench/shapes.jsonl`.
+writes only per-cell aggregates to `bench/shapes.jl`.
 
 `bench-arrays.md` already declared a sanctioned reduction to 20 pairs on
 wall-clock grounds, so the pair count is defensible; the 1-vs-10 pilot gap and
@@ -312,13 +312,13 @@ warm cost; and `cell()` asserts the achieved timed region landed within 2x of
 the 120 ms target, throwing when it did not. A mis-sized cell can no longer be
 published as a result. SPEC §4 rule 3 states both.
 
-`bench/spread.jsonl` was re-run under the fix and the old file kept as
-`bench/spread-precal.jsonl`. The re-run changed the published claims: the
+`bench/spread.jl` was re-run under the fix and the old file kept as
+`bench/spread-precal.jl`. The re-run changed the published claims: the
 `excl` cells at n=1000 and n=10000 both moved to REJECTED (0.87x CI 0.67-1.05
 and 1.05x CI 0.89-1.26), which withdraws the "a spread-built array reads
 faster" claim entirely — it was the artifact this defect predicted. The
 construction effect grew rather than shrank once both sides were sized from
-warm cost. `bench/chained.jsonl` is kept as `bench/chained-precal.jsonl` and
+warm cost. `bench/chained.jl` is kept as `bench/chained-precal.jl` and
 needs the same re-run before `chained-allocation` can be reconsidered.
 
 The original report follows.
@@ -345,13 +345,13 @@ both sides it is roughly **6-11x**. The probe is not merely biased, it is
 unstable — a 20x spread across five repeats decides the rep count from one
 sample. The `chained-allocation` rule did not ship because of this.
 
-`bench/spread.jsonl` came out of the same `calibrate()`. Accumulating spread is
+`bench/spread.jl` came out of the same `calibrate()`. Accumulating spread is
 quadratic so its 86x and 2343x very likely survive — but "very likely" is not
 this project's standard, and its `excl` cells sit near 1.0 where this defect
 bites hardest.
 
 Not fixed inline: iterating the calibration changes the method behind every
-published figure and requires re-running `spread.jsonl` and re-deriving both
+published figure and requires re-running `spread.jl` and re-deriving both
 the SPEC §3 tables and the shipped `EVIDENCE` strings. Proposal: iterate
 `calibrate()` until two successive probes agree within 20%, then assert the
 achieved region is within 2x of 120 ms and **fail the cell loudly** when it is
@@ -383,7 +383,7 @@ asynchronous `open()` callback never fired and every row stayed in the stream's
 buffer until the run finished. The file did not exist on disk while the sweep
 was printing results to the terminal.
 
-Found by inspecting `/proc/<pid>/fd` after `ls bench/*.jsonl` showed no output
+Found by inspecting `/proc/<pid>/fd` after `ls bench/*.jl` showed no output
 file for a sweep that had already printed eight cells. A 24-cell sweep that was
 stopped part-way lost all twelve cells it had measured — half an hour of
 machine time, gone, with the numbers visible in the log but not recorded
@@ -401,8 +401,8 @@ is one protocol and one place to fix it. Its own copy of `once`, `calibrate`,
 that TC-5 showed inflates ratios toward shipping a rule.
 
 The 24 cells were re-run under the fixed driver and written to
-`bench/shapes-calibrated.jsonl`. The two earlier sweeps stay on disk under
-their own names — `shapes.jsonl` and `shapes-aggregates-only.jsonl` — because
+`bench/shapes-calibrated.jl`. The two earlier sweeps stay on disk under
+their own names — `shapes.jl` and `shapes-aggregates-only.jl` — because
 they were produced by the old method and are not comparable cell-for-cell with
 the new one. Nothing was deleted and nothing was overwritten.
 
@@ -421,7 +421,7 @@ and one shared rep count would either run for hours or leave the fast side
 unmeasurably short. `run.js` calibrates once, on the baseline.
 
 Not fixed inline, because porting `run.js` onto the driver changes the method
-that produced the published `shapes.jsonl`. That needs the 24-cell sweep re-run
+that produced the published `shapes.jl`. That needs the 24-cell sweep re-run
 under the new calibration and the published figures re-derived — a redesign,
 so it wants sign-off first. Proposal: port `run.js` to the driver, re-run all
 24 cells, and keep the old file's output as a third sweep to compare against.

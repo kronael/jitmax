@@ -1,6 +1,6 @@
 // The megamorphic-dispatch sweep: `x.step()` where x is one of K shapes.
 //   node bench/run-dispatch.js
-// Appends to bench/dispatch.jsonl (aggregate + raw per-pair observations).
+// Appends to bench/dispatch.jl (aggregate + raw per-pair observations).
 //
 // K = 1 is the baseline of every family and every K from 2 to 6 is reported
 // against it, so the cliff — if there is one — has to show up as a step
@@ -22,7 +22,7 @@ const script = workload('dispatch.js');
 // loop in execFileSync, so a stream's async open never fires and every row
 // would sit in memory until the run ends — losing the whole sweep if it is
 // interrupted.
-const outPath = path.join(import.meta.dirname, 'dispatch.jsonl');
+const outPath = path.join(import.meta.dirname, 'dispatch.jl');
 
 const SIZES = { L1: 256, L2: 16384, L3: 262144 };
 const SMALL = { L1: 256, L2: 16384 };

@@ -1,6 +1,6 @@
 // Old published cell against its three replications.
 //   node bench/tc11-report.js
-// Reads the .jsonl files themselves, so it says what is on disk rather than
+// Reads the .jl files themselves, so it says what is on disk rather than
 // what a run printed once: rows carrying `protocol: "replicated"` are the
 // re-measurement, rows without it are what was published before TC-11.
 
@@ -9,12 +9,12 @@ import path from 'node:path';
 import { replicates } from './driver.js';
 
 const FILES = [
-  'shapes-calibrated.jsonl',
-  'spread.jsonl',
-  'spread-object.jsonl',
-  'strings.jsonl',
-  'addprop.jsonl',
-  'dispatch.jsonl',
+  'shapes-calibrated.jl',
+  'spread.jl',
+  'spread-object.jl',
+  'strings.jl',
+  'addprop.jl',
+  'dispatch.jl',
 ];
 
 const key = (r) => `${r.variant}|${r.mode}|${r.n}`;

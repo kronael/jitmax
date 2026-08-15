@@ -34,7 +34,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       'L1 and L2, where allocation swamps the load, and nothing at RAM size — 1.05-1.20x ' +
       'there, flat from two shapes to five, each cell replicated three times',
     source:
-      'bench/shapes-calibrated.jsonl, 24 cells, 20 pairs each, the four at RAM size ' +
+      'bench/shapes-calibrated.jl, 24 cells, 20 pairs each, the four at RAM size ' +
       'replicated three times',
     silent:
       'two to four shapes cost 1.2-2.0x on reads — real, and measured, but an order of ' +
@@ -49,7 +49,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       'second polymorphic site both sides pay, and 1.46-1.94x at RAM size against ' +
       '0.93-1.20x at two to four shapes, each of those cells replicated three times',
     source:
-      'bench/dispatch.jsonl, 80 cells, 20 pairs each, the ten at RAM size replicated ' +
+      'bench/dispatch.jl, 80 cells, 20 pairs each, the ten at RAM size replicated ' +
       'three times',
     silent:
       'four shapes cost 1.16-1.56x on a prototype method and 1.29-2.21x on a shared one — ' +
@@ -67,7 +67,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       'n=500, three replications each — the ratio grows with n, because the work is ' +
       'quadratic',
     source:
-      'bench/spread.jsonl and bench/spread-object.jsonl, 20 pairs per cell, the three ' +
+      'bench/spread.jl and bench/spread-object.jl, 20 pairs per cell, the three ' +
       'cells quoted as ranges replicated three times',
     silent:
       'a copy no loop re-runs is not this rule: with construction excluded the same four ' +
@@ -84,7 +84,7 @@ export const EVIDENCE: Record<string, Evidence> = {
     cost:
       '2.65-2.73x when the chosen value is stored somewhere that outlives the loop ' +
       '(CI 2.48-2.81 at n=10000, 2.58-2.88 at n=100000)',
-    source: 'bench/select.jsonl, 6 cells, 20 pairs each',
+    source: 'bench/select.jl, 6 cells, 20 pairs each',
     silent:
       'on numbers there is no effect at all — 1.03x and 0.99x, both intervals spanning 1 — ' +
       'because Math.min allocates nothing; and escape analysis does not rescue the boxed ' +
@@ -97,7 +97,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       '(CI 3.44-3.77) and 2.65x at n=10000 (CI 2.56-2.74), where the waste is a ' +
       'two-element array per key on top of the array itself — every stage allocates a ' +
       'whole array that the next stage immediately discards',
-    source: 'bench/chained.jsonl, 24 cells in the 0.3 sweep, 20 pairs each',
+    source: 'bench/chained.jl, 24 cells in the 0.3 sweep, 20 pairs each',
     silent:
       'reading the finished array costs nothing (0.94-1.03x across all six forms), and at ' +
       'n=100000 map-then-filter falls to 1.47x, where memory bandwidth dominates the ' +
@@ -114,7 +114,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       'an opaque call is an inlining boundary, and a callee V8 refuses to inline costs ' +
       '4.42-4.79x in a hot loop (CI 4.18-4.70 at n=100000, 4.56-5.05 at n=1000)',
     source:
-      'bench/inline.jsonl, 2 cells, 20 pairs each; the inlining decision itself confirmed ' +
+      'bench/inline.jl, 2 cells, 20 pairs each; the inlining decision itself confirmed ' +
       'with --trace-turbo-inlining, which reports the padded callee as "cannot consider"',
     silent:
       'this bounds what ONE unchecked call can cost, not what any particular one does cost ' +

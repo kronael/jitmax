@@ -1,6 +1,6 @@
 // The 24-cell object-shape sweep behind megamorphic-elements.
 //   node bench/run.js
-// Writes bench/shapes-calibrated.jsonl.
+// Writes bench/shapes-calibrated.jl.
 //
 // This file used to carry its own copy of the protocol, with the single cold
 // calibration probe that BUGS TC-5 showed inflates ratios toward shipping a
@@ -19,7 +19,7 @@ const SIZES = { L1: 256, L2: 16384, L3: 262144 }; // n rows; payload = 16n bytes
 // event loop in execFileSync, so a stream's async open never fires and
 // every row would sit in memory until the run ends — losing the whole
 // sweep if it is interrupted.
-const outPath = path.join(import.meta.dirname, 'shapes-calibrated.jsonl');
+const outPath = path.join(import.meta.dirname, 'shapes-calibrated.jl');
 
 for (const mode of ['excl', 'incl']) {
   for (const [size, n] of Object.entries(SIZES)) {

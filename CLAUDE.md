@@ -11,7 +11,7 @@ lib/          scan.ts (the recursive walk), rules.ts (the rules + EVIDENCE), rep
 bin/          turbocharge.ts — exit 0 clean, 1 findings, 2 the tool failed
 demo/lib.ts   every rule's fixture, including the must-stay-silent ones
 test/         one test per rule, plus one per silent case
-bench/        one workload + one runner + one .jsonl per measured claim
+bench/        one workload + one runner + one .jl per measured claim
 README.md     how to use it, the rules, and the V8 citation table
 BUGS.md       the review queue. Found during audits, fixed only when asked
 ```
@@ -56,7 +56,7 @@ correct the citation, never the other way round.
   measurement rejected fails `make test`.
 - **A cell whose 95% interval spans 1.0 is rejected.** A refutation is a shipped
   result — the graveyard in SPEC §3 is a launch artifact, not a failure log.
-- **Never overwrite a `.jsonl`.** Runners append. Superseded sweeps are kept
+- **Never overwrite a `.jl`.** Runners append. Superseded sweeps are kept
   under a suffix (`-precal`, `-oldcal`) so a reader can see what changed.
 - **Never dispatch on a variant string inside a timed loop.** Resolve the kernel
   to a function once, before timing. A `switch` in a timed region produced a

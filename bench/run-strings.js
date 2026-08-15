@@ -2,7 +2,7 @@
 // costs? `s = s + x` in a loop is the same syntax accumulating-spread measured
 // at 156-2348x for arrays, and the rule already matches `.concat()` by name.
 //   node bench/run-strings.js
-// Appends to bench/strings.jsonl (aggregate + raw per-pair observations).
+// Appends to bench/strings.jl (aggregate + raw per-pair observations).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,7 +13,7 @@ const script = workload('strings.js');
 // event loop in execFileSync, so a stream's async open never fires and
 // every row would sit in memory until the run ends — losing the whole
 // sweep if it is interrupted.
-const outPath = path.join(import.meta.dirname, 'strings.jsonl');
+const outPath = path.join(import.meta.dirname, 'strings.jl');
 
 // All three forms are measured against the same `joined` baseline — an array
 // pushed to once per pass and joined at the end — because all three make the
