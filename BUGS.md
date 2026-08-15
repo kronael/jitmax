@@ -99,6 +99,15 @@ Two facts that belong next to that, because they were assumed and are not true:
   function this diagnostic calls `none` was in Ignition or in Sparkplug and the
   diagnostic cannot say which.
 
+**And the diagnostic is noisy, which is why it says so.** Each side is traced
+twice; **101 of the 280 cells** had at least one function whose token differed
+between the two traces of the *same side*. Concurrent compilation landing before
+or after a boundary is a race with the machine, and this machine was not quiet.
+Those names go in `tierUnstable` and are excluded from `tierMismatch` — a race
+reported as a finding is how a diagnostic starts inventing rules. The aggregate
+above is far more solid than any single cell in it, and every per-cell claim
+below was re-run by hand.
+
 ### What is NOT clean
 
 **Four cells enter their region at different tiers on the two sides.** These are
