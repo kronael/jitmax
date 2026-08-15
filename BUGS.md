@@ -213,13 +213,23 @@ operation"*. Two candidate mechanisms, neither established here:
   cell and is corroborated by a dirty one, which is the right way round. The
   published *interval* for n=100000 (`select.heap.ci100k`) is measured on the
   storming cell and should be read as such.
-- **`accumulating-select`'s silent clause on strings.** It publishes
-  "0.27-0.56x ... and 0.74-0.97x once the read back is counted", and the n=100000
-  cells that make the *upper* end of both ranges are the ones where the baseline
-  deopts 7-30 times and the variant not once. The contamination pushes those
-  ratios in the direction the claim wants. The n=1000 and n=10000 cells are clean
-  and give 0.27-0.38x, so the *direction* — a string beats the rewrite — does not
-  depend on the dirty cells. The published range's upper bound does.
+- **`accumulating-spread`'s silent clause on strings** — and this bullet had it
+  wrong twice, corrected here against the rows rather than left standing. It is
+  `accumulating-spread` that publishes "0.27-0.56x ... and 0.74-0.97x once the
+  read back is counted", not `accumulating-select`. And the storming n=100000
+  cells do not make the upper end of *both* ranges:
+
+  | range | its low end | its high end | which end is the storming cell |
+  |---|---|---|---|
+  | build, 0.27-0.56x | 0.27x pluseq n=1000 | 0.56x plus n=100000 | the **high** end |
+  | with the read back, 0.74-0.97x | 0.74x pluseq n=100000 | 0.97x plus n=10000 | the **low** end |
+
+  Which reverses the sentence that followed it. The claim is that a string beats
+  the rewrite — a ratio below 1, and the further below the stronger. For the
+  build range the storming cells sit at 0.40-0.56x against 0.27-0.38x on the
+  clean ones, so the contamination pushes *against* the claim, not toward it.
+  Only in the read-back range does it push the way the claim wants. Either way
+  the direction survives: every clean cell of both ranges is below 1.
 - **Nothing else.** `chained` splitjoin/packed and `select number` are not in any
   `lib/derive.ts` citation beyond the cell counts.
 
