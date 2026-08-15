@@ -71,13 +71,16 @@ const tier = (line) => {
 // Everything before the region opens is warmup; everything between the two
 // markers happened WHILE the stopwatch was running, which is the finding a
 // reader wants. `after` is the checksum pass the workloads run last.
-function parse(out) {
-  const marked = new Map();
-  const installed = new Map();
+export function parse(out) {
+  const events = new Map();
   const deopts = [];
   const unknown = [];
   let phase = 'warm';
   const fn = namer();
+  const at = (name, e) => {
+    if (!events.has(name)) events.set(name, []);
+    events.get(name).push({ ...e, phase });
+  };
 
   for (const line of out.split('\n')) {
     if (line === '[[region begin]]') {
@@ -92,19 +95,20 @@ function parse(out) {
 
     const name = fn(line);
     if (line.startsWith('[marking ')) {
-      const reason = /reason: ([^\]]+)\]/.exec(line)?.[1] ?? '?';
-      if (name && !marked.has(name)) marked.set(name, { tier: tier(line), phase, reason });
+      if (name) at(name, { kind: 'mark', tier: tier(line) });
     } else if (line.startsWith('[completed optimizing ')) {
-      // Installation, not the decision to compile. This is the event that
-      // decides what the region ran on, so the LAST one wins.
-      if (name) installed.set(name, { tier: tier(line), osr: line.includes(' OSR'), phase });
+      // Installation, not the decision to compile: the decision is deterministic
+      // and the landing is a race, and only the landing changes what runs.
+      if (name) at(name, { kind: 'install', tier: tier(line), osr: line.includes(' OSR') });
     } else if (line.startsWith('[bailout ') || line.startsWith('[deoptimizing ')) {
-      deopts.push({
+      const d = {
         fn: name ?? '(anonymous)',
         kind: /kind: ([a-z-]+)/.exec(line)?.[1] ?? '?',
         reason: /reason: ([^)\]]+)[)\]]/.exec(line)?.[1]?.trim() ?? '?',
         phase,
-      });
+      };
+      deopts.push(d);
+      if (name) at(name, { kind: 'deopt', reason: d.reason });
     } else if (
       !line.startsWith('[compiling ') &&
       !line.startsWith('[completed compiling ') &&
@@ -120,37 +124,48 @@ function parse(out) {
       unknown.push(line.slice(0, 120));
     }
   }
-  return { marked, installed, deopts, unknown };
+  return { events, deopts, unknown };
 }
 
-// One function's story in one token, because it goes in a row next to forty
-// floats:
+// One function's story in one token: WHAT WAS RUNNING WHEN THE STOPWATCH
+// STARTED, and what changed while it ran.
 //
-//   TF/osr@warm         TurboFan through OSR, decided and installed in warmup
-//   TF@warm>region      decided in warmup, and the background compile did not
-//                       land until the stopwatch was already running
-//   TF@region           both, while the stopwatch was running
-//   marked@warm         V8 decided to optimize it and never finished — the code
-//                       that ran is the tier below
-//   (absent)            never marked: Ignition or Sparkplug, and --trace-opt
-//                       cannot say which
+//   TF/osr           TurboFan, entered through OSR, already installed when the
+//                    region opened, and nothing changed inside it
+//   none             not optimized at the start of the region — Ignition or
+//                    Sparkplug, and --trace-opt cannot say which
+//   marked           V8 had decided to optimize it and the compile had not
+//                    landed by the time the region opened
+//   none[+TF/osr]    it tiered up WHILE the stopwatch was running, so part of
+//                    the region was measured at a lower tier
+//   TF[-deopt +TF]   optimized at the start, deoptimized inside the region, and
+//                    re-optimized inside it
 //
-// Two phases rather than one because they are not equally solid. WHEN V8 marks
-// a function is deterministic — a budget scaled by bytecode size, spent by calls
-// and by loop back-edges. WHEN the concurrent compile lands is a race with the
-// machine, and on a loaded box it lands late or not at all. The mark phase is
-// the fact; the install phase is the fact plus the day's weather.
-function summarize({ marked, installed }) {
+// The state at region start is what it is because of the events BEFORE the
+// region, in order — not because of the last event in the process. Reading the
+// last one instead reported a function that was optimized throughout as if the
+// region had run cold, whenever a post-region deopt-and-recompile followed; the
+// first run of this diagnostic called six shapes cells a mismatch for that
+// reason alone.
+export function summarize({ events }) {
   const out = {};
-  for (const name of new Set([...marked.keys(), ...installed.keys()])) {
-    const done = installed.get(name);
-    if (!done) {
-      out[name] = `marked@${marked.get(name).phase}`;
-      continue;
+  for (const [name, evs] of events) {
+    let state = 'none';
+    let marked = false;
+    const during = [];
+    for (const e of evs) {
+      if (e.phase === 'after') continue;
+      if (e.phase === 'warm') {
+        if (e.kind === 'mark') marked = true;
+        else if (e.kind === 'install') state = `${e.tier}${e.osr ? '/osr' : ''}`;
+        else if (e.kind === 'deopt') state = 'none';
+        continue;
+      }
+      if (e.kind === 'install') during.push(`+${e.tier}${e.osr ? '/osr' : ''}`);
+      else if (e.kind === 'deopt') during.push('-deopt');
     }
-    const at = marked.get(name)?.phase ?? done.phase;
-    const when = at === done.phase ? at : `${at}>${done.phase}`;
-    out[name] = `${done.tier}${done.osr ? '/osr' : ''}@${when}`;
+    if (state === 'none' && marked) state = 'marked';
+    out[name] = during.length ? `${state}[${during.join(' ')}]` : state;
   }
   return out;
 }
@@ -225,19 +240,34 @@ export function tiersOrError(opts) {
 export function tierPair({ script, baseline, variant, n, mode, repsBase, repsTest, seed = 1 }) {
   const b = tiersOrError({ script, variant: baseline, n, mode, reps: repsBase, seed });
   const t = tiersOrError({ script, variant, n, mode, reps: repsTest, seed });
-  const names = new Set([...Object.keys(b.tiers), ...Object.keys(t.tiers)]);
   // A name whose token was not stable across the two traces of its OWN side
   // cannot be said to differ from the other side, so it is reported as unstable
   // and not as a mismatch. Calling a race a finding is how a diagnostic starts
   // producing rules of its own.
   const shaky = new Set([...b.unstable, ...t.unstable]);
-  const mismatch = [...names]
-    .filter((k) => !shaky.has(k) && (b.tiers[k] ?? 'none') !== (t.tiers[k] ?? 'none'))
-    .sort();
+
+  // A mismatch is a function BOTH sides have, at different tiers. That is the
+  // question — one side optimized and the other not, over the same work.
+  //
+  // A function only one side has is a different thing entirely and is reported
+  // as `tierOnly` instead. Every workload names its per-variant builder after
+  // the variant (`joined` against `plus`, `BUILD.y.y` against `BUILD.z.z`), so
+  // comparing the two sides by name flags all of them, and the first run of this
+  // diagnostic did: 27 of 41 cells, every one of them a naming artifact. The
+  // asymmetry is still worth seeing — a builder that never leaves the
+  // interpreter on one side is real — so it is printed, not dropped.
+  const shared = Object.keys(b.tiers).filter((k) => k in t.tiers);
+  const mismatch = shared.filter((k) => !shaky.has(k) && b.tiers[k] !== t.tiers[k]).sort();
+  const only = {};
+  for (const [side, mine, theirs] of [['base', b.tiers, t.tiers], ['test', t.tiers, b.tiers]]) {
+    for (const k of Object.keys(mine)) if (!(k in theirs)) only[`${side}:${k}`] = mine[k];
+  }
+
   return {
     tierBase: b.tiers,
     tierTest: t.tiers,
     ...(mismatch.length ? { tierMismatch: mismatch } : {}),
+    ...(Object.keys(only).length ? { tierOnly: only } : {}),
     ...(shaky.size ? { tierUnstable: [...shaky].sort() } : {}),
     ...(b.deopts?.length ? { deoptBase: b.deopts } : {}),
     ...(t.deopts?.length ? { deoptTest: t.deopts } : {}),
@@ -319,6 +349,7 @@ async function main() {
         `      base ${show(t.tierBase)}\n` +
         `      test ${show(t.tierTest)}\n` +
         (t.tierMismatch ? `      MISMATCH ${t.tierMismatch.join(', ')}\n` : '') +
+        (t.tierOnly ? `      one-sided ${show(t.tierOnly)}\n` : '') +
         (t.tierUnstable ? `      unstable ${t.tierUnstable.join(', ')}\n` : '')
       );
     }

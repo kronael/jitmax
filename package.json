@@ -15,7 +15,7 @@
   },
   "type": "module",
   "scripts": {
-    "test": "node --test test/check.test.ts",
+    "test": "node --test test/check.test.ts test/tiers.test.js",
     "lint": "tsc --noEmit"
   },
   "engines": {
