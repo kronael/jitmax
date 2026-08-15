@@ -185,7 +185,8 @@ and then measured 1.14x, 1.21x and 1.34x on three consecutive sweeps — a cell
 that was on the wrong side of 1.0. Two sweeps failed the region guard outright.
 Those cells were already withdrawn by hand; they are now withdrawn on evidence.
 
-**Everything else came back, and eight published numbers moved.** The most quoted
+**Everything else came back, and eleven published point estimates fell outside
+their own replicated range** — `bench/tc11-report.js` prints each one. The most quoted
 number in the project, accumulating array spread at n=10000, replicates at
 1750–2011x — so **2348x is outside the replicated range and is no longer
 quoted**. `Object.assign` copying at n=500 moved *up*, from 815x to 846–875x.
