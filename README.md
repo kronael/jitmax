@@ -440,4 +440,4 @@ each file carries its upstream's copyright line, version and commit. MIT is
 compatible with the GPL, and the point of the whole exercise is that the code
 measured there is somebody else's.
 
-Status: v0.4.1, single machine, seven rules.
+Status: v0.5.0, single machine, seven rules.

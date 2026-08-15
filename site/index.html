@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="krons:type" content="products">
-<meta name="krons:date" content="2026-08-14">
+<meta name="krons:date" content="2026-08-15">
 <meta name="krons:pin"  content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Mark a TypeScript function. turbocharge checks it and every function it calls against eight V8 fast-path rules. Six carry a rerunnable benchmark; every one carries its mechanism traced to V8's own source, checked line by line.">
+<meta name="description" content="Mark a TypeScript function. turbocharge checks it and every function it calls against seven V8 fast-path rules. Every one carries a rerunnable benchmark, the measured case where it stays silent, and its mechanism traced to V8's own source.">
 <title>turbocharge — mark the function you need fast</title>
 <link rel="stylesheet" href="/pub/krons/assets/hub.css">
 <meta property="og:title" content="turbocharge — the fifth object shape costs 10.6x">
@@ -38,11 +38,12 @@
   <div class="tldr-label">TL;DR</div>
   <div class="tldr-text">
     Mark a function with <code>/** @turbocharge */</code>. turbocharge checks
-    that function and every function it calls against eight rules, and gives you
-    the file, the line, the measured cost and the fix. Six rules carry a
-    rerunnable benchmark and the measured case where they must stay silent; two
-    do not, and this page names them. Every rule carries its mechanism traced to
-    V8's own source, verified line by line by <code>make v8-check</code>.
+    that function and every function it calls against seven rules, and gives you
+    the file, the line, the measured cost and the fix. Every rule carries a
+    rerunnable benchmark, the measured case where it must stay silent, and its
+    mechanism traced to V8's own source — verified line by line by
+    <code>make v8-check</code>. An eighth rule was withdrawn this week when its
+    own benchmark refused it.
   </div>
 </div>
 
@@ -59,16 +60,17 @@
   </tr>
   <tr>
     <td><code>accumulating-spread</code></td>
-    <td>arrays 156-177x at n=1,000, 1877-2348x at n=10,000; <code>acc.concat(v)</code>
-        779x; objects 197-210x at n=500; <code>Object.assign({}, acc, …)</code> 815x</td>
+    <td>arrays 156-177x at n=1,000 and 1750-2011x at n=10,000; <code>acc.concat(v)</code>
+        779x; objects 188-203x at n=500; <code>Object.assign({}, acc, …)</code> 846-875x</td>
     <td>a copy no loop re-runs; <code>Object.assign(acc, …)</code>, which mutates;
-        and strings, which build in 0.27-0.54x of the rewrite</td>
+        and strings, which build in 0.27-0.56x of the rewrite</td>
   </tr>
   <tr>
     <td><code>delete-property</code></td>
-    <td>28-67x per load, in dictionary mode — measured before this harness
-        existed and never re-run under it (BUGS TC-15)</td>
-    <td>one delete on one object: 0x</td>
+    <td>12.6-17.1x per load, in dictionary mode</td>
+    <td>nothing — the exception this project used to publish, "one delete on one
+        object is free", was itself refuted: one object costs 13.3-15.6x in all
+        nine sweeps</td>
   </tr>
   <tr>
     <td><code>megamorphic-dispatch</code></td>
@@ -89,13 +91,6 @@
     <td><code>allocating-select</code></td>
     <td>2.65-2.73x, boxed value chosen in a loop</td>
     <td>the same loop on numbers: 0.99-1.03x</td>
-  </tr>
-  <tr>
-    <td><code>boxed-elements</code></td>
-    <td>1.45-1.89x — <strong>the weakest number here, and the one you cannot
-        re-run</strong>: the kernel it came from is not in the repository
-        (BUGS TC-14)</td>
-    <td>holey arrays: 0.94-1.09x</td>
   </tr>
   <tr>
     <td><code>closed-world</code></td>
@@ -119,22 +114,81 @@ export function total(rows: Row[]): number { … }</code></pre>
 <p>Point it at your sources:</p>
 
 <pre><code>$ turbocharge demo
-turbocharge — 35 annotated functions, 15 findings
+turbocharge — 37 annotated functions, 14 findings
 
-  demo/lib.ts:71  viaCallee()
+  demo/lib.ts:116  viaCallee()
     delete-property
-      demo/lib.ts:66
+      demo/lib.ts:111
       delete o[k] puts its object in dictionary mode
-      measured 28-67x per property load once the object is in dictionary
-      mode [options.md round 3b]
-      fix: assign undefined, or build the object without the property</code></pre>
+      measured 12.6-17.1x per property load once the object is in dictionary
+      mode … [bench/delete.jl, 16 cells, 20 pairs each, every cell replicated
+      three times; three cells disagree across sweeps and one is void, and all
+      four are in the file]
+      fix: assign undefined, or build the object without the property
+      known defect: TC-9 — rules fire outside the conditions their own
+      evidence establishes</code></pre>
 
 <p>
-  The finding points at <code>dropInner</code> on line 66, not at the annotated
-  function on line 71. Exit codes are the contract: <code>0</code> clean,
-  <code>1</code> findings, <code>2</code> the tool itself failed. A path that
-  does not exist is a <code>2</code>.
+  The finding points at <code>dropInner</code> on line 111, not at the annotated
+  function on line 116. Every number in it is derived from the data file it
+  cites — <code>make numbers</code> regenerates them, and the test suite fails
+  if a quoted number and its rows disagree. Exit codes are the contract:
+  <code>0</code> clean, <code>1</code> findings, <code>2</code> the tool itself
+  failed. A path that does not exist is a <code>2</code>.
 </p>
+
+<h2>What the fix is worth on somebody else's code</h2>
+
+<p>
+  Every ratio above is a microbenchmark. This is the other question: does doing
+  what the tool says make a real function faster? Three functions vendored
+  verbatim from shipped MIT libraries, each paired with the fix turbocharge
+  printed and <em>nothing else</em>. The function was chosen by a program,
+  <code>examples/annotate.js</code>, not by taste, and the checksum must match
+  between the two halves or the cell throws.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Function</th><th>Finding</th><th>Whole call, three sweeps</th></tr>
+  <tr>
+    <td>radash <code>assign</code></td>
+    <td><code>accumulating-spread</code></td>
+    <td>3.15-3.30x at 16 keys, 4.32-4.88x at 128</td>
+  </tr>
+  <tr>
+    <td>es-toolkit <code>omit</code></td>
+    <td><code>delete-property</code></td>
+    <td>1.64-1.79x at 12 keys, 3.24-3.36x at 48</td>
+  </tr>
+  <tr>
+    <td>remeda <code>mergeAll</code></td>
+    <td><code>accumulating-spread</code></td>
+    <td>1.31-1.36x at n=8; at n=64 the three sweeps disagree, so there is no
+        number</td>
+  </tr>
+</table>
+</div>
+
+<p>
+  <strong>The gap is the point.</strong> The rules behind these findings cite
+  12x and 188-203x. The whole call moves 1.3-4.9x, because a real function also
+  allocates, branches and formats. That is what you actually get, and it is
+  published here rather than left for you to discover.
+</p>
+
+<div class="callout callout-warning">
+  <p>
+    <strong>Two cells went against the tool, and they are here at the same
+    size.</strong> The fix <code>accumulating-spread</code> prints makes
+    <code>mergeAll</code>'s <em>reads</em> 8x slower — six of six sweeps —
+    because <code>Object.assign</code> in a loop leaves the object in
+    dictionary mode where the spread left it fast. And <code>omit</code>'s read
+    advantage rejects at 48 keys, because building 46 keys one at a time
+    normalizes the fixed object too. A rule's printed fix can cost more than the
+    defect it names. Tracked as BUGS TC-16.
+  </p>
+</div>
 
 <h2>Why the numbers are worth trusting</h2>
 
@@ -178,13 +232,17 @@ turbocharge — 35 annotated functions, 15 findings
         never reach publication.</td>
   </tr>
   <tr>
-    <td>…and that guard is not enough, which is disclosed rather than hidden</td>
-    <td>It bounds the region, not the repetition count: a slow kernel can fill
-        120 ms with two passes, and then one pause decides the cell. All 329
-        published cells were audited; 35 ran under twenty repetitions. The
-        small-effect ones are withdrawn and their ranges re-derived. The
-        two-orders-of-magnitude ones keep their direction, and their intervals
-        are narrower than the truth. BUGS TC-11.</td>
+    <td>Every published cell is run three times over, and the three answers are
+        printed together</td>
+    <td>A bootstrap interval resamples the pairs of <em>one</em> sweep, so it
+        cannot see anything that varies between two. Near-identical work
+        measured 1.64x, 0.91x and 0.89x — no two of which can both be true.
+        Agreement now means a value common to all three intervals, which the
+        intervals supply rather than something this project picks. Where they
+        disagree the cell is dropped and the three numbers are printed anyway.
+        Re-measuring 33 cells this way cost the project its most-quoted number:
+        2348x fell outside its own replications and is now 1750-2011x. BUGS
+        TC-11.</td>
   </tr>
 </table>
 </div>
@@ -263,6 +321,15 @@ turbocharge — 35 annotated functions, 15 findings
 <table>
   <tr><th>Pattern</th><th>Measured</th><th>Why no rule</th></tr>
   <tr>
+    <td>a mixed element type, <code>(number | string)[]</code></td>
+    <td>0.96-1.08x</td>
+    <td><strong>this one withdrew a shipped rule.</strong> Boxing is real —
+        1.39-1.66x on reads — but V8 picks the representation from the values
+        actually stored, not the declared type. An array declared mixed that
+        holds only numbers is byte-for-byte what <code>number[]</code> builds,
+        and <code>%HasDoubleElements</code> confirms it</td>
+  </tr>
+  <tr>
     <td>a property added after construction, <code>o.b = 2</code></td>
     <td>1.21-1.34x</td>
     <td>V8's own debug output: every object built the same way ends at the
@@ -270,7 +337,7 @@ turbocharge — 35 annotated functions, 15 findings
   </tr>
   <tr>
     <td>building a string, <code>s = s + x</code> in a loop</td>
-    <td>0.27-0.54x</td>
+    <td>0.27-0.56x</td>
     <td>faster than the push-and-join rewrite a rule would demand — V8 appends
         into a cons-string instead of copying</td>
   </tr>
@@ -326,7 +393,8 @@ turbocharge — 35 annotated functions, 15 findings
 </p>
 
 <pre><code>$ turbocharge src      # check annotated functions under src/
-$ make test            # 37 tests, including the must-stay-silent cases
+$ make test            # 46 tests, including the must-stay-silent cases
+$ make example         # the before/after on three real libraries
 $ make v8-check        # re-verify every V8 source citation
 $ make bench           # re-run the 24-cell shape sweep
 $ make bench-dispatch  # re-run the dispatch cliff
@@ -346,9 +414,9 @@ $ make bench-addprop   # re-run the hidden-class refutation</code></pre>
 
 <div class="hub-footer">
   <p>
-    v0.4.1, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
+    v0.5.0, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
     those terms; a derivative work carries the same licence. Not published to
-    npm, so acquisition is by clone. Eight rules, 37 tests, single
+    npm, so acquisition is by clone. Seven rules, 46 tests, single
     machine. Open defects are listed in <code>BUGS.md</code>, and the adversarial
     teardown of this project ships in the repository as
     <code>useless2.md</code>.
