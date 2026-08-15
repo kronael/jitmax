@@ -81,11 +81,13 @@ Four things, and the second is the point:
   re-run it yourself with `make bench-*`.
 - **the fix**, concretely, not "consider optimising".
 - **what it could not check** — every call with no readable body is listed by
-  name, and a walk that hits its limit prints `WALK TRUNCATED` and is never
-  reported as clean.
+  name, and a walk that hits its limit prints `WALK TRUNCATED`, exits `1`, and
+  is never reported as clean.
 
-Exit codes: `0` clean, `1` findings, `2` the tool itself failed. A path that
-does not exist is a `2`, never a clean run.
+Exit codes: `0` clean, `1` turbocharge has something to report, `2` the tool
+itself failed. A path that does not exist is a `2`, never a clean run — and a
+walk that hit its limit is a `1` with no findings in it, because a run that
+proves nothing about part of your call tree is not a clean run either.
 
 ## Requirements
 
@@ -388,7 +390,8 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
   do not say it costs that much in your workload.
 - The recursive walk has limits. A visited set stops cycles. Each annotation
   also has a hard cap of 200 function bodies. When the walk hits the cap, it
-  prints `WALK TRUNCATED`. The run is not reported as clean.
+  prints `WALK TRUNCATED` and exits `1`. The run is not reported as clean, in
+  the text or in the exit code.
 - `megamorphic-elements` does not check that your code loads anything. It reads
   the parameter's type and reports. A function that only reads `rows.length`
   triggers it, even though nothing there can go megamorphic. The demo fixture

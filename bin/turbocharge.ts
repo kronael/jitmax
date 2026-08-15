@@ -38,7 +38,11 @@ try {
 
   const out = render(cwd, results, { count: suppressed, keys: [...allKeys].sort() });
   process.stdout.write(out + '\n');
-  process.exitCode = results.some((r) => r.findings.length > 0) ? 1 : 0;
+  // A truncated walk exits 1 as a finding does. It is not a clean run — part of
+  // the call tree was never checked, so silence from it is unproven — and `1`
+  // already means "turbocharge has something to report". A fourth code would be
+  // a new contract for every gate that reads this one (BUGS TC-17).
+  process.exitCode = results.some((r) => r.findings.length > 0 || r.mark.truncated) ? 1 : 0;
 } catch (err) {
   process.stderr.write(`turbocharge: ${(err as Error).message}\n`);
   process.exitCode = 2;

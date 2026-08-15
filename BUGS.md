@@ -2,7 +2,7 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
-## TC-17 — a truncated walk prints "not a clean run" and exits 0 (2026-08-15, open)
+## ✅ FIXED 2026-08-15 — TC-17 — a truncated walk printed "not a clean run" and exited 0
 
 TC-7 taught the *report* to refuse the word "clean" when a walk hit the cap. It
 never reached the exit code. `bin/turbocharge.ts` sets it from
@@ -29,6 +29,16 @@ ships**.
 
 Reproduce: a call chain deeper than `MAX_BODIES` (200) with no finding in it —
 `node bin/turbocharge.ts <dir>; echo $?` prints the truncation warning and `0`.
+
+**Fixed 2026-08-15, signed off: a truncated walk exits `1`.** No fourth code —
+`1` already means "turbocharge has something to report", and a run that proves
+nothing about part of a call tree is something to report. `bin/turbocharge.ts`
+now sets the code from `findings.length > 0 || mark.truncated`. The repro is
+checked in as `test/fixtures/deep/chain.ts` — 211 links against a cap of 200,
+no finding anywhere in it — and a test runs the binary over it and asserts the
+code is 1 with `0 findings` in the output, so the contract is tested where a CI
+gate reads it rather than in the library beneath it. README's exit-code
+paragraph and `CLAUDE.md` say the same thing.
 
 ## TC-16 — the fix a rule prints can cost more than the defect (2026-08-15, open)
 

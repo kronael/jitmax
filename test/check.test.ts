@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { CITATIONS, derive, markdown, withoutBlock } from '../lib/derive.ts';
 import { N } from '../lib/numbers.ts';
 import { load, program } from '../lib/ts.ts';
@@ -388,6 +389,23 @@ test('every published number is what its own data file says', () => {
     if (!c.readme) continue;
     assert.ok(prose.includes(N[key]), `README prose no longer quotes ${key} = ${N[key]}`);
   }
+});
+
+// The exit code is the contract a CI gate reads, so it is tested through the
+// binary rather than through the library. A walk that hit the cap printed the
+// warning and exited 0, which told the gate the opposite of what the text said
+// (BUGS TC-17). `test/fixtures/deep` is a chain longer than the cap with no
+// finding in it, so 1 here can only come from the truncation.
+
+test('a truncated walk exits 1: not clean, even with no findings', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'turbocharge.ts'), path.join(root, 'test', 'fixtures', 'deep')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /WALK TRUNCATED/);
+  assert.match(run.stdout, /0 findings/);
+  assert.strictEqual(run.status, 1);
 });
 
 // The end-to-end examples. Each `.before.ts` is a function a library ships and
