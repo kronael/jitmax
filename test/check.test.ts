@@ -360,3 +360,27 @@ test('a finding prints the defects its rule carries', () => {
   const out = render(root, [{ mark: markFor('drop'), findings: rawFindings('drop') }]);
   assert.match(out, /known defect: TC-9 — rules fire outside the conditions their own evidence establishes/);
 });
+
+// The end-to-end examples. Each `.before.ts` is a function a library ships and
+// must report exactly the finding its header quotes; each `.after.ts` carries
+// that fix and must be silent. If an after half ever regains a finding, the
+// pair it was measured as is no longer the pair in the file.
+
+test('every example before half reports its finding and every after half is clean', () => {
+  const dir = path.join(root, 'examples');
+  const { checker, marks } = scan(ts, program(ts, root, [dir]));
+  const byFile = new Map(
+    marks.map((m) => [path.basename(m.file), check(ts, checker, m).map((f) => f.rule)])
+  );
+  assert.deepStrictEqual(
+    Object.fromEntries([...byFile].sort()),
+    {
+      'estoolkit-omit.after.ts': [],
+      'estoolkit-omit.before.ts': ['delete-property'],
+      'radash-assign.after.ts': [],
+      'radash-assign.before.ts': ['accumulating-spread'],
+      'remeda-merge-all.after.ts': [],
+      'remeda-merge-all.before.ts': ['accumulating-spread'],
+    }
+  );
+});

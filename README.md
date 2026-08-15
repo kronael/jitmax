@@ -348,7 +348,7 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
 ## Development
 
 ```sh
-make test    # 44 unit tests, including the must-stay-silent cases
+make test    # 45 unit tests, including the must-stay-silent cases
 make lint    # tsc --noEmit
 make check   # run the checker against demo/
 make example # the checker against examples/, then the end-to-end sweep
