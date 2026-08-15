@@ -2,6 +2,57 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
+## TC-25 — a row's `load1` cannot be compared to the `maxLoad` beside it (2026-08-15, open)
+
+Every row the runner writes carries both `env.maxLoad`, the gate it declared,
+and `load1`, the one-minute average read as that row was written. They sit two
+fields apart and they are not the same kind of number, and nothing says so.
+
+`load1` is read AFTER the cell's forty pinned observations and after the tier
+diagnostic's four traced processes, so by then **the runner is most of its own
+reading**. On this two-core machine the measured child holds a core for the
+whole cell and the diagnostic runs unpinned on top of it, which puts something
+near 2.0 into the average before any other tenant is counted. Every row of the
+re-measurement therefore reports a `load1` above the gate of 1 that let it
+start, including the rows written on the quietest stretch the machine offered:
+`inline` starts at 0.83 and ends at 2.09 across three sweeps of the same cell,
+with nothing else on the machine changing.
+
+The gate reading — `env.loadStart`, and the per-cell check — is the clean one,
+because it is taken when the runner is idle. `load1` is still worth recording:
+its SPREAD across a file's rows is where an outside process announces itself,
+and `shapes` at 1.50-4.75 against `inline` at 0.83-2.09 is exactly that signal.
+It is the comparison to `maxLoad` that is meaningless.
+
+Cost of getting this wrong: the first pass of this session's coverage tooling
+counted "rows written above the gate" and reported every row of every clean
+sweep as contaminated.
+
+Not fixed. Two candidate fixes and they are not equivalent: name the field so it
+cannot be read as the machine's idle load (`load1AfterCell`), or record the gate
+reading of the NEXT cell as this row's clean-load-after, which costs nothing
+because the gate reads it anyway.
+
+## TC-24 — eighteen `select` rows predate the field they should carry (2026-08-15, open)
+
+`bench/select.jl` holds 18 rows marked `runner: r2` that were written while the
+runner was still being built, before `load1` moved out of `env` and onto the
+row. They carry `env.load1` — one number for the whole sweep — where every row
+written since carries its own.
+
+They are not from a different protocol: three whole sweeps per cell, the same
+gate, the same driver, the same twenty pairs. `lib/derive.ts` reads them as
+current rows and is right to. What is missing is one provenance field on
+eighteen of them, which makes `select` the one sweep whose rows cannot be
+compared to another sweep's on when they were written.
+
+Two ways to close it, and the cheap one is not obviously worse: re-run the six
+cells under `--force`, which appends 18 rows carrying the field and leaves the
+old 18 as history in the same file, or leave them and let this entry be the
+record. Re-running was ranked below every sweep still on pre-`r2` rows, because
+those are the numbers the exercise exists to move, and the machine did not offer
+enough quiet time to reach both.
+
 ## TC-23 — re-measuring select contradicts its own silent clause (2026-08-15, open, proposal)
 
 `allocating-select` ships this, hand-typed:
