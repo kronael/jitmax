@@ -2,6 +2,149 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
+## TC-22 — three workloads still dispatch on the variant string inside the timed region (2026-08-15, open)
+
+The repo has a rule about this — *"Never dispatch on a variant string inside a
+timed loop. Resolve the kernel to a function once, before timing. A `switch` in
+a timed region produced a wrong result here."* It was written after `chained.js`
+was caught, and `chained`, `arrays`, `dispatch`, `addprop`, `delete` and
+`strings` were all converted to a `BUILD` table with the comment *"One function
+per variant, resolved ONCE below"*. Three were not:
+
+| workload | where | how often, per repetition |
+|---|---|---|
+| `select.js` | `scanHeap`, `scanNumber` | once |
+| `select.js` | `minOf`, called 32× by `scanLocal` | **32 times** |
+| `spread.js` | `build()` | once |
+| `spread-object.js` | `build()` | once |
+
+`select.js` resolves the *mode* to a function once, on line 112, which is
+probably why nobody noticed the *variant* never was.
+
+The cost of one string compare against a `BUCKETS`-sized loop is small and this
+is not a claim that any number is wrong. What it is: an untaken branch sitting
+inside every kernel V8 optimizes, which is one of the two candidate explanations
+for TC-21's deopt storm and the cheaper of the two to eliminate.
+
+Not fixed, because fixing it changes measured code and every cell in
+`select.jl`, `spread.jl` and `spread-object.jl` would have to be re-measured to
+stay comparable.
+
+## TC-21 — nobody had checked which tier the measured code was in (2026-08-15, open, proposal)
+
+**The assumption held, and it held for the reason that had been guessed at.**
+`bench/tiers.js` re-ran all 280 published cell shapes under `--trace-opt
+--trace-deopt`, at the rep count each cell was published at, with the region
+boundaries marked. Of 1590 function-sides observed running inside a timed
+region, **1287 were on TurboFan when the stopwatch started**. OSR is what does
+it: the warmup passes are far too few to reach `invocation_count_for_turbofan`,
+but the inner loop is hot on the first pass and V8 OSR-compiles it there. A cell
+sized at two repetitions is still measuring optimized code.
+
+Two facts that belong next to that, because they were assumed and are not true:
+
+- **Maglev is off.** This Node reports `--maglev` as `default: --no-maglev`, so
+  the tier ladder here is Ignition → Sparkplug → TurboFan and
+  `invocation_count_for_maglev` — cited in README's V8 table and verified by
+  `make v8-check` — describes a tier no measurement in this repo has ever
+  entered. The citation is still true about V8; it is not true about these runs.
+- **Sparkplug is invisible.** `--trace-opt` traces the optimizing tiers only. A
+  function this diagnostic calls `none` was in Ignition or in Sparkplug and the
+  diagnostic cannot say which.
+
+### What is NOT clean
+
+**Four cells enter their region at different tiers on the two sides.** These are
+ratios that are partly measuring tiering:
+
+| cell | reps | ratio | what differs |
+|---|---|---|---|
+| `spread` incl n=10000 spread/push | 3616/2 | 1749.89x | baseline's `build` marked and not yet installed; variant's is `TF/osr` |
+| `dispatch` excl n=16384 cls3/cls1 | 7206/5078 | 1.32x | `step` TF on the baseline, never optimized on the variant |
+| `example` incl n=48 estoolkit-omit | 570/175 | 3.25x | `omit` TF on the `after` side, never optimized on the `before` side |
+| `example` incl n=16 zod-clean-enum | 467/404 | 0.91x | `cleanEnum` TF on `after`, none on `before` — **and unstable between two traces of the same side**, so this one may be a race and not a fact |
+
+Every one of them penalises the side that would make the printed ratio *larger*,
+which is the uncomfortable direction. The spread cell is 1750x and a few percent
+of tiering does not touch it. The other three are between 0.91x and 3.25x, where
+it could matter, and none of them is a number `lib/derive.ts` publishes.
+
+**Nine cells run a deoptimization storm inside the timed region, and in eight of
+them the two sides storm differently.** This is the larger finding:
+
+| cell | reps | ratio | deopts in region, base / test |
+|---|---|---|---|
+| `strings` build n=100000 plus/joined | 19/41 | 0.46x | **19 / 0** |
+| `strings` build n=100000 pluseq/joined | 22/29 | 0.54x | **30 / 0** |
+| `strings` build n=100000 concat/joined | 23/41 | 0.54x | **23 / 0** |
+| `strings` incl n=100000 plus/joined | 8/9 | 0.80x | **15 / 0** |
+| `strings` incl n=100000 pluseq/joined | 7/9 | 0.81x | **12 / 0** |
+| `strings` incl n=100000 concat/joined | 7/8 | 0.76x | **7 / 0** |
+| `select` heap n=100000 | 468/156 | 2.73x | **66 / 135** |
+| `select` number n=100000 | 578/572 | 0.99x | 101 / 66 |
+| `chained` incl n=10000 splitjoin/packed | 68/82 | 1.06x | **68 / 0**, and the baseline was `TF` in one trace and a 68-deopt storm in the other |
+
+All of them are at the largest `n` of their sweep — the same cells TC-11's audit
+flagged for low repetition counts, found again by a completely different probe.
+The deopts are one reason, repeated: *"Insufficient type feedback for compare
+operation"*. Two candidate mechanisms, neither established here:
+
+1. Feedback-vector flushing under GC. Every one of these cells allocates hard at
+   the largest `n`, and a flushed vector is exactly "insufficient type feedback".
+2. The untaken variant branch inside the kernel — TC-22.
+
+### Which published claims sit on these
+
+- **`allocating-select`, and it survives.** `select.heap` publishes **2.65-2.73x**
+  and README quotes it. The 2.73x end is the storming cell. The 2.65x end,
+  n=10000, is **completely clean** — every function TurboFan at the gun, no
+  deopt, no mismatch — and the two agree to within 3%. The claim rests on a clean
+  cell and is corroborated by a dirty one, which is the right way round. The
+  published *interval* for n=100000 (`select.heap.ci100k`) is measured on the
+  storming cell and should be read as such.
+- **`accumulating-select`'s silent clause on strings.** It publishes
+  "0.27-0.56x ... and 0.74-0.97x once the read back is counted", and the n=100000
+  cells that make the *upper* end of both ranges are the ones where the baseline
+  deopts 7-30 times and the variant not once. The contamination pushes those
+  ratios in the direction the claim wants. The n=1000 and n=10000 cells are clean
+  and give 0.27-0.38x, so the *direction* — a string beats the rewrite — does not
+  depend on the dirty cells. The published range's upper bound does.
+- **Nothing else.** `chained` splitjoin/packed and `select number` are not in any
+  `lib/derive.ts` citation beyond the cell counts.
+
+### The proposal, not shipped
+
+1. **Warm to a stated invocation count and record what was achieved.** The
+   workloads warm 3 flat passes, or `max(4, 2e6/n)` in the newer four, and
+   neither number was measured — they are TC-11's rejected repetition floor
+   wearing a different hat. The fix is not a bigger constant. It is to warm
+   until the kernel is observed optimized, and to record the count it took in
+   the row next to `repsBase`/`repsTest`, the way the tier is now recorded. A
+   fact, not a threshold.
+2. **A deopt inside the timed region is a property of the cell and belongs in
+   the row.** The runner records `deoptBase`/`deoptTest` today. Whether an
+   asymmetric storm should *void* a cell is a protocol change and is exactly the
+   kind of threshold this project has been wrong about twice.
+3. **Re-measure the nine storming cells and the four mismatched ones** and see
+   whether anything moves. Started here; blocked on a quiet machine.
+
+Recorded rather than acted on: 1 and 2 change the measurement protocol, and
+CLAUDE.md says a redesign gets signed off before it ships.
+
+## TC-20 — a development row reached a published `.jl` (2026-08-15, fixed)
+
+While the runner was being built, `node bench/run.js spread --max-load=99` was
+run to check that a flag parsed, on a machine at load 1.91, and it appended a
+real measured row to `bench/spread.jl`. `spread.array.reads` picks every
+`spread`/`excl` row in that file, so a number README publishes would have moved
+because of a row measured to test an argument parser.
+
+Reverted with `git checkout` before anything was derived from it. The fix is
+`--scratch`, which sends a run to `bench/scratch.jl` — gitignored, and read by
+nothing. The never-overwrite rule protects published sweeps from being replaced;
+it had nothing to say about a published file gaining a row that was never a
+sweep, and now the runner does.
+
 ## TC-19 — megamorphic-elements prints a fix nobody at the finding can apply (2026-08-15, open, proposal)
 
 Found while giving every rule an end-to-end example. `examples/` can only hold a
