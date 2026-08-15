@@ -21,13 +21,9 @@
 // different value is a failed run rather than a fast one.
 //   node bench/chained.js <variant> <n> <mode> <reps> <seed>
 
-const [variant, n, mode, reps, seed] = [
-  process.argv[2],
-  Number(process.argv[3]),
-  process.argv[4],
-  Number(process.argv[5]),
-  Number(process.argv[6]),
-];
+import { args, emit, lcg } from './kernel.js';
+
+const { variant, n, mode, reps, seed } = args();
 
 const FAMILY = {
   fused: 'mapfilter',
@@ -44,8 +40,7 @@ const FAMILY = {
 const family = FAMILY[variant];
 if (!family) throw new Error(`unknown variant ${variant}`);
 
-let s = seed;
-const rand = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+const rand = lcg(seed);
 
 const nums = () => Array.from({ length: n }, () => Math.floor(rand() * 1000));
 
@@ -179,10 +174,4 @@ if (mode === 'excl') {
   t1 = process.hrtime.bigint();
 }
 
-process.stdout.write(
-  JSON.stringify({
-    ns_per_op: Number(t1 - t0) / (reps * n),
-    checksum: read(build()).toFixed(6),
-    sink: sink > 0,
-  })
-);
+emit({ t0, t1, reps, n, checksum: read(build()), sink });

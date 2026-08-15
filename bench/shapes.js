@@ -3,18 +3,10 @@
 //   node bench/shapes.js <shapes> <n> <excl|incl> <reps> <seed>
 'use strict';
 
-const [shapes, n, mode, reps, seed] = [
-  +process.argv[2], +process.argv[3], process.argv[4], +process.argv[5], +process.argv[6],
-];
+import { args, emit, mulberry32 as rng } from './kernel.js';
 
-function rng(a) {
-  return function () {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+const { variant, n, mode, reps, seed } = args();
+const shapes = Number(variant);
 
 // Five key orders. Same three fields, same object size, five distinct maps —
 // so the only thing that varies across variants is shape count.
@@ -60,12 +52,4 @@ if (mode === 'excl') {
   t1 = process.hrtime.bigint();
 }
 
-// One untimed verification pass produces the compared checksum; sink is printed
-// so the timed loop cannot be eliminated as dead.
-process.stdout.write(
-  JSON.stringify({
-    ns_per_op: Number(t1 - t0) / (reps * n),
-    checksum: sweep(build()).toFixed(6),
-    sink: sink > 0,
-  })
-);
+emit({ t0, t1, reps, n, checksum: sweep(build()), sink });

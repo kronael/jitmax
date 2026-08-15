@@ -19,16 +19,11 @@
 //
 //   node bench/select.js <compare|select> <n> <heap|local|number> <reps> <seed>
 
-const [variant, n, mode, reps, seed] = [
-  process.argv[2],
-  Number(process.argv[3]),
-  process.argv[4],
-  Number(process.argv[5]),
-  Number(process.argv[6]),
-];
+import { args, emit, lcg } from './kernel.js';
 
-let s = seed;
-const rand = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+const { variant, n, mode, reps, seed } = args();
+
+const rand = lcg(seed);
 
 // A boxed number with a comparison and an allocating selector: decimal.js,
 // Big.js, Temporal and every other immutable value type have this pair.
@@ -122,10 +117,4 @@ const t0 = process.hrtime.bigint();
 for (let i = 0; i < reps; i++) sink += run();
 const t1 = process.hrtime.bigint();
 
-process.stdout.write(
-  JSON.stringify({
-    ns_per_op: Number(t1 - t0) / (reps * n),
-    checksum: run().toFixed(6),
-    sink: sink > 0,
-  })
-);
+emit({ t0, t1, reps, n, checksum: run(), sink });

@@ -22,6 +22,7 @@
 // arithmetic — time per rep is ns_per_op * n — and the unit is otherwise
 // arbitrary: only the ratio inside a pair is published.
 
+import { args, emit } from './kernel.js';
 import { estoolkitOmit, radashAssign, remedaMergeAll } from '../examples/workloads.ts';
 import { assign as assignBefore } from '../examples/radash-assign.before.ts';
 import { assign as assignAfter } from '../examples/radash-assign.after.ts';
@@ -30,13 +31,7 @@ import { mergeAll as mergeAllAfter } from '../examples/remeda-merge-all.after.ts
 import { omit as omitBefore } from '../examples/estoolkit-omit.before.ts';
 import { omit as omitAfter } from '../examples/estoolkit-omit.after.ts';
 
-const [variant, n, mode, reps, seed] = [
-  process.argv[2],
-  Number(process.argv[3]),
-  process.argv[4],
-  Number(process.argv[5]),
-  Number(process.argv[6]),
-];
+const { variant, n, mode, reps, seed } = args();
 
 const EXAMPLES = {
   'radash-assign': { workload: radashAssign, before: assignBefore, after: assignAfter },
@@ -92,10 +87,4 @@ if (mode === 'excl') {
 let sum = 0;
 for (const out of applyAll()) sum = (sum + digest(out)) % 1e12;
 
-process.stdout.write(
-  JSON.stringify({
-    ns_per_op: Number(t1 - t0) / (reps * n),
-    checksum: sum.toFixed(6),
-    sink: sink > 0,
-  })
-);
+emit({ t0, t1, reps, n, checksum: sum, sink });

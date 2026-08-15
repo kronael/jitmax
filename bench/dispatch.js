@@ -38,27 +38,14 @@
 //   incl — construction and a full read, every rep.
 'use strict';
 
-const [variant, n, mode, reps, seed] = [
-  process.argv[2],
-  Number(process.argv[3]),
-  process.argv[4],
-  Number(process.argv[5]),
-  Number(process.argv[6]),
-];
+import { args, emit, mulberry32 as rng } from './kernel.js';
+
+const { variant, n, mode, reps, seed } = args();
 
 const parsed = /^(cls|lit|tgt|shr)([1-6])$/.exec(variant ?? '');
 if (!parsed) throw new Error(`unknown variant ${variant}`);
 const family = parsed[1];
 const k = Number(parsed[2]);
-
-function rng(a) {
-  return function () {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 // Six classes and six functions, written out rather than produced by a
 // factory. Every closure one factory hands back shares a SharedFunctionInfo,
@@ -166,12 +153,4 @@ if (mode === 'excl') {
   t1 = process.hrtime.bigint();
 }
 
-// One untimed verification pass produces the compared checksum; sink is printed
-// so the timed loop cannot be eliminated as dead.
-process.stdout.write(
-  JSON.stringify({
-    ns_per_op: Number(t1 - t0) / (reps * n),
-    checksum: read(build()).toFixed(6),
-    sink: sink > 0,
-  })
-);
+emit({ t0, t1, reps, n, checksum: read(build()), sink });

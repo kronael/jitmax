@@ -13,16 +13,11 @@
 //
 //   node bench/inline.js <small|large> <n> <mode> <reps> <seed>
 
-const [variant, n, mode, reps, seed] = [
-  process.argv[2],
-  Number(process.argv[3]),
-  process.argv[4],
-  Number(process.argv[5]),
-  Number(process.argv[6]),
-];
+import { args, emit, lcg } from './kernel.js';
 
-let s = seed;
-const rand = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+const { variant, n, mode, reps, seed } = args();
+
+const rand = lcg(seed);
 
 const source = Array.from({ length: n }, () => Math.floor(rand() * 1000));
 
@@ -301,11 +296,4 @@ t0 = process.hrtime.bigint();
 for (let i = 0; i < reps; i++) sink += sweep(source);
 t1 = process.hrtime.bigint();
 
-process.stdout.write(
-  JSON.stringify({
-    ns_per_op: Number(t1 - t0) / (reps * n),
-    checksum: sweep(source).toFixed(6),
-    sink: sink > 0,
-    mode,
-  })
-);
+emit({ t0, t1, reps, n, checksum: sweep(source), sink });
