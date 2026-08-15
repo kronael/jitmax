@@ -4,3 +4,4 @@ tsgo/
 tmp/
 meme.svg
 meme.png
+bench/scratch.jl

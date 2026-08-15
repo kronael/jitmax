@@ -105,12 +105,19 @@ function bootstrap(base, test) {
   return [percentile(ratios, 0.025), percentile(ratios, 0.975)];
 }
 
-function cell({ script, baseline, variant, n, mode }) {
+// `report` is progress, and only progress. A sweep runs for hours and used to
+// print one line per cell at the end of it, so the twelve calibration processes
+// and the forty measured ones were four silent minutes. It cannot change what
+// is measured: it is called between observations, never inside a timed region,
+// and never in a measured process.
+function cell({ script, baseline, variant, n, mode }, report = () => {}) {
   const repsBase = calibrate(script, baseline, n, mode);
   const repsTest = calibrate(script, variant, n, mode);
+  report({ event: 'calibrated', repsBase, repsTest });
   const base = [];
   const test = [];
   for (let p = 0; p < PAIRS; p++) {
+    report({ event: 'pair', done: p, of: PAIRS });
     const seed = 1000 + p;
     // Rule 2: AB on half the pairs, BA on the other half, same seed to both.
     // Order is a confound, and round 1 proved it is a large one.
@@ -126,6 +133,7 @@ function cell({ script, baseline, variant, n, mode }) {
     base.push(ra.ns_per_op);
     test.push(rb.ns_per_op);
   }
+  report({ event: 'pairs-done' });
   const regionBase = assertRegion(`${variant} baseline / n=${n} / ${mode}`, base, repsBase, n);
   const regionTest = assertRegion(`${variant} / n=${n} / ${mode}`, test, repsTest, n);
   const mean = (v) => v.reduce((x, y) => x + y, 0) / v.length;
@@ -154,9 +162,9 @@ function cell({ script, baseline, variant, n, mode }) {
 // A cell that misses its timed region is void, and a void cell must be
 // visible: it is recorded and printed, not silently dropped and not allowed to
 // take the surviving cells down with it.
-export function cellOrVoid(opts) {
+export function cellOrVoid(opts, report) {
   try {
-    return cell(opts);
+    return cell(opts, report);
   } catch (err) {
     return {
       variant: opts.variant,
@@ -180,10 +188,10 @@ export function cellOrVoid(opts) {
 // `onRun` receives each sweep as it finishes, because a sweep that is written
 // only after all three are done is a sweep that is lost when the run is
 // interrupted — the same reason the runners append synchronously (TC-6).
-export function replicate(opts, onRun, times = 3) {
+export function replicate(opts, onRun, times = 3, report) {
   const runs = [];
   for (let i = 1; i <= times; i++) {
-    const r = { ...cellOrVoid(opts), replicate: i, protocol: 'replicated' };
+    const r = { ...cellOrVoid(opts, report), replicate: i, protocol: 'replicated' };
     runs.push(r);
     onRun(r);
   }
