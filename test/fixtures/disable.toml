@@ -1,0 +1,5 @@
+# A name and a defect code in the same table, exercising both forms
+# resolveDisabled() accepts.
+[rules]
+"delete-property" = false
+"TC-9" = false

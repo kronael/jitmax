@@ -1,13 +1,33 @@
 import path from 'node:path';
 import type { Mark } from './scan.ts';
-import type { Finding } from './rules.ts';
+import { DEFECT, type Finding } from './rules.ts';
 
 const plural = (n: number, s: string): string => `${n} ${s}${n === 1 ? '' : 's'}`;
 
-export function render(cwd: string, results: Array<{ mark: Mark; findings: Finding[] }>): string {
+export interface Suppression {
+  // Findings a config or an annotation removed before they reached this
+  // report. Zero is the common case and prints nothing.
+  count: number;
+  // The disable keys in force anywhere in this run — config and every
+  // annotation's, deduped and sorted — so a clean run that is clean because
+  // rules were switched off says so, and says by what.
+  keys: string[];
+}
+
+export function render(
+  cwd: string,
+  results: Array<{ mark: Mark; findings: Finding[] }>,
+  suppression: Suppression = { count: 0, keys: [] }
+): string {
   const out: string[] = [];
   const total = results.reduce((n, r) => n + r.findings.length, 0);
   out.push(`turbocharge — ${plural(results.length, 'annotated function')}, ${plural(total, 'finding')}`);
+  // Suppression is never silent: a run that looks clean because rules were
+  // switched off says so here, every time, not only when it would otherwise
+  // read as clean. BUGS TC-7 is the same class of lie in a different place.
+  if (suppression.count > 0) {
+    out.push(`  ${plural(suppression.count, 'finding')} suppressed (${suppression.keys.join(', ')})`);
+  }
 
   const partial = results.filter((r) => r.mark.truncated);
 
@@ -32,6 +52,9 @@ export function render(cwd: string, results: Array<{ mark: Mark; findings: Findi
       out.push(`      ${f.message}`);
       if (f.evidence) out.push(`      measured ${f.evidence.cost} [${f.evidence.source}]`);
       out.push(`      fix: ${f.fix}`);
+      for (const code of f.evidence?.defects ?? []) {
+        out.push(`      known defect: ${code} — ${DEFECT[code] ?? code}`);
+      }
     }
   }
 

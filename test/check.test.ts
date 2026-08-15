@@ -2,8 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import path from 'node:path';
 import { load, program } from '../lib/ts.ts';
-import { scan } from '../lib/scan.ts';
-import { check } from '../lib/rules.ts';
+import { scan, type Mark } from '../lib/scan.ts';
+import { check, resolveDisabled } from '../lib/rules.ts';
+import { loadConfig } from '../lib/config.ts';
+import { render } from '../lib/report.ts';
 
 const root = path.join(import.meta.dirname, '..');
 const ts = load(root);
@@ -15,6 +17,18 @@ function rulesByFunction(dir: string): Map<string, string[]> {
 
 const found = rulesByFunction('demo');
 const rules = (name: string): string[] => found.get(name) ?? assert.fail(`no mark ${name}`);
+
+// A second scan that keeps the marks themselves, for the config and
+// annotation-override tests below: they need `mark.disabled` and the raw,
+// unfiltered findings check() returns, not just the rule names.
+const demoScan = scan(ts, program(ts, root, [path.join(root, 'demo')]));
+const markByName = new Map(demoScan.marks.map((m) => [m.name, m]));
+function markFor(name: string): Mark {
+  return markByName.get(name) ?? assert.fail(`no mark ${name}`);
+}
+function rawFindings(name: string) {
+  return check(ts, demoScan.checker, markFor(name));
+}
 
 test('a function is checked only where it is annotated', () => {
   assert.deepStrictEqual(
@@ -30,6 +44,7 @@ test('a function is checked only where it is annotated', () => {
       'collectByReduce',
       'collectObject',
       'drop',
+      'dropQuiet',
       'entriesMap',
       'fiveShapes',
       'fourShapes',
@@ -54,6 +69,7 @@ test('a function is checked only where it is annotated', () => {
       'usesDependency',
       'usesHelper',
       'viaCallee',
+      'viaCalleeQuiet',
       'widen',
     ]
   );
@@ -270,4 +286,73 @@ test('an annotated arrow, and an alias to it, stay inside the closed world', () 
 
 test('a missing path fails loudly instead of reporting a clean run', () => {
   assert.throws(() => program(ts, root, ['no/such/dir']), /no such file or directory/);
+});
+
+// Config and annotation overrides both name a rule or a defect code;
+// resolveDisabled() is the one place both forms are expanded and validated.
+
+test('a defect code expands to every rule that carries it', () => {
+  assert.deepStrictEqual([...resolveDisabled(['TC-2'])].sort(), [
+    'boxed-elements',
+    'megamorphic-elements',
+  ]);
+});
+
+test('an unknown rule name or defect code fails loudly instead of silently disabling nothing', () => {
+  assert.throws(() => resolveDisabled(['not-a-real-rule']), /unknown rule or defect code/);
+});
+
+test('a TOML config disables a rule by name and by defect code', () => {
+  const cfg = loadConfig(path.join(import.meta.dirname, 'fixtures', 'disable.toml'));
+  assert.deepStrictEqual([...cfg.disabled].sort(), ['TC-9', 'delete-property']);
+  assert.deepStrictEqual(
+    [...resolveDisabled(cfg.disabled)].sort(),
+    ['chained-allocation', 'delete-property', 'megamorphic-elements']
+  );
+});
+
+// The same place the promise is made: `@turbocharge -key` disables a rule for
+// that function and everything its walk reaches, and nowhere else.
+
+test('an annotation disable by rule name silences its own function and leaves its unmodified twin alone', () => {
+  const disabled = resolveDisabled(markFor('dropQuiet').disabled);
+  assert.deepStrictEqual(
+    rawFindings('dropQuiet').filter((f) => !disabled.has(f.rule)),
+    []
+  );
+  assert.deepStrictEqual(rules('drop'), ['delete-property']);
+});
+
+test('an annotation disable by defect code reaches through the walk, and does not leak into its sibling', () => {
+  const quiet = markFor('viaCalleeQuiet');
+  assert.deepStrictEqual(quiet.disabled, ['TC-15']);
+  const disabled = resolveDisabled(quiet.disabled);
+  assert.deepStrictEqual(
+    rawFindings('viaCalleeQuiet').filter((f) => !disabled.has(f.rule)),
+    []
+  );
+  // viaCallee calls the same unannotated callee and carries no override of
+  // its own — the defect-code disable on its sibling must not reach it.
+  assert.deepStrictEqual(rules('viaCallee'), ['delete-property']);
+});
+
+// Suppression is never silent: the report says how many findings a config or
+// an annotation removed, and by what — a clean run that is clean because
+// rules were switched off has to say so.
+
+test('the report says how many findings were suppressed and by what', () => {
+  const disabled = resolveDisabled(['delete-property']);
+  const raw = rawFindings('drop');
+  const findings = raw.filter((f) => !disabled.has(f.rule));
+  const out = render(root, [{ mark: markFor('drop'), findings }], {
+    count: raw.length - findings.length,
+    keys: ['delete-property'],
+  });
+  assert.match(out, /1 finding suppressed \(delete-property\)/);
+});
+
+test('a finding prints the defects its rule carries', () => {
+  const out = render(root, [{ mark: markFor('drop'), findings: rawFindings('drop') }]);
+  assert.match(out, /known defect: TC-15 — delete-property's number predates the current protocol/);
+  assert.match(out, /known defect: TC-9 — rules fire outside the conditions their own evidence establishes/);
 });

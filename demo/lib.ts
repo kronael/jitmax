@@ -40,6 +40,12 @@ export function drop(o: Record<string, number>, k: string): void {
   delete o[k];
 }
 
+/** The same violation, disabled by rule name for this function only. */
+/** @turbocharge -delete-property */
+export function dropQuiet(o: Record<string, number>, k: string): void {
+  delete o[k];
+}
+
 /** Rebuilding the accumulator every pass is the quadratic one. */
 /** @turbocharge */
 export function collect(rows: number[]): number[] {
@@ -101,6 +107,13 @@ function dropInner(o: Record<string, number>, k: string): void {
 /** The violation is inside an unannotated callee, and the walk follows it. */
 /** @turbocharge */
 export function viaCallee(o: Record<string, number>, k: string): void {
+  dropInner(o, k);
+}
+
+/** Same callee as viaCallee, disabled by defect code here only — proves the
+ * override reaches through the walk and does not leak into viaCallee. */
+/** @turbocharge -TC-15 */
+export function viaCalleeQuiet(o: Record<string, number>, k: string): void {
   dropInner(o, k);
 }
 

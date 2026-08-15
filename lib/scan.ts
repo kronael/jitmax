@@ -43,6 +43,10 @@ export interface Mark extends Site {
   // True when the walk stopped at MAX_BODIES. A partial walk that reports no
   // findings is not a clean function, and saying "clean" there would be a lie.
   truncated: boolean;
+  // Raw `-key` tokens from the `@turbocharge` tag's own comment, e.g.
+  // `@turbocharge -boxed-elements -TC-15`. Unresolved: rules.ts's
+  // resolveDisabled() turns these into rule names and validates them.
+  disabled: string[];
 }
 
 // Termination. The visited set already handles cycles; this bounds a call
@@ -79,25 +83,41 @@ function findMarks(ts: Ts, program: TS.Program): Mark[] {
   for (const sf of program.getSourceFiles()) {
     if (sf.isDeclarationFile || sf.fileName.includes('node_modules')) continue;
     const visit = (node: TS.Node): void => {
-      if (
-        isFunctionLike(ts, node) &&
-        ts.getJSDocTags(node).some((t) => t.tagName.escapedText === 'turbocharge')
-      ) {
-        marks.push({
-          ...at(sf, node),
-          name: nameOf(ts, node),
-          node,
-          sf,
-          reached: [],
-          escapes: [],
-          truncated: false,
-        });
+      if (isFunctionLike(ts, node)) {
+        const tags = ts.getJSDocTags(node).filter((t) => t.tagName.escapedText === 'turbocharge');
+        if (tags.length > 0) {
+          marks.push({
+            ...at(sf, node),
+            name: nameOf(ts, node),
+            node,
+            sf,
+            reached: [],
+            escapes: [],
+            truncated: false,
+            disabled: disabledKeys(ts, tags),
+          });
+        }
       }
       ts.forEachChild(node, visit);
     };
     ts.forEachChild(sf, visit);
   }
   return marks;
+}
+
+// `-key` tokens in the promise's own tag: `@turbocharge -boxed-elements -TC-15`
+// disables those rules for this function and everything its walk reaches.
+// Unrecognized text that is not a `-key` token is prose, not a directive, and
+// stays out of the list.
+function disabledKeys(ts: Ts, tags: TS.JSDocTag[]): string[] {
+  const keys: string[] = [];
+  for (const tag of tags) {
+    const text = ts.getTextOfJSDocComment(tag.comment) ?? '';
+    for (const token of text.split(/\s+/)) {
+      if (token.startsWith('-') && token.length > 1) keys.push(token.slice(1));
+    }
+  }
+  return keys;
 }
 
 function targetsOf(ts: Ts, checker: TS.TypeChecker, callee: TS.Expression): TS.Node[] {

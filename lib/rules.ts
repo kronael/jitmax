@@ -6,7 +6,23 @@ export interface Evidence {
   cost: string;
   source: string;
   silent: string;
+  // BUGS.md issue numbers this rule is known to be wrong or unproven about.
+  // Empty when the rule carries no open defect. This is the register a
+  // config or an annotation disables by defect code instead of by name.
+  defects: string[];
 }
+
+// One line per code in `defects`, taken from the BUGS.md heading. Keep in
+// sync with BUGS.md: a code appears here only if a rule's `defects` cites it.
+export const DEFECT: Record<string, string> = {
+  'TC-2': 'a TypeScript union member is not a V8 map',
+  'TC-8': 'megamorphic-elements fires without a property load',
+  'TC-9': 'rules fire outside the conditions their own evidence establishes',
+  'TC-10': 'the walk follows calls but not constructors',
+  'TC-13': 'a method in a field has no four-map budget',
+  'TC-14': 'boxed-elements cannot be re-run, and its trigger is an inference',
+  'TC-15': "delete-property's number predates the current protocol",
+};
 
 export interface Finding extends Site {
   rule: string;
@@ -27,6 +43,7 @@ export const EVIDENCE: Record<string, Evidence> = {
     silent:
       'holey arrays (0.94-1.09, interval includes 1); also silent on `any` and on an ' +
       'unresolved type parameter, neither of which says anything about representation',
+    defects: ['TC-14', 'TC-2'],
   },
   'megamorphic-elements': {
     cost:
@@ -39,6 +56,7 @@ export const EVIDENCE: Record<string, Evidence> = {
     silent:
       'two to four shapes cost 1.2-2.0x on reads — real, and measured, but an order of ' +
       'magnitude below the fifth, which is why the rule starts there and not earlier',
+    defects: ['TC-8', 'TC-2', 'TC-9'],
   },
   'megamorphic-dispatch': {
     cost:
@@ -58,6 +76,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       'when every shape carries its OWN function the cost starts at the SECOND target ' +
       '(7.7-11.9x, flat from two to six, no threshold at all), and no declared type ' +
       'separates that from a prototype method, so the rule misses it rather than guessing',
+    defects: ['TC-13'],
   },
   'accumulating-spread': {
     cost:
@@ -79,6 +98,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       'so all three BEAT the rewrite, because V8 appends into a cons-string (the n=100000 ' +
       'cells are replicated three times; one of the nine, s += x at construction, spread ' +
       '0.40-0.54x across the three and is withdrawn as unreplicable)',
+    defects: [],
   },
   'allocating-select': {
     cost:
@@ -89,6 +109,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       'on numbers there is no effect at all — 1.03x and 0.99x, both intervals spanning 1 — ' +
       'because Math.min allocates nothing; and escape analysis does not rescue the boxed ' +
       'form either: kept in a local the same loop still costs 1.72-2.28x',
+    defects: [],
   },
   'chained-allocation': {
     cost:
@@ -108,6 +129,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       'both intervals spanning 1; and the split chain s.split(sep).map(f).join(sep) ' +
       'measured 1.06-1.09x against two different fusions, every point estimate under the ' +
       '1.10x a broad warning needs',
+    defects: ['TC-9'],
   },
   'closed-world': {
     cost:
@@ -119,11 +141,13 @@ export const EVIDENCE: Record<string, Evidence> = {
     silent:
       'this bounds what ONE unchecked call can cost, not what any particular one does cost ' +
       '— a small callee is inlined and the boundary costs nothing',
+    defects: ['TC-10'],
   },
   'delete-property': {
     cost: '28-67x per property load once the object is in dictionary mode',
     source: 'options.md round 3b',
     silent: 'assigning a new property is not this; only delete demotes',
+    defects: ['TC-15', 'TC-9'],
   },
 };
 
@@ -541,4 +565,24 @@ export function check(ts: Ts, checker: TS.TypeChecker, mark: Mark): Finding[] {
   }
   closedWorld(mark, add);
   return findings;
+}
+
+// A disable key is either a rule name, or a defect code that names every rule
+// carrying it — a config's [rules] table and an annotation's `-key` both go
+// through here. An unknown key is not disabling anything, silently, which is
+// the same lie a typo tells anywhere else in this project: it throws instead.
+export function resolveDisabled(keys: Iterable<string>): Set<string> {
+  const rules = new Set<string>();
+  for (const key of keys) {
+    if (key in EVIDENCE) {
+      rules.add(key);
+      continue;
+    }
+    const byDefect = Object.entries(EVIDENCE).filter(([, e]) => e.defects.includes(key));
+    if (byDefect.length === 0) {
+      throw new Error(`unknown rule or defect code: ${key}`);
+    }
+    for (const [name] of byDefect) rules.add(name);
+  }
+  return rules;
 }
