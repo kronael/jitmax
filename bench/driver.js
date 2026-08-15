@@ -57,6 +57,16 @@ function calibrate(script, variant, n, mode) {
 
 // A cell whose timed region missed the target is not a slightly noisy result,
 // it is a different measurement. Fail loudly instead of publishing it.
+//
+// A LOW REP COUNT IS NOT A FAILURE HERE, and BUGS TC-11's first diagnosis said
+// otherwise. A kernel that fits two passes in 120 ms has been measured for
+// 120 ms; the rep count it took is a fact about the kernel, not a defect, and no
+// threshold on it would be anything but a constant nobody measured. What the
+// low-rep cells actually exposed is a run-to-run component this interval cannot
+// see — the bootstrap resamples pairs inside ONE sweep — so the answer is to run
+// the cell again and publish the spread across sweeps (SPEC §4 rule 13). The
+// achieved region is returned and recorded so a reader can see what was bought
+// with how many repetitions.
 function assertRegion(label, samples, reps, n) {
   const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
   const achieved = mean * reps * n;
@@ -66,6 +76,7 @@ function assertRegion(label, samples, reps, n) {
         `(reps=${reps}, n=${n}) — the cell is void, not slow`
     );
   }
+  return achieved;
 }
 
 function percentile(sorted, p) {
@@ -107,18 +118,23 @@ export function cell({ script, baseline, variant, n, mode }) {
     base.push(ra.ns_per_op);
     test.push(rb.ns_per_op);
   }
-  assertRegion(`${variant} baseline / n=${n} / ${mode}`, base, repsBase, n);
-  assertRegion(`${variant} / n=${n} / ${mode}`, test, repsTest, n);
+  const regionBase = assertRegion(`${variant} baseline / n=${n} / ${mode}`, base, repsBase, n);
+  const regionTest = assertRegion(`${variant} / n=${n} / ${mode}`, test, repsTest, n);
   const mean = (v) => v.reduce((x, y) => x + y, 0) / v.length;
   const [lo, hi] = bootstrap(base, test);
   // Raw per-pair observations ship with the aggregate. Without them a reader
-  // cannot recompute the interval, and "rerunnable" is the whole claim.
+  // cannot recompute the interval, and "rerunnable" is the whole claim. The
+  // achieved region in ms travels with the rep count that bought it: 120 ms
+  // reached in two passes and 120 ms reached in three hundred are different
+  // measurements, and the file has to say which one this was.
   return {
     variant,
     mode,
     n,
     repsBase,
     repsTest,
+    msBase: +(regionBase / 1e6).toFixed(1),
+    msTest: +(regionTest / 1e6).toFixed(1),
     ratio: mean(test) / mean(base),
     lo,
     hi,
@@ -142,6 +158,37 @@ export function cellOrVoid(opts) {
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+// SPEC §4 rule 13. The bootstrap interval is over the 20 pairs of ONE sweep, so
+// it sees the noise between two processes and is blind to anything that varies
+// between two sweeps — calibration landing on a different rep count, a heap
+// that grew differently, a machine that is not the machine it was ten minutes
+// ago. Three `addprop` constructions that differ only in which property is
+// added measured 1.64x, 0.91x and 0.89x with mutually exclusive intervals: no
+// two of them can be true, and every one of them was significant. So a cell is
+// run whole, three times, and what the three sweeps do to each other is
+// published next to what one sweep says about itself.
+// `onRun` receives each sweep as it finishes, because a sweep that is written
+// only after all three are done is a sweep that is lost when the run is
+// interrupted — the same reason the runners append synchronously (TC-6).
+export function replicate(opts, onRun, times = 3) {
+  const runs = [];
+  for (let i = 1; i <= times; i++) {
+    const r = { ...cellOrVoid(opts), replicate: i, protocol: 'replicated' };
+    runs.push(r);
+    onRun(r);
+  }
+  return runs;
+}
+
+// Do the sweeps agree? A common value inside every interval is agreement, and
+// its absence is not: it says the three sweeps cannot all be describing the same
+// quantity. Derived from the intervals the cells already carry — there is no
+// threshold here to pick, and picking one is what TC-11's first fix got wrong.
+export function replicates(runs) {
+  if (runs.some((r) => r.void)) return false;
+  return Math.max(...runs.map((r) => r.lo)) <= Math.min(...runs.map((r) => r.hi));
 }
 
 export const workload = (name) => path.join(import.meta.dirname, name);
