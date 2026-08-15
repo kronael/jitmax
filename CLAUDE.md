@@ -10,6 +10,7 @@ measurement shows can push V8 off its fast path.
 lib/          scan.ts (the recursive walk), rules.ts (the rules + EVIDENCE), report.ts, ts.ts
 bin/          turbocharge.ts — exit 0 clean, 1 findings, 2 the tool failed
 demo/lib.ts   every rule's fixture, including the must-stay-silent ones
+examples/     real library functions, before and after the printed fix, MIT
 test/         one test per rule, plus one per silent case
 bench/        one workload + one runner + one .jl per measured claim
 README.md     how to use it, the rules, and the V8 citation table
@@ -66,6 +67,11 @@ correct the citation, never the other way round.
 - **The tool must stay honest about coverage.** A truncated walk prints
   `WALK TRUNCATED` and is never reported as clean; an unreadable callee is
   listed by name.
+- **An example is somebody else's function.** `examples/` holds a `.before.ts`
+  vendored verbatim from a library and a `.after.ts` carrying the fix
+  turbocharge printed and nothing besides. A fixture written here would be a
+  benchmark in a costume. The function is chosen by `examples/annotate.js`, not
+  by taste, and the after half must stay clean under `make test`.
 
 Reality check before any release: `node bin/turbocharge.ts tmp/demo-real/src`
 against a radash checkout must report exactly one finding. More than one means a

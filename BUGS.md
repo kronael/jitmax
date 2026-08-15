@@ -2,6 +2,48 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
+## TC-16 — the fix a rule prints can cost more than the defect (2026-08-15, open)
+
+Found by `bench/example.jl` — the first sweep in this project that applies a
+printed fix to a function somebody else shipped and measures the whole call.
+Two of the three examples say the fix is not free, and the rules do not know it.
+
+**One mechanism, two rules.** Adding properties to an object one at a time
+normalizes it to dictionary mode. `%DebugPrint` on the result of
+`examples/remeda-merge-all.after.ts` reads `[DictionaryProperties]`; on the
+result of the shipped version it reads `[FastProperties]`. That is the same
+demotion `delete-property` exists to warn about, reached through the fix for a
+different rule.
+
+- **`accumulating-spread`.** Its fix line is "mutate acc in place — push, or
+  assign the key". On remeda's `mergeAll` that fix makes the caller's reads
+  **8x slower**: 0.11-0.12x at n=8 and n=64, in all six sweeps, with no
+  interval near 1.0. The build gets faster (1.31-1.36x at n=8; the n=64 cell
+  reads 17.34/19.34/20.10x and does not replicate), so the rule trades a
+  quadratic build for a per-load cost it never mentions. The rule's own
+  EVIDENCE already contains the fact — `bench/spread-object.jl` measured the
+  spread-built object reading 30-50x FASTER — and the `fix:` line does not
+  carry it.
+- **`delete-property`.** Its fix line is "assign undefined, or build the object
+  without the property". On es-toolkit's `omit` the second branch works at 12
+  keys — the caller's reads are 10.95-11.86x faster, the rule's 12.6-17.1x
+  landing almost intact — and stops working by 48, where the cell rejects at
+  0.94-1.02x with an interval spanning 1.0 in all three sweeps.
+  `%HasFastProperties` is false on **both** sides there: the fixed object was
+  normalized by being built key by key. The first branch, "assign undefined",
+  is not available at all in `omit`, because it leaves the key present and
+  computes a different object; the driver's checksum rejects it.
+
+**Not a symptom to log louder.** The honest shape of the fix is conditional —
+below some width, build the object without the property; above it, the
+rewrite buys nothing on reads — and neither rule can see the width, which is
+TC-9 again from the other end. A cause fix means the `fix:` line stops being
+one sentence, and that is a contract change, so it is a proposal, not an inline
+edit: **owner signs off before anything ships**.
+
+Reproduce: `make example`; `node --allow-natives-syntax` over the pairs for the
+properties state. Data in `bench/example.jl`, all 36 sweeps.
+
 ## ✅ FIXED 2026-08-15 — TC-15 — delete-property's number predates the current protocol
 
 **Closed by `bench/delete.jl`: 16 cells, 20 pairs each, every cell replicated
