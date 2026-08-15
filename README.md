@@ -19,6 +19,44 @@ Point it at your sources:
 turbocharge src
 ```
 
+## Configure it
+
+Two optional layers turn a rule off. Neither is required — with no config and
+no overrides, turbocharge behaves exactly as above.
+
+**A TOML config**, the first CLI positional, named by its `.toml` suffix:
+
+```sh
+turbocharge turbocharge.toml src
+```
+
+```toml
+[rules]
+"boxed-elements" = false
+"TC-15" = false
+```
+
+**A per-function override**, in the same comment as the promise:
+
+```ts
+/** @turbocharge -boxed-elements */
+export function total(rows: Row[]): number { … }
+
+/** @turbocharge -TC-14 -TC-15 */
+export function other(rows: Row[]): number { … }
+```
+
+which disables those rules for that function and everything its walk reaches,
+and nowhere else.
+
+Both layers accept two forms of key: a rule name (`boxed-elements`) disables
+that rule; a defect code (`TC-15`) disables every rule that carries it — see
+the `known defect` line under a finding, or `BUGS.md`, for what a code names.
+An unknown name or code fails loudly with exit `2`, the same as a missing
+path. Suppression is never silent: the report always says how many findings
+were removed and by what, e.g. `3 findings suppressed (boxed-elements, TC-15)`
+— a clean run that is clean because rules were switched off says so.
+
 ## What you get
 
 ```
