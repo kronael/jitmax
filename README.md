@@ -181,6 +181,7 @@ make bench-addprop        # adding a property after construction — a refutatio
 make bench-dispatch       # calling a method on five object types
 make bench-delete         # delete, on many objects and on exactly one
 make bench-arrays         # elements kinds — the sweep that withdrew a rule
+make example              # three shipped library functions, before and after
 make v8-check             # every V8 citation, against the pinned checkout
 ```
 
@@ -203,6 +204,72 @@ work measured 1.64x, 0.91x and 0.89x, and no two of those can both be true. So a
 cell behind a published number is run three times over, and the three answers are
 published next to each other. Where they disagree, the cell is dropped and the
 three numbers are printed anyway — `make bench-tc11`, `BUGS.md` TC-11.
+
+## What the fix is worth on somebody else's code
+
+Every number above is a microbenchmark, and a microbenchmark cannot say what a
+program gets. So: take a function a library ships, apply the fix turbocharge
+printed on it and nothing else, and time the whole call the way a caller makes
+it. The pairs are in `examples/` — `diff` a `.before.ts` against its `.after.ts`
+and the fix is the entire change. `make example` prints the findings, then runs
+the sweep.
+
+Nothing here was searched for. Four libraries were cloned shallow and annotated
+by `examples/annotate.js` — every function not nested inside another whose body
+loops — and these are the findings that came back. The ratio is before/after, so
+above 1.0 the shipped code costs that much more and **below 1.0 the fix made it
+slower**. Three whole sweeps per cell, per §4 rule 13, all three printed.
+
+**The whole call, which is what a caller gets:**
+
+| Function, and the finding | n | three sweeps | agreement |
+|---|---|---|---|
+| radash `assign` — `accumulating-spread` | 16 | 3.08 / 3.21 / 3.31 | **3.15–3.30** |
+| radash `assign` | 128 | 4.59 / 4.58 / 4.62 | **4.32–4.88** |
+| remeda `mergeAll` — `accumulating-spread` | 8 | 1.38 / 1.31 / 1.37 | **1.31–1.36** |
+| remeda `mergeAll` | 64 | 20.10 / 17.34 / 19.34 | **none — DISAGREES** |
+| es-toolkit `omit` — `delete-property` | 12 | 1.71 / 1.73 / 1.73 | **1.64–1.79** |
+| es-toolkit `omit` | 48 | 3.27 / 3.39 / 3.25 | **3.24–3.36** |
+
+**Reads on the value the function returns**, which is where `delete-property`'s
+cost is actually paid — by the caller, not inside the function:
+
+| Function | n | three sweeps | agreement |
+|---|---|---|---|
+| radash `assign` | 16 / 128 | 1.98 / 2.02 / 1.97 · 1.69 / 1.68 / 1.57 | **1.93–2.08** · **1.58–1.71** |
+| remeda `mergeAll` | 8 / 64 | 0.12 / 0.12 / 0.12 · 0.12 / 0.11 / 0.11 | **0.12** · **0.11–0.12** |
+| es-toolkit `omit` | 12 | 11.46 / 11.37 / 11.08 | **10.95–11.86** |
+| es-toolkit `omit` | 48 | 0.98 / 0.99 / 1.02 | **0.94–1.02, REJECTED** |
+
+**The honesty condition.** An end-to-end number is far below the microbenchmark
+ratio, always. `accumulating-spread` cites 188–203x for an object spread at
+n=500; applied to radash's `assign` it moves the whole call 3.2–4.9x, because
+the function around that one line also allocates, recurses and branches. That
+gap is the most useful thing in this table: it is what a reader gets, and the
+200x is not.
+
+Three cells say something worse than "smaller", and they are here at the same
+size as the wins:
+
+- **`omit` at 48 keys rejects on reads** — 0.94–1.02x, an interval spanning 1.0
+  in all three sweeps. `%HasFastProperties` is false on *both* sides: building a
+  46-key object one key at a time normalizes it just as `delete` does. The fix
+  stops fixing the read somewhere between 12 keys and 48, and the rule has no
+  idea.
+- **`mergeAll` at n=64 does not replicate** — 17.34x, 19.34x, 20.10x, with no
+  value inside all three intervals. Under rule 13 that is not a published
+  number, and it is printed here rather than dropped.
+- **`mergeAll` reads are 8x slower after the fix**, 0.11–0.12x at both sizes in
+  all six sweeps. `Object.assign(out, item)` in a loop — the form this project's
+  own evidence names as the fix — returns a `[DictionaryProperties]` object,
+  where the spread returns a `[FastProperties]` one. `accumulating-spread` fixes
+  a quadratic build and creates a per-load cost it never mentions.
+
+Two further libraries were annotated the same way and produced no new pattern:
+ramda one `delete-property` (in `_dissoc`) and just one `delete-property` plus
+one `chained-allocation`, on top of 125 and 65 `closed-world` reports. The
+`closed-world` flood is the honest shape of that rule on real code — 267 of
+es-toolkit's 288 findings are a builtin the walk cannot read into.
 
 ## What V8's source says
 
@@ -284,6 +351,7 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
 make test    # 44 unit tests, including the must-stay-silent cases
 make lint    # tsc --noEmit
 make check   # run the checker against demo/
+make example # the checker against examples/, then the end-to-end sweep
 ```
 
 `CLAUDE.md` holds the layout, the rules of this repo, and how to verify both
@@ -296,5 +364,11 @@ this one is worthless.
 **GPL-2.0-only**. The full text is in `LICENSE`. You may use, modify and
 redistribute it under those terms. A derivative work carries the same licence.
 It is not published to npm. Get it by cloning the repository.
+
+`examples/` is the exception, and deliberately so: the `.before.ts` files are
+functions vendored verbatim from radash, remeda and es-toolkit, all **MIT**, and
+each file carries its upstream's copyright line, version and commit. MIT is
+compatible with the GPL, and the point of the whole exercise is that the code
+measured there is somebody else's.
 
 Status: v0.4.1, single machine, seven rules.
