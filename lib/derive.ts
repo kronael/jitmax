@@ -438,7 +438,7 @@ const END = '<!-- /generated -->';
 
 export function markdown(root: string): string {
   const values = derive(root);
-  const rows_ = Object.entries(CITATIONS).map(
+  const lines = Object.entries(CITATIONS).map(
     ([key, c]) => `| \`${values[key]}\` | \`bench/${c.file}\` — ${c.cells} |`
   );
   return [
@@ -446,7 +446,7 @@ export function markdown(root: string): string {
     '',
     '| Number | The rows it is |',
     '|---|---|',
-    ...rows_,
+    ...lines,
     '',
     END,
   ].join('\n');

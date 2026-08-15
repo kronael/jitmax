@@ -40,14 +40,15 @@ const TARGET_NS = 120e6;
 // interpreted-then-optimized kernel can be a thousand times its warm cost, and
 // it under-sizes worst for the slowest variant — the exact side a rule wants
 // to indict. That bias inflated a measured cell from ~6-11x to 19.73x and is
-// why this loop exists (BUGS TC-5). Iterate until two successive estimates
-// agree within 20%, so the count is derived from warm cost.
+// why this loop exists (BUGS TC-5).
 // Each probe runs at the previous estimate's rep count, so by the third the
-// kernel is optimized and the estimate is warm cost. Then take the MEDIAN of
-// the last three rather than demanding two agree: a memory-bound kernel varies
-// more than 20% run to run, so an agreement test fails on the L3 cells for a
-// reason that has nothing to do with warmup. The achieved region is asserted
-// afterwards, and that is the guard that decides whether a cell is publishable.
+// kernel is optimized and the estimate is warm cost. Six run, and the MEDIAN of
+// the last three is taken — NOT a "stop once two agree within 20%" test, which
+// is what this did first: a memory-bound kernel varies more than 20% run to
+// run, so agreement never arrived on the L3 cells for a reason that has nothing
+// to do with warmup. A fixed count cannot hang, and the achieved region is
+// asserted afterwards, which is the guard that decides whether a cell is
+// publishable.
 function calibrate(script, variant, n, mode) {
   const estimates = [];
   let reps = 1;

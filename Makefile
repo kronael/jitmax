@@ -76,8 +76,13 @@ meme-png: meme
 	agent-browser open file://$(CURDIR)/meme.svg >/dev/null
 	agent-browser screenshot svg $(CURDIR)/meme.png >/dev/null
 
+# The two build products, both gitignored. `lib/numbers.ts` is generated too but
+# is tracked and imported, so it is not a clean target — deleting it breaks the
+# build until `make numbers` runs. `tmp/probe.cjs` used to be listed here and no
+# target has ever written it: a hand-run scratch file clean had no business
+# deleting.
 clean:
-	rm -f meme.svg meme.png tmp/probe.cjs
+	rm -f meme.svg meme.png
 
 publish: meme meme-png
 	cp meme.svg /srv/data/arizuko_krons/web/pub/turbocharge/meme.svg

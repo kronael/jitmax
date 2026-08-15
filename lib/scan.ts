@@ -40,7 +40,8 @@ export interface Mark extends Site {
   // over the whole call tree.
   reached: Body[];
   escapes: Call[];
-  // True when the walk stopped at MAX_BODIES. A partial walk that reports no
+  // True when the walk refused a callee because `reached` was full at
+  // MAX_BODIES — not merely when it ended there. A partial walk that reports no
   // findings is not a clean function, and saying "clean" there would be a lie.
   truncated: boolean;
   // Raw `-key` tokens from the `@turbocharge` tag's own comment, e.g.
