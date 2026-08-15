@@ -28,15 +28,34 @@ const NAMED_SMALL = { L1: 256, L2: 16384 };
 
 const KERNEL = { kernel: 'dispatch-table' };
 
+// Which workload writes which `.jl`, and the row fields that travel with every
+// cell of that sweep. Written once because `tc11` re-runs cells of these same
+// sweeps and MUST append to the same files: a re-run that lands in the wrong
+// `.jl` is a superseded sweep silently mixed into a live one, which is the
+// failure the never-overwrite rule exists to prevent.
+const SWEEP = {
+  shapes: { script: 'shapes.js', out: 'shapes-calibrated.jl' },
+  spread: { script: 'spread.js', out: 'spread.jl' },
+  spreadObject: { script: 'spread-object.js', out: 'spread-object.jl' },
+  strings: { script: 'strings.js', out: 'strings.jl', recordBaseline: true, extra: KERNEL },
+  select: { script: 'select.js', out: 'select.jl' },
+  chained: { script: 'chained.js', out: 'chained.jl', recordBaseline: true, extra: KERNEL },
+  inline: { script: 'inline.js', out: 'inline.jl' },
+  addprop: { script: 'addprop.js', out: 'addprop.jl', recordBaseline: true, extra: KERNEL },
+  dispatch: { script: 'dispatch.js', out: 'dispatch.jl', recordBaseline: true, extra: KERNEL },
+  delete: { script: 'delete.js', out: 'delete.jl', recordBaseline: true, extra: KERNEL },
+  arrays: { script: 'arrays.js', out: 'arrays.jl', recordBaseline: true, extra: KERNEL },
+  example: { script: 'example.js', out: 'example.jl', recordBaseline: true },
+};
+
 const BENCHMARKS = {
   // The object-shape sweep behind megamorphic-elements. The two earlier sweeps
   // stay on disk under their own names: they were measured before the
   // calibration loop existed and are not comparable cell for cell with this
   // one.
   shapes: {
+    ...SWEEP.shapes,
     what: 'the 24-cell object-shape sweep',
-    script: 'shapes.js',
-    out: 'shapes-calibrated.jl',
     modes: ['excl', 'incl'],
     // `shapes` and `size` are the names this sweep has always published, and
     // bench/meme.js reads them.
@@ -51,9 +70,8 @@ const BENCHMARKS = {
   // Both variants are measured against the same push baseline, because both
   // make the same claim: the accumulator is copied whole on every pass.
   spread: {
+    ...SWEEP.spread,
     what: 'accumulating spread, array form',
-    script: 'spread.js',
-    out: 'spread.jl',
     modes: ['excl', 'incl'],
     sizes: [1000, 10000],
     cells: ['spread', 'concat'].map((variant) => ({ baseline: 'push', variant })),
@@ -62,9 +80,8 @@ const BENCHMARKS = {
   // Whether the copy is written as a spread or as Object.assign, the claim
   // under test is the same, so both run against the same mutating baseline.
   'spread-object': {
+    ...SWEEP.spreadObject,
     what: 'accumulating spread, object form',
-    script: 'spread-object.js',
-    out: 'spread-object.jl',
     modes: ['excl', 'incl'],
     sizes: [500, 2000],
     cells: ['spread', 'assign-copy'].map((variant) => ({ baseline: 'assign', variant })),
@@ -78,13 +95,10 @@ const BENCHMARKS = {
   // same claim. Three sizes two orders of magnitude apart, because a quadratic
   // cost GROWS with n and a constant factor does not.
   strings: {
+    ...SWEEP.strings,
     what: 'string building — the refutation, not a rule',
-    script: 'strings.js',
-    out: 'strings.jl',
     modes: ['build', 'excl', 'incl'],
     sizes: [1000, 10000, 100000],
-    recordBaseline: true,
-    extra: KERNEL,
     cells: ['plus', 'pluseq', 'concat'].map((variant) => ({ baseline: 'joined', variant })),
   },
 
@@ -92,9 +106,8 @@ const BENCHMARKS = {
   // whole question of whether TurboFan can delete the allocation. `number` is
   // the cell that says where the rule must stay quiet.
   select: {
+    ...SWEEP.select,
     what: 'choosing between two boxed values',
-    script: 'select.js',
-    out: 'select.jl',
     modes: ['heap', 'local', 'number'],
     sizes: [10000, 100000],
     cells: [{ baseline: 'compare', variant: 'select' }],
@@ -106,12 +119,9 @@ const BENCHMARKS = {
   // rows appended here carry `kernel`; the rows before them that do not are
   // from the switch-dispatched kernel TurboFan miscompiled, and they are void.
   chained: {
+    ...SWEEP.chained,
     what: 'chained array passes',
-    script: 'chained.js',
-    out: 'chained.jl',
     modes: ['excl', 'incl'],
-    recordBaseline: true,
-    extra: KERNEL,
     cells: [
       { baseline: 'fused', variant: 'chained', sizes: [1000, 100000] },
       { baseline: 'scanned', variant: 'splitjoin', sizes: [1000, 10000] },
@@ -130,9 +140,8 @@ const BENCHMARKS = {
   // to construct in this kernel, so an 'incl' cell would be the same
   // measurement under a different name.
   inline: {
+    ...SWEEP.inline,
     what: 'the inlining boundary behind closed-world',
-    script: 'inline.js',
-    out: 'inline.jl',
     modes: ['excl'],
     sizes: [1000, 100000],
     cells: [{ baseline: 'small', variant: 'large' }],
@@ -165,11 +174,8 @@ const BENCHMARKS = {
   // The many-field families stop at 8192 because a seventeen-field object is
   // three times the size and the point there is a threshold, not bandwidth.
   addprop: {
+    ...SWEEP.addprop,
     what: 'adding a property after construction — a refutation',
-    script: 'addprop.js',
-    out: 'addprop.jl',
-    recordBaseline: true,
-    extra: KERNEL,
     cells: [
       { baseline: 'literal', variant: 'added', sizes: WIDE, modes: ['build', 'excl', 'incl'] },
       { baseline: 'literal', variant: 'added2', sizes: WIDE, modes: ['build', 'excl', 'incl'] },
@@ -199,11 +205,8 @@ const BENCHMARKS = {
   // target — and they run reads-only at L1 and L2, which is where the effect is
   // if it exists at all.
   dispatch: {
+    ...SWEEP.dispatch,
     what: 'calling a method on five object types',
-    script: 'dispatch.js',
-    out: 'dispatch.jl',
-    recordBaseline: true,
-    extra: KERNEL,
     cells: [
       { family: 'cls', baseline: 'cls1', sizes: NAMED, modes: ['excl', 'incl'] },
       { family: 'lit', baseline: 'lit1', sizes: NAMED, modes: ['excl', 'incl'] },
@@ -229,13 +232,10 @@ const BENCHMARKS = {
   //   rowdel/rowundef   the delete against that fix, which is the comparison a
   //                     developer following the finding actually faces.
   delete: {
+    ...SWEEP.delete,
     what: 'delete, on many objects and on exactly one',
-    script: 'delete.js',
-    out: 'delete.jl',
     modes: ['excl', 'incl'],
     replicated: true,
-    recordBaseline: true,
-    extra: KERNEL,
     cells: [
       { baseline: 'rowbase', variant: 'rowdel', sizes: WIDE },
       { baseline: 'shbase', variant: 'shdel', sizes: WIDE },
@@ -260,13 +260,10 @@ const BENCHMARKS = {
   //   f64/double       control, refuted on reads and faster to construct — the
   //                    one case where measuring only one half buried a result.
   arrays: {
+    ...SWEEP.arrays,
     what: 'elements kinds — the sweep that withdrew a rule',
-    script: 'arrays.js',
-    out: 'arrays.jl',
     modes: ['excl', 'incl'],
     replicated: true,
-    recordBaseline: true,
-    extra: KERNEL,
     cells: [
       { baseline: 'double', variant: 'boxed', sizes: WIDE },
       { baseline: 'double', variant: 'unionnum', sizes: WIDE },
@@ -282,12 +279,10 @@ const BENCHMARKS = {
   // published exactly as it comes out: these ratios are what a caller gets, and
   // they are far below the microbenchmark ratios the rules cite.
   example: {
+    ...SWEEP.example,
     what: 'three shipped library functions, before and after',
-    script: 'example.js',
-    out: 'example.jl',
     modes: ['excl', 'incl'],
     replicated: true,
-    recordBaseline: true,
     cells: [
       { example: 'radash-assign', sizes: [16, 128] },
       { example: 'remeda-merge-all', sizes: [8, 64] },
@@ -317,8 +312,7 @@ const BENCHMARKS = {
     replicated: true,
     cells: [
       ...[2, 3, 4, 5].map((shapes) => ({
-        script: 'shapes.js',
-        out: 'shapes-calibrated.jl',
+        ...SWEEP.shapes,
         baseline: '1',
         variant: String(shapes),
         sizes: { L3: 262144 },
@@ -326,63 +320,50 @@ const BENCHMARKS = {
         extra: { shapes },
       })),
       {
-        script: 'spread.js',
-        out: 'spread.jl',
+        ...SWEEP.spread,
         baseline: 'push',
         variant: 'spread',
         sizes: [10000],
         modes: ['incl'],
       },
       ...['spread', 'assign-copy'].map((variant) => ({
-        script: 'spread-object.js',
-        out: 'spread-object.jl',
+        ...SWEEP.spreadObject,
         baseline: 'assign',
         variant,
         sizes: [500],
         modes: ['incl'],
       })),
       ...['plus', 'pluseq', 'concat'].map((variant) => ({
-        script: 'strings.js',
-        out: 'strings.jl',
+        ...SWEEP.strings,
         baseline: 'joined',
         variant,
         sizes: [100000],
         modes: ['build', 'excl', 'incl'],
-        recordBaseline: true,
-        extra: KERNEL,
       })),
       ...['added', 'added2', 'diverge'].map((variant) => ({
-        script: 'addprop.js',
-        out: 'addprop.jl',
+        ...SWEEP.addprop,
         baseline: 'literal',
         variant,
         sizes: [262144],
         modes: ['build', 'incl'],
-        recordBaseline: true,
-        extra: KERNEL,
       })),
       // The one flagged cell that is not at the largest n of its sweep: the
       // dictionary-mode variant is slow enough to reach the region in six
       // passes where its own baseline took seventy-eight.
       {
-        script: 'addprop.js',
-        out: 'addprop.jl',
+        ...SWEEP.addprop,
         baseline: 'lit16',
         variant: 'keyed16',
         sizes: [8192],
         modes: ['incl'],
-        recordBaseline: true,
-        extra: KERNEL,
       },
       ...['cls', 'lit'].flatMap((family) =>
         [2, 3, 4, 5, 6].map((k) => ({
-          script: 'dispatch.js',
-          out: 'dispatch.jl',
+          ...SWEEP.dispatch,
           baseline: `${family}1`,
           variant: `${family}${k}`,
           sizes: { L3: 262144 },
           modes: ['incl'],
-          recordBaseline: true,
           extra: { family, k, ...KERNEL },
         }))
       ),

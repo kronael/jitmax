@@ -176,6 +176,42 @@ const isLoop = (ts: Ts, n: TS.Node): boolean =>
   ts.isWhileStatement(n) ||
   ts.isDoStatement(n);
 
+// Every node under `root`, root excluded: a rule is about what a body contains.
+function walk(ts: Ts, root: TS.Node, fn: (n: TS.Node) => void): void {
+  const visit = (node: TS.Node): void => {
+    fn(node);
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(root, visit);
+}
+
+// The same walk carrying whether a loop re-runs this node. Two rules price a
+// statement per pass, so the enclosing loop is half of what they match: the
+// same line outside one is a case their own benchmark rejected.
+function walkLoops(ts: Ts, root: TS.Node, fn: (n: TS.Node, inLoop: boolean) => void): void {
+  const visit = (node: TS.Node, inLoop: boolean): void => {
+    fn(node, inLoop);
+    ts.forEachChild(node, (c) => visit(c, inLoop || isLoop(ts, node)));
+  };
+  ts.forEachChild(root, (c) => visit(c, false));
+}
+
+// `x = …` that a loop re-runs — the shape both per-pass rules start from,
+// before each asks its own question about the right-hand side.
+const reassignedInLoop = (ts: Ts, node: TS.Node, inLoop: boolean): node is TS.BinaryExpression =>
+  inLoop &&
+  ts.isBinaryExpression(node) &&
+  node.operatorToken.kind === ts.SyntaxKind.EqualsToken;
+
+// DEFAULT_MAX_POLYMORPHIC_MAP_COUNT, the constant README's V8 table cites. Both
+// megamorphic rules fire on the fifth map, from one threshold rather than two.
+const MAX_CACHED_MAPS = 4;
+
+// Members that could reach a site as distinct maps; a non-union answers 0,
+// which is under every threshold, so callers only ask whether there are too many.
+const objectShapes = (ts: Ts, t: TS.Type): number =>
+  t.isUnion() ? t.types.filter((x) => x.flags & ts.TypeFlags.Object).length : 0;
+
 const elementType = (ts: Ts, checker: TS.TypeChecker, t: TS.Type): TS.Type | undefined =>
   checker.getIndexTypeOfType(t, ts.IndexKind.Number);
 
@@ -220,9 +256,8 @@ function arrayParams(
 // smaller, which is why the rule starts at five rather than earlier.
 const megamorphicElements: Rule = (ts, checker, body, add) => {
   for (const { p, element } of arrayParams(ts, checker, body)) {
-    if (!element.isUnion()) continue;
-    const shapes = element.types.filter((x) => x.flags & ts.TypeFlags.Object);
-    if (shapes.length < 5) continue;
+    const shapes = objectShapes(ts, element);
+    if (shapes <= MAX_CACHED_MAPS) continue;
     add({
       ...at(body.sf, p),
       rule: 'megamorphic-elements',
@@ -230,7 +265,7 @@ const megamorphicElements: Rule = (ts, checker, body, add) => {
       // maps only if they really are five shapes, so the finding says "unions",
       // states the mechanism, and lets the reader judge.
       message:
-        `${p.name.getText(body.sf)} unions ${shapes.length} object types; V8 caches four maps ` +
+        `${p.name.getText(body.sf)} unions ${shapes} object types; V8 caches four maps ` +
         'per load site, so loads here go megamorphic unless some of them share a shape',
       fix: 'get the element type to four shapes or fewer, or give it one construction path',
     });
@@ -247,24 +282,21 @@ const megamorphicElements: Rule = (ts, checker, body, add) => {
 // is loaded, and the fixture that proves it reads `rows.length` and nothing
 // else. A rule with the same hole in it would be the same defect twice.
 const megamorphicDispatch: Rule = (ts, checker, body, add) => {
-  const shapesOf = (t: TS.Type): number =>
-    t.isUnion() ? t.types.filter((x) => x.flags & ts.TypeFlags.Object).length : 0;
-
   // A method called on the elements of an array parameter is one union reaching
   // one site, and `megamorphic-elements` already reports that parameter.
   // Reporting both bills one defect twice — the mistake chained-allocation's
   // `consumed` check exists to avoid. The shipped rule keeps the finding.
   const claimed = new Set<TS.Type>();
   for (const { element } of arrayParams(ts, checker, body)) {
-    if (shapesOf(element) >= 5) claimed.add(element);
+    if (objectShapes(ts, element) > MAX_CACHED_MAPS) claimed.add(element);
   }
 
-  const visit = (node: TS.Node): void => {
+  walk(ts, body.node, (node) => {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const receiver = node.expression.expression;
       const t = checker.getTypeAtLocation(receiver);
-      const shapes = shapesOf(t);
-      if (shapes >= 5 && !claimed.has(t)) {
+      const shapes = objectShapes(ts, t);
+      if (shapes > MAX_CACHED_MAPS && !claimed.has(t)) {
         add({
           ...at(body.sf, node),
           rule: 'megamorphic-dispatch',
@@ -278,9 +310,7 @@ const megamorphicDispatch: Rule = (ts, checker, body, add) => {
         });
       }
     }
-    ts.forEachChild(node, visit);
-  };
-  ts.forEachChild(body.node, visit);
+  });
 };
 
 // Rebuilding an array or an object from a copy of itself copies every element
@@ -361,30 +391,24 @@ const accumulatingSpread: Rule = (ts, checker, body, add) => {
         report(node, name);
         continue;
       }
-      const returns = (n: TS.Node): void => {
+      walk(ts, arg.body, (n) => {
         if (ts.isReturnStatement(n) && n.expression && spreadsSelf(name, n.expression)) {
           report(node, name);
         }
-        ts.forEachChild(n, returns);
-      };
-      ts.forEachChild(arg.body, returns);
+      });
     }
   };
 
-  const visit = (node: TS.Node, inLoop: boolean): void => {
+  walkLoops(ts, body.node, (node, inLoop) => {
     if (
-      inLoop &&
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      reassignedInLoop(ts, node, inLoop) &&
       ts.isIdentifier(node.left) &&
       spreadsSelf(node.left.text, node.right)
     ) {
       report(node, node.left.text);
     }
     reduceCallback(node);
-    ts.forEachChild(node, (c) => visit(c, inLoop || isLoop(ts, node)));
-  };
-  ts.forEachChild(body.node, (c) => visit(c, false));
+  });
 };
 
 // Choosing between two boxed values with a call that returns a new one
@@ -405,13 +429,8 @@ const allocatingSelect: Rule = (ts, checker, body, add) => {
     return members(t).every((x) => Boolean(x.flags & ts.TypeFlags.Object));
   };
 
-  const visit = (node: TS.Node, inLoop: boolean): void => {
-    if (
-      inLoop &&
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-      ts.isCallExpression(node.right)
-    ) {
+  walkLoops(ts, body.node, (node, inLoop) => {
+    if (reassignedInLoop(ts, node, inLoop) && ts.isCallExpression(node.right)) {
       const target = node.left.getText(body.sf);
       const call = node.right;
       if (call.arguments.some((a) => a.getText(body.sf) === target) && allocates(call)) {
@@ -425,9 +444,7 @@ const allocatingSelect: Rule = (ts, checker, body, add) => {
         });
       }
     }
-    ts.forEachChild(node, (c) => visit(c, inLoop || isLoop(ts, node)));
-  };
-  ts.forEachChild(body.node, (c) => visit(c, false));
+  });
 };
 
 const CHAINABLE = new Set(['map', 'filter', 'flatMap', 'concat', 'slice', 'flat']);
@@ -468,7 +485,7 @@ const chainedAllocation: Rule = (ts, _checker, body, add) => {
     return CHAINABLE.has(name) ? name : undefined;
   };
 
-  const visit = (node: TS.Node): void => {
+  walk(ts, body.node, (node) => {
     const outer = stage(node);
     if (outer && ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const inner = stage(node.expression.expression);
@@ -489,15 +506,13 @@ const chainedAllocation: Rule = (ts, _checker, body, add) => {
         });
       }
     }
-    ts.forEachChild(node, visit);
-  };
-  ts.forEachChild(body.node, visit);
+  });
 };
 
 // delete is the one operation that moves an object to dictionary mode and does
 // not move back.
 const deleteProperty: Rule = (ts, _checker, body, add) => {
-  const visit = (node: TS.Node): void => {
+  walk(ts, body.node, (node) => {
     if (ts.isDeleteExpression(node)) {
       add({
         ...at(body.sf, node),
@@ -506,9 +521,7 @@ const deleteProperty: Rule = (ts, _checker, body, add) => {
         fix: 'assign undefined, or build the object without the property',
       });
     }
-    ts.forEachChild(node, visit);
-  };
-  ts.forEachChild(body.node, visit);
+  });
 };
 
 // The closed-world rule, and the only one that is about the mark rather than a

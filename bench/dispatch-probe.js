@@ -1,5 +1,13 @@
 // node --allow-natives-syntax bench/dispatch-probe.js
+//
 // Answers, before any cell runs, what the four families actually are to V8.
+// This is where bench/dispatch.js's family table gets its map and target counts
+// from — it cites this file by name, and without it those four lines are an
+// assertion nobody can re-run. That is why it is tracked.
+//
+// A DIAGNOSTIC, never a measurement: it needs --allow-natives-syntax, which
+// protocol rule 8 bars from an evidence run. It prints what V8 thinks; the
+// cost of thinking it is bench/dispatch.jl's job.
 'use strict';
 
 class C0 { constructor(v) { this.v = v; } step() { return this.v * 2 + 1; } }
