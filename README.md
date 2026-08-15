@@ -216,7 +216,9 @@ the sweep.
 
 Nothing here was searched for. Four libraries were cloned shallow and annotated
 by `examples/annotate.js` — every function not nested inside another whose body
-loops — and these are the findings that came back. The ratio is before/after, so
+loops — and these are the findings that came back. radash is the fifth, marked
+by hand a round earlier; `demo-real.md` is that run in full, including the three
+false-positive classes it took to get to one finding. The ratio is before/after, so
 above 1.0 the shipped code costs that much more and **below 1.0 the fix made it
 slower**. Three whole sweeps per cell, per §4 rule 13, all three printed.
 
@@ -265,11 +267,25 @@ size as the wins:
   where the spread returns a `[FastProperties]` one. `accumulating-spread` fixes
   a quadratic build and creates a per-load cost it never mentions.
 
-Two further libraries were annotated the same way and produced no new pattern:
-ramda one `delete-property` (in `_dissoc`) and just one `delete-property` plus
-one `chained-allocation`, on top of 125 and 65 `closed-world` reports. The
-`closed-world` flood is the honest shape of that rule on real code — 267 of
-es-toolkit's 288 findings are a builtin the walk cannot read into.
+**The whole survey, so the three examples are not three picks out of a hat.**
+No library produced nothing; ramda and just produced no pattern the three
+examples do not already carry, so nothing there became an example.
+
+| Library | annotated | findings | what fired |
+|---|---|---|---|
+| es-toolkit 1.50.0 | 286 | 288 | 267 `closed-world`, 12 `delete-property`, 4 `accumulating-spread`, 3 `chained-allocation`, 2 `allocating-select` |
+| ramda 0.32.0 | 100 | 126 | 125 `closed-world`, 1 `delete-property` (`_dissoc`) |
+| remeda 2.0.0 | 79 | 47 | 44 `closed-world`, 2 `delete-property`, 1 `accumulating-spread` |
+| just 1.22.4 | 61 | 67 | 65 `closed-world`, 1 `delete-property`, 1 `chained-allocation` |
+| radash 12.1.1 | 8 | 1 | 1 `accumulating-spread` — see `demo-real.md` |
+
+Two things in that table are about the tool rather than the libraries.
+**`closed-world` is 501 of the 529 findings**, nearly all of them a builtin the
+walk cannot read into; that is the honest shape of the rule on real code, and
+`BUGS.md` TC-10. And **`megamorphic-elements` and `megamorphic-dispatch` never
+fired once** across 534 annotated functions in four libraries — the two rules
+with the sharpest measured cliffs in the project found nothing to say about any
+of them.
 
 ## What V8's source says
 
