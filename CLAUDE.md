@@ -98,8 +98,12 @@ implements it and names these numbers next to the code that enforces each one;
    never gated on.
 9. **Publish the environment with the numbers**: Node and V8 version, flags,
    seeds, warmup counts, core affinity — in **every row**, not in a report
-   beside it. `bench/env.js` writes them, and the row also carries the load the
-   sweep started at and **the gate it was allowed to start under**. The gate is
+   beside it. `bench/env.js` writes them, and the row also carries the load
+   **read as that row was written**, the load the sweep started at, and **the
+   gate it was allowed to run under**. Read per row because a sweep runs for
+   hours and the load it started at stops being true within minutes; the gate is
+   re-checked before every cell for the same reason, and a sweep that finds the
+   machine busy stops and is resumed rather than measuring anyway. The gate is
    `nproc - 1`: the driver pins every observation to one core, the remaining
    cores absorb the rest of the machine, and a one-minute load above that means
    something is contending for the pinned core. That is a model and not a
