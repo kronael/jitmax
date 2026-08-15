@@ -1,4 +1,4 @@
-.PHONY: test lint check v8-check bench bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-dispatch bench-delete bench-arrays bench-tc11 meme meme-png clean
+.PHONY: test lint check v8-check bench bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-dispatch bench-delete bench-arrays bench-tc11 example meme meme-png clean
 
 test:
 	node --test test/check.test.ts
@@ -50,6 +50,15 @@ bench-arrays:
 # The TC-11 cells, three sweeps each. Appends to the sweeps' own .jsonl files.
 bench-tc11:
 	node bench/run-tc11.js
+
+# The end-to-end examples: three real library functions, the finding turbocharge
+# printed on each, and what applying that fix is worth to a caller. The check
+# comes first because the findings are the reason the benchmark exists; exit 1
+# there means findings, which is the expected outcome, and exit 2 means the tool
+# failed, which is not.
+example:
+	node bin/turbocharge.ts examples; test $$? -le 1
+	node bench/run-example.js
 
 meme:
 	node bench/meme.js > meme.svg
