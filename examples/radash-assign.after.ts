@@ -9,6 +9,17 @@
 // -out line, and the outer `{ ...initial, ...override }` — that one is a single
 // copy outside any loop, so the rule did not report it and improving it here
 // would make the comparison a different question.
+//
+// WHAT IT WAS WORTH. The whole call is 3.15-3.30x faster on a 16-key config and
+// 4.32-4.88x on a 128-key one, three sweeps each. The caller's reads on the
+// merged object are 1.93-2.08x and 1.58-1.71x faster — a second, smaller win the
+// rule never claims: `%HaveSameMap` says two results of the shipped version do
+// NOT share a map, and two results of this one do, so the shipped version leaves
+// the caller's load site polymorphic.
+//
+// Against the 188-203x that `accumulating-spread` cites for an object spread at
+// n=500. The rule is about one line; the function around it allocates, recurses
+// and branches, and that is the whole gap.
 
 const isObject = (value: any): value is object => {
   return !!value && value.constructor === Object
