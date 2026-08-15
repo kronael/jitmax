@@ -354,7 +354,7 @@ const accumulatingSpread: Rule = (ts, checker, body, add) => {
     // The call forms. `acc.concat(v)` carries the accumulator as the RECEIVER
     // and `Object.assign({}, acc, …)` as an argument, so neither is visible to
     // the literal matching above — the rule walked past both until it was
-    // measured at 779x and 814-887x.
+    // measured at 777-807x and 814-887x.
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const callee = node.expression;
       // `.concat()` belongs to String as much as to Array, and on a string it

@@ -90,7 +90,7 @@ const current = (r: Row): boolean => r.runner === RUNNER;
 //
 // One list rather than a flag on each of forty citations: a sweep is finished
 // or it is not, and forty places to remember is forty places to forget.
-const REMEASURED = new Set(['inline.jl', 'select.jl', 'spread-object.jl']);
+const REMEASURED = new Set(['inline.jl', 'select.jl', 'spread-object.jl', 'spread.jl']);
 
 // Does this citation read rows the current runner did not write? Either because
 // its sweep is still on the old protocol, or because the citation is ABOUT a
@@ -209,6 +209,7 @@ export const CITATIONS: Record<string, Citation> = {
     cells: 'the two sweeps of that cell that predate the replication',
     pick: (r) => r.variant === 'spread' && r.mode === 'incl' && r.n === 10000 && !replicated(r),
     agg: 'points',
+    history: true,
   },
   'spread.concat': {
     file: 'spread.jl',

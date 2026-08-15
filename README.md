@@ -214,12 +214,12 @@ published number is no longer what its rows say.
 | `1.46-1.94x` | `bench/dispatch.jl` — a method on a prototype at RAM size, five and six shapes, the replicated cells — the older sweep, not re-measured under r2 |
 | `0.93-1.20x` | `bench/dispatch.jl` — the same cells at two to four shapes — the older sweep, not re-measured under r2 |
 | `80` | `bench/dispatch.jl` — the whole sweep — the older sweep, not re-measured under r2 |
-| `156-177x` | `bench/spread.jl` — array spread against push at n=1000, construction counted, both sweeps — the older sweep, not re-measured under r2 |
-| `1750-2011x` | `bench/spread.jl` — the same at n=10000, the three replications — the older sweep, not re-measured under r2 |
+| `149-166x` | `bench/spread.jl` — array spread against push at n=1000, construction counted, both sweeps |
+| `1766-1889x` | `bench/spread.jl` — the same at n=10000, the three replications |
 | `1877x and 2348x` | `bench/spread.jl` — the two sweeps of that cell that predate the replication — the older sweep, not re-measured under r2 |
-| `779x` | `bench/spread.jl` — acc.concat(v) against push at n=1000, construction counted — the older sweep, not re-measured under r2 |
-| `733-821` | `bench/spread.jl` — every interval measured for that cell — the older sweep, not re-measured under r2 |
-| `0.96-1.07x` | `bench/spread.jl` — the finished array read back, spread against push, both sizes and both sweeps — the older sweep, not re-measured under r2 |
+| `777-807x` | `bench/spread.jl` — acc.concat(v) against push at n=1000, construction counted |
+| `695-928` | `bench/spread.jl` — every interval measured for that cell |
+| `0.96-1.02x` | `bench/spread.jl` — the finished array read back, spread against push, both sizes and both sweeps |
 | `0.03x` | `bench/spread-object.jl` — the finished object read back, spread against keyed assignment, n=500 |
 | `186-200x` | `bench/spread-object.jl` — object spread against keyed assignment at n=500, the three replications |
 | `814-887x` | `bench/spread-object.jl` — Object.assign({}, acc, …) at n=500, the three replications |
@@ -336,7 +336,7 @@ here at the same size as the wins:
   where the spread returns a `[FastProperties]` one. `accumulating-spread` fixed
   a quadratic build and created a per-load cost it never mentioned, so the rule
   now prints a different fix for each form: pushing onto an **array** costs the
-  reader nothing (0.96-1.07x) and carries no condition, and the **object** form
+  reader nothing (0.96-1.02x) and carries no condition, and the **object** form
   says *"that fills the result key by key, which normalizes it: its reads
   measured 0.11-0.12x of the spread-built object's"*. Same detection, honest
   advice — radash's `assign` is the same fix with the reads coming out

@@ -27,18 +27,18 @@ export const N: Record<string, string> = {
   'disp.constr.l3.four': '0.93-1.20x',
   // dispatch.jl: the whole sweep — the older sweep, not re-measured under r2
   'disp.cells': '80',
-  // spread.jl: array spread against push at n=1000, construction counted, both sweeps — the older sweep, not re-measured under r2
-  'spread.array.n1000': '156-177x',
-  // spread.jl: the same at n=10000, the three replications — the older sweep, not re-measured under r2
-  'spread.array.n10000': '1750-2011x',
+  // spread.jl: array spread against push at n=1000, construction counted, both sweeps
+  'spread.array.n1000': '149-166x',
+  // spread.jl: the same at n=10000, the three replications
+  'spread.array.n10000': '1766-1889x',
   // spread.jl: the two sweeps of that cell that predate the replication — the older sweep, not re-measured under r2
   'spread.array.n10000.earlier': '1877x and 2348x',
-  // spread.jl: acc.concat(v) against push at n=1000, construction counted — the older sweep, not re-measured under r2
-  'spread.concat': '779x',
-  // spread.jl: every interval measured for that cell — the older sweep, not re-measured under r2
-  'spread.concat.ci': '733-821',
-  // spread.jl: the finished array read back, spread against push, both sizes and both sweeps — the older sweep, not re-measured under r2
-  'spread.array.reads': '0.96-1.07x',
+  // spread.jl: acc.concat(v) against push at n=1000, construction counted
+  'spread.concat': '777-807x',
+  // spread.jl: every interval measured for that cell
+  'spread.concat.ci': '695-928',
+  // spread.jl: the finished array read back, spread against push, both sizes and both sweeps
+  'spread.array.reads': '0.96-1.02x',
   // spread-object.jl: the finished object read back, spread against keyed assignment, n=500
   'spread.object.reads': '0.03x',
   // spread-object.jl: object spread against keyed assignment at n=500, the three replications
