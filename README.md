@@ -132,9 +132,9 @@ controls: a callee V8 refuses to inline costs 3.21-4.95x in a hot loop. Read
 that as a bound on what one unchecked call can cost, not a claim about any
 particular one — and read the bottom of it as a warning about the measurement
 rather than about the callee. That range used to be 4.42-4.79x, one sweep per
-size. Re-measured three times over, the L1 cell replicates at 4.64-4.95x and
-the RAM-sized cell **does not replicate at all**: 4.73x, 4.68x and 3.21x, with
-intervals 4.28-5.39, 3.88-5.58 and 2.54-3.88 that share no common value.
+size. Re-measured three times over, the n=1000 cell replicates at 4.64-4.95x
+and the n=100000 cell **does not replicate at all**: 4.73x, 4.68x and 3.21x,
+with intervals 4.28-5.39, 3.88-5.58 and 2.54-3.88 that share no common value.
 If a rule fires in a case a test declares silent, `make test` fails.
 Measurements have blocked a rule or a rule's extension from shipping seven times.
 Two went further and took something away from a rule that was already shipping.
