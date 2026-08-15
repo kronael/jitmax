@@ -15,41 +15,41 @@ v8-check:
 	node bench/v8-check.js
 
 bench:
-	node bench/run.js
+	node bench/run.js shapes
 
 bench-spread:
-	node bench/run-spread.js
+	node bench/run.js spread
 
 bench-spread-object:
-	node bench/run-spread-object.js
+	node bench/run.js spread-object
 
 bench-strings:
-	node bench/run-strings.js
+	node bench/run.js strings
 
 bench-select:
-	node bench/run-select.js
+	node bench/run.js select
 
 bench-chained:
-	node bench/run-chained.js
+	node bench/run.js chained
 
 bench-inline:
-	node bench/run-inline.js
+	node bench/run.js inline
 
 bench-addprop:
-	node bench/run-addprop.js
+	node bench/run.js addprop
 
 bench-dispatch:
-	node bench/run-dispatch.js
+	node bench/run.js dispatch
 
 bench-delete:
-	node bench/run-delete.js
+	node bench/run.js delete
 
 bench-arrays:
-	node bench/run-arrays.js
+	node bench/run.js arrays
 
-# The TC-11 cells, three sweeps each. Appends to the sweeps' own .jsonl files.
+# The TC-11 cells, three sweeps each. Appends to the sweeps' own .jl files.
 bench-tc11:
-	node bench/run-tc11.js
+	node bench/run.js tc11
 
 # The end-to-end examples: three real library functions, the finding turbocharge
 # printed on each, and what applying that fix is worth to a caller. The check
@@ -58,7 +58,7 @@ bench-tc11:
 # failed, which is not.
 example:
 	node bin/turbocharge.ts examples; test $$? -le 1
-	node bench/run-example.js
+	node bench/run.js example
 
 meme:
 	node bench/meme.js > meme.svg

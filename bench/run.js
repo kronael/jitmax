@@ -1,43 +1,475 @@
-// The 24-cell object-shape sweep behind megamorphic-elements.
-//   node bench/run.js
-// Writes bench/shapes-calibrated.jl.
+// The one runner. Every `make bench-*` target is a row in BENCHMARKS below:
 //
-// This file used to carry its own copy of the protocol, with the single cold
-// calibration probe that BUGS TC-5 showed inflates ratios toward shipping a
-// rule. It now runs on bench/driver.js like every other sweep, so there is one
-// protocol and one place to fix it. The two earlier sweeps stay on disk under
-// their own names: they were measured by the old method and are not comparable
-// cell-for-cell with this one.
+//   node bench/run.js <name>
+//
+// A benchmark declares only what is particular to it — which kernel to spawn,
+// which cells to sweep, which .jl to append to, and whether a cell is run once
+// or three times over. Everything else is bench/driver.js, which is where the
+// measurement protocol lives and the only place it may live.
+//
+// Rows are APPENDED, never overwritten, and appended synchronously one cell at
+// a time. The sweep body blocks the event loop inside execFileSync, so a
+// stream's async open never fires and every row would sit in memory until the
+// run ends — losing the whole sweep if it is interrupted (BUGS TC-6).
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { cellOrVoid, workload } from './driver.js';
+import { cellOrVoid, replicate, replicates, workload } from './driver.js';
 
-const script = workload('shapes.js');
-const SIZES = { L1: 256, L2: 16384, L3: 262144 }; // n rows; payload = 16n bytes
-// Appended synchronously, one row per cell. The sweep body blocks the
-// event loop in execFileSync, so a stream's async open never fires and
-// every row would sit in memory until the run ends — losing the whole
-// sweep if it is interrupted.
-const outPath = path.join(import.meta.dirname, 'shapes-calibrated.jl');
+// Three sizes span L1 to RAM, because a cost that is about memory and a cost
+// that is about work look identical at one size (SPEC §4 rule 12 → CLAUDE.md).
+const WIDE = [256, 16384, 262144];
+const ENDS = [256, 262144];
+const MID = [16384];
+const MANY = [256, 8192];
+const NARROW = [256, 16384];
+const NAMED = { L1: 256, L2: 16384, L3: 262144 };
+const NAMED_SMALL = { L1: 256, L2: 16384 };
 
-for (const mode of ['excl', 'incl']) {
-  for (const [size, n] of Object.entries(SIZES)) {
-    for (const shapes of [2, 3, 4, 5]) {
-      const r = cellOrVoid({ script, baseline: '1', variant: String(shapes), n, mode });
-      // `shapes` and `size` are the names this sweep has always published, and
-      // bench/meme.js reads them.
-      const row = { ...r, shapes, size };
-      fs.appendFileSync(outPath, JSON.stringify(row) + '\n');
-      if (r.void) {
-        process.stdout.write(`${mode} ${size.padEnd(3)} ${shapes} shapes: VOID  ${r.error}\n`);
-        continue;
+const KERNEL = { kernel: 'dispatch-table' };
+
+const BENCHMARKS = {
+  // The object-shape sweep behind megamorphic-elements. The two earlier sweeps
+  // stay on disk under their own names: they were measured before the
+  // calibration loop existed and are not comparable cell for cell with this
+  // one.
+  shapes: {
+    what: 'the 24-cell object-shape sweep',
+    script: 'shapes.js',
+    out: 'shapes-calibrated.jl',
+    modes: ['excl', 'incl'],
+    // `shapes` and `size` are the names this sweep has always published, and
+    // bench/meme.js reads them.
+    sizes: NAMED,
+    cells: [2, 3, 4, 5].map((shapes) => ({
+      baseline: '1',
+      variant: String(shapes),
+      extra: { shapes },
+    })),
+  },
+
+  // Both variants are measured against the same push baseline, because both
+  // make the same claim: the accumulator is copied whole on every pass.
+  spread: {
+    what: 'accumulating spread, array form',
+    script: 'spread.js',
+    out: 'spread.jl',
+    modes: ['excl', 'incl'],
+    sizes: [1000, 10000],
+    cells: ['spread', 'concat'].map((variant) => ({ baseline: 'push', variant })),
+  },
+
+  // Whether the copy is written as a spread or as Object.assign, the claim
+  // under test is the same, so both run against the same mutating baseline.
+  'spread-object': {
+    what: 'accumulating spread, object form',
+    script: 'spread-object.js',
+    out: 'spread-object.jl',
+    modes: ['excl', 'incl'],
+    sizes: [500, 2000],
+    cells: ['spread', 'assign-copy'].map((variant) => ({ baseline: 'assign', variant })),
+  },
+
+  // Does building a string by appending cost what building an array by copying
+  // costs? `s = s + x` in a loop is the same syntax accumulating-spread
+  // measured in the hundreds for arrays, and the rule matched `.concat()` by
+  // name. All three forms run against the same `joined` baseline — an array
+  // pushed to once per pass and joined at the end — because all three make the
+  // same claim. Three sizes two orders of magnitude apart, because a quadratic
+  // cost GROWS with n and a constant factor does not.
+  strings: {
+    what: 'string building — the refutation, not a rule',
+    script: 'strings.js',
+    out: 'strings.jl',
+    modes: ['build', 'excl', 'incl'],
+    sizes: [1000, 10000, 100000],
+    recordBaseline: true,
+    extra: KERNEL,
+    cells: ['plus', 'pluseq', 'concat'].map((variant) => ({ baseline: 'joined', variant })),
+  },
+
+  // The mode decides whether the freshly allocated value escapes, which is the
+  // whole question of whether TurboFan can delete the allocation. `number` is
+  // the cell that says where the rule must stay quiet.
+  select: {
+    what: 'choosing between two boxed values',
+    script: 'select.js',
+    out: 'select.jl',
+    modes: ['heap', 'local', 'number'],
+    sizes: [10000, 100000],
+    cells: [{ baseline: 'compare', variant: 'select' }],
+  },
+
+  // Each cell is a chained form and the fused single pass it is measured
+  // against. The map/filter row keeps the sizes the 0.2 sweep used, so
+  // re-running it replicates the shipped cell rather than replacing it. The
+  // rows appended here carry `kernel`; the rows before them that do not are
+  // from the switch-dispatched kernel TurboFan miscompiled, and they are void.
+  chained: {
+    what: 'chained array passes',
+    script: 'chained.js',
+    out: 'chained.jl',
+    modes: ['excl', 'incl'],
+    recordBaseline: true,
+    extra: KERNEL,
+    cells: [
+      { baseline: 'fused', variant: 'chained', sizes: [1000, 100000] },
+      { baseline: 'scanned', variant: 'splitjoin', sizes: [1000, 10000] },
+      { baseline: 'packed', variant: 'splitjoin', sizes: [1000, 10000] },
+      { baseline: 'walked', variant: 'entriesmap', sizes: [1000, 10000] },
+      { baseline: 'walked', variant: 'keysmap', sizes: [1000, 10000] },
+      { baseline: 'sorted', variant: 'chainedsort', sizes: [1000, 10000] },
+    ],
+  },
+
+  // closed-world reports calls the checker cannot see into, and "we could not
+  // read this" is a coverage fact, not a cost. What CAN be measured is the
+  // mechanism a call boundary controls: whether V8 inlines the callee. Read the
+  // result as an upper bound on what one unchecked call can cost, not as a
+  // claim about any particular unchecked call. One mode only — there is nothing
+  // to construct in this kernel, so an 'incl' cell would be the same
+  // measurement under a different name.
+  inline: {
+    what: 'the inlining boundary behind closed-world',
+    script: 'inline.js',
+    out: 'inline.jl',
+    modes: ['excl'],
+    sizes: [1000, 100000],
+    cells: [{ baseline: 'small', variant: 'large' }],
+  },
+
+  // Does adding a property after construction cost anything? The claim is the
+  // most repeated one in V8 folklore and this project had never tested it.
+  // Every variant is paired against the rewrite a rule would demand: the same
+  // properties, with the same values, in one object literal — and the driver
+  // compares checksums inside every pair, so a variant that builds a different
+  // object is a failed run rather than a fast one.
+  //
+  //   added / added2   one final map, reached by one or two transitions
+  //   diverge          two paths, two final maps, one load site
+  //   optmissing       `y?: number` written as two literals
+  //   optadded         the same two shapes reached by assignment
+  //   late             the property arrives after the site is already hot,
+  //                    against BOTH the literal (total cost) and the identical
+  //                    finished objects the site never saw grow (the stale-map
+  //                    effect on its own). excl-only: the timing point is a
+  //                    mutation that happens once, so rebuilding it every rep
+  //                    would measure the warm phase instead.
+  //   keyed12/16       fast_properties_soft_limit is 12 and only a KEYED store
+  //                    consults it: 15 keyed adds stay fast, 16 go to
+  //                    dictionary mode
+  //   named16          the same field count reached by named stores, which
+  //                    never normalize — the control that isolates dictionary
+  //                    mode from the field count
+  //
+  // The many-field families stop at 8192 because a seventeen-field object is
+  // three times the size and the point there is a threshold, not bandwidth.
+  addprop: {
+    what: 'adding a property after construction — a refutation',
+    script: 'addprop.js',
+    out: 'addprop.jl',
+    recordBaseline: true,
+    extra: KERNEL,
+    cells: [
+      { baseline: 'literal', variant: 'added', sizes: WIDE, modes: ['build', 'excl', 'incl'] },
+      { baseline: 'literal', variant: 'added2', sizes: WIDE, modes: ['build', 'excl', 'incl'] },
+      { baseline: 'literal', variant: 'diverge', sizes: WIDE, modes: ['build', 'excl', 'incl'] },
+      { baseline: 'optbase', variant: 'optmissing', sizes: NARROW, modes: ['excl', 'incl'] },
+      { baseline: 'optbase', variant: 'optadded', sizes: NARROW, modes: ['excl', 'incl'] },
+      { baseline: 'latebase', variant: 'late', sizes: WIDE, modes: ['excl'] },
+      { baseline: 'latefresh', variant: 'late', sizes: WIDE, modes: ['excl'] },
+      { baseline: 'lit12', variant: 'keyed12', sizes: MANY, modes: ['excl', 'incl'] },
+      { baseline: 'lit16', variant: 'named16', sizes: MANY, modes: ['excl', 'incl'] },
+      { baseline: 'lit16', variant: 'keyed16', sizes: MANY, modes: ['excl', 'incl'] },
+    ],
+  },
+
+  // `x.step()` where x is one of K shapes. K = 1 is the baseline of every
+  // family and every K from 2 to 6 is reported against it, so a cliff has to
+  // show up as a step between two adjacent cells rather than as one large
+  // number with nothing either side of it.
+  //
+  //   cls  K classes                K maps, K targets, method on the prototype
+  //   lit  K literal shapes, own fn K maps, K targets, method an own property
+  //   tgt  one shape, K fns         ONE map, K targets
+  //   shr  K shapes, one fn         K maps, ONE target
+  //
+  // cls and lit get three working sets and both modes. tgt and shr are controls
+  // that split one effect into its two halves — the receiver's map and the call
+  // target — and they run reads-only at L1 and L2, which is where the effect is
+  // if it exists at all.
+  dispatch: {
+    what: 'calling a method on five object types',
+    script: 'dispatch.js',
+    out: 'dispatch.jl',
+    recordBaseline: true,
+    extra: KERNEL,
+    cells: [
+      { family: 'cls', baseline: 'cls1', sizes: NAMED, modes: ['excl', 'incl'] },
+      { family: 'lit', baseline: 'lit1', sizes: NAMED, modes: ['excl', 'incl'] },
+      { family: 'tgt', baseline: 'lit1', sizes: NAMED_SMALL, modes: ['excl'] },
+      { family: 'shr', baseline: 'lit1', sizes: NAMED_SMALL, modes: ['excl'] },
+    ].flatMap(({ family, ...rest }) =>
+      [2, 3, 4, 5, 6].map((k) => ({ ...rest, variant: `${family}${k}`, extra: { family, k } }))
+    ),
+  },
+
+  // The measurement delete-property should have shipped with. Its first number
+  // came from an ad-hoc probe with no pairing, no interval, no rep count and no
+  // data file (BUGS TC-15); this produces all four. The cells separate the two
+  // populations that probe measured and could not reconcile:
+  //
+  //   rowdel/rowbase    n objects, one delete each
+  //   shdel/shbase      ONE object, one delete, the same kernel over an array
+  //                     of n references to it — the case the probe published as
+  //                     refuted, and the rule fires on it regardless (TC-9)
+  //   rowundef/rowbase  the rule's own named fix against never building the
+  //                     property. A control: if this is not ~1.0x the rule is
+  //                     recommending a cost.
+  //   rowdel/rowundef   the delete against that fix, which is the comparison a
+  //                     developer following the finding actually faces.
+  delete: {
+    what: 'delete, on many objects and on exactly one',
+    script: 'delete.js',
+    out: 'delete.jl',
+    modes: ['excl', 'incl'],
+    replicated: true,
+    recordBaseline: true,
+    extra: KERNEL,
+    cells: [
+      { baseline: 'rowbase', variant: 'rowdel', sizes: WIDE },
+      { baseline: 'shbase', variant: 'shdel', sizes: WIDE },
+      { baseline: 'rowbase', variant: 'rowundef', sizes: MID },
+      { baseline: 'rowundef', variant: 'rowdel', sizes: MID },
+    ],
+  },
+
+  // The sweep boxed-elements had been citing since it shipped, and which was
+  // never written (BUGS TC-14). Replicated, which this rule needed more than
+  // any other: its published range sat inside the band a single sweep on this
+  // harness cannot resolve.
+  //
+  //   boxed/double     the claim. PACKED_ELEMENTS against PACKED_DOUBLE.
+  //   unionnum/double  the TRIGGER. The rule fired on the declared type; V8
+  //                    picks the elements kind from the values stored, so a
+  //                    `(number | string)[]` holding only numbers is the same
+  //                    array. Checkable with
+  //                    `node --allow-natives-syntax bench/arrays.js unionnum 8
+  //                    kinds 1 1`, which reports PACKED_DOUBLE for both.
+  //   holey/double     control, published refuted.
+  //   f64/double       control, refuted on reads and faster to construct — the
+  //                    one case where measuring only one half buried a result.
+  arrays: {
+    what: 'elements kinds — the sweep that withdrew a rule',
+    script: 'arrays.js',
+    out: 'arrays.jl',
+    modes: ['excl', 'incl'],
+    replicated: true,
+    recordBaseline: true,
+    extra: KERNEL,
+    cells: [
+      { baseline: 'double', variant: 'boxed', sizes: WIDE },
+      { baseline: 'double', variant: 'unionnum', sizes: WIDE },
+      { baseline: 'double', variant: 'holey', sizes: ENDS },
+      { baseline: 'double', variant: 'f64', sizes: ENDS },
+    ],
+  },
+
+  // Does doing what turbocharge says make a real program faster? The ratio is
+  // before/after, so a cell above 1.0 is the shipped function costing that much
+  // more than the fixed one — the orientation every rule benchmark here uses,
+  // where the number is what the pattern costs. A cell that shows nothing is
+  // published exactly as it comes out: these ratios are what a caller gets, and
+  // they are far below the microbenchmark ratios the rules cite.
+  example: {
+    what: 'three shipped library functions, before and after',
+    script: 'example.js',
+    out: 'example.jl',
+    modes: ['excl', 'incl'],
+    replicated: true,
+    recordBaseline: true,
+    cells: [
+      { example: 'radash-assign', sizes: [16, 128] },
+      { example: 'remeda-merge-all', sizes: [8, 64] },
+      { example: 'estoolkit-omit', sizes: [12, 48] },
+    ].map(({ example, sizes }) => ({
+      baseline: `${example}/after`,
+      variant: `${example}/before`,
+      sizes,
+      extra: { example },
+    })),
+  },
+
+  // Exactly the cells BUGS TC-11's audit flagged — published cells that ran on
+  // a handful of repetitions, always at the largest n of their sweep. Each is
+  // run three times, and each appends to ITS OWN sweep's file: the old rows are
+  // the record of what was published and they stay, distinguished by the
+  // `protocol: 'replicated'` and `replicate` fields the new rows carry.
+  //
+  // The point is not a longer region. A cell that fits two passes in 120 ms was
+  // measured for 120 ms, and no threshold on the rep count would be anything
+  // but a constant nobody measured. The point is that the bootstrap interval is
+  // over the pairs of ONE sweep and cannot see what varies BETWEEN sweeps —
+  // which is how three near-identical addprop constructions came out at 1.64x,
+  // 0.91x and 0.89x with intervals that exclude each other.
+  tc11: {
+    what: 'the TC-11 cells, three sweeps each, into their own files',
+    replicated: true,
+    cells: [
+      ...[2, 3, 4, 5].map((shapes) => ({
+        script: 'shapes.js',
+        out: 'shapes-calibrated.jl',
+        baseline: '1',
+        variant: String(shapes),
+        sizes: { L3: 262144 },
+        modes: ['incl'],
+        extra: { shapes },
+      })),
+      {
+        script: 'spread.js',
+        out: 'spread.jl',
+        baseline: 'push',
+        variant: 'spread',
+        sizes: [10000],
+        modes: ['incl'],
+      },
+      ...['spread', 'assign-copy'].map((variant) => ({
+        script: 'spread-object.js',
+        out: 'spread-object.jl',
+        baseline: 'assign',
+        variant,
+        sizes: [500],
+        modes: ['incl'],
+      })),
+      ...['plus', 'pluseq', 'concat'].map((variant) => ({
+        script: 'strings.js',
+        out: 'strings.jl',
+        baseline: 'joined',
+        variant,
+        sizes: [100000],
+        modes: ['build', 'excl', 'incl'],
+        recordBaseline: true,
+        extra: KERNEL,
+      })),
+      ...['added', 'added2', 'diverge'].map((variant) => ({
+        script: 'addprop.js',
+        out: 'addprop.jl',
+        baseline: 'literal',
+        variant,
+        sizes: [262144],
+        modes: ['build', 'incl'],
+        recordBaseline: true,
+        extra: KERNEL,
+      })),
+      // The one flagged cell that is not at the largest n of its sweep: the
+      // dictionary-mode variant is slow enough to reach the region in six
+      // passes where its own baseline took seventy-eight.
+      {
+        script: 'addprop.js',
+        out: 'addprop.jl',
+        baseline: 'lit16',
+        variant: 'keyed16',
+        sizes: [8192],
+        modes: ['incl'],
+        recordBaseline: true,
+        extra: KERNEL,
+      },
+      ...['cls', 'lit'].flatMap((family) =>
+        [2, 3, 4, 5, 6].map((k) => ({
+          script: 'dispatch.js',
+          out: 'dispatch.jl',
+          baseline: `${family}1`,
+          variant: `${family}${k}`,
+          sizes: { L3: 262144 },
+          modes: ['incl'],
+          recordBaseline: true,
+          extra: { family, k, ...KERNEL },
+        }))
+      ),
+    ],
+  },
+};
+
+// A cell declares modes and sizes, or inherits the benchmark's. Named sizes
+// travel into the row as `size`, because that is the field the sweeps that use
+// them have always published.
+function* plan(bench) {
+  for (const cell of bench.cells) {
+    const sizes = cell.sizes ?? bench.sizes;
+    const named = !Array.isArray(sizes);
+    for (const mode of cell.modes ?? bench.modes) {
+      for (const [size, n] of named ? Object.entries(sizes) : sizes.map((v) => [null, v])) {
+        const opts = { baseline: cell.baseline, variant: cell.variant, n, mode };
+        const extra = {
+          ...bench.extra,
+          ...cell.extra,
+          ...(named ? { size } : {}),
+          ...((cell.recordBaseline ?? bench.recordBaseline) ? { baseline: cell.baseline } : {}),
+        };
+        yield {
+          script: workload(cell.script ?? bench.script),
+          out: path.join(import.meta.dirname, cell.out ?? bench.out),
+          opts,
+          extra,
+        };
       }
-      const rej = r.lo <= 1 && r.hi >= 1 ? ' REJ' : '';
-      process.stdout.write(
-        `${mode} ${size.padEnd(3)} ${shapes} shapes: ` +
-          `${r.ratio.toFixed(2)}x  CI ${r.lo.toFixed(2)}-${r.hi.toFixed(2)}${rej}\n`
-      );
     }
   }
+}
+
+const label = (o) =>
+  `${o.mode.padEnd(5)} n=${String(o.n).padEnd(6)} ${o.variant}/${o.baseline}`.padEnd(38);
+
+// A void cell is recorded and printed, never silently dropped: a cell that
+// misses its timed region is a different measurement, not a slow one.
+const line = (r) =>
+  r.void
+    ? `VOID  ${r.error}`
+    : `${r.ratio.toFixed(2)}x  CI ${r.lo.toFixed(2)}-${r.hi.toFixed(2)}` +
+      `${r.lo <= 1 && r.hi >= 1 ? ' REJ' : ''}  ` +
+      `reps ${r.repsBase}/${r.repsTest}  region ${r.msBase}/${r.msTest} ms`;
+
+const name = process.argv[2];
+const bench = BENCHMARKS[name];
+if (!bench) {
+  const names = Object.keys(BENCHMARKS).join(' ');
+  process.stderr.write(
+    `usage: node bench/run.js <${names.replace(/ /g, '|')}>\n` +
+      (name ? `unknown benchmark ${name}\n` : '')
+  );
+  process.exit(2);
+}
+
+process.stdout.write(`${name}: ${bench.what}\n`);
+
+// `--plan` prints the cells and measures nothing. A sweep runs for hours, so
+// this is how a change to the table above is checked before it is trusted.
+if (process.argv[3] === '--plan') {
+  for (const { script, out, opts, extra } of plan(bench)) {
+    process.stdout.write(
+      `${label(opts)} ${path.basename(script)} -> ${path.basename(out)} ${JSON.stringify(extra)}\n`
+    );
+  }
+  process.exit(0);
+}
+
+for (const { script, out, opts, extra } of plan(bench)) {
+  const write = (r) => fs.appendFileSync(out, JSON.stringify({ ...r, ...extra }) + '\n');
+  if (!bench.replicated) {
+    const r = cellOrVoid({ script, ...opts });
+    write(r);
+    process.stdout.write(`${label(opts)}: ${line(r)}\n`);
+    continue;
+  }
+  // Three whole sweeps per published cell (SPEC §4 rule 13 → CLAUDE.md), each
+  // written as it finishes. Agreement is a value common to all three intervals;
+  // its absence says the sweeps cannot all be describing the same quantity.
+  const runs = replicate({ script, ...opts }, (r) => {
+    write(r);
+    process.stdout.write(`${label(opts)} #${r.replicate}: ${line(r)}\n`);
+  });
+  const shown = runs.map((r) => (r.void ? 'VOID' : `${r.ratio.toFixed(2)}x`)).join(' ');
+  process.stdout.write(
+    `${label(opts)} => ${replicates(runs) ? 'REPLICATES' : 'DISAGREES'}  ${shown}\n\n`
+  );
 }
