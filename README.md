@@ -147,6 +147,47 @@ benchmark **throws** instead of publishing. This guard exists because an older
 harness inflated a result by more than double. Worse, the error made a rule
 look worth shipping. See `BUGS.md` TC-5.
 
+## What V8's source says
+
+Each rule carries a second, independent evidence: the mechanism, in the engine's
+own source. A benchmark says what it cost here and cannot say why. A citation
+says what mechanism exists and cannot say what it costs — **the source is silent
+on all eight magnitudes**, and a constant in it is a hypothesis, never a
+measurement.
+
+```pin
+revision = c635f0d160b6e988b5ea5a907511a2929beb5d5e
+version = 15.3.0.0
+```
+
+| Rule | Mechanism in V8 | Citation |
+|---|---|---|
+| `megamorphic-elements` | the fourth map fills the inline cache's budget; the fifth makes the site megamorphic | `src/flags/flag-definitions.h:3320` → `DEFAULT_MAX_POLYMORPHIC_MAP_COUNT`, `src/ic/ic.cc:798` → `number_of_maps` |
+| `megamorphic-dispatch` | a call slot holds ONE target as a weak reference and has no polymorphic tier | `src/builtins/ic-callable.tq:14` → `IsMonomorphic`, `src/builtins/ic-callable.tq:45` → `TransitionToMegamorphic` |
+| `delete-property` | a named delete normalizes a fast object unconditionally, and only prototypes go back | `src/objects/lookup.cc:840` → `PropertyNormalizationMode`, `src/objects/js-objects.cc:5094` → `V8_DICT_PROPERTY_CONST_TRACKING_BOOL` |
+| `chained-allocation` | every stage allocates its own result array; `Object.entries` allocates two objects per key | `src/builtins/array-map.tq:101` → `CreateJSArray`, `src/objects/objects-inl.h:1182` → `MakeEntryPair` |
+| `allocating-select` | escape analysis removes an allocation only where it can see it, inside a 1300-byte budget | `src/compiler/escape-analysis.cc:302` → `kTrackingBudget`, `src/compiler/escape-analysis.cc:670` → `HasEscaped` |
+| `boxed-elements` | the elements kind is decided by the values stored, one value at a time | `src/objects/elements-kind.h:105` → `enum ElementsKind`, `src/objects/objects-inl.h:700` → `OptimalElementsKind` |
+| `closed-world` | bytecode length and a statically known target gate inlining | `src/objects/shared-function-info-inl.h:437` → `bytecode`, `src/flags/flag-definitions.h:1606` → `max_inlined_bytecode_size` |
+| `accumulating-spread` | **none** — quadratic work is quadratic on any engine | — |
+
+Three of these say something the benchmark alone could not:
+
+- **It contradicts one shipped threshold.** A call slot has no polymorphic tier
+  at all, so the four-map budget governs the method *load* and the *call* has a
+  budget of one. A method kept in a field is off the cliff at two, not five.
+  `BUGS.md` TC-13.
+- **It refuses one trigger.** V8 picks the elements kind from the values
+  actually stored; `boxed-elements` fires on the *declared* type. A
+  `(number | string)[]` holding only numbers stays unboxed and pays nothing.
+  `BUGS.md` TC-14.
+- **It gives `accumulating-spread` nothing, correctly.** The largest effect
+  measured here is the one that would survive an engine rewrite.
+
+`make v8-check` verifies every citation above against a pinned checkout and
+fails with the drifted line. It exits non-zero when the checkout is missing
+rather than reporting success. `CLAUDE.md` has the three clone commands.
+
 ## Honest limits
 
 - These ratios come from a microbenchmark, a small speed test, on one machine
@@ -182,13 +223,10 @@ make lint    # tsc --noEmit
 make check   # run the checker against demo/
 ```
 
-`SPEC.md` defines the contract. `docs/v8-evidence.md` is the second kind of
-evidence: one section per rule tracing the mechanism to V8's own source, with
-the quoted lines and a statement of what each citation does and does not prove.
-`make v8-check` verifies every one of them against a pinned checkout and fails
-with the drifted line. `DESIGN.md` describes watching code while it runs. That
-design is not built yet. `BUGS.md` holds the open queue. `useless.md` explains
-why the old design failed.
+`CLAUDE.md` holds the layout, the rules of this repo, and how to verify both
+kinds of evidence. `BUGS.md` holds the open queue. `useless.md` and `useless2.md`
+are the adversarial teardowns — why the old design failed, and the case that
+this one is worthless.
 
 ## Licence
 

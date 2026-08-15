@@ -22,7 +22,7 @@ V8's source is *strongly* on the rule's side about the mechanism — every named
 (`src/objects/lookup.cc:843`), a dictionary receiver loses inlined property
 access (`src/compiler/access-info.cc:57`), and nothing in normal execution puts
 it back (`src/objects/js-objects.cc:5097` is the only automatic caller of
-`MigrateSlowToFast`, and it is for prototypes). See `docs/v8-evidence.md`.
+`MigrateSlowToFast`, and it is for prototypes). See the V8 table in `README.md`.
 
 That makes this a provenance defect, not a refutation: the mechanism is real and
 the magnitude is unverified. Closing it means writing `bench/delete.js` with
@@ -60,7 +60,7 @@ Not fixed, and the two halves have different remedies: the first needs a
 withdrawn); the second is unfixable statically and belongs to the runtime half
 in `DESIGN.md`, which observes elements kinds instead of inferring them.
 
-Full write-up in `docs/v8-evidence.md`, section `boxed-elements`.
+Full write-up in the V8 table in `README.md`.
 
 ## TC-13 — a method in a field has no four-map budget (2026-08-14, open, proposal)
 
@@ -105,7 +105,7 @@ sharing one `FeedbackCell`. So the four-map budget the rule's message quotes
 governs the *load* of the method, and the *call* has a budget of one. This is
 the sweep's `tgt` result predicted from the engine's source, and it raises the
 proposal from "measured once on this machine" to "measured, and the mechanism
-is in the source". Citations in `docs/v8-evidence.md`.
+is in the source". Citations in `README.md`.
 
 ## TC-12 — a 6.3x effect nothing static can detect (2026-08-14, open, proposal)
 

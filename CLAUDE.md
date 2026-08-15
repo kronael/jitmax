@@ -12,8 +12,7 @@ bin/          turbocharge.ts — exit 0 clean, 1 findings, 2 the tool failed
 demo/lib.ts   every rule's fixture, including the must-stay-silent ones
 test/         one test per rule, plus one per silent case
 bench/        one workload + one runner + one .jsonl per measured claim
-docs/         v8-evidence.md — the mechanism for every rule, traced to V8
-SPEC.md       the contract: §3 evidence, §4 protocol, §12 what V8's source says
+README.md     how to use it, the rules, and the V8 citation table
 BUGS.md       the review queue. Found during audits, fixed only when asked
 ```
 
@@ -34,7 +33,7 @@ make bench-dispatch        # and bench-spread, -select, -chained, -strings, -add
 Nothing else may run on the machine during a sweep. These are timings.
 
 **Verify a V8 citation** — `make v8-check` re-reads every quoted line in
-`docs/v8-evidence.md` and compares it against a local checkout of V8's source:
+README.md's V8 table and compares it against a local checkout of V8's source:
 
 ```sh
 git clone --filter=blob:none --sparse https://github.com/v8/v8 v8src
