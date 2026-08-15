@@ -36,7 +36,7 @@ function files(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
     if (e.isDirectory()) {
-      if (e.name === 'node_modules' || e.name === '__tests__') continue;
+      if (['node_modules', '__tests__', 'tests', 'test'].includes(e.name)) continue;
       out.push(...files(p));
     } else if (/\.(ts|js|mjs)$/.test(e.name) && !/\.(test|test-d|test-prop|spec|bench|tests)\.(ts|js|mjs)$/.test(e.name) && !/\.d\.ts$/.test(e.name) && !/^(rollup|jest|vite|eslint|babel)\./.test(e.name)) {
       out.push(p);
@@ -44,6 +44,16 @@ function files(dir) {
   }
   return out;
 }
+
+// A test file, decided by what it CALLS rather than what it is named. The
+// dotted patterns above miss date-fns, which writes `src/<name>/index.ts` with
+// `src/<name>/test.ts` beside it: the first date-fns survey annotated 18 such
+// files and reported 46 functions where the library has 28, and eleven
+// `allocating-select` findings where the library has four. Naming is not enough
+// to separate them either — ramda's `source/test.js` is `R.test`, a function
+// the survey has to keep. What separates them is that one of the two calls a
+// test framework by name.
+const TESTCALL = /\b(?:describe|it|test)\s*\(\s*["'`]/;
 
 const isFn = (ts, n) =>
   ts.isFunctionDeclaration(n) || ts.isFunctionExpression(n) || ts.isArrowFunction(n) ||
@@ -70,6 +80,7 @@ let marked = 0;
 let touched = 0;
 for (const f of files(root)) {
   const text = fs.readFileSync(f, 'utf8');
+  if (TESTCALL.test(text)) continue;
   const sf = ts.createSourceFile(f, text, ts.ScriptTarget.ES2022, true);
   const inserts = [];
   // Outermost functions only: once a function is marked, turbocharge walks its

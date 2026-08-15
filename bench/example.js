@@ -23,13 +23,15 @@
 // arbitrary: only the ratio inside a pair is published.
 
 import { args, emit } from './kernel.js';
-import { estoolkitOmit, radashAssign, remedaMergeAll } from '../examples/workloads.ts';
+import { estoolkitOmit, radashAssign, remedaMergeAll, zodCleanEnum } from '../examples/workloads.ts';
 import { assign as assignBefore } from '../examples/radash-assign.before.ts';
 import { assign as assignAfter } from '../examples/radash-assign.after.ts';
 import { mergeAll as mergeAllBefore } from '../examples/remeda-merge-all.before.ts';
 import { mergeAll as mergeAllAfter } from '../examples/remeda-merge-all.after.ts';
 import { omit as omitBefore } from '../examples/estoolkit-omit.before.ts';
 import { omit as omitAfter } from '../examples/estoolkit-omit.after.ts';
+import { cleanEnum as cleanEnumBefore } from '../examples/zod-clean-enum.before.ts';
+import { cleanEnum as cleanEnumAfter } from '../examples/zod-clean-enum.after.ts';
 
 const { variant, n, mode, reps, seed } = args();
 
@@ -37,6 +39,7 @@ const EXAMPLES = {
   'radash-assign': { workload: radashAssign, before: assignBefore, after: assignAfter },
   'remeda-merge-all': { workload: remedaMergeAll, before: mergeAllBefore, after: mergeAllAfter },
   'estoolkit-omit': { workload: estoolkitOmit, before: omitBefore, after: omitAfter },
+  'zod-clean-enum': { workload: zodCleanEnum, before: cleanEnumBefore, after: cleanEnumAfter },
 };
 
 const cut = variant.lastIndexOf('/');

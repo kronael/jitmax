@@ -453,6 +453,8 @@ test('every example before half reports its finding and every after half is clea
       'radash-assign.before.ts': ['accumulating-spread'],
       'remeda-merge-all.after.ts': [],
       'remeda-merge-all.before.ts': ['accumulating-spread'],
+      'zod-clean-enum.after.ts': [],
+      'zod-clean-enum.before.ts': ['chained-allocation'],
     }
   );
 });

@@ -7,8 +7,8 @@
 // THE FINDING. remeda was cloned shallow, annotated by the rule in
 // examples/annotate.js — every function not nested in another function whose
 // body contains a loop or an array-iteration call — and turbocharge was run
-// over the result. 85 functions, 65 findings, 61 of them `closed-world` at a
-// builtin. This is one of the other four:
+// over the result. 79 functions, 47 findings, 44 of them `closed-world` at a
+// builtin. This is one of the other three:
 //
 //     tmp/lib-remeda/packages/remeda/src/mergeAll.ts:60  mergeAll()
 //       accumulating-spread

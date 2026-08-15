@@ -127,6 +127,51 @@ export const remedaMergeAll = {
   digest,
 };
 
+// zod `cleanEnum(obj)`. The input is the object a TypeScript numeric `enum`
+// compiles to, which is the only input this function has: `enum E { A = 7 }`
+// becomes `{ '7': 'A', A: 7 }`, every member present twice, and `cleanEnum`
+// exists to drop the reverse-mapped half. n is the number of enum members — 16
+// an ordinary status enum, 256 an enum of country or error codes — so the
+// object has 2n keys and the function returns n values.
+//
+// The values are seeded rather than 0..n-1 so the input is not a constant the
+// optimizer can fold (protocol rule 7); an explicitly-valued enum is what that
+// compiles to. A collision between two seeded values costs one key on both
+// sides equally, and the checksum is over the result either way.
+//
+// The caller's read is a scan of the returned values, because that is what
+// zod's own caller does with them — `$ZodEnum` builds a Set out of them and
+// maps them into a regex.
+export const zodCleanEnum = {
+  what: 'cleanEnum(entries) over the object a TypeScript enum of n members compiles to',
+  inputs: (n: number, seed: number): Array<[Cfg]> => {
+    const rand = lcg(seed);
+    const out: Array<[Cfg]> = [];
+    for (let b = 0; b < BATCH; b++) {
+      const entries: Cfg = {};
+      for (let i = 0; i < n; i++) {
+        const name = `K${i}`;
+        const value = 1 + Math.floor(rand() * 100000);
+        entries[name] = value;
+        entries[String(value)] = name;
+      }
+      out.push([entries]);
+    }
+    return out;
+  },
+  run: (fn: (obj: Cfg) => Array<string | number>, args: [Cfg]): Array<string | number> =>
+    fn(args[0]),
+  read: (values: Array<string | number>): number => {
+    let s = 0;
+    for (let i = 0; i < values.length; i++) {
+      const v = values[i]!;
+      s += typeof v === 'number' ? v : v.length;
+    }
+    return s;
+  },
+  digest,
+};
+
 // es-toolkit `omit(obj, keys)`. The canonical use is stripping a couple of
 // secrets off a record before it leaves the process, so two keys are omitted at
 // every n and n is the width of the record: 12 is a user row, 48 a fat one. The

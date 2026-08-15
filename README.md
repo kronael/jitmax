@@ -185,7 +185,7 @@ make bench-addprop        # adding a property after construction — a refutatio
 make bench-dispatch       # calling a method on five object types
 make bench-delete         # delete, on many objects and on exactly one
 make bench-arrays         # elements kinds — the sweep that withdrew a rule
-make example              # three shipped library functions, before and after
+make example              # four shipped library functions, before and after
 make v8-check             # every V8 citation, against the pinned checkout
 ```
 
@@ -273,13 +273,14 @@ it. The pairs are in `examples/` — `diff` a `.before.ts` against its `.after.t
 and the fix is the entire change. `make example` prints the findings, then runs
 the sweep.
 
-Nothing here was searched for. Four libraries were cloned shallow and annotated
-by `examples/annotate.js` — every function not nested inside another whose body
-loops — and these are the findings that came back. radash is the fifth, marked
-by hand a round earlier; `demo-real.md` is that run in full, including the three
-false-positive classes it took to get to one finding. The ratio is before/after, so
-above 1.0 the shipped code costs that much more and **below 1.0 the fix made it
-slower**. Three whole sweeps per cell, per §4 rule 13, all three printed.
+Nothing here was searched for. Eleven libraries were cloned shallow and
+annotated by `examples/annotate.js` — every function not nested inside another
+whose body loops — and these are the findings that came back. radash is the
+twelfth, marked by hand a round earlier; `demo-real.md` is that run in full,
+including the three false-positive classes it took to get to one finding. The
+ratio is before/after, so above 1.0 the shipped code costs that much more and
+**below 1.0 the fix made it slower**. Three whole sweeps per cell, per §4
+rule 13, all three printed.
 
 **The whole call, which is what a caller gets:**
 
@@ -291,6 +292,8 @@ slower**. Three whole sweeps per cell, per §4 rule 13, all three printed.
 | remeda `mergeAll` | 64 | 20.10 / 17.34 / 19.34 | **none — DISAGREES** |
 | es-toolkit `omit` — `delete-property` | 12 | 1.71 / 1.73 / 1.73 | **1.64–1.79** |
 | es-toolkit `omit` | 48 | 3.27 / 3.39 / 3.25 | **3.24–3.36** |
+| zod `cleanEnum` — `chained-allocation` | 16 | 1.32 / 1.46 / 0.91 | **none — DISAGREES** |
+| zod `cleanEnum` | 256 | 1.16 / 0.85 / 1.05 | **0.98–1.03, REJECTED** |
 
 **Reads on the value the function returns**, which is where `delete-property`'s
 cost is actually paid — by the caller, not inside the function:
@@ -301,6 +304,8 @@ cost is actually paid — by the caller, not inside the function:
 | remeda `mergeAll` | 8 / 64 | 0.12 / 0.12 / 0.12 · 0.12 / 0.11 / 0.11 | **0.12** · **0.11–0.12** |
 | es-toolkit `omit` | 12 | 11.46 / 11.37 / 11.08 | **10.95–11.86** |
 | es-toolkit `omit` | 48 | 0.98 / 0.99 / 1.02 | **0.94–1.02, REJECTED** |
+| zod `cleanEnum` | 16 | 1.07 / 1.03 / 0.92 | **1.00–1.15, REJECTED** |
+| zod `cleanEnum` | 256 | 1.02 / 0.98 / 0.96 | **0.98–1.03, REJECTED** |
 
 **The honesty condition.** An end-to-end number is far below the microbenchmark
 ratio, always. `accumulating-spread` cites 188–203x for an object spread at
@@ -309,8 +314,8 @@ the function around that one line also allocates, recurses and branches. That
 gap is the most useful thing in this table: it is what a reader gets, and the
 200x is not.
 
-Three cells say something worse than "smaller", and they are here at the same
-size as the wins:
+Four things in these tables say something worse than "smaller", and they are
+here at the same size as the wins:
 
 - **`omit` at 48 keys rejects on reads** — 0.94–1.02x, an interval spanning 1.0
   in all three sweeps. `%HasFastProperties` is false on *both* sides: building a
@@ -333,26 +338,66 @@ size as the wins:
   advice — radash's `assign` is the same fix with the reads coming out
   1.58–2.08x *faster*, which is why it is a condition to check and not a rule to
   apply. `BUGS.md` TC-16.
+- **`chained-allocation`'s fix is worth nothing on the real instance**, at
+  either size: 0.98–1.03x with construction counted at a 256-member enum, and
+  three sweeps that cannot agree at a 16-member one. The rule cites 7.89x for
+  `map` then `filter` at n=1000, where the loop body is one multiply and the
+  allocation is the whole cost. In zod's `cleanEnum` the same two stages sit
+  next to an `Object.entries` allocation neither version avoids and a
+  `Number.parseInt` per key that dwarfs both, and the fused loop pays back what
+  it saved by growing its result array instead of getting it pre-sized by
+  `.map()`. Published as it came out.
 
-**The whole survey, so the three examples are not three picks out of a hat.**
-No library produced nothing; ramda and just produced no pattern the three
-examples do not already carry, so nothing there became an example.
+**The whole survey, so the four examples are not four picks out of a hat.**
+Twelve libraries, 850 annotated functions, 1672 findings. No library produced
+nothing.
 
 | Library | annotated | findings | what fired |
 |---|---|---|---|
 | es-toolkit 1.50.0 | 286 | 288 | 267 `closed-world`, 12 `delete-property`, 4 `accumulating-spread`, 3 `chained-allocation`, 2 `allocating-select` |
 | ramda 0.32.0 | 100 | 126 | 125 `closed-world`, 1 `delete-property` (`_dissoc`) |
+| immutable 5.1.9 | 89 | 274 | 269 `closed-world`, 3 `chained-allocation`, 2 `delete-property` |
 | remeda 2.0.0 | 79 | 47 | 44 `closed-world`, 2 `delete-property`, 1 `accumulating-spread` |
+| zod 4.4.3 (`v4/core`) | 78 | 96 | 54 `delete-property`, 24 `closed-world`, 10 `megamorphic-elements`, 8 `chained-allocation` |
 | just 1.22.4 | 61 | 67 | 65 `closed-world`, 1 `delete-property`, 1 `chained-allocation` |
+| luxon 3.7.2 | 52 | 266 | 247 `closed-world`, 15 `delete-property`, 4 `chained-allocation` |
+| decimal.js 10.6.0 | 36 | 282 | 282 `closed-world` |
+| date-fns 4.4.0 (`core`) | 28 | 36 | 29 `closed-world`, 4 `allocating-select`, 1 each `delete-property`, `chained-allocation`, `accumulating-spread` |
+| dinero.js 2.0.2 | 20 | 102 | 100 `closed-world`, 1 `chained-allocation`, 1 `accumulating-spread` |
+| big.js 7.0.1 | 13 | 87 | 87 `closed-world` |
 | radash 12.1.1 | 8 | 1 | 1 `accumulating-spread` — see `demo-real.md` |
 
-Two things in that table are about the tool rather than the libraries.
-**`closed-world` is 501 of the 529 findings**, nearly all of them a builtin the
-walk cannot read into; that is the honest shape of the rule on real code, and
-`BUGS.md` TC-10. And **`megamorphic-elements` and `megamorphic-dispatch` never
-fired once** across 534 annotated functions in five libraries — the two rules
-with the sharpest measured cliffs in the project found nothing to say about any
-of them.
+Three things in that table are about the tool rather than the libraries.
+
+**`closed-world` is 1539 of the 1672 findings** — 92% — nearly all of them a
+builtin the walk cannot read into. That is the honest shape of the rule on real
+code, and `BUGS.md` TC-10.
+
+**`megamorphic-dispatch` never fired once** in 850 annotated functions. The
+sharpest cliff this project measured, 14.6-20.0x, has still never been seen on
+somebody else's code.
+
+**`megamorphic-elements` fired ten times, and all ten are one function** —
+zod's `prefixIssues`, whose `issues` parameter unions twelve issue types and
+which loads and mutates `.path` on every element. Nine of the ten are that same
+site reported from nine different annotated roots that reach it. Until this
+survey the rule had never fired either; one function in 850 is what it is worth.
+
+### Which rules have an end-to-end example, and which cannot have one
+
+`examples/` can only hold a rule whose printed fix is a change to the function
+the rule fired on. That is not a property of every rule here, and saying which
+is which is worth more than four more tables.
+
+| Rule | End to end |
+|---|---|
+| `accumulating-spread` | radash `assign`, remeda `mergeAll` — **3.15–4.88x**, and a read cost the fix line now carries |
+| `delete-property` | es-toolkit `omit` — **1.64–3.36x**, and a width past which it stops |
+| `chained-allocation` | zod `cleanEnum` — **rejects at both sizes**, published above |
+| `allocating-select` | **no instance of the measured shape in 850 functions.** Its six findings are all `x = advance(x, step)` — `date = addMinutes(date, step)` in four date-fns functions, `sink = lazy(sink)` in es-toolkit's `pipe`. The benchmark measured a *choice* between two values where the incumbent almost always wins, and the fix, "compare first and assign only when x really changes", saves an allocation exactly on the passes that change nothing. A cursor changes on every pass. `BUGS.md` TC-18 |
+| `megamorphic-elements` | **structurally impossible.** The rule fires on a *parameter*, so its fix — "get the element type to four shapes or fewer, or give it one construction path" — is always a change to whoever built the array, never to the function that was flagged. No before/after pair of the flagged function can carry it. `BUGS.md` TC-19 |
+| `megamorphic-dispatch` | **nothing to demonstrate.** Zero findings in 850 functions |
+| `closed-world` | makes no speed claim; it reports what was not checked |
 
 ## What V8's source says
 

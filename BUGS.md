@@ -2,6 +2,88 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
+## TC-19 — megamorphic-elements prints a fix nobody at the finding can apply (2026-08-15, open, proposal)
+
+Found while giving every rule an end-to-end example. `examples/` can only hold a
+rule whose printed fix is a change to the function the rule fired on, and this
+one never is.
+
+The rule reads a **parameter's** declared element type and reports the load
+site inside the callee. Its fix line says *"get the element type to four shapes
+or fewer, or give it one construction path"* — and the function holding the
+finding received that array already built. Whoever can act on the line is a
+caller the report never names, in a file the walk may never have visited.
+
+So there is no before/after pair to vendor, and the gap is not a missing
+example: it is the finding addressing the wrong reader.
+
+The survey that found it also refutes what README said until today. Extended
+from five libraries to twelve — 850 annotated functions — `megamorphic-elements`
+fires **ten times, and all ten are one function**: zod's `prefixIssues`, whose
+`issues` parameter unions twelve `$ZodRawIssue` types and whose body loads and
+mutates `.path` on each element. Nine of the ten are that one site reported from
+nine annotated roots that reach it. So the rule is not unfireable, as the
+previous survey suggested; it is narrow, and its advice is misaddressed.
+
+Proposals, none of them shipped:
+
+1. **Say whose problem it is.** The fix line becomes something like *"the array
+   reaching this parameter has to be built with four shapes or fewer — that is a
+   change where it is built, not here"*. Cheap, honest, and still not actionable
+   at the finding.
+2. **Report at the construction site instead.** Needs whole-program flow to the
+   parameter, which this tool does not have and which the annotation model
+   (one root, its call tree) does not obviously give it.
+3. **Withdraw the rule** on the grounds that a warning nobody at the site can
+   act on is not worth a false-positive budget. TC-8 and TC-2 are already open
+   against it.
+
+A change to the printed contract, so: **owner signs off before anything ships.**
+
+Reproduce: `node examples/annotate.js tmp/lib-zod/packages/zod/src/v4/core` then
+`node bin/turbocharge.ts tmp/lib-zod/packages/zod/src/v4/core`.
+
+## TC-18 — allocating-select fires on advancing a cursor, which its benchmark never measured (2026-08-15, open, proposal)
+
+Twelve libraries, 850 annotated functions, six `allocating-select` findings, and
+**not one of them is the shape `bench/select.jl` measured.**
+
+The benchmark keeps a running minimum: `b.lo = Box.min(b.lo, v)`, where after
+the first item the incumbent almost always wins, so nearly every allocation is
+for a value the target already held. That is what the 2.65-2.73x buys, and it is
+what the fix — *"compare first and assign only when x really changes"* — saves.
+
+What actually fires in real code:
+
+- `date = addMinutes(date, step)`, `date = addQuarters(date, step)`,
+  `currentDate = addWeeks(currentDate, step)`, `date = oneDayLater(date)` — four
+  date-fns functions, one per loop, walking a cursor forward.
+- `sink = lazyFunctions[index].lazy!(sink)` in es-toolkit's `pipe`, reported
+  twice from one site.
+
+Every one of them changes the value on **every** pass. The compare the fix asks
+for never skips a store, so the fix cannot save an allocation; it can only add a
+comparison. The rule is firing where its own evidence says there is nothing to
+win — TC-9 again, in a fourth rule.
+
+The rule already tries to separate the two: it requires the target to appear
+among the ARGUMENTS, which is what makes `x = x.plus(1)` (target as receiver)
+stay silent. Written as a free function, `x = plus(x, 1)`, the same arithmetic
+walks straight through that test.
+
+Proposal, not shipped: require a **peer** — at least one argument besides the
+target whose type is the target's type. `Box.min(a, b)` and `Decimal.min(a, b)`
+have one; `addMinutes(date, step)` does not, and neither does `lazy(sink)`. On
+the survey that would take the rule from six findings to zero, which is the
+honest outcome for a rule whose shape has not been seen in the wild — and it
+needs a measurement of its own before anything is claimed for it.
+
+A change to what the rule fires on, so: **owner signs off before anything
+ships.**
+
+Reproduce: the survey in README's "whole survey" table; the four date-fns sites
+are in `pkgs/core/src/{differenceInBusinessDays,eachMinuteOfInterval,eachQuarterOfInterval,eachWeekOfInterval}/index.ts`.
+
 ## ✅ FIXED 2026-08-15 — TC-17 — a truncated walk printed "not a clean run" and exited 0
 
 TC-7 taught the *report* to refuse the word "clean" when a walk hit the cap. It

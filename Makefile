@@ -56,7 +56,7 @@ bench-arrays:
 bench-tc11:
 	node bench/run.js tc11
 
-# The end-to-end examples: three real library functions, the finding turbocharge
+# The end-to-end examples: four real library functions, the finding turbocharge
 # printed on each, and what applying that fix is worth to a caller. The check
 # comes first because the findings are the reason the benchmark exists; exit 1
 # there means findings, which is the expected outcome, and exit 2 means the tool

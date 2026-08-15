@@ -280,13 +280,14 @@ const BENCHMARKS = {
   // they are far below the microbenchmark ratios the rules cite.
   example: {
     ...SWEEP.example,
-    what: 'three shipped library functions, before and after',
+    what: 'four shipped library functions, before and after',
     modes: ['excl', 'incl'],
     replicated: true,
     cells: [
       { example: 'radash-assign', sizes: [16, 128] },
       { example: 'remeda-merge-all', sizes: [8, 64] },
       { example: 'estoolkit-omit', sizes: [12, 48] },
+      { example: 'zod-clean-enum', sizes: [16, 256] },
     ].map(({ example, sizes }) => ({
       baseline: `${example}/after`,
       variant: `${example}/before`,
@@ -423,10 +424,28 @@ if (!bench) {
 
 process.stdout.write(`${name}: ${bench.what}\n`);
 
+// `--only <text>` measures just the cells whose label contains <text>. A sweep
+// that GAINS a cell has no business re-measuring the cells beside it: those
+// rows are already published, re-running them appends three more sweeps to
+// every one of them, and a published range would move because a neighbour was
+// added. Selecting by label keeps the new cell in the same file, under the same
+// protocol, next to the rows it did not disturb.
+const at = process.argv.indexOf('--only');
+const only = at === -1 ? undefined : process.argv[at + 1];
+if (at !== -1 && !only) {
+  process.stderr.write('--only needs a substring of a cell label\n');
+  process.exit(2);
+}
+const selected = () => [...plan(bench)].filter((c) => !only || label(c.opts).includes(only));
+if (only && selected().length === 0) {
+  process.stderr.write(`--only ${only} matched no cell of ${name}\n`);
+  process.exit(2);
+}
+
 // `--plan` prints the cells and measures nothing. A sweep runs for hours, so
 // this is how a change to the table above is checked before it is trusted.
-if (process.argv[3] === '--plan') {
-  for (const { script, out, opts, extra } of plan(bench)) {
+if (process.argv.includes('--plan')) {
+  for (const { script, out, opts, extra } of selected()) {
     process.stdout.write(
       `${label(opts)} ${path.basename(script)} -> ${path.basename(out)} ${JSON.stringify(extra)}\n`
     );
@@ -434,7 +453,7 @@ if (process.argv[3] === '--plan') {
   process.exit(0);
 }
 
-for (const { script, out, opts, extra } of plan(bench)) {
+for (const { script, out, opts, extra } of selected()) {
   const write = (r) => fs.appendFileSync(out, JSON.stringify({ ...r, ...extra }) + '\n');
   if (!bench.replicated) {
     const r = cellOrVoid({ script, ...opts });
