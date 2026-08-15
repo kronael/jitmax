@@ -191,6 +191,53 @@ operation"*. Two candidate mechanisms, neither established here:
 Recorded rather than acted on: 1 and 2 change the measurement protocol, and
 CLAUDE.md says a redesign gets signed off before it ships.
 
+### Proposal 2 answered on evidence: an asymmetric storm must NOT void a cell
+
+The re-measurement records `deoptBase`/`deoptTest` on every row, so a storming
+cell is now three observations of the storm next to three observations of the
+ratio. That is the comparison the question needed and nobody had.
+
+| cell | three ratios | common value? | in-region deopts, base / test |
+|---|---|---|---|
+| `select` heap n=100000 | 2.56x 2.87x 2.65x | **yes**, 2.30-3.09 | 53/66, 41/66, **47/41** |
+| `select` number n=100000 | 0.88x 0.94x 1.00x | **yes**, 0.84-1.10 | 101/47, 81/66, **101/101** |
+| `inline` excl n=100000 | 4.73x 4.68x 3.21x | **no** | **0/0, 0/0, 0/0** |
+
+Read the two columns against each other. In `select number` the asymmetry runs
+from 101-against-47 to 101-against-101 — it *disappears* between sweeps — and
+the ratio does not move out of a common interval. In `select heap` the side that
+storms harder changes between sweeps, and the ratio does not care. The storm
+varies far more between sweeps than the number it is supposed to be corrupting.
+
+And the one cell in the whole re-measurement that failed to replicate has **no
+deopt at all**, on either side, in any of its three sweeps. A void rule keyed on
+asymmetric storms would have thrown away two cells that replicate and kept the
+one that does not. That is not a filter, it is noise with a threshold on it.
+
+Three further reasons, none of which needed the data:
+
+- **The storm is never observed in the process whose timing is published.** The
+  counts come from `bench/tiers.js`, which runs the same shape again under
+  `--trace-opt --trace-deopt`, because protocol rule 8 keeps tracing out of a
+  measured process. So voiding a measurement on a storm means voiding it on a
+  replica's behaviour — and that replica disagreed with *itself* on 101 of 280
+  cells, which is the number recorded above.
+- **`void` already means something else.** It means the timed region missed
+  60-240 ms: the cell measured a different quantity than it was asked for. A
+  deopt inside the region is not a different measurement, it is part of what the
+  pattern costs at that size, and deleting it would publish a cost with the
+  expensive part removed.
+- **There is no threshold to pick.** How many deopts, and how lopsided? Every
+  answer is a constant nobody measured, which is the objection this project
+  raises against every rule it refuses, and the mistake TC-11 already made once
+  with a repetition floor.
+
+**So: recorded, never voided.** The row carries the counts and their phase; rule
+13 is the instrument that decides whether a storm mattered, because a storm that
+changes the answer shows up as three sweeps that disagree, and a storm that does
+not change the answer was never a defect in the measurement. Proposals 1 and 3
+stand.
+
 ## TC-20 — a development row reached a published `.jl` (2026-08-15, fixed)
 
 While the runner was being built, `node bench/run.js spread --max-load=99` was
