@@ -2,6 +2,5 @@ node_modules/
 v8src/
 tsgo/
 tmp/
-meme.svg
-meme.png
 bench/scratch.jl
+demo/meme/rig.html
