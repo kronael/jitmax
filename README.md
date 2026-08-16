@@ -551,7 +551,7 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
 ## Development
 
 ```sh
-make test    # 49 unit tests, including the must-stay-silent cases
+make test    # 57 unit tests, including the must-stay-silent cases
 make lint    # tsc --noEmit
 make numbers # re-derive every published number from the .jl sweeps
 make check   # run the checker against demo/
@@ -578,4 +578,6 @@ travel with them, alongside the four copyright holders and the commit each
 function came from. The point of the whole exercise is that the code measured
 there is somebody else's.
 
-Status: v0.5.1, single machine, seven rules.
+Status: v0.6.0, single machine, seven rules. Eight of the nine sweeps behind a
+published number are re-measured whole under the current runner; `dispatch.jl`
+is 34 cells of 80, so every number it feeds says so on its own line.
