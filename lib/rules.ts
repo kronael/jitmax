@@ -255,9 +255,11 @@ function arrayParams(
 // string from the one that will not, so there is no narrower trigger to retreat
 // to. bench/arrays.jl keeps the effect; the tool no longer reports it.
 
-// V8's inline cache holds four maps. The fifth costs 3.6-10.6x on reads. Two
-// to four shapes cost 1.2-2.0x — measurable, and an order of magnitude
-// smaller, which is why the rule starts at five rather than earlier.
+// V8's inline cache holds four maps. The fifth costs 4.4-11.5x on reads. Two
+// to four shapes cost 1.05-1.81x — measurable, and an order of magnitude
+// smaller, which is why the rule starts at five rather than earlier. The
+// silent clause below still says 1.2-2.0x, which is the pre-r2 sweep; it is
+// hand-written prose and BUGS TC-28 is where the drift is recorded.
 const megamorphicElements: Rule = (ts, checker, body, add) => {
   for (const { p, element } of arrayParams(ts, checker, body)) {
     const shapes = objectShapes(ts, element);

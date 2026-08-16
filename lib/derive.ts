@@ -90,7 +90,14 @@ const current = (r: Row): boolean => r.runner === RUNNER;
 //
 // One list rather than a flag on each of forty citations: a sweep is finished
 // or it is not, and forty places to remember is forty places to forget.
-const REMEASURED = new Set(['inline.jl', 'select.jl', 'spread-object.jl', 'spread.jl', 'delete.jl']);
+const REMEASURED = new Set([
+  'shapes-calibrated.jl',
+  'spread.jl',
+  'spread-object.jl',
+  'select.jl',
+  'inline.jl',
+  'delete.jl',
+]);
 
 // Does this citation read rows the current runner did not write? Either because
 // its sweep is still on the old protocol, or because the citation is ABOUT a
@@ -102,23 +109,27 @@ const replicated = (r: Row): boolean => r.protocol === 'replicated';
 
 export const CITATIONS: Record<string, Citation> = {
   // megamorphic-elements
+  // `fresh(r)` used to sit in these three picks, to keep the one-sweep rows
+  // apart from the handful of cells TC-11 re-ran. Under the current runner
+  // EVERY cell is replicated, so `fresh` matches nothing and a pick that still
+  // asked for it would fail at `no rows match` — which is what it is for.
   'elem.reads': {
     file: 'shapes-calibrated.jl',
     cells: 'five shapes, reads only, L1 through RAM',
-    pick: (r) => r.mode === 'excl' && r.shapes === 5 && fresh(r),
+    pick: (r) => r.mode === 'excl' && r.shapes === 5,
     agg: 'range',
     dp: 1,
   },
   'elem.constr.l1l2': {
     file: 'shapes-calibrated.jl',
     cells: 'construction counted, L1 and L2, two to five shapes',
-    pick: (r) => r.mode === 'incl' && (r.size === 'L1' || r.size === 'L2') && fresh(r),
+    pick: (r) => r.mode === 'incl' && (r.size === 'L1' || r.size === 'L2'),
     agg: 'range',
   },
   'elem.constr.l3': {
     file: 'shapes-calibrated.jl',
-    cells: 'construction counted at RAM size, the four replicated cells only',
-    pick: (r) => r.mode === 'incl' && r.size === 'L3' && replicated(r),
+    cells: 'construction counted at RAM size, two to five shapes',
+    pick: (r) => r.mode === 'incl' && r.size === 'L3',
     agg: 'range',
   },
   'elem.cells': {

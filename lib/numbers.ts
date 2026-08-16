@@ -3,13 +3,13 @@
 // fails when this file and the data disagree.
 
 export const N: Record<string, string> = {
-  // shapes-calibrated.jl: five shapes, reads only, L1 through RAM — the older sweep, not re-measured under r2
-  'elem.reads': '3.6-10.6x',
-  // shapes-calibrated.jl: construction counted, L1 and L2, two to five shapes — the older sweep, not re-measured under r2
-  'elem.constr.l1l2': '1.25-3.52x',
-  // shapes-calibrated.jl: construction counted at RAM size, the four replicated cells only — the older sweep, not re-measured under r2
-  'elem.constr.l3': '1.05-1.20x',
-  // shapes-calibrated.jl: the whole sweep — the older sweep, not re-measured under r2
+  // shapes-calibrated.jl: five shapes, reads only, L1 through RAM
+  'elem.reads': '4.4-11.5x',
+  // shapes-calibrated.jl: construction counted, L1 and L2, two to five shapes
+  'elem.constr.l1l2': '1.28-3.91x',
+  // shapes-calibrated.jl: construction counted at RAM size, two to five shapes
+  'elem.constr.l3': '1.00-1.22x',
+  // shapes-calibrated.jl: the whole sweep
   'elem.cells': '24',
   // dispatch.jl: a method on a prototype, five and six shapes, reads only — the older sweep, not re-measured under r2
   'disp.proto.reads': '14.6-20.0x',

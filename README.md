@@ -202,10 +202,10 @@ published number is no longer what its rows say.
 
 | Number | The rows it is |
 |---|---|
-| `3.6-10.6x` | `bench/shapes-calibrated.jl` — five shapes, reads only, L1 through RAM — the older sweep, not re-measured under r2 |
-| `1.25-3.52x` | `bench/shapes-calibrated.jl` — construction counted, L1 and L2, two to five shapes — the older sweep, not re-measured under r2 |
-| `1.05-1.20x` | `bench/shapes-calibrated.jl` — construction counted at RAM size, the four replicated cells only — the older sweep, not re-measured under r2 |
-| `24` | `bench/shapes-calibrated.jl` — the whole sweep — the older sweep, not re-measured under r2 |
+| `4.4-11.5x` | `bench/shapes-calibrated.jl` — five shapes, reads only, L1 through RAM |
+| `1.28-3.91x` | `bench/shapes-calibrated.jl` — construction counted, L1 and L2, two to five shapes |
+| `1.00-1.22x` | `bench/shapes-calibrated.jl` — construction counted at RAM size, two to five shapes |
+| `24` | `bench/shapes-calibrated.jl` — the whole sweep |
 | `14.6-20.0x` | `bench/dispatch.jl` — a method on a prototype, five and six shapes, reads only — the older sweep, not re-measured under r2 |
 | `1.56x` | `bench/dispatch.jl` — a method on a prototype, four shapes, reads only at L1 — the older sweep, not re-measured under r2 |
 | `19.37x` | `bench/dispatch.jl` — a method on a prototype, five shapes, reads only at L1 — the older sweep, not re-measured under r2 |

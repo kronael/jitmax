@@ -2,6 +2,33 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
+## TC-28 — four silent clauses have drifted, and that is now a pattern (2026-08-16, open, proposal)
+
+The fourth instance, so the pattern is the entry. `EVIDENCE.silent` is exempt
+from derivation because it is an argument about where a rule must not fire, and
+`lib/derive.ts` says so on purpose. The consequence is that the numbers carrying
+those arguments are the only published numbers in the repo that a re-measurement
+does not move — so every one of them is now quoting a sweep that no longer
+exists.
+
+| rule | the clause says | the r2 rows say | where |
+|---|---|---|---|
+| `megamorphic-elements` | two to four shapes cost **1.2-2.0x** on reads | **1.05-1.81x** | here |
+| `allocating-select` | on numbers, **no effect at all**, 1.03x and 0.99x | **1.13-1.22x** at n=10000, no interval spanning 1 | TC-23 |
+| `accumulating-spread` | strings build in 0.27-0.56x and **0.74-0.97x** read back | **0.26-0.52x** and **0.78-1.13x**, seven of nine spanning 1 | TC-26 |
+| `delete-property` | undefined costs 1.01-1.10x, **two of three** intervals spanning 1 | 1.00-1.06x, **three of three** | TC-27 |
+
+Three of the four still carry their argument: the fifth shape is still an order
+of magnitude past the fourth, the string still wins at building, assigning
+undefined is still the fix. One does not — `allocating-select` claims no effect
+where there is now a measurable one.
+
+**The proposal is the one TC-26 already made, generalised.** The numbers inside
+a clause are not arguments and should be derived like every other number; the
+sentences around them stay hand-written. That is a change to what `lib/derive.ts`
+covers, so it needs sign-off, and it is the only fix that stops this recurring —
+four entries in two days is the evidence that a reminder will not.
+
 ## TC-27 — delete's silent clause drifts, and one published cell stops replicating (2026-08-16, open, proposal)
 
 `bench/delete.jl` re-measured whole under r2: 16 cells, 48 rows, 3 void.
