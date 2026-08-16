@@ -6,6 +6,14 @@ and the fix.
 
 ## Use it
 
+Get it. There is no build step and it is not on npm, so clone it and run it
+where it lands:
+
+```sh
+git clone <repo-url> turbocharge
+cd turbocharge && npm install
+```
+
 Mark the function you need fast:
 
 ```ts
@@ -16,8 +24,21 @@ export function total(rows: Row[]): number { … }
 Point it at your sources:
 
 ```sh
-turbocharge src
+node /path/to/turbocharge/bin/turbocharge.ts src
 ```
+
+It exits 0 when every annotated function is clean, 1 when it has findings **or
+when the walk was truncated**, and 2 when the tool itself failed. A gate reads
+the exit code, so a run that could not see everything is never a pass.
+
+To get the `turbocharge` command on your PATH instead, install it from git into
+the project you want to check:
+
+```sh
+npm install <repo-url>          # then: npx turbocharge src
+```
+
+Either way it loads *your* TypeScript, not a bundled copy.
 
 ## Configure it
 
