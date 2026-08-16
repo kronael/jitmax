@@ -11,6 +11,8 @@ export const N: Record<string, string> = {
   'elem.constr.l3': '1.00-1.22x',
   // shapes-calibrated.jl: the whole sweep
   'elem.cells': '24',
+  // shapes-calibrated.jl: two to four shapes, reads only, every size — where the rule stays quiet
+  'elem.silent.24': '1.05-1.81x',
   // dispatch.jl: a method on a prototype, five and six shapes, reads only — the older sweep, not re-measured under r2
   'disp.proto.reads': '14.6-20.0x',
   // dispatch.jl: a method on a prototype, four shapes, reads only at L1 — the older sweep, not re-measured under r2
@@ -27,6 +29,12 @@ export const N: Record<string, string> = {
   'disp.constr.l3.four': '0.93-1.20x',
   // dispatch.jl: the whole sweep — the older sweep, not re-measured under r2
   'disp.cells': '80',
+  // dispatch.jl: four shapes on a prototype method, reads only, every size — where the rule is quiet — the older sweep, not re-measured under r2
+  'disp.silent.proto4': '1.38-1.56x',
+  // dispatch.jl: four shapes on one shared own-property function, reads only, every size — the older sweep, not re-measured under r2
+  'disp.silent.shared4': '2.14-2.21x',
+  // dispatch.jl: every shape carrying its OWN function, reads only, two to six targets, every size — the older sweep, not re-measured under r2
+  'disp.silent.own': '3.5-14.8x',
   // spread.jl: array spread against push at n=1000, construction counted, both sweeps
   'spread.array.n1000': '149-166x',
   // spread.jl: the same at n=10000, the three replications
@@ -45,6 +53,14 @@ export const N: Record<string, string> = {
   'spread.object': '186-200x',
   // spread-object.jl: Object.assign({}, acc, …) at n=500, the three replications
   'spread.assign': '814-887x',
+  // spread.jl + spread-object.jl: all four accumulating forms with construction excluded, every size
+  'spread.silent.reads': '0.03-1.87x',
+  // strings.jl: s = s + x, s += x and s = s.concat(x) against a push-and-join, building only
+  'spread.silent.strings.build': '0.26-0.52x',
+  // strings.jl: the same three with the read back counted
+  'spread.silent.strings.incl': '0.78-1.13x',
+  // strings.jl: every interval measured for those nine cells
+  'spread.silent.strings.incl.ci': '0.71-1.48',
   // select.jl: the chosen value stored where it outlives the loop, both sizes
   'select.heap': '2.56-2.87x',
   // select.jl: the intervals at n=10000, across the first sweep and the three replications
@@ -53,6 +69,12 @@ export const N: Record<string, string> = {
   'select.heap.ci100k': '2.30-3.09',
   // select.jl: the whole sweep
   'select.cells': '6',
+  // select.jl: the same loop on numbers, both sizes — where the rule stays quiet
+  'select.silent.number': '0.88-1.22x',
+  // select.jl: every interval measured on numbers
+  'select.silent.number.ci': '0.84-1.30',
+  // select.jl: the boxed form kept in a local, where escape analysis could see it, both sizes
+  'select.silent.local': '2.01-2.45x',
   // chained.jl: xs.map(f).filter(g) against one fused pass at n=1000, construction counted
   'chained.mapfilter': '6.48-7.51x',
   // chained.jl: every interval measured for that cell
@@ -67,6 +89,18 @@ export const N: Record<string, string> = {
   'chained.entries.n10000.ci': '2.23-2.97',
   // chained.jl: the 0.3 sweep, which is every row the dispatch-table kernel wrote
   'chained.cells': '24',
+  // chained.jl: reading the finished array back, all six chained forms, both sizes
+  'chained.silent.reads': '0.95-1.10x',
+  // chained.jl: map then filter with construction counted at n=100000, where bandwidth dominates
+  'chained.silent.big': '1.44-1.52x',
+  // chained.jl: Object.keys(o).map(f) against the for-in walk that fuses it, construction counted
+  'chained.silent.keys': '0.84-1.00x',
+  // chained.jl: xs.map(f).sort() against the same map, construction counted — .sort() is in place
+  'chained.silent.sort': '0.99-1.09x',
+  // chained.jl: every interval measured for those cells
+  'chained.silent.sort.ci': '0.91-1.22',
+  // chained.jl: s.split(sep).map(f).join(sep) against two different fusions, construction counted
+  'chained.silent.split': '0.99-1.10x',
   // inline.jl: a callee past the inlining budget against the same callee under it
   'inline.reads': '3.21-4.95x',
   // inline.jl: the interval at n=100000
@@ -87,6 +121,12 @@ export const N: Record<string, string> = {
   'delete.single.constr': '3.3-8.7x',
   // delete.jl: the whole sweep
   'delete.cells': '16',
+  // delete.jl: assigning undefined instead of deleting, reads only — the fix, not the defect
+  'delete.silent.undef.reads': '1.00-1.06x',
+  // delete.jl: every interval measured for that cell
+  'delete.silent.undef.reads.ci': '0.96-1.12',
+  // delete.jl: the same, with construction counted
+  'delete.silent.undef.build': '0.98-1.18x',
   // example.jl: remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps
   'ex.mergeall.reads': '0.11-0.12x',
 };

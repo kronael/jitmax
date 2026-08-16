@@ -9,9 +9,14 @@
 // interpolates the generated strings, README quotes them, and `make test` fails
 // when a quoted string is no longer what its rows say.
 //
-// What stays hand-written: `EVIDENCE.silent`. That clause is an argument about
-// where a rule must not fire, not a measurement, and the numbers inside it are
-// there to carry the argument.
+// `EVIDENCE.silent` used to be exempt, on the grounds that it is an argument
+// about where a rule must not fire rather than a measurement. It is — but the
+// numbers carrying the argument are still measurements, and being the only
+// undrived numbers in the repo made them the only ones a re-measurement could
+// not move. Five rules' clauses drifted in two days that way (BUGS TC-23,
+// TC-26, TC-27, TC-28). The sentences stay hand-written; every number in them
+// is interpolated from here like every other, so a re-run moves the argument's
+// evidence and leaves its wording alone.
 //
 // A citation names its rows exactly. Where a file holds more than one sweep of
 // the same cell — every runner appends, so it usually does — the discriminator
@@ -42,7 +47,10 @@ export interface Row {
 }
 
 interface Citation {
-  file: string;
+  // One sweep, or several. `accumulating-spread`'s silent clause makes one
+  // claim about four forms that live in two files, and quoting two numbers
+  // where the clause makes one claim would be a different sentence.
+  file: string | string[];
   // Which rows, in words. This is the provenance a reader checks.
   cells: string;
   pick: (r: Row) => boolean;
@@ -99,12 +107,17 @@ const REMEASURED = new Set([
   'delete.jl',
   'chained.jl',
   'example.jl',
+  'strings.jl',
 ]);
+
+const files = (c: Citation): string[] => (Array.isArray(c.file) ? c.file : [c.file]);
 
 // Does this citation read rows the current runner did not write? Either because
 // its sweep is still on the old protocol, or because the citation is ABOUT a
-// superseded sweep.
-const readsHistory = (c: Citation): boolean => Boolean(c.history) || !REMEASURED.has(c.file);
+// superseded sweep. A citation over two files needs BOTH re-measured: half a
+// claim on new rows and half on old is the mixing this exists to prevent.
+const readsHistory = (c: Citation): boolean =>
+  Boolean(c.history) || !files(c).every((f) => REMEASURED.has(f));
 
 const fresh = (r: Row): boolean => r.replicate === undefined;
 const replicated = (r: Row): boolean => r.protocol === 'replicated';
@@ -139,6 +152,12 @@ export const CITATIONS: Record<string, Citation> = {
     cells: 'the whole sweep',
     pick: () => true,
     agg: 'count',
+  },
+  'elem.silent.24': {
+    file: 'shapes-calibrated.jl',
+    cells: 'two to four shapes, reads only, every size — where the rule stays quiet',
+    pick: (r) => r.mode === 'excl' && (r.shapes ?? 0) <= 4,
+    agg: 'range',
   },
 
   // megamorphic-dispatch
@@ -203,6 +222,25 @@ export const CITATIONS: Record<string, Citation> = {
     pick: () => true,
     agg: 'count',
   },
+  'disp.silent.proto4': {
+    file: 'dispatch.jl',
+    cells: 'four shapes on a prototype method, reads only, every size — where the rule is quiet',
+    pick: (r) => r.family === 'cls' && r.mode === 'excl' && r.k === 4,
+    agg: 'range',
+  },
+  'disp.silent.shared4': {
+    file: 'dispatch.jl',
+    cells: 'four shapes on one shared own-property function, reads only, every size',
+    pick: (r) => r.family === 'shr' && r.mode === 'excl' && r.k === 4,
+    agg: 'range',
+  },
+  'disp.silent.own': {
+    file: 'dispatch.jl',
+    cells: 'every shape carrying its OWN function, reads only, two to six targets, every size',
+    pick: (r) => r.family === 'lit' && r.mode === 'excl',
+    agg: 'range',
+    dp: 1,
+  },
 
   // accumulating-spread
   'spread.array.n1000': {
@@ -264,6 +302,33 @@ export const CITATIONS: Record<string, Citation> = {
     pick: (r) => r.variant === 'assign-copy' && r.mode === 'incl' && r.n === 500 && replicated(r),
     agg: 'range',
   },
+  // The silent half: a copy no loop re-runs. One claim over four forms that
+  // live in two files, so the citation reads both rather than the clause
+  // quoting two numbers where it makes one point.
+  'spread.silent.reads': {
+    file: ['spread.jl', 'spread-object.jl'],
+    cells: 'all four accumulating forms with construction excluded, every size',
+    pick: (r) => r.mode === 'excl',
+    agg: 'range',
+  },
+  'spread.silent.strings.build': {
+    file: 'strings.jl',
+    cells: 's = s + x, s += x and s = s.concat(x) against a push-and-join, building only',
+    pick: (r) => r.mode === 'build',
+    agg: 'range',
+  },
+  'spread.silent.strings.incl': {
+    file: 'strings.jl',
+    cells: 'the same three with the read back counted',
+    pick: (r) => r.mode === 'incl',
+    agg: 'range',
+  },
+  'spread.silent.strings.incl.ci': {
+    file: 'strings.jl',
+    cells: 'every interval measured for those nine cells',
+    pick: (r) => r.mode === 'incl',
+    agg: 'cispan',
+  },
 
   // allocating-select
   'select.heap': {
@@ -289,6 +354,24 @@ export const CITATIONS: Record<string, Citation> = {
     cells: 'the whole sweep',
     pick: () => true,
     agg: 'count',
+  },
+  'select.silent.number': {
+    file: 'select.jl',
+    cells: 'the same loop on numbers, both sizes — where the rule stays quiet',
+    pick: (r) => r.mode === 'number',
+    agg: 'range',
+  },
+  'select.silent.number.ci': {
+    file: 'select.jl',
+    cells: 'every interval measured on numbers',
+    pick: (r) => r.mode === 'number',
+    agg: 'cispan',
+  },
+  'select.silent.local': {
+    file: 'select.jl',
+    cells: 'the boxed form kept in a local, where escape analysis could see it, both sizes',
+    pick: (r) => r.mode === 'local',
+    agg: 'range',
   },
 
   // chained-allocation. The 0.3 sweep carries `kernel`; the rows before it are
@@ -354,6 +437,42 @@ export const CITATIONS: Record<string, Citation> = {
     cells: 'the 0.3 sweep, which is every row the dispatch-table kernel wrote',
     pick: (r) => r.kernel === 'dispatch-table',
     agg: 'count',
+  },
+  'chained.silent.reads': {
+    file: 'chained.jl',
+    cells: 'reading the finished array back, all six chained forms, both sizes',
+    pick: (r) => r.mode === 'excl',
+    agg: 'range',
+  },
+  'chained.silent.big': {
+    file: 'chained.jl',
+    cells: 'map then filter with construction counted at n=100000, where bandwidth dominates',
+    pick: (r) => r.variant === 'chained' && r.mode === 'incl' && r.n === 100000,
+    agg: 'range',
+  },
+  'chained.silent.keys': {
+    file: 'chained.jl',
+    cells: 'Object.keys(o).map(f) against the for-in walk that fuses it, construction counted',
+    pick: (r) => r.variant === 'keysmap' && r.mode === 'incl',
+    agg: 'range',
+  },
+  'chained.silent.sort': {
+    file: 'chained.jl',
+    cells: 'xs.map(f).sort() against the same map, construction counted — .sort() is in place',
+    pick: (r) => r.variant === 'chainedsort' && r.mode === 'incl',
+    agg: 'range',
+  },
+  'chained.silent.sort.ci': {
+    file: 'chained.jl',
+    cells: 'every interval measured for those cells',
+    pick: (r) => r.variant === 'chainedsort' && r.mode === 'incl',
+    agg: 'cispan',
+  },
+  'chained.silent.split': {
+    file: 'chained.jl',
+    cells: 's.split(sep).map(f).join(sep) against two different fusions, construction counted',
+    pick: (r) => r.variant === 'splitjoin' && r.mode === 'incl',
+    agg: 'range',
   },
 
   // closed-world
@@ -433,6 +552,24 @@ export const CITATIONS: Record<string, Citation> = {
     pick: () => true,
     agg: 'count',
   },
+  'delete.silent.undef.reads': {
+    file: 'delete.jl',
+    cells: 'assigning undefined instead of deleting, reads only — the fix, not the defect',
+    pick: (r) => r.variant === 'rowundef' && r.mode === 'excl',
+    agg: 'range',
+  },
+  'delete.silent.undef.reads.ci': {
+    file: 'delete.jl',
+    cells: 'every interval measured for that cell',
+    pick: (r) => r.variant === 'rowundef' && r.mode === 'excl',
+    agg: 'cispan',
+  },
+  'delete.silent.undef.build': {
+    file: 'delete.jl',
+    cells: 'the same, with construction counted',
+    pick: (r) => r.variant === 'rowundef' && r.mode === 'incl',
+    agg: 'range',
+  },
 
   // The end-to-end examples, where a printed `fix:` line was applied to
   // somebody else's function and the whole call was timed. This one is here
@@ -490,10 +627,14 @@ export function derive(root: string): Record<string, string> {
   const cache = new Map<string, Row[]>();
   const out: Record<string, string> = {};
   for (const [key, c] of Object.entries(CITATIONS)) {
-    let all = cache.get(c.file);
-    if (!all) {
-      all = rows(root, c.file);
-      cache.set(c.file, all);
+    const all: Row[] = [];
+    for (const f of files(c)) {
+      let some = cache.get(f);
+      if (!some) {
+        some = rows(root, f);
+        cache.set(f, some);
+      }
+      all.push(...some);
     }
     // Never both. A range that spans two protocols is a range whose ends were
     // measured under different rules, and the file gives no sign of it.
@@ -519,7 +660,7 @@ const provenance = (c: Citation): string =>
 export function generate(root: string): string {
   const values = derive(root);
   const lines = Object.entries(CITATIONS).map(([key, c]) => {
-    return `  // ${c.file}: ${provenance(c)}\n  '${key}': '${values[key]}',`;
+    return `  // ${files(c).join(' + ')}: ${provenance(c)}\n  '${key}': '${values[key]}',`;
   });
   return `${HEADER}\nexport const N: Record<string, string> = {\n${lines.join('\n')}\n};\n`;
 }
@@ -534,7 +675,9 @@ const END = '<!-- /generated -->';
 export function markdown(root: string): string {
   const values = derive(root);
   const lines = Object.entries(CITATIONS).map(
-    ([key, c]) => `| \`${values[key]}\` | \`bench/${c.file}\` — ${provenance(c)} |`
+    ([key, c]) =>
+      `| \`${values[key]}\` | ${files(c).map((f) => `\`bench/${f}\``).join(' + ')} — ` +
+      `${provenance(c)} |`
   );
   return [
     BEGIN,

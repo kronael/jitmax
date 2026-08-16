@@ -33,6 +33,14 @@ export interface Finding extends Site {
 // Every rule cites a measurement, and the measurement also says where the rule
 // must stay quiet. `silent` is not a caveat, it is a test: a rule that fires
 // there is contradicting this project's own evidence.
+//
+// Every number in all three fields — `cost`, `source` AND `silent` — is
+// interpolated from `lib/numbers.ts`, which `make numbers` derives from the
+// `.jl` rows. `silent` was hand-typed until 2026-08-16 on the argument that a
+// clause is prose; the consequence was that five clauses went on quoting sweeps
+// that no longer existed while every other number in the repo moved with its
+// data (BUGS TC-23, TC-26, TC-27, TC-28). Write the sentences here; never write
+// a figure here.
 export const EVIDENCE: Record<string, Evidence> = {
   'megamorphic-elements': {
     cost:
@@ -44,8 +52,8 @@ export const EVIDENCE: Record<string, Evidence> = {
       `bench/shapes-calibrated.jl, ${N['elem.cells']} cells, 20 pairs each, the four at RAM ` +
       'size replicated three times',
     silent:
-      'two to four shapes cost 1.2-2.0x on reads — real, and measured, but an order of ' +
-      'magnitude below the fifth, which is why the rule starts there and not earlier',
+      `two to four shapes cost ${N['elem.silent.24']} on reads — real, and measured, but an ` +
+      'order of magnitude below the fifth, which is why the rule starts there and not earlier',
     defects: ['TC-8', 'TC-2', 'TC-9'],
   },
   'megamorphic-dispatch': {
@@ -62,12 +70,13 @@ export const EVIDENCE: Record<string, Evidence> = {
       `bench/dispatch.jl, ${N['disp.cells']} cells, 20 pairs each, the ten at RAM size ` +
       'replicated three times',
     silent:
-      'four shapes cost 1.16-1.56x on a prototype method and 1.29-2.21x on a shared one — ' +
-      'an order of magnitude below the fifth, which is why the rule starts there; and the ' +
-      'threshold is wrong in the direction of silence for one form the same sweep measured: ' +
-      'when every shape carries its OWN function the cost starts at the SECOND target ' +
-      '(7.7-11.9x, flat from two to six, no threshold at all), and no declared type ' +
-      'separates that from a prototype method, so the rule misses it rather than guessing',
+      `four shapes cost ${N['disp.silent.proto4']} on a prototype method and ` +
+      `${N['disp.silent.shared4']} on a shared one — an order of magnitude below the fifth, ` +
+      'which is why the rule starts there; and the threshold is wrong in the direction of ' +
+      'silence for one form the same sweep measured: when every shape carries its OWN ' +
+      `function the cost starts at the SECOND target (${N['disp.silent.own']}, flat from two ` +
+      'to six, no threshold at all), and no declared type separates that from a prototype ' +
+      'method, so the rule misses it rather than guessing',
     defects: ['TC-13'],
   },
   'accumulating-spread': {
@@ -83,18 +92,21 @@ export const EVIDENCE: Record<string, Evidence> = {
       'cells quoted as ranges replicated three times',
     silent:
       'a copy no loop re-runs is not this rule: with construction excluded the same four ' +
-      'forms measure 0.03-1.73x, two to three orders of magnitude below the loop, so the ' +
-      'cost is the re-copying and not the value it leaves behind — but read the bottom of ' +
-      'that range the other way round, because it is the FIX being slower and not the ' +
-      `defect being cheap: an object filled key by key reads ${N['spread.object.reads']} of ` +
-      'the spread-built one, which is why the object form of the fix line carries a ' +
-      'condition and the array form does not (TC-16); Object.assign(acc, …) ' +
-      'mutates in place and is the fix rather than the defect, so it stays silent too; and ' +
-      'a STRING is not this rule at any n — s = s + x, s += x and s = s.concat(x) build in ' +
-      '0.27-0.56x of a push-and-join and 0.74-0.97x of it once the read back is counted, ' +
-      'so all three BEAT the rewrite, because V8 appends into a cons-string (the n=100000 ' +
-      'cells are replicated three times; one of the nine, s += x at construction, spread ' +
-      '0.40-0.54x across the three and is withdrawn as unreplicable)',
+      `forms measure ${N['spread.silent.reads']}, two to three orders of magnitude below ` +
+      'the loop, so the cost is the re-copying and not the value it leaves behind — but ' +
+      'read the bottom of that range the other way round, because it is the FIX being ' +
+      'slower and not the defect being cheap: an object filled key by key reads ' +
+      `${N['spread.object.reads']} of the spread-built one, which is why the object form ` +
+      'of the fix line carries a condition and the array form does not (TC-16); ' +
+      'Object.assign(acc, …) mutates in place and is the fix rather than the defect, so it ' +
+      'stays silent too; and a STRING is not this rule at any n — s = s + x, s += x and ' +
+      `s = s.concat(x) build in ${N['spread.silent.strings.build']} of a push-and-join, ` +
+      'every one of those nine cells far below 1, because V8 appends into a cons-string. ' +
+      `Counting the caller's read back they measure ${N['spread.silent.strings.incl']} ` +
+      `(intervals ${N['spread.silent.strings.incl.ci']}), which is a weaker claim than it ` +
+      'looks: most of those intervals span 1.0, so once the result is read back the string ' +
+      'and the rewrite are indistinguishable rather than the string winning. Every cell is ' +
+      'replicated three times and the ones whose sweeps disagree are in the file',
     defects: [],
   },
   'allocating-select': {
@@ -103,9 +115,15 @@ export const EVIDENCE: Record<string, Evidence> = {
       `(CI ${N['select.heap.ci10k']} at n=10000, ${N['select.heap.ci100k']} at n=100000)`,
     source: `bench/select.jl, ${N['select.cells']} cells, 20 pairs each`,
     silent:
-      'on numbers there is no effect at all — 1.03x and 0.99x, both intervals spanning 1 — ' +
-      'because Math.min allocates nothing; and escape analysis does not rescue the boxed ' +
-      'form either: kept in a local the same loop still costs 1.72-2.28x',
+      `on numbers the effect is small and changes sign with the working set — ` +
+      `${N['select.silent.number']} across both sizes, intervals ` +
+      `${N['select.silent.number.ci']}, above 1 at n=10000 and below it at n=100000 — ` +
+      'because Math.min allocates nothing and what is left is the loop, not the rule. ' +
+      'This clause said "no effect at all, both intervals spanning 1" until the cells were ' +
+      'run three times each (BUGS TC-23); the rule still stays out, but on a smaller ' +
+      'margin than it claimed. Escape analysis does not rescue the boxed form either: kept ' +
+      `in a local, where the compiler can see it, the same loop still costs ` +
+      `${N['select.silent.local']}`,
     defects: [],
   },
   'chained-allocation': {
@@ -121,15 +139,17 @@ export const EVIDENCE: Record<string, Evidence> = {
       'stage allocates a whole array that the next stage immediately discards',
     source: `bench/chained.jl, ${N['chained.cells']} cells in the 0.3 sweep, 20 pairs each`,
     silent:
-      'reading the finished array costs nothing (0.94-1.03x across all six forms), and at ' +
-      'n=100000 map-then-filter falls to 1.47x, where memory bandwidth dominates the ' +
-      'allocation; Object.keys(o).map(f) is FASTER than the for-in loop that fuses it ' +
-      '(0.94x and 0.95x), so keys stays out and the rule would be wrong to ask for that ' +
-      'rewrite; .sort() and .reverse() sort in place and hand back the same array, so ' +
-      'xs.map(f).sort() allocates no more than xs.map(f) does and measured 1.04-1.05x, ' +
-      'both intervals spanning 1; and the split chain s.split(sep).map(f).join(sep) ' +
-      'measured 1.06-1.09x against two different fusions, every point estimate under the ' +
-      '1.10x a broad warning needs',
+      `reading the finished array costs nothing (${N['chained.silent.reads']} across all ` +
+      `six forms), and at n=100000 map-then-filter falls to ${N['chained.silent.big']}, ` +
+      'where memory bandwidth dominates the allocation; Object.keys(o).map(f) is FASTER ' +
+      `than the for-in loop that fuses it (${N['chained.silent.keys']}), so keys stays out ` +
+      'and the rule would be wrong to ask for that rewrite; .sort() and .reverse() sort in ' +
+      'place and hand back the same array, so xs.map(f).sort() allocates no more than ' +
+      `xs.map(f) does and measured ${N['chained.silent.sort']} with every interval ` +
+      `(${N['chained.silent.sort.ci']}) spanning 1; and the split chain ` +
+      `s.split(sep).map(f).join(sep) measured ${N['chained.silent.split']} against two ` +
+      'different fusions, which is at the 1.10x a broad warning needs rather than clear of ' +
+      'it — the rule stays out and the margin is one hundredth',
     defects: ['TC-9'],
   },
   'closed-world': {
@@ -161,8 +181,10 @@ export const EVIDENCE: Record<string, Evidence> = {
       'the file',
     silent:
       'assigning undefined instead of deleting is the fix and not the defect — it costs ' +
-      '1.01-1.10x on reads with two of three intervals spanning 1, and 1.07-1.19x to ' +
-      'build; so is adding a property, which never demotes at any count. The old ' +
+      `${N['delete.silent.undef.reads']} on reads, every interval ` +
+      `(${N['delete.silent.undef.reads.ci']}) spanning 1, and ` +
+      `${N['delete.silent.undef.build']} to build; so is adding a property, which never ` +
+      'demotes at any count. The old ' +
       'singleton exception is withdrawn: it was measured on a probe whose fast side a ' +
       'loop-invariant load could serve, and a kernel that has to load the object every ' +
       'pass says a single delete costs the same as a hundred thousand of them',
@@ -255,11 +277,11 @@ function arrayParams(
 // string from the one that will not, so there is no narrower trigger to retreat
 // to. bench/arrays.jl keeps the effect; the tool no longer reports it.
 
-// V8's inline cache holds four maps. The fifth costs 4.4-11.5x on reads. Two
-// to four shapes cost 1.05-1.81x — measurable, and an order of magnitude
-// smaller, which is why the rule starts at five rather than earlier. The
-// silent clause below still says 1.2-2.0x, which is the pre-r2 sweep; it is
-// hand-written prose and BUGS TC-28 is where the drift is recorded.
+// V8's inline cache holds four maps, and the fifth is an order of magnitude
+// past the fourth, which is why the rule starts at five rather than earlier.
+// The two figures are `elem.reads` and `elem.silent.24`; they are not repeated
+// here, because a comment quoting a measurement is a fourth copy of it and
+// this file has already had three drift (BUGS TC-28).
 const megamorphicElements: Rule = (ts, checker, body, add) => {
   for (const { p, element } of arrayParams(ts, checker, body)) {
     const shapes = objectShapes(ts, element);
@@ -355,14 +377,14 @@ const accumulatingSpread: Rule = (ts, checker, body, add) => {
     }
     // The call forms. `acc.concat(v)` carries the accumulator as the RECEIVER
     // and `Object.assign({}, acc, …)` as an argument, so neither is visible to
-    // the literal matching above — the rule walked past both until it was
-    // measured at 777-807x and 814-887x.
+    // the literal matching above — the rule walked past both until they were
+    // measured (`spread.concat` and `spread.assign`, in the hundreds).
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const callee = node.expression;
       // `.concat()` belongs to String as much as to Array, and on a string it
-      // is not this defect: measured 0.27-0.56x to build and 0.74-0.97x to
-      // build and read back, FASTER than the push-and-join it would be
+      // is not this defect: it BUILDS faster than the push-and-join it would be
       // rewritten to, because V8 appends into a cons-string instead of copying.
+      // The figures are `spread.silent.strings.build` and its read-back pair.
       // Matching the NAME alone indicted that, and every other class that owns
       // a `concat` — a persistent list shares structure and is not copying
       // either. The receiver's type is what separates them, and where the type

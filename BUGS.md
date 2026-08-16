@@ -37,7 +37,7 @@ is a check in `make test` that every `examples/*.before.ts` names an upstream
 covered by `examples/LICENSE-MIT`. That is a new check and not a correction, so
 it is a proposal and waits for sign-off.
 
-## TC-28 — four silent clauses have drifted, and that is now a pattern (2026-08-16, open, proposal)
+## ✅ FIXED 2026-08-16 — TC-28 — four silent clauses have drifted, and that is now a pattern
 
 The fifth rule to show it, so the pattern is the entry. `EVIDENCE.silent` is exempt
 from derivation because it is an argument about where a rule must not fire, and
@@ -67,7 +67,45 @@ sentences around them stay hand-written. That is a change to what `lib/derive.ts
 covers, so it needs sign-off, and it is the only fix that stops this recurring —
 five rules in two days is the evidence that a reminder will not.
 
-## TC-27 — delete's silent clause drifts, and one published cell stops replicating (2026-08-16, open, proposal)
+**Fixed**, with sign-off, and this entry closes TC-23, TC-26 and TC-27 with it.
+`lib/derive.ts` gained one citation per figure a clause quotes — 21 of them —
+and every `silent` string now interpolates `N[…]` exactly as `cost` and `source`
+already did. The sentences stay hand-written; not one figure is. `make numbers`
+moves them with their rows and `make test` fails when a clause and its data
+disagree, which is the same guarantee the rest of the repo has had all along.
+
+Four clauses changed what they claim, not only what they quote:
+
+- `allocating-select` said "no effect at all, both intervals spanning 1" on
+  numbers. It now says the effect is small and **changes sign with the working
+  set** — above 1 at n=10000, below it at n=100000 — and says the old sentence
+  was wrong (TC-23).
+- `accumulating-spread` said all three string forms "BEAT the rewrite". They
+  beat it at building; once the caller reads the result back most of the
+  intervals span 1.0, so the clause now says the two are **indistinguishable**
+  there rather than the string winning (TC-26).
+- `delete-property` improved: **three** of three intervals span 1 on reads, not
+  two (TC-27).
+- `chained-allocation`'s split chain now reads "at the 1.10x a broad warning
+  needs rather than clear of it — the margin is one hundredth", because one
+  point estimate landed exactly on the threshold.
+
+Two comments in `lib/rules.ts` that repeated measurements in prose were cut to
+name their citation keys instead. A comment quoting a number is a copy nothing
+checks, which is how three of these drifted.
+
+Still open: `bench/dispatch.jl` is the one sweep not yet whole under r2, so the
+three dispatch clauses read the older rows and README says so on every line that
+quotes them.
+
+## ✅ FIXED 2026-08-16 — TC-27 — delete's silent clause drifts, and one published cell stops replicating
+
+Fixed by the derivation in TC-28. The clause's numbers now come from the rows.
+The second half of this entry stands and is not a defect: `delete.rows` keeps
+the 23.0x end that comes from a cell whose three sweeps disagree, deliberately,
+because a range that drops its worst-behaved cell reads tighter than the
+measurement was. README's honest-limits section says which cell it is.
+
 
 `bench/delete.jl` re-measured whole under r2: 16 cells, 48 rows, 3 void.
 
@@ -103,7 +141,13 @@ the measurement was.
 **Not fixed**, same reason as TC-23 and TC-26: `EVIDENCE.silent` is an argument,
 not a derivation, and rewriting it is a judgement about a shipped rule's scope.
 
-## TC-26 — the strings clause's read-back half no longer says what it says (2026-08-15, open, proposal)
+## ✅ FIXED 2026-08-16 — TC-26 — the strings clause's read-back half no longer says what it says
+
+Fixed by the derivation in TC-28, taking proposal 2 and the substance of
+proposal 1 together: both ranges are derived, and the read-back sentence now
+says the string and the rewrite are indistinguishable rather than the string
+winning.
+
 
 `accumulating-spread` ships this, hand-typed:
 
@@ -201,7 +245,13 @@ record. Re-running was ranked below every sweep still on pre-`r2` rows, because
 those are the numbers the exercise exists to move, and the machine did not offer
 enough quiet time to reach both.
 
-## TC-23 — re-measuring select contradicts its own silent clause (2026-08-15, open, proposal)
+## ✅ FIXED 2026-08-16 — TC-23 — re-measuring select contradicts its own silent clause
+
+Fixed by the derivation in TC-28, taking proposal 1. The rule still stays out of
+the number case — it is about allocation, and `Math.min` allocates nothing — but
+the clause now says so on the honest margin and records that it used to claim
+"no effect at all".
+
 
 `allocating-select` ships this, hand-typed:
 

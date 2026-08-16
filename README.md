@@ -144,7 +144,7 @@ input size.
 | `accumulating-spread` | `[...acc, v]`, `{ ...acc, k: v }`, `acc.concat(v)` or `Object.assign({}, acc, …)` in a loop — quadratic | no loop re-runs the copy; `Object.assign(acc, …)`, which mutates; strings, which V8 appends to instead of copying |
 | `chained-allocation` | `.map().filter()` or `Object.entries(o).map()` allocates between stages | one stage; large n; `Object.keys(o).map()`, `.sort()`, `.split().map().join()` |
 | `allocating-select` | `x = Lib.min(x, y)` in a loop returns a new object every pass | the same loop on numbers |
-| `delete-property` | `delete` demotes an object to dictionary mode | assigning `undefined` instead, which costs 1.01-1.10x |
+| `delete-property` | `delete` demotes an object to dictionary mode | assigning `undefined` instead, which costs 1.00-1.06x |
 | `closed-world` | calls to code with no readable body | a callee small enough to inline costs nothing |
 
 **Every rule includes the benchmark that earned it, and the case where the same
@@ -227,6 +227,7 @@ published number is no longer what its rows say.
 | `1.28-3.91x` | `bench/shapes-calibrated.jl` — construction counted, L1 and L2, two to five shapes |
 | `1.00-1.22x` | `bench/shapes-calibrated.jl` — construction counted at RAM size, two to five shapes |
 | `24` | `bench/shapes-calibrated.jl` — the whole sweep |
+| `1.05-1.81x` | `bench/shapes-calibrated.jl` — two to four shapes, reads only, every size — where the rule stays quiet |
 | `14.6-20.0x` | `bench/dispatch.jl` — a method on a prototype, five and six shapes, reads only — the older sweep, not re-measured under r2 |
 | `1.56x` | `bench/dispatch.jl` — a method on a prototype, four shapes, reads only at L1 — the older sweep, not re-measured under r2 |
 | `19.37x` | `bench/dispatch.jl` — a method on a prototype, five shapes, reads only at L1 — the older sweep, not re-measured under r2 |
@@ -235,6 +236,9 @@ published number is no longer what its rows say.
 | `1.46-1.94x` | `bench/dispatch.jl` — a method on a prototype at RAM size, five and six shapes, the replicated cells — the older sweep, not re-measured under r2 |
 | `0.93-1.20x` | `bench/dispatch.jl` — the same cells at two to four shapes — the older sweep, not re-measured under r2 |
 | `80` | `bench/dispatch.jl` — the whole sweep — the older sweep, not re-measured under r2 |
+| `1.38-1.56x` | `bench/dispatch.jl` — four shapes on a prototype method, reads only, every size — where the rule is quiet — the older sweep, not re-measured under r2 |
+| `2.14-2.21x` | `bench/dispatch.jl` — four shapes on one shared own-property function, reads only, every size — the older sweep, not re-measured under r2 |
+| `3.5-14.8x` | `bench/dispatch.jl` — every shape carrying its OWN function, reads only, two to six targets, every size — the older sweep, not re-measured under r2 |
 | `149-166x` | `bench/spread.jl` — array spread against push at n=1000, construction counted, both sweeps |
 | `1766-1889x` | `bench/spread.jl` — the same at n=10000, the three replications |
 | `1877x and 2348x` | `bench/spread.jl` — the two sweeps of that cell that predate the replication — the older sweep, not re-measured under r2 |
@@ -244,10 +248,17 @@ published number is no longer what its rows say.
 | `0.03x` | `bench/spread-object.jl` — the finished object read back, spread against keyed assignment, n=500 |
 | `186-200x` | `bench/spread-object.jl` — object spread against keyed assignment at n=500, the three replications |
 | `814-887x` | `bench/spread-object.jl` — Object.assign({}, acc, …) at n=500, the three replications |
+| `0.03-1.87x` | `bench/spread.jl` + `bench/spread-object.jl` — all four accumulating forms with construction excluded, every size |
+| `0.26-0.52x` | `bench/strings.jl` — s = s + x, s += x and s = s.concat(x) against a push-and-join, building only |
+| `0.78-1.13x` | `bench/strings.jl` — the same three with the read back counted |
+| `0.71-1.48` | `bench/strings.jl` — every interval measured for those nine cells |
 | `2.56-2.87x` | `bench/select.jl` — the chosen value stored where it outlives the loop, both sizes |
 | `2.59-2.92` | `bench/select.jl` — the intervals at n=10000, across the first sweep and the three replications |
 | `2.30-3.09` | `bench/select.jl` — the intervals at n=100000, across the first sweep and the three replications |
 | `6` | `bench/select.jl` — the whole sweep |
+| `0.88-1.22x` | `bench/select.jl` — the same loop on numbers, both sizes — where the rule stays quiet |
+| `0.84-1.30` | `bench/select.jl` — every interval measured on numbers |
+| `2.01-2.45x` | `bench/select.jl` — the boxed form kept in a local, where escape analysis could see it, both sizes |
 | `6.48-7.51x` | `bench/chained.jl` — xs.map(f).filter(g) against one fused pass at n=1000, construction counted |
 | `5.62-7.90` | `bench/chained.jl` — every interval measured for that cell |
 | `3.67-3.76x` | `bench/chained.jl` — Object.entries(o).map(f) against a for-in walk at n=1000, construction counted |
@@ -255,6 +266,12 @@ published number is no longer what its rows say.
 | `2.55-2.61x` | `bench/chained.jl` — the same at n=10000 |
 | `2.23-2.97` | `bench/chained.jl` — every interval measured for that cell |
 | `24` | `bench/chained.jl` — the 0.3 sweep, which is every row the dispatch-table kernel wrote |
+| `0.95-1.10x` | `bench/chained.jl` — reading the finished array back, all six chained forms, both sizes |
+| `1.44-1.52x` | `bench/chained.jl` — map then filter with construction counted at n=100000, where bandwidth dominates |
+| `0.84-1.00x` | `bench/chained.jl` — Object.keys(o).map(f) against the for-in walk that fuses it, construction counted |
+| `0.99-1.09x` | `bench/chained.jl` — xs.map(f).sort() against the same map, construction counted — .sort() is in place |
+| `0.91-1.22` | `bench/chained.jl` — every interval measured for those cells |
+| `0.99-1.10x` | `bench/chained.jl` — s.split(sep).map(f).join(sep) against two different fusions, construction counted |
 | `3.21-4.95x` | `bench/inline.jl` — a callee past the inlining budget against the same callee under it |
 | `2.54-5.58` | `bench/inline.jl` — the interval at n=100000 |
 | `4.34-5.22` | `bench/inline.jl` — the interval at n=1000 |
@@ -265,6 +282,9 @@ published number is no longer what its rows say.
 | `23.7-24.8x` | `bench/delete.jl` — one delete per object with construction counted, n=256 |
 | `3.3-8.7x` | `bench/delete.jl` — the single object with construction counted, every size |
 | `16` | `bench/delete.jl` — the whole sweep |
+| `1.00-1.06x` | `bench/delete.jl` — assigning undefined instead of deleting, reads only — the fix, not the defect |
+| `0.96-1.12` | `bench/delete.jl` — every interval measured for that cell |
+| `0.98-1.18x` | `bench/delete.jl` — the same, with construction counted |
 | `0.11-0.12x` | `bench/example.jl` — remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps |
 
 <!-- /generated -->
