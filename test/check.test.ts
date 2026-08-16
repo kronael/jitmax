@@ -458,3 +458,55 @@ test('every example before half reports its finding and every after half is clea
     }
   );
 });
+
+// The licence of somebody else's code, checked the way every number here is
+// checked. `examples/` redistributes four MIT libraries, and MIT requires the
+// permission notice to travel with each of them. That was wrong from the day
+// the directory landed until TC-29 found it — an audit found it, and no test
+// could have, because nothing read the licence text at all. This reads it.
+//
+// Both directions on purpose. A fifth vendored library with no entry is the
+// defect TC-29 was; an entry naming a file that no longer exists is a notice
+// that has stopped describing what it covers.
+test('every vendored example is covered by the MIT notice, and the notice covers nothing else', () => {
+  const dir = path.join(root, 'examples');
+  const notice = fs.readFileSync(path.join(dir, 'LICENSE-MIT'), 'utf8');
+  const vendored = fs.readdirSync(dir).filter((f) => f.endsWith('.before.ts')).sort();
+
+  assert.ok(vendored.length > 0, 'examples/ holds no vendored file — the glob is wrong');
+
+  for (const file of vendored) {
+    const header = fs.readFileSync(path.join(dir, file), 'utf8').split('\n').slice(0, 4);
+    const copyright = header
+      .map((l) => l.replace(/^\/\/ ?/, '').trim())
+      .find((l) => l.startsWith('Copyright (c)'));
+    assert.ok(copyright, `${file} carries no copyright line`);
+    assert.ok(
+      notice.includes(copyright),
+      `examples/LICENSE-MIT does not carry ${file}'s copyright line: ${copyright}`
+    );
+    assert.ok(
+      notice.includes(file),
+      `examples/LICENSE-MIT does not name ${file} among the files it covers`
+    );
+  }
+
+  // The permission notice itself, not a paraphrase of it. MIT names this
+  // sentence as the thing that must travel; a notice missing it is attribution.
+  assert.ok(
+    notice.includes(
+      'The above copyright notice and this permission notice shall be included in all'
+    ),
+    'examples/LICENSE-MIT is missing the MIT permission notice'
+  );
+
+  const named = [...notice.matchAll(/→ (.+)/g)].flatMap((m) =>
+    m[1].split(',').map((s) => s.trim())
+  );
+  for (const file of named) {
+    assert.ok(
+      fs.existsSync(path.join(dir, file)),
+      `examples/LICENSE-MIT covers ${file}, which is not in examples/`
+    );
+  }
+});
