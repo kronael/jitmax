@@ -75,17 +75,17 @@ export const N: Record<string, string> = {
   'inline.ci1000': '4.34-5.22',
   // inline.jl: the whole sweep
   'inline.cells': '2',
-  // delete.jl: one delete per object, reads only, at n=16384 and n=262144 — the older sweep, not re-measured under r2
-  'delete.rows': '12.6-17.1x',
-  // delete.jl: the same delete against assigning undefined instead, n=16384 — the older sweep, not re-measured under r2
-  'delete.vs.undefined': '12.4-12.9x',
-  // delete.jl: one object with one delete, reads only, every size and every sweep — the older sweep, not re-measured under r2
-  'delete.single': '13.3-15.6x',
-  // delete.jl: one delete per object with construction counted, n=256 — the older sweep, not re-measured under r2
-  'delete.rows.constr': '23.2-24.3x',
-  // delete.jl: the single object with construction counted, every size — the older sweep, not re-measured under r2
-  'delete.single.constr': '3.2-7.0x',
-  // delete.jl: the whole sweep — the older sweep, not re-measured under r2
+  // delete.jl: one delete per object, reads only, at n=16384 and n=262144
+  'delete.rows': '12.3-23.0x',
+  // delete.jl: the same delete against assigning undefined instead, n=16384
+  'delete.vs.undefined': '11.5-13.2x',
+  // delete.jl: one object with one delete, reads only, every size and every sweep
+  'delete.single': '13.1-15.1x',
+  // delete.jl: one delete per object with construction counted, n=256
+  'delete.rows.constr': '23.7-24.8x',
+  // delete.jl: the single object with construction counted, every size
+  'delete.single.constr': '3.3-8.7x',
+  // delete.jl: the whole sweep
   'delete.cells': '16',
   // example.jl: remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps — the older sweep, not re-measured under r2
   'ex.mergeall.reads': '0.11-0.12x',

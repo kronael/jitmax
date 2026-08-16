@@ -2,6 +2,42 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
+## TC-27 — delete's silent clause drifts, and one published cell stops replicating (2026-08-16, open, proposal)
+
+`bench/delete.jl` re-measured whole under r2: 16 cells, 48 rows, 3 void.
+
+The clause `delete-property` ships, hand-typed:
+
+> assigning undefined instead of deleting is the fix and not the defect — it
+> costs **1.01-1.10x** on reads with **two of three intervals spanning 1**, and
+> **1.07-1.19x** to build
+
+| cell | published | three replications | intervals |
+|---|---|---|---|
+| `rowundef/rowbase` excl n=16384 | 1.01-1.10x | 1.06x 1.00x 1.03x | span 0.96-1.12 |
+| `rowundef/rowbase` incl n=16384 | 1.07-1.19x | 0.98x 1.05x 1.18x | span 0.92-1.22, **no common value** |
+
+The clause's *argument* survives and gets stronger: on reads it is now **three**
+of three intervals spanning 1, not two, so "the fix and not the defect" is
+better supported than when it was written. The build half is the problem — its
+three sweeps do not agree, so `1.07-1.19x` is a number quoted from a cell rule
+13 would withdraw.
+
+**And a published range moved onto a cell that does not replicate.**
+`delete.rows` — which README quotes and every `delete-property` finding prints —
+goes 12.6-17.1x to **12.3-23.0x**, and the 23.0x end is the first sweep of
+`rowdel/rowbase excl n=262144`, whose three sweeps read 22.98x, 13.73x, 15.53x
+with no value common to their intervals. The other five delete cells behind
+published numbers all replicate; this one is the RAM-sized read, the same
+position in its sweep as every other cell that has failed replication so far.
+
+Left in the range rather than dropped, and said out loud in README's honest
+limits, because a range that excludes its worst-behaved cell reads tighter than
+the measurement was.
+
+**Not fixed**, same reason as TC-23 and TC-26: `EVIDENCE.silent` is an argument,
+not a derivation, and rewriting it is a judgement about a shipped rule's scope.
+
 ## TC-26 — the strings clause's read-back half no longer says what it says (2026-08-15, open, proposal)
 
 `accumulating-spread` ships this, hand-typed:

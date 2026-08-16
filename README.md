@@ -67,7 +67,7 @@ turbocharge — 37 annotated functions, 14 findings
     delete-property
       demo/lib.ts:111
       delete o[k] puts its object in dictionary mode
-      measured 12.6-17.1x per property load once the object is in dictionary mode … [bench/delete.jl]
+      measured 12.3-23.0x per property load once the object is in dictionary mode … [bench/delete.jl]
       fix: assign undefined where the key may stay present, or build the object without it —
       the rebuild helps at 12 keys and not at 48, where filling it key by key normalizes it too
       known defect: TC-9 — rules fire outside the conditions their own evidence establishes
@@ -169,7 +169,7 @@ code loads a property at all.
 read "a single delete on one object", published since the first round as a case
 this project had refuted — 0x, with dictionary mode up to 10% *faster*.
 Re-measured against a kernel that has to load the object on every pass, one
-object with one delete costs **13.3-15.6x**, in all nine of its sweeps, more
+object with one delete costs **13.1-15.1x**, in all nine of its sweeps, more
 consistently than a hundred thousand objects do. The old probe's fast side could
 be served by a load hoisted out of its loop; the dictionary side could not. The
 exception is withdrawn and the rule is right to fire there — a refutation has to
@@ -238,12 +238,12 @@ published number is no longer what its rows say.
 | `2.54-5.58` | `bench/inline.jl` — the interval at n=100000 |
 | `4.34-5.22` | `bench/inline.jl` — the interval at n=1000 |
 | `2` | `bench/inline.jl` — the whole sweep |
-| `12.6-17.1x` | `bench/delete.jl` — one delete per object, reads only, at n=16384 and n=262144 — the older sweep, not re-measured under r2 |
-| `12.4-12.9x` | `bench/delete.jl` — the same delete against assigning undefined instead, n=16384 — the older sweep, not re-measured under r2 |
-| `13.3-15.6x` | `bench/delete.jl` — one object with one delete, reads only, every size and every sweep — the older sweep, not re-measured under r2 |
-| `23.2-24.3x` | `bench/delete.jl` — one delete per object with construction counted, n=256 — the older sweep, not re-measured under r2 |
-| `3.2-7.0x` | `bench/delete.jl` — the single object with construction counted, every size — the older sweep, not re-measured under r2 |
-| `16` | `bench/delete.jl` — the whole sweep — the older sweep, not re-measured under r2 |
+| `12.3-23.0x` | `bench/delete.jl` — one delete per object, reads only, at n=16384 and n=262144 |
+| `11.5-13.2x` | `bench/delete.jl` — the same delete against assigning undefined instead, n=16384 |
+| `13.1-15.1x` | `bench/delete.jl` — one object with one delete, reads only, every size and every sweep |
+| `23.7-24.8x` | `bench/delete.jl` — one delete per object with construction counted, n=256 |
+| `3.3-8.7x` | `bench/delete.jl` — the single object with construction counted, every size |
+| `16` | `bench/delete.jl` — the whole sweep |
 | `0.11-0.12x` | `bench/example.jl` — remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps — the older sweep, not re-measured under r2 |
 
 <!-- /generated -->
@@ -450,6 +450,14 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
 - These ratios come from a microbenchmark, a small speed test, on one machine
   (Node v22.23.2, V8 12.4). They show that a pattern *can* cost that much. They
   do not say it costs that much in your workload.
+- **Two published ranges currently contain a cell that failed replication.**
+  Protocol rule 13 runs every published cell three whole times and calls the
+  three in agreement when a value sits inside all three intervals. Under the
+  re-measurement, `closed-world`'s n=100000 cell (4.73x, 4.68x, 3.21x) and
+  `delete-property`'s n=262144 read cell (22.98x, 13.73x, 15.53x) have no such
+  value, and both are inside a range this page quotes. They are left in rather
+  than dropped, because a range that quietly excluded its worst-behaved cell
+  would read tighter than the measurement was. `BUGS.md` TC-21.
 - **One of V8's two optimizing tiers was switched off the whole time.** This
   Node reports `--maglev` as `default: --no-maglev`, so the ladder under every
   number here is Ignition → Sparkplug → TurboFan, with no Maglev in it. A tier
