@@ -1,8 +1,11 @@
 # turbocharge
 
-Mark a TypeScript function. Get the lines in it, and in everything it calls,
-that stop V8 from optimising your code — with the measurement behind each one
-and the fix.
+Mark a TypeScript function with `/** @turbocharge */`. turbocharge reports the
+lines in it, and in every callee whose source it can read, that match patterns
+measured to push V8 off its fast path. Each finding carries the measurement
+behind it and the fix.
+
+![turbocharge finding one line in a function radash ships](demo/demo.gif)
 
 ## Use it
 
@@ -556,6 +559,8 @@ make lint    # tsc --noEmit
 make numbers # re-derive every published number from the .jl sweeps
 make check   # run the checker against demo/
 make example # the checker against examples/, then the end-to-end sweep
+make demo    # re-record demo/demo.gif — a real asciinema run, not a mock-up
+make meme    # re-render the launch loop from demo/meme/
 ```
 
 `CLAUDE.md` holds the layout, the rules of this repo, and how to verify both

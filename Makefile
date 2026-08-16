@@ -1,4 +1,4 @@
-.PHONY: test lint check v8-check numbers bench bench-all bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-dispatch bench-delete bench-arrays bench-tc11 tiers example meme meme-png clean
+.PHONY: test lint check v8-check numbers bench bench-all bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-dispatch bench-delete bench-arrays bench-tc11 tiers example demo meme publish clean
 
 test:
 	node --test test/check.test.ts test/tiers.test.js
@@ -79,26 +79,71 @@ example:
 	node bin/turbocharge.ts examples; test $$? -le 1
 	node bench/run.js example
 
-meme:
-	node bench/meme.js > meme.svg
+# The terminal demo. The recording is REAL — asciinema drives demo/cast.sh,
+# which runs the checker against a function radash ships. Nothing here is drawn
+# to look like a terminal. 27 rows because that is what the output occupies at
+# 120 columns; a taller frame is half void, and agg must be told the same size
+# asciinema recorded at or the gif crops.
+DEMO_SIZE = --cols 120 --rows 27
+# PH3, from /pub/krons/ph3: bg, fg, then the 8 normal and 8 bright slots mapped
+# onto near-black, red-p, white-p and muted. The script uses bright green for
+# the prompt and bright cyan for narration, so those two slots carry red-p and
+# muted rather than a colour PH3 does not have.
+DEMO_THEME = 0a0a0a,f0fff0,0a0a0a,cc2936,cc2936,ff6b6b,888888,cc2936,888888,888888,\
+555555,ff6b6b,cc2936,ff6b6b,888888,ff6b6b,888888,f0fff0
 
-# Social cards must be raster: X's card crawler does not render SVG and drops
-# the image silently. Rasterized through the browser because no SVG converter
-# is installed on this machine.
-meme-png: meme
-	agent-browser set viewport 1200 700 >/dev/null
-	agent-browser open file://$(CURDIR)/meme.svg >/dev/null
-	agent-browser screenshot svg $(CURDIR)/meme.png >/dev/null
+tmp/demo.cast: demo/cast.sh bin/turbocharge.ts lib/rules.ts examples/radash-assign.before.ts
+	mkdir -p tmp
+	COLUMNS=120 LINES=27 DEMO_TYPE=1 asciinema rec $@ --overwrite $(DEMO_SIZE) -c 'bash demo/cast.sh'
 
-# The two build products, both gitignored. `lib/numbers.ts` is generated too but
-# is tracked and imported, so it is not a clean target — deleting it breaks the
-# build until `make numbers` runs. `tmp/probe.cjs` used to be listed here and no
-# target has ever written it: a hand-run scratch file clean had no business
-# deleting.
+demo/demo.gif: tmp/demo.cast
+	agg --theme $(subst $(space),,$(DEMO_THEME)) --font-size 18 $(DEMO_SIZE) \
+	    --idle-time-limit 1.6 --last-frame-duration 3 $< $@
+
+demo/demo.mp4: demo/demo.gif
+	ffmpeg -y -loglevel error -i $< -movflags faststart -pix_fmt yuv420p \
+	    -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2' $@
+
+demo: demo/demo.mp4
+
+# The launch loop. The V8 mark is Google's: it is fetched here and never
+# committed to this repository, and demo/meme/recolour.py only rewrites its
+# fills. See BUGS TC-30 for the trademark question, which is the owner's.
+tmp/v8-outline.svg:
+	mkdir -p tmp
+	curl -sSfL -o $@ https://v8.dev/_img/v8-outline.svg
+
+demo/meme/rig.html: demo/meme/rig.template.html demo/meme/recolour.py tmp/v8-outline.svg
+	python3 demo/meme/recolour.py
+
+# 192 frames at 24fps is the 8-second loop the beats are timed against; changing
+# it moves every caption, because a beat is a range of t and not a frame count.
+demo/meme/turbo.mp4: demo/meme/rig.html demo/meme/capture.js
+	node demo/meme/capture.js 192
+	ffmpeg -y -loglevel error -framerate 24 -i tmp/meme-frames/%04d.png \
+	    -movflags faststart -pix_fmt yuv420p -crf 20 \
+	    -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2' $@
+	ffmpeg -y -loglevel error -i tmp/meme-frames/%04d.png \
+	    -vf "fps=12,scale=600:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=64[p];[b][p]paletteuse=dither=bayer:bayer_scale=3" \
+	    demo/meme/turbo.gif
+	cp tmp/meme-frames/0170.png demo/meme/turbo-card.png
+
+meme: demo/meme/turbo.mp4
+
+# `lib/numbers.ts` is generated too but is tracked and imported, so it is not a
+# clean target — deleting it breaks the build until `make numbers` runs.
+# `tmp/probe.cjs` used to be listed here and no target has ever written it: a
+# hand-run scratch file clean had no business deleting.
 clean:
-	rm -f meme.svg meme.png
+	rm -f demo/meme/rig.html demo/meme/turbo.mp4 demo/meme/turbo.gif demo/meme/turbo-card.png
 
-publish: meme meme-png
-	cp meme.svg /srv/data/arizuko_krons/web/pub/turbocharge/meme.svg
-	cp meme.png /srv/data/arizuko_krons/web/pub/turbocharge/meme.png
-	cp site/index.html /srv/data/arizuko_krons/web/pub/turbocharge/index.html
+# site/index.html is the page's ONE source. Editing the copy under the webroot
+# instead leaves two versions of the same page and no way to tell which is
+# current — which happened, and is why this comment is here.
+publish: demo meme
+	cp site/index.html $(WEB)/index.html
+	cp demo/demo.mp4 demo/demo.gif $(WEB)/
+	cp demo/meme/turbo.mp4 demo/meme/turbo.gif demo/meme/turbo-card.png $(WEB)/
+
+WEB = /srv/data/arizuko_krons/web/pub/turbocharge
+space := $(subst ,, )
