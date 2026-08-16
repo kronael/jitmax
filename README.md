@@ -244,7 +244,7 @@ published number is no longer what its rows say.
 | `23.7-24.8x` | `bench/delete.jl` — one delete per object with construction counted, n=256 |
 | `3.3-8.7x` | `bench/delete.jl` — the single object with construction counted, every size |
 | `16` | `bench/delete.jl` — the whole sweep |
-| `0.11-0.12x` | `bench/example.jl` — remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps — the older sweep, not re-measured under r2 |
+| `0.11-0.12x` | `bench/example.jl` — remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps |
 
 <!-- /generated -->
 
@@ -290,46 +290,54 @@ rule 13, all three printed.
 
 | Function, and the finding | n | three sweeps | agreement |
 |---|---|---|---|
-| radash `assign` — `accumulating-spread` | 16 | 3.08 / 3.21 / 3.31 | **3.15–3.30** |
-| radash `assign` | 128 | 4.59 / 4.58 / 4.62 | **4.32–4.88** |
-| remeda `mergeAll` — `accumulating-spread` | 8 | 1.38 / 1.31 / 1.37 | **1.31–1.36** |
-| remeda `mergeAll` | 64 | 20.10 / 17.34 / 19.34 | **none — DISAGREES** |
-| es-toolkit `omit` — `delete-property` | 12 | 1.71 / 1.73 / 1.73 | **1.64–1.79** |
-| es-toolkit `omit` | 48 | 3.27 / 3.39 / 3.25 | **3.24–3.36** |
-| zod `cleanEnum` — `chained-allocation` | 16 | 1.32 / 1.46 / 0.91 | **none — DISAGREES** |
-| zod `cleanEnum` | 256 | 1.16 / 0.85 / 1.05 | **0.98–1.03, REJECTED** |
+| radash `assign` — `accumulating-spread` | 16 | 3.22 / 3.25 / 3.46 | **3.13–3.38** |
+| radash `assign` | 128 | 4.60 / 4.65 / 4.44 | **4.38–4.79** |
+| remeda `mergeAll` — `accumulating-spread` | 8 | 1.36 / 1.37 / 1.38 | **1.33–1.42** |
+| remeda `mergeAll` | 64 | 20.29 / 18.09 / 19.88 | **18.78–20.87** |
+| es-toolkit `omit` — `delete-property` | 12 | 1.70 / 1.77 / 1.62 | **1.67–1.71** |
+| es-toolkit `omit` | 48 | 3.13 / 3.17 / 3.32 | **3.14–3.30** |
+| zod `cleanEnum` — `chained-allocation` | 16 | 1.05 / 1.20 / 1.14 | **1.10–1.12** |
+| zod `cleanEnum` | 256 | 1.03 / 1.06 / 1.08 | **1.03–1.10** |
 
 **Reads on the value the function returns**, which is where `delete-property`'s
 cost is actually paid — by the caller, not inside the function:
 
 | Function | n | three sweeps | agreement |
 |---|---|---|---|
-| radash `assign` | 16 / 128 | 1.98 / 2.02 / 1.97 · 1.69 / 1.68 / 1.57 | **1.93–2.08** · **1.58–1.71** |
-| remeda `mergeAll` | 8 / 64 | 0.12 / 0.12 / 0.12 · 0.12 / 0.11 / 0.11 | **0.12** · **0.11–0.12** |
-| es-toolkit `omit` | 12 | 11.46 / 11.37 / 11.08 | **10.95–11.86** |
-| es-toolkit `omit` | 48 | 0.98 / 0.99 / 1.02 | **0.94–1.02, REJECTED** |
-| zod `cleanEnum` | 16 | 1.07 / 1.03 / 0.92 | **1.00–1.15, REJECTED** |
-| zod `cleanEnum` | 256 | 1.02 / 0.98 / 0.96 | **0.98–1.03, REJECTED** |
+| radash `assign` | 16 / 128 | 1.98 / 1.93 / 2.01 · 1.61 / 1.70 / 1.55 | **1.91–2.06** · **1.57–1.70** |
+| remeda `mergeAll` | 8 / 64 | 0.12 / 0.11 / 0.12 · 0.11 / 0.11 / 0.11 | **0.11–0.12** · **0.11** |
+| es-toolkit `omit` | 12 | 11.18 / 11.65 / 11.29 | **10.89–11.77** |
+| es-toolkit `omit` | 48 | 0.99 / 1.01 / 1.05 | **0.97–1.04, REJECTED** |
+| zod `cleanEnum` | 16 | 0.98 / 1.11 / 1.01 | **none — DISAGREES** |
+| zod `cleanEnum` | 256 | 1.02 / 1.01 / 1.05 | **0.98–1.07, REJECTED** |
 
 **The honesty condition.** An end-to-end number is far below the microbenchmark
 ratio, always. `accumulating-spread` cites 186–200x for an object spread at
-n=500; applied to radash's `assign` it moves the whole call 3.2–4.9x, because
+n=500; applied to radash's `assign` it moves the whole call 3.1–4.8x, because
 the function around that one line also allocates, recurses and branches. That
 gap is the most useful thing in this table: it is what a reader gets, and the
 200x is not.
 
 Four things in these tables say something worse than "smaller", and they are
-here at the same size as the wins:
+here at the same size as the wins. **Two of the four were different when this
+section was written**, and the re-measurement moved them in opposite directions
+— which is the reason each cell is run three times and each of the three is
+printed:
 
-- **`omit` at 48 keys rejects on reads** — 0.94–1.02x, an interval spanning 1.0
+- **`omit` at 48 keys rejects on reads** — 0.97–1.04x, an interval spanning 1.0
   in all three sweeps. `%HasFastProperties` is false on *both* sides: building a
   46-key object one key at a time normalizes it just as `delete` does. The fix
   stops fixing the read somewhere between 12 keys and 48, and the rule still
   cannot see the width — so the `fix:` line says it: *"the rebuild helps at 12
   keys and not at 48, where filling it key by key normalizes it too"*.
-- **`mergeAll` at n=64 does not replicate** — 17.34x, 19.34x, 20.10x, with no
-  value inside all three intervals. Under rule 13 that is not a published
-  number, and it is printed here rather than dropped.
+- **`mergeAll` at n=64 stopped disagreeing, and that is not a promotion.** It
+  read 17.34x, 19.34x, 20.10x with no value inside all three intervals, and was
+  printed here as a cell rule 13 refuses. Three fresh sweeps read 20.29x,
+  18.09x, 19.88x and *do* share one, 18.78–20.87x. Six sweeps, the same six
+  numbers scattered over the same range, and the second three happened to
+  overlap. It stays in this list: a cell that agrees on one triple and not on
+  another has shown that its interval is narrower than its spread, which is the
+  thing rule 13 exists to catch, and one agreeing triple does not unshow it.
 - **`mergeAll` reads are 8x slower after the fix**, 0.11–0.12x at both sizes in
   all six sweeps. `Object.assign(out, item)` in a loop — the form this project's
   own evidence names as the fix — returns a `[DictionaryProperties]` object,
@@ -340,17 +348,25 @@ here at the same size as the wins:
   says *"that fills the result key by key, which normalizes it: its reads
   measured 0.11-0.12x of the spread-built object's"*. Same detection, honest
   advice — radash's `assign` is the same fix with the reads coming out
-  1.58–2.08x *faster*, which is why it is a condition to check and not a rule to
-  apply. `BUGS.md` TC-16.
-- **`chained-allocation`'s fix is worth nothing on the real instance**, at
-  either size: 0.98–1.03x with construction counted at a 256-member enum, and
-  three sweeps that cannot agree at a 16-member one. The rule cites 6.48-7.51x
-  for `map` then `filter` at n=1000, where the loop body is one multiply and the
-  allocation is the whole cost. In zod's `cleanEnum` the same two stages sit
-  next to an `Object.entries` allocation neither version avoids and a
-  `Number.parseInt` per key that dwarfs both, and the fused loop pays back what
-  it saved by growing its result array instead of getting it pre-sized by
-  `.map()`. Published as it came out.
+  1.57–2.06x *faster*, which is why it is a condition to check and not a rule to
+  apply. `BUGS.md` TC-16. And zod's `cleanEnum` reads went the other way from
+  `mergeAll`'s: they rejected at 1.00–1.15x and now do not replicate at all
+  (0.98x, 1.11x, 1.01x), so of the six read cells here, one agrees on a real
+  effect, three reject, one is 8x worse and one has stopped agreeing with
+  itself.
+- **`chained-allocation`'s fix is worth almost nothing on the real instance**,
+  and this is the verdict the re-measurement moved. It used to read "worth
+  nothing at either size" — 0.98–1.03x rejecting at a 256-member enum, three
+  sweeps that could not agree at a 16-member one. Re-run, both sizes now clear
+  1.0: **1.10–1.12x** at 16 and **1.03–1.10x** at 256, neither interval spanning
+  it. So the fix is worth something, and what it is worth is three to twelve
+  percent against a rule that cites **6.48-7.51x** for `map` then `filter` at
+  n=1000, where the loop body is one multiply and the allocation is the whole
+  cost. In zod's `cleanEnum` the same two stages sit next to an `Object.entries`
+  allocation neither version avoids and a `Number.parseInt` per key that dwarfs
+  both, and the fused loop pays back most of what it saved by growing its result
+  array instead of getting it pre-sized by `.map()`. Two orders of magnitude
+  between the microbenchmark and the function is the finding either way.
 
 **The whole survey, so the four examples are not four picks out of a hat.**
 Twelve libraries, 850 annotated functions, 1672 findings. No library produced

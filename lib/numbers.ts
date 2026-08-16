@@ -87,6 +87,6 @@ export const N: Record<string, string> = {
   'delete.single.constr': '3.3-8.7x',
   // delete.jl: the whole sweep
   'delete.cells': '16',
-  // example.jl: remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps — the older sweep, not re-measured under r2
+  // example.jl: remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps
   'ex.mergeall.reads': '0.11-0.12x',
 };

@@ -98,6 +98,7 @@ const REMEASURED = new Set([
   'inline.jl',
   'delete.jl',
   'chained.jl',
+  'example.jl',
 ]);
 
 // Does this citation read rows the current runner did not write? Either because
