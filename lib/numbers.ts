@@ -53,19 +53,19 @@ export const N: Record<string, string> = {
   'select.heap.ci100k': '2.30-3.09',
   // select.jl: the whole sweep
   'select.cells': '6',
-  // chained.jl: xs.map(f).filter(g) against one fused pass at n=1000, construction counted — the older sweep, not re-measured under r2
-  'chained.mapfilter': '7.89x',
-  // chained.jl: every interval measured for that cell — the older sweep, not re-measured under r2
-  'chained.mapfilter.ci': '7.41-8.41',
-  // chained.jl: Object.entries(o).map(f) against a for-in walk at n=1000, construction counted — the older sweep, not re-measured under r2
-  'chained.entries.n1000': '3.59x',
-  // chained.jl: every interval measured for that cell — the older sweep, not re-measured under r2
-  'chained.entries.n1000.ci': '3.44-3.77',
-  // chained.jl: the same at n=10000 — the older sweep, not re-measured under r2
-  'chained.entries.n10000': '2.65x',
-  // chained.jl: every interval measured for that cell — the older sweep, not re-measured under r2
-  'chained.entries.n10000.ci': '2.56-2.74',
-  // chained.jl: the 0.3 sweep, which is every row the dispatch-table kernel wrote — the older sweep, not re-measured under r2
+  // chained.jl: xs.map(f).filter(g) against one fused pass at n=1000, construction counted
+  'chained.mapfilter': '6.48-7.51x',
+  // chained.jl: every interval measured for that cell
+  'chained.mapfilter.ci': '5.62-7.90',
+  // chained.jl: Object.entries(o).map(f) against a for-in walk at n=1000, construction counted
+  'chained.entries.n1000': '3.67-3.76x',
+  // chained.jl: every interval measured for that cell
+  'chained.entries.n1000.ci': '3.50-4.04',
+  // chained.jl: the same at n=10000
+  'chained.entries.n10000': '2.55-2.61x',
+  // chained.jl: every interval measured for that cell
+  'chained.entries.n10000.ci': '2.23-2.97',
+  // chained.jl: the 0.3 sweep, which is every row the dispatch-table kernel wrote
   'chained.cells': '24',
   // inline.jl: a callee past the inlining budget against the same callee under it
   'inline.reads': '3.21-4.95x',

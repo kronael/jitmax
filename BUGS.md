@@ -4,7 +4,7 @@ Review queue. Found during audits, fixed only when the owner asks.
 
 ## TC-28 — four silent clauses have drifted, and that is now a pattern (2026-08-16, open, proposal)
 
-The fourth instance, so the pattern is the entry. `EVIDENCE.silent` is exempt
+The fifth rule to show it, so the pattern is the entry. `EVIDENCE.silent` is exempt
 from derivation because it is an argument about where a rule must not fire, and
 `lib/derive.ts` says so on purpose. The consequence is that the numbers carrying
 those arguments are the only published numbers in the repo that a re-measurement
@@ -17,8 +17,11 @@ exists.
 | `allocating-select` | on numbers, **no effect at all**, 1.03x and 0.99x | **1.13-1.22x** at n=10000, no interval spanning 1 | TC-23 |
 | `accumulating-spread` | strings build in 0.27-0.56x and **0.74-0.97x** read back | **0.26-0.52x** and **0.78-1.13x**, seven of nine spanning 1 | TC-26 |
 | `delete-property` | undefined costs 1.01-1.10x, **two of three** intervals spanning 1 | 1.00-1.06x, **three of three** | TC-27 |
+| `chained-allocation` | reading the finished array costs nothing, **0.94-1.03x** | **0.95-1.10x** | here |
+| `chained-allocation` | the split chain is **1.06-1.09x**, every point estimate **under** the 1.10x a broad warning needs | **0.99-1.10x** — one point estimate is now exactly 1.10x, so "under" is false by a hundredth | here |
+| `chained-allocation` | at n=100000 map-then-filter falls to **1.47x** | **1.44-1.52x** | here |
 
-Three of the four still carry their argument: the fifth shape is still an order
+Four of the five still carry their argument: the fifth shape is still an order
 of magnitude past the fourth, the string still wins at building, assigning
 undefined is still the fix. One does not — `allocating-select` claims no effect
 where there is now a measurable one.
@@ -27,7 +30,7 @@ where there is now a measurable one.
 a clause are not arguments and should be derived like every other number; the
 sentences around them stay hand-written. That is a change to what `lib/derive.ts`
 covers, so it needs sign-off, and it is the only fix that stops this recurring —
-four entries in two days is the evidence that a reminder will not.
+five rules in two days is the evidence that a reminder will not.
 
 ## TC-27 — delete's silent clause drifts, and one published cell stops replicating (2026-08-16, open, proposal)
 

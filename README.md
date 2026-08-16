@@ -227,13 +227,13 @@ published number is no longer what its rows say.
 | `2.59-2.92` | `bench/select.jl` — the intervals at n=10000, across the first sweep and the three replications |
 | `2.30-3.09` | `bench/select.jl` — the intervals at n=100000, across the first sweep and the three replications |
 | `6` | `bench/select.jl` — the whole sweep |
-| `7.89x` | `bench/chained.jl` — xs.map(f).filter(g) against one fused pass at n=1000, construction counted — the older sweep, not re-measured under r2 |
-| `7.41-8.41` | `bench/chained.jl` — every interval measured for that cell — the older sweep, not re-measured under r2 |
-| `3.59x` | `bench/chained.jl` — Object.entries(o).map(f) against a for-in walk at n=1000, construction counted — the older sweep, not re-measured under r2 |
-| `3.44-3.77` | `bench/chained.jl` — every interval measured for that cell — the older sweep, not re-measured under r2 |
-| `2.65x` | `bench/chained.jl` — the same at n=10000 — the older sweep, not re-measured under r2 |
-| `2.56-2.74` | `bench/chained.jl` — every interval measured for that cell — the older sweep, not re-measured under r2 |
-| `24` | `bench/chained.jl` — the 0.3 sweep, which is every row the dispatch-table kernel wrote — the older sweep, not re-measured under r2 |
+| `6.48-7.51x` | `bench/chained.jl` — xs.map(f).filter(g) against one fused pass at n=1000, construction counted |
+| `5.62-7.90` | `bench/chained.jl` — every interval measured for that cell |
+| `3.67-3.76x` | `bench/chained.jl` — Object.entries(o).map(f) against a for-in walk at n=1000, construction counted |
+| `3.50-4.04` | `bench/chained.jl` — every interval measured for that cell |
+| `2.55-2.61x` | `bench/chained.jl` — the same at n=10000 |
+| `2.23-2.97` | `bench/chained.jl` — every interval measured for that cell |
+| `24` | `bench/chained.jl` — the 0.3 sweep, which is every row the dispatch-table kernel wrote |
 | `3.21-4.95x` | `bench/inline.jl` — a callee past the inlining budget against the same callee under it |
 | `2.54-5.58` | `bench/inline.jl` — the interval at n=100000 |
 | `4.34-5.22` | `bench/inline.jl` — the interval at n=1000 |
@@ -344,8 +344,8 @@ here at the same size as the wins:
   apply. `BUGS.md` TC-16.
 - **`chained-allocation`'s fix is worth nothing on the real instance**, at
   either size: 0.98–1.03x with construction counted at a 256-member enum, and
-  three sweeps that cannot agree at a 16-member one. The rule cites 7.89x for
-  `map` then `filter` at n=1000, where the loop body is one multiply and the
+  three sweeps that cannot agree at a 16-member one. The rule cites 6.48-7.51x
+  for `map` then `filter` at n=1000, where the loop body is one multiply and the
   allocation is the whole cost. In zod's `cleanEnum` the same two stages sit
   next to an `Object.entries` allocation neither version avoids and a
   `Number.parseInt` per key that dwarfs both, and the fused loop pays back what
