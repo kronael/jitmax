@@ -1,0 +1,52 @@
+The files in this directory named *.before.ts are vendored verbatim from four
+MIT-licensed libraries, and the *.after.ts files are those same functions with
+turbocharge's printed fix applied. They are derivative works of the originals
+and stay under their upstream MIT licence, not under the GPL-2.0-only licence
+that covers the rest of this repository. MIT permits that; the GPL does not
+relicense what it links to.
+
+MIT requires that the copyright notice AND the permission notice below travel
+with every copy of a substantial portion of the software. A verbatim function
+is a substantial portion, so both are reproduced here in full.
+
+
+Copyright (c) 2022 Ray Epps
+  radash 12.1.1 — https://github.com/rayepps/radash
+  src/object.ts and src/typed.ts at commit 4cab190
+  → radash-assign.before.ts, radash-assign.after.ts
+
+Copyright (c) 2018 remeda
+  remeda 2.0.0 — https://github.com/remeda/remeda
+  packages/remeda/src/mergeAll.ts at commit 72ca45e
+  → remeda-merge-all.before.ts, remeda-merge-all.after.ts
+
+Copyright (c) 2024 Viva Republica, Inc
+  es-toolkit 1.50.0 — https://github.com/toss/es-toolkit
+  src/object/omit.ts at commit bec4905
+  → estoolkit-omit.before.ts, estoolkit-omit.after.ts
+
+Copyright (c) 2020 Colin McDonnell
+  zod 4.4.3 — https://github.com/colinhacks/zod
+  packages/zod/src/v4/core/util.ts at commit 5e60885
+  → zod-clean-enum.before.ts, zod-clean-enum.after.ts
+
+
+                            The MIT License (MIT)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

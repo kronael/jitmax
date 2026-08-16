@@ -531,7 +531,10 @@ It is not published to npm. Get it by cloning the repository.
 `examples/` is the exception, and deliberately so: the `.before.ts` files are
 functions vendored verbatim from radash, remeda, es-toolkit and zod, all
 **MIT**, and each file carries its upstream's copyright line, version and
-commit. MIT is compatible with the GPL, and the point of the whole exercise is
-that the code measured there is somebody else's.
+commit. Those files stay under their upstream MIT licence rather than the GPL,
+and `examples/LICENSE-MIT` reproduces the permission notice MIT requires to
+travel with them, alongside the four copyright holders and the commit each
+function came from. The point of the whole exercise is that the code measured
+there is somebody else's.
 
 Status: v0.5.1, single machine, seven rules.

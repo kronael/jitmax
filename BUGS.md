@@ -2,6 +2,41 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
+## ✅ FIXED 2026-08-16 — TC-29 — four MIT libraries vendored without the notice MIT requires
+
+Found in the pre-publication audit, and fixed in the same pass because the
+owner asked for a release that survives one.
+
+`examples/` holds eight files vendored verbatim from radash, remeda, es-toolkit
+and zod. Every one carried its upstream copyright line, its version and the
+commit it came from — and none carried the permission notice. MIT is not
+satisfied by attribution: it requires that "the above copyright notice **and
+this permission notice**" travel with every copy of a substantial portion of
+the software. A whole function copied byte for byte is a substantial portion,
+four times over.
+
+Nothing in the repository held that text. `LICENSE` is the GPL-2.0-only body,
+the eight file headers hold two lines each, and README's Licence section said
+"each file carries its upstream's copyright line, version and commit" — an
+accurate description of a set that was incomplete.
+
+The failure is one an audit finds and a test cannot: the repo checks that every
+published NUMBER matches its data, and had no check at all on the terms it
+redistributes somebody else's code under. It was introduced with the examples
+directory itself, so it has been wrong since the day the examples landed.
+
+**Fixed**: `examples/LICENSE-MIT` reproduces the MIT permission notice in full,
+with the four copyright holders, the upstream version, the source path and the
+commit each function was taken at, and the files each one produced. README's
+Licence section points at it and now says the examples stay under MIT rather
+than the GPL, which is what is actually true of them.
+
+Still open after this: nothing enforces it. A fifth vendored example would
+reintroduce the defect silently, exactly as the first four did. The cause fix
+is a check in `make test` that every `examples/*.before.ts` names an upstream
+covered by `examples/LICENSE-MIT`. That is a new check and not a correction, so
+it is a proposal and waits for sign-off.
+
 ## TC-28 — four silent clauses have drifted, and that is now a pattern (2026-08-16, open, proposal)
 
 The fifth rule to show it, so the pattern is the entry. `EVIDENCE.silent` is exempt
