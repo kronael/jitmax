@@ -4,48 +4,74 @@
 <meta charset="utf-8">
 <title>turbocharge — loop rig</title>
 <style>
-  /* PH3 palette, copied from /pub/krons/ph3/index.html. Nothing outside it. */
+  /* PH3 palette, copied from /pub/krons/ph3/index.html — plus one deliberate
+     addition: --volt, the charge. PH3 has no colour that means "on", and a
+     piece called turbocharge with no charge in it read as a grey smudge. Volt
+     is the mint of --white-p pushed to saturation, so it reads as white-p lit
+     rather than a second brand. */
   :root {
     --bg:      #0a0a0a;
     --muted:   #888888;
     --white-p: #f0fff0;
     --red-p:   #cc2936;
     --red-lit: #ff6b6b;
+    --volt:    #52ffb8;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { background: var(--bg); }
   #stage {
     position: relative; width: 1200px; height: 630px; overflow: hidden;
-    background: var(--bg);
+    /* A faint mint-charcoal pool behind the mark, so the card is not a flat
+       void on a dark timeline. It tops out at #131813 — PH3's near-black
+       floor survives it. */
+    background:
+      radial-gradient(620px 360px at 600px 240px, #131813 0%, rgba(19,24,19,0) 72%),
+      var(--bg);
     font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'DejaVu Sans', sans-serif;
   }
   #markwrap {
-    position: absolute; left: 0; right: 0; top: 62px; height: 340px;
+    position: absolute; left: 0; right: 0; top: 58px; height: 330px;
     display: flex; justify-content: center; align-items: center;
   }
-  #mark { width: 340px; height: 340px; display: block; }
+  #mark { width: 330px; height: 330px; display: block; }
   .v8-body { fill: var(--body); }
   .v8-chev { fill: var(--chev); }
+  .v8-wing { fill: var(--wing); }
   /* Centred on the mark and falling off fast, so the corners keep PH3's
      near-black. A full-frame white wash lifts the whole ground to mid-grey and
      the piece stops being PH3 for the length of the strike. */
   #flash {
     position: absolute; inset: 0; opacity: 0;
-    background: radial-gradient(circle at 600px 232px,
+    background: radial-gradient(circle at 600px 224px,
       var(--white-p) 0%, rgba(240,255,240,0.35) 26%, rgba(240,255,240,0) 52%);
     mix-blend-mode: screen; pointer-events: none;
   }
   #bolt { position: absolute; inset: 0; pointer-events: none; }
+  #boltpath {
+    fill: none; stroke: var(--volt); stroke-width: 7;
+    stroke-linejoin: round; stroke-linecap: round;
+  }
   #caption {
-    position: absolute; left: 0; right: 0; top: 438px;
-    text-align: center; padding: 0 90px;
+    position: absolute; left: 0; right: 0; top: 420px;
+    text-align: center; padding: 0 80px;
     font-size: 41px; font-weight: 600; letter-spacing: -0.015em;
     line-height: 1.22; color: var(--white-p);
   }
+  #caption .num  { font-size: 82px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.06; }
+  #caption .red  { color: var(--red-lit); }
+  #caption .volt { color: var(--volt); }
+  #caption .name { font-size: 76px; font-weight: 800; letter-spacing: -0.022em; line-height: 1.12; color: var(--white-p); }
+  #caption .sub  { font-size: 37px; font-weight: 600; }
+  /* The provenance line. The claim above it is only as good as its rows, and
+     naming the sweep file on the card is the whole thesis in nine words. */
+  #caption .src  {
+    display: block; margin-top: 20px;
+    font-size: 20px; font-weight: 500; letter-spacing: 0.02em; color: var(--muted);
+  }
   #wordmark {
-    position: absolute; left: 0; right: 0; bottom: 40px;
+    position: absolute; left: 0; right: 0; bottom: 30px;
     text-align: center;
-    font-size: 20px; font-weight: 500; letter-spacing: 0.18em; color: var(--muted);
+    font-size: 25px; font-weight: 600; letter-spacing: 0.10em; color: var(--muted);
   }
 </style>
 </head>
@@ -59,8 +85,7 @@
   </div>
   <!-- The bolt terminates ON the mark. A stroke that crosses the whole frame
        reads as a scratch on the film and cuts the caption in half. -->
-  <svg id="bolt" viewBox="0 0 1200 630"><path id="boltpath" fill="none"
-    stroke="#f0fff0" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"
+  <svg id="bolt" viewBox="0 0 1200 630"><path id="boltpath"
     d="M676 -20 L612 96 L668 112 L598 232"/></svg>
   <div id="flash"></div>
   <div id="caption"></div>
@@ -70,7 +95,10 @@
 <script>
 // A frame is a pure function of t. No Math.random: the jitter is a seeded hash
 // of the frame index, so frame t renders identically on every capture.
-const S = { bg: '#0a0a0a', whiteP: '#f0fff0', redP: '#cc2936', redLit: '#ff6b6b', muted: '#888888' };
+const S = {
+  bg: '#0a0a0a', whiteP: '#f0fff0', redP: '#cc2936', redLit: '#ff6b6b',
+  muted: '#888888', volt: '#52ffb8',
+};
 
 const el = (id) => document.getElementById(id);
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -96,17 +124,34 @@ function mix(a, b, x) {
   const c = (u, v) => Math.round(u + (v - u) * clamp(x, 0, 1));
   return `rgb(${c(r1, r2)},${c(g1, g2)},${c(b1, b2)})`;
 }
-// The chevron reads as the mark's shadow side: same hue, driven down toward the
-// ground so the V stays legible against the body at every colour.
+// The chevron reads as the mark's shadow side, the wings as its half-light:
+// the same hue as the body, driven toward the ground by different amounts, so
+// the V8 keeps upstream's three-tone layering at every colour.
 const shade = (c, k) => mix(c, S.bg, k);
 
-// The beats. The shortest caption holds 1.5s of an 8s loop.
+// The beats. The shortest caption holds 1.5s of an 8s loop. {key} is a lookup
+// into lib/numbers.ts — every published number is derived, never typed, and
+// the capture injects the table via setNumbers before the first frame. An
+// uninjected rig renders the raw {key}, visibly wrong, never a stale number.
 const BEATS = [
   { at: 0.035, to: 0.215, text: 'V8 predicts what your code will do.' },
   { at: 0.255, to: 0.470, text: 'Five shapes reach one line.<br>The prediction breaks.' },
-  { at: 0.515, to: 0.690, text: '<span style="color:#ff6b6b">4.4&ndash;11.5x slower.</span><br>Nothing warns you.' },
-  { at: 0.760, to: 0.960, text: 'turbocharge finds the line.' },
+  { at: 0.515, to: 0.690, text: '<span class="num red">{elem.reads} slower.</span><br><span class="sub">Nothing warns you.</span>' },
+  { at: 0.760, to: 0.960, lockup: true, text:
+      '<span class="name">turbocharge</span><br>' +
+      '<span class="sub">finds the line. <span class="volt">Measured: {elem.reads}.</span></span>' +
+      '<span class="src">five shapes, reads only, L1 through RAM &mdash; bench/shapes-calibrated.jl</span>' },
 ];
+
+// The only transform on a number is typographic: the hyphen of a range becomes
+// an en dash. A key the table lacks throws, which fails the capture.
+let beats = null;
+window.setNumbers = function (nums) {
+  beats = BEATS.map((b) => ({ ...b, text: b.text.replace(/\{([a-z0-9.]+)\}/g, (_, k) => {
+    if (!(k in nums)) throw new Error(`lib/numbers.ts has no '${k}'`);
+    return nums[k].replace(/(\d)-(\d)/g, '$1–$2');
+  }) }));
+};
 
 window.renderFrame = function (t) {
   t = ((t % 1) + 1) % 1;
@@ -115,20 +160,23 @@ window.renderFrame = function (t) {
   const strike = ease(span(t, 0.702, 0.740));   // snapped back, fast
   const charge = clamp(span(t, 0.702, 0.790) - span(t, 0.905, 1.0), 0, 1);
 
-  // Colour: healthy -> broken -> charged -> exactly the opening state.
+  // Colour: healthy white-p -> broken red-p -> charged volt -> exactly the
+  // opening state, because charge has drained to 0 by t=1.
   let body = mix(S.whiteP, S.redP, decay);
   body = mix(body, S.whiteP, strike);
+  body = mix(body, S.volt, 0.85 * charge);
 
   const stage = el('stage');
   stage.style.setProperty('--body', body);
-  stage.style.setProperty('--chev', shade(body, 0.52));
+  stage.style.setProperty('--chev', shade(body, 0.60));
+  stage.style.setProperty('--wing', shade(body, 0.32));
 
   // A drop-shadow glow rather than an SVG blur: it follows the element's alpha,
-  // so the mark keeps its silhouette instead of smearing.
+  // so the mark keeps its silhouette instead of smearing. The glow is --volt.
   el('mark').style.filter = charge > 0.01
-    ? `drop-shadow(0 0 ${(19 * charge).toFixed(1)}px rgba(240,255,240,${(0.62 * charge).toFixed(2)}))`
+    ? `drop-shadow(0 0 ${(22 * charge).toFixed(1)}px rgba(82,255,184,${(0.55 * charge).toFixed(2)}))`
     : 'none';
-  el('mark').style.opacity = (1 - 0.28 * decay * (1 - strike)).toFixed(3);
+  el('mark').style.opacity = (1 - 0.18 * decay * (1 - strike)).toFixed(3);
 
   // Shake only while the prediction is breaking. It stops dead at the strike.
   const amt = 12 * bump(span(t, 0.245, 0.585));
@@ -149,21 +197,24 @@ window.renderFrame = function (t) {
   // Announce, then realize: a caption is fully up before the mark acts on it,
   // and it crossfades rather than cutting.
   const FADE = 0.032;
-  let text = '', op = 0;
-  for (const b of BEATS) {
+  let text = '', op = 0, lock = 0;
+  for (const b of beats ?? BEATS) {
     if (t >= b.at - FADE && t <= b.to + FADE) {
       text = b.text;
       op = Math.min(span(t, b.at - FADE, b.at), 1 - span(t, b.to, b.to + FADE));
+      if (b.lockup) lock = op;
     }
   }
   op = clamp(op, 0, 1);
+  lock = clamp(lock, 0, 1);
   el('caption').innerHTML = text;
   el('caption').style.opacity = op.toFixed(3);
   el('caption').style.transform = `translateY(${(7 * (1 - op)).toFixed(2)}px)`;
 
-  // The wordmark lights up only once the tool has done something.
-  el('wordmark').style.color = mix(S.muted, S.whiteP, charge);
-  el('wordmark').style.opacity = (0.5 + 0.5 * charge).toFixed(3);
+  // The wordmark lights volt as the charge lands, then yields: the lockup IS
+  // the name, and two turbocharges on one frame is one too many.
+  el('wordmark').style.color = mix(S.muted, S.volt, charge);
+  el('wordmark').style.opacity = ((0.62 + 0.38 * charge) * (1 - lock)).toFixed(3);
 };
 
 window.renderFrame(0);

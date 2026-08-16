@@ -118,7 +118,7 @@ demo/meme/rig.html: demo/meme/rig.template.html demo/meme/recolour.py tmp/v8-out
 
 # 192 frames at 24fps is the 8-second loop the beats are timed against; changing
 # it moves every caption, because a beat is a range of t and not a frame count.
-demo/meme/turbo.mp4: demo/meme/rig.html demo/meme/capture.js
+demo/meme/turbo.mp4: demo/meme/rig.html demo/meme/capture.js lib/numbers.ts
 	node demo/meme/capture.js 192
 	ffmpeg -y -loglevel error -framerate 24 -i tmp/meme-frames/%04d.png \
 	    -movflags faststart -pix_fmt yuv420p -crf 20 \

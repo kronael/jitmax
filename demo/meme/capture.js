@@ -6,6 +6,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
+import { N as NUMBERS } from '../../lib/numbers.ts';
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const ROOT = path.resolve(HERE, '..', '..');
@@ -18,6 +19,10 @@ for (const f of fs.readdirSync(OUT)) fs.unlinkSync(path.join(OUT, f));
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1200, height: 630 } });
 await page.goto('file://' + path.join(HERE, 'rig.html'));
+// Every published number is derived, never typed: the rig's captions hold
+// {key} placeholders and this injection resolves them from lib/numbers.ts.
+// A key the table lacks throws here and fails the capture.
+await page.evaluate((nums) => window.setNumbers(nums), NUMBERS);
 const stage = page.locator('#stage');
 
 for (let i = 0; i < N; i++) {
