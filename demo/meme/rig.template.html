@@ -29,6 +29,14 @@
       var(--bg);
     font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'DejaVu Sans', sans-serif;
   }
+  /* Sized so the caption below it is never cropped: the panel is 2.06:1, and a
+     plate wide enough to fill 1200 leaves 66px of frame, which is not a
+     caption. At 860 it ends at y=438 and the act-one caption starts below it;
+     at 980 the caption printed ON the comic and neither could be read. */
+  #plate {
+    position: absolute; left: 50%; top: 20px; width: 860px;
+    transform: translateX(-50%); opacity: 0; display: block;
+  }
   #markwrap {
     position: absolute; left: 0; right: 0; top: 58px; height: 330px;
     display: flex; justify-content: center; align-items: center;
@@ -62,6 +70,10 @@
   #caption .volt { color: var(--volt); }
   #caption .name { font-size: 76px; font-weight: 800; letter-spacing: -0.022em; line-height: 1.12; color: var(--white-p); }
   #caption .sub  { font-size: 37px; font-weight: 600; }
+  #caption .hit  { font-size: 54px; font-weight: 800; letter-spacing: -0.02em; }
+  /* Act one sets its own type: the panel owns the top of the frame, so the
+     caption has 170px rather than 210 and cannot use act three's sizes. */
+  #caption.act1 { top: 462px; font-size: 36px; }
   /* The provenance line. The claim above it is only as good as its rows, and
      naming the sweep file on the card is the whole thesis in nine words. */
   #caption .src  {
@@ -77,6 +89,11 @@
 </head>
 <body>
 <div id="stage">
+  <!-- Act one. The real "This Is Fine" panel, duotoned to PH3 by asset.py —
+       fetched, never committed here, and never redrawn. The joke has to be
+       about the SILENCE, because that is what the tool is actually for: the
+       code returns the right answer the whole time it is slow. -->
+  <img id="plate" src="fine.png" alt="">
   <div id="markwrap">
     <!-- The V8 mark, fetched from v8.dev/_img/v8-outline.svg. Only the fill and
          stroke attributes are rewritten, to carry the PH3 palette; every
@@ -133,11 +150,20 @@ const shade = (c, k) => mix(c, S.bg, k);
 // into lib/numbers.ts — every published number is derived, never typed, and
 // the capture injects the table via setNumbers before the first frame. An
 // uninjected rig renders the raw {key}, visibly wrong, never a stale number.
+// Three acts, and the middle one is not in this file: the real terminal
+// recording is cut in at ACT_BREAK by demo/meme/compose.sh. Act one is the
+// joke, act two is the proof, act three is the payoff — so the rig renders
+// [0, ACT_BREAK) and [ACT_BREAK, 1) and the cast sits between them.
+const ACT_BREAK = 0.42;
+
 const BEATS = [
-  { at: 0.035, to: 0.215, text: 'V8 predicts what your code will do.' },
-  { at: 0.255, to: 0.470, text: 'Five shapes reach one line.<br>The prediction breaks.' },
-  { at: 0.515, to: 0.690, text: '<span class="num red">{elem.reads} slower.</span><br><span class="sub">Nothing warns you.</span>' },
-  { at: 0.760, to: 0.960, lockup: true, text:
+  // Act one: the panel, and the reason it is that panel.
+  { at: 0.030, to: 0.140, text: 'Your function passed review.' },
+  { at: 0.175, to: 0.290, text: 'V8 stopped optimising it thousands of calls ago.' },
+  { at: 0.325, to: 0.398, text: '<span class="hit red">Nothing told you.</span>' },
+  // Act three: the mark takes the hit and comes back.
+  { at: 0.455, to: 0.590, text: '<span class="num red">{elem.reads} slower.</span><br><span class="sub">on the line you just read.</span>' },
+  { at: 0.690, to: 0.975, lockup: true, text:
       '<span class="name">turbocharge</span><br>' +
       '<span class="sub">finds the line. <span class="volt">Measured: {elem.reads}.</span></span>' +
       '<span class="src">five shapes, reads only, L1 through RAM &mdash; bench/shapes-calibrated.jl</span>' },
@@ -156,9 +182,22 @@ window.setNumbers = function (nums) {
 window.renderFrame = function (t) {
   t = ((t % 1) + 1) % 1;
 
-  const decay  = ease(span(t, 0.245, 0.500));   // white-p bleeds to red-p
-  const strike = ease(span(t, 0.702, 0.740));   // snapped back, fast
-  const charge = clamp(span(t, 0.702, 0.790) - span(t, 0.905, 1.0), 0, 1);
+  // Act one holds the panel; act three holds the mark. They never share a
+  // frame — a cut, not a dissolve, because the terminal is spliced between
+  // them and a cross-fade into a different act would be a fade to nothing.
+  el('plate').style.opacity =
+    (span(t, 0.000, 0.030) * (1 - span(t, 0.392, ACT_BREAK))).toFixed(3);
+  const marked = t >= ACT_BREAK;
+  el('markwrap').style.opacity = marked ? '1' : '0';
+  el('bolt').style.opacity = marked ? '1' : '0';
+  el('caption').classList.toggle('act1', !marked);
+
+  // Act three opens ALREADY broken: the panel and the terminal have both
+  // shown the damage by now, so replaying the healthy state would be the film
+  // telling the viewer something it has twice told them.
+  const decay  = 1 - ease(span(t, 0.640, 0.690));
+  const strike = ease(span(t, 0.640, 0.678));
+  const charge = clamp(span(t, 0.640, 0.730), 0, 1);
 
   // Colour: healthy white-p -> broken red-p -> charged volt -> exactly the
   // opening state, because charge has drained to 0 by t=1.
@@ -178,21 +217,21 @@ window.renderFrame = function (t) {
     : 'none';
   el('mark').style.opacity = (1 - 0.18 * decay * (1 - strike)).toFixed(3);
 
-  // Shake only while the prediction is breaking. It stops dead at the strike.
-  const amt = 12 * bump(span(t, 0.245, 0.585));
+  // Shake while the mark is still broken. It stops dead at the strike.
+  const amt = 12 * bump(span(t, ACT_BREAK, 0.640));
   const f = Math.round(t * 1000);
   const dx = (hash(f) - 0.5) * 2 * amt;
   const dy = (hash(f + 7919) - 0.5) * 2 * amt;
-  const scale = 1 - 0.07 * decay * (1 - strike) + 0.15 * bump(span(t, 0.702, 0.870));
+  const scale = 1 - 0.07 * decay * (1 - strike) + 0.15 * bump(span(t, 0.640, 0.800));
   el('markwrap').style.transform =
     `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px) scale(${scale.toFixed(4)})`;
 
   // The strike: two frames of bolt, and a flash that never washes the ground
   // out — PH3's near-black is the piece's floor and has to survive it.
-  const boltIn = span(t, 0.694, 0.706), boltOut = span(t, 0.706, 0.726);
+  const boltIn = span(t, 0.630, 0.644), boltOut = span(t, 0.644, 0.664);
   el('boltpath').style.opacity = (boltIn * (1 - boltOut)).toFixed(3);
   el('boltpath').setAttribute('stroke-width', (6 + 10 * bump(boltIn)).toFixed(1));
-  el('flash').style.opacity = (0.80 * bump(span(t, 0.700, 0.734)) ** 2.6).toFixed(3);
+  el('flash').style.opacity = (0.80 * bump(span(t, 0.636, 0.672)) ** 2.6).toFixed(3);
 
   // Announce, then realize: a caption is fully up before the mark acts on it,
   // and it crossfades rather than cutting.

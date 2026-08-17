@@ -36,10 +36,18 @@
 <h1>turbocharge</h1>
 <p class="hub-subtitle">mark the function you need fast, and find out what is wrong with it</p>
 
-<video autoplay loop muted playsinline poster="turbo-card.png">
+<video autoplay loop muted playsinline poster="turbo-card.png"
+       aria-label="Three parts: a comic panel, a real terminal recording of the checker, and the V8 mark with the measured cost.">
   <source src="turbo.mp4" type="video/mp4">
-  <img src="turbo.gif" alt="A V8 engine shakes, lightning hits it, and it comes back glowing.">
+  <img src="turbo.gif" alt="Three parts: a comic panel, a real terminal recording of the checker, and the V8 mark with the measured cost.">
 </video>
+
+<p class="cap">
+  The middle of that is a real recording, not a mock-up — the checker running
+  against a function radash ships, vendored into <code>examples/</code>
+  unchanged. <code>make meme</code> rebuilds the whole film from a clean
+  checkout.
+</p>
 
 <div class="tldr-box">
   <div class="tldr-label">TL;DR</div>
@@ -53,21 +61,30 @@
   </div>
 </div>
 
-<h2>The idea, in one paragraph</h2>
+<h2>The idea</h2>
 
 <p>
-  Think of V8 as a waiter who memorises your order. Come in with the same order
-  every day and the waiter has it ready before you sit down. Change it a little
-  each visit and the waiter gives up memorising and asks every time. Your code
-  does the same thing to V8. Hand one line of code five different shapes of
-  object and it stops guessing. Delete a key from an object and V8 files that
-  object in a slower drawer. Rebuild an array from a copy of itself inside a
-  loop and you copy everything you already have, on every pass.
+  V8 watches your code run. It notices what shape of data goes through each
+  line, then compiles a version of that line which assumes the shape holds. The
+  assumption is a bet, and it usually pays: that is most of why JavaScript is
+  fast at all.
 </p>
 
 <p>
-  None of that looks wrong when you read it. That is the whole problem, and it
-  is what this tool is for.
+  One line can keep four shapes in its head. Send a fifth through and the bet is
+  off — V8 throws the specialised version away and goes back to looking the
+  answer up, every call, forever. Your code still returns exactly what it
+  returned before. There is no error, no warning, no log line. The function
+  simply costs more than it did last week, and the profiler points at a line
+  that looks completely ordinary.
+</p>
+
+<p>
+  A handful of other patterns do the same kind of damage. Delete a key and V8
+  moves that object to a slower kind of storage and leaves it there. Rebuild an
+  array from a copy of itself inside a loop and every pass copies everything the
+  last pass built. None of it looks wrong on screen, which is why it survives
+  review.
 </p>
 
 <h2>Use it</h2>
@@ -87,16 +104,6 @@ export function total(rows: Row[]): number { … }</code></pre>
   clean, <code>1</code> when it has something to report <em>or</em> when it
   could not read your whole call tree, and <code>2</code> when the tool itself
   broke. A run that could not see everything is never a pass.
-</p>
-
-<video autoplay loop muted playsinline aria-label="A terminal recording: the tool runs against a radash function and reports one finding.">
-  <source src="demo.mp4" type="video/mp4">
-  <img src="demo.gif" alt="A terminal recording: the tool runs against a radash function and reports one finding.">
-</video>
-
-<p class="cap">
-  A real recording, not a mock-up. The function is one radash ships, vendored
-  into <code>examples/</code> unchanged. <code>make demo</code> rebuilds it.
 </p>
 
 <h2>What it looks for</h2>

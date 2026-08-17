@@ -83,7 +83,9 @@ example:
 # which runs the checker against a function radash ships. Nothing here is drawn
 # to look like a terminal. 27 rows because that is what the output occupies at
 # 120 columns; a taller frame is half void, and agg must be told the same size
-# asciinema recorded at or the gif crops.
+# asciinema recorded at or the gif crops. Font 14 renders 1028x548, which the
+# film pads out to its 1200x630 canvas rather than scaling — scaling is what
+# makes a terminal look like a picture of a terminal.
 DEMO_SIZE = --cols 120 --rows 27
 # PH3, from /pub/krons/ph3: bg, fg, then the 8 normal and 8 bright slots mapped
 # onto near-black, red-p, white-p and muted. The script uses bright green for
@@ -97,8 +99,11 @@ tmp/demo.cast: demo/cast.sh bin/turbocharge.ts lib/rules.ts examples/radash-assi
 	COLUMNS=120 LINES=27 DEMO_TYPE=1 asciinema rec $@ --overwrite $(DEMO_SIZE) -c 'bash demo/cast.sh'
 
 demo/demo.gif: tmp/demo.cast
-	agg --theme $(subst $(space),,$(DEMO_THEME)) --font-size 18 $(DEMO_SIZE) \
-	    --idle-time-limit 1.6 --last-frame-duration 3 $< $@
+	# --idle-time-limit must sit ABOVE the longest hold in cast.sh (4.5s) or
+	# every pause written for the viewer is silently trimmed back to it, which
+	# is what made the first cut unreadable.
+	agg --theme $(subst $(space),,$(DEMO_THEME)) --font-size 14 $(DEMO_SIZE) \
+	    --idle-time-limit 6 --last-frame-duration 3 $< $@
 
 demo/demo.mp4: demo/demo.gif
 	ffmpeg -y -loglevel error -i $< -movflags faststart -pix_fmt yuv420p \
@@ -106,27 +111,28 @@ demo/demo.mp4: demo/demo.gif
 
 demo: demo/demo.mp4
 
-# The launch loop. The V8 mark is Google's: it is fetched here and never
-# committed to this repository, and demo/meme/recolour.py only rewrites its
-# fills. See BUGS TC-30 for the trademark question, which is the owner's.
+# The film: the meme panel, the real terminal recording, and the payoff.
+# Two source images, both somebody else's and NEITHER committed here — the V8
+# mark and the "This Is Fine" panel are fetched into tmp/. See BUGS TC-30.
 tmp/v8-outline.svg:
 	mkdir -p tmp
 	curl -sSfL -o $@ https://v8.dev/_img/v8-outline.svg
 
+tmp/thisisfine.jpg:
+	mkdir -p tmp
+	curl -sSfL -o $@ https://i.imgflip.com/wxica.jpg
+
+demo/meme/fine.png: demo/meme/asset.py tmp/thisisfine.jpg
+	python3 demo/meme/asset.py
+
 demo/meme/rig.html: demo/meme/rig.template.html demo/meme/recolour.py tmp/v8-outline.svg
 	python3 demo/meme/recolour.py
 
-# 192 frames at 24fps is the 8-second loop the beats are timed against; changing
-# it moves every caption, because a beat is a range of t and not a frame count.
-demo/meme/turbo.mp4: demo/meme/rig.html demo/meme/capture.js lib/numbers.ts
-	node demo/meme/capture.js 192
-	ffmpeg -y -loglevel error -framerate 24 -i tmp/meme-frames/%04d.png \
-	    -movflags faststart -pix_fmt yuv420p -crf 20 \
-	    -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2' $@
-	ffmpeg -y -loglevel error -i tmp/meme-frames/%04d.png \
-	    -vf "fps=12,scale=600:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=64[p];[b][p]paletteuse=dither=bayer:bayer_scale=3" \
-	    demo/meme/turbo.gif
-	cp tmp/meme-frames/0170.png demo/meme/turbo-card.png
+# Depends on demo/demo.mp4: act two IS that recording, so a change to what the
+# checker prints re-cuts the film rather than leaving it quoting an old run.
+demo/meme/turbo.mp4: demo/meme/rig.html demo/meme/fine.png demo/meme/capture.js \
+                     demo/meme/compose.sh demo/demo.mp4
+	bash demo/meme/compose.sh
 
 meme: demo/meme/turbo.mp4
 
@@ -135,14 +141,13 @@ meme: demo/meme/turbo.mp4
 # `tmp/probe.cjs` used to be listed here and no target has ever written it: a
 # hand-run scratch file clean had no business deleting.
 clean:
-	rm -f demo/meme/rig.html demo/meme/turbo.mp4 demo/meme/turbo.gif demo/meme/turbo-card.png
+	rm -f demo/meme/rig.html demo/meme/fine.png demo/meme/turbo.mp4 demo/meme/turbo.gif demo/meme/turbo-card.png
 
 # site/index.html is the page's ONE source. Editing the copy under the webroot
 # instead leaves two versions of the same page and no way to tell which is
 # current — which happened, and is why this comment is here.
 publish: demo meme
 	cp site/index.html $(WEB)/index.html
-	cp demo/demo.mp4 demo/demo.gif $(WEB)/
 	cp demo/meme/turbo.mp4 demo/meme/turbo.gif demo/meme/turbo-card.png $(WEB)/
 
 WEB = /srv/data/arizuko_krons/web/pub/turbocharge
