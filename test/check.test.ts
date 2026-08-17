@@ -510,3 +510,32 @@ test('every vendored example is covered by the MIT notice, and the notice covers
     );
   }
 });
+
+// The published page is the surface most people read, and until this test it
+// was the only one where a number could go stale in silence. README's prose is
+// checked above and `EVIDENCE` interpolates `N` directly; site/index.html had
+// six figures typed by hand. That is the defect TC-28 was, on the page rather
+// than in a clause.
+//
+// Every ratio on the page must BE a value in the derived table — not merely
+// look like one. A sweep that moves therefore breaks the build instead of
+// leaving the page quoting a measurement that no longer exists.
+test('every ratio on the published page is a derived number', () => {
+  const page = fs.readFileSync(path.join(root, 'site', 'index.html'), 'utf8')
+    .replace(/&ndash;|&mdash;|[–—]/g, '-');
+  const values = new Set(Object.values(N));
+
+  // A ratio is a number, or a range of them, followed by x: `4.4-11.5x`,
+  // `149-166x`, `0.03x`. Version strings and pixel counts have no x and do not
+  // match.
+  const quoted = [...page.matchAll(/\b\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?x\b/g)].map((m) => m[0]);
+  assert.ok(quoted.length > 0, 'site/index.html quotes no ratios — the regex has stopped matching');
+
+  const stale = [...new Set(quoted)].filter((q) => !values.has(q));
+  assert.deepStrictEqual(
+    stale,
+    [],
+    `site/index.html quotes ${stale.join(', ')}, which lib/numbers.ts does not contain — ` +
+      'run `make numbers` and update the page, or the page is quoting a sweep that is gone'
+  );
+});

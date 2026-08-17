@@ -2,6 +2,163 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
+> **2026-08-17 — adversarial review.** TC-31 through TC-36 come from a hostile
+> review commissioned to argue the tool is useless. Every one was re-run here
+> before it was written down; the reproductions below are this repository's, not
+> the reviewer's. The reviewer's verdict was "do not publish in its current
+> form", and on the rules it names that verdict is defensible.
+
+## TC-36 — `delete-property` names the wrong V8 mechanism for `delete xs[i]` (2026-08-17, open, proposal)
+
+The rule flags every `DeleteExpression`. Its benchmark deletes a NAMED property
+from an object (`bench/delete.js`, the middle property of a fixed shape), and
+the finding text says "puts its object in dictionary mode".
+
+```ts
+/** @turbocharge */
+export function d(xs: number[], i: number): number[] { delete xs[i]; return xs; }
+```
+
+    delete xs[i] puts its object in dictionary mode
+    measured 12.3-23.0x per property load once the object is in dictionary mode …
+
+Deleting an ARRAY ELEMENT does not put the array in dictionary mode. It makes
+the elements backing store holey — a different representation, a different cost,
+and a different part of V8. The number is real and belongs to the named-property
+case; it is being printed about a case nobody measured.
+
+**Proposal:** narrow the trigger to a named property on a non-array receiver,
+or measure the holey-elements case and give it its own number and its own text.
+Either changes shipped output, so it waits for sign-off.
+
+## TC-35 — `chained-allocation` matches method NAMES, so it fires on strings (2026-08-17, open, proposal)
+
+The rule pairs adjacent calls whose names are in a set (`map`, `filter`,
+`concat`, `slice`, …) and deliberately does not consult the receiver's type.
+
+```ts
+/** @turbocharge */
+export function s(str: string): string { return str.concat("x").slice(1); }
+```
+
+    .concat() then .slice() allocates a whole array between the stages
+
+The receiver is a `string`. No array is allocated anywhere in that expression,
+and the finding says one is. The same fires on any lazy collection whose `map()`
+returns `this`. This is sharper than TC-9, which is about the rule not knowing
+`n`: here the rule does not know it is looking at an array at all, and
+`accumulating-spread` already consults the receiver's type for exactly this
+reason — the string case was measured there and found to be FASTER.
+
+**Proposal:** check the receiver type the way `accumulating-spread` does. The
+type is available; the rule declines to read it.
+
+## TC-34 — `allocating-select` reads an object return TYPE as an allocation (2026-08-17, open, proposal)
+
+`allocates()` asks whether the call's static return type is an object.
+
+```ts
+type P = { a: number };
+function pick(a: P, b: P): P { return a; }   // allocates nothing, ever
+/** @turbocharge */
+export function loop(xs: P[]): P {
+  let x = xs[0];
+  for (const y of xs) x = pick(x, y);
+  return x;
+}
+```
+
+    x is replaced by pick(...), which returns a new object every pass,
+    including the passes that choose the value it already held
+
+`pick` returns its argument. There is no allocation on any pass, and the finding
+asserts one on every pass. The benchmark measured `Box.min`, which runs
+`new Box(...)` in its body. A return type is not an allocation site.
+
+This compounds TC-18, which already records that the rule's six real-world
+findings are all cursor advances rather than the measured shape. Between them,
+the rule has no confirmed true positive on real code.
+
+**Proposal:** require evidence of allocation in the callee's body when the body
+is readable, and stay silent when it is not.
+
+## TC-33 — `closed-world`'s trigger and its benchmark measure different things (2026-08-17, open, proposal)
+
+The most load-bearing entry here, because this rule is **1539 of the 1672
+findings** in the twelve-library survey — 92% of everything the tool has ever
+said about real code.
+
+- The rule fires when TypeScript resolves a callee to a declaration file: it has
+  the signature and no body (`lib/scan.ts`, `unreadable()`).
+- The benchmark measures two fully visible LOCAL functions, identical in
+  behaviour, one padded with dead code past V8's `max_inlined_bytecode_size` of
+  460 so the inliner refuses it (`bench/inline.js`).
+
+Those are not the same condition. A dependency shipping a `.d.ts` says nothing
+about the size of its runtime JavaScript; V8 loads and may inline that function
+perfectly well. The checker cannot see the body, so it cannot know whether V8
+would. Every one of those 1539 findings prints `3.21-4.95x` for a mechanism that
+has not been established at the site it fired on.
+
+README is already candid that the rule is 92% of output and that its n=100000
+cell does not replicate. It is not candid that the trigger and the measurement
+are different mechanisms, and the published page said "V8 cannot inline what it
+cannot see", which is simply not what the benchmark shows. **That sentence is
+corrected as of this entry** — a false mechanism claim in public is not a
+proposal, it is a defect, and it is fixed.
+
+**Proposal, and it is a scope decision rather than a patch:** either
+(a) restate `closed-world` as coverage reporting — "here is what I could not
+check" — and stop attaching a cost to it, which is what it honestly is; or
+(b) keep the cost and gate it on something that actually predicts non-inlining.
+(a) is what the evidence supports.
+
+## TC-32 — the documented invocation discards the project's tsconfig (2026-08-17, open)
+
+`lib/ts.ts` loads `tsconfig.json` only when the caller passed no input paths:
+
+```ts
+if (configPath && inputs.length === 0) { … }
+```
+
+README's own instruction is `turbocharge src`, which passes an input path, so
+the documented form never reads the config. It compiles under built-in
+ES2022/NodeNext options instead. Path aliases, JSX mode, `types`, `strict` and
+ambient declarations can all resolve differently from the project's real build —
+and every type-based rule and every call edge depends on that resolution.
+
+README claimed turbocharge "sees the same code and types your build sees".
+**That sentence is corrected as of this entry**, because it was false.
+
+The fix is small and unambiguous: read the config's `options` whenever one is
+found, and use the caller's file list when they gave one. Recorded rather than
+applied only because it changes what every rule sees, which is a behaviour
+change on a released tool.
+
+## TC-31 — a call through a parameter is neither followed nor reported (2026-08-17, open)
+
+```ts
+/** @turbocharge */
+export function hot(cb: (x: number) => number): number { return cb(1); }
+```
+
+    turbocharge — 1 annotated function, 0 findings
+      every annotated function is clean.
+
+`cb` has no body anywhere in the program. The walk resolves it to a parameter
+declaration, which is not followable and is not in a declaration file, so it
+falls through both branches: not walked, not counted as an escape, not listed.
+Calls through interface methods behave the same way.
+
+The tool's coverage promise is the thing that makes its exit code trustworthy —
+"a run that could not see everything is never a pass". Here it could not see
+into the call, said nothing, and exited 0. README's "every call with no readable
+body is listed by name" **is corrected as of this entry.**
+
+This is the same failure TC-7 fixed for the walk cap and TC-10 records for
+constructors: the walk has a third way of stopping silently.
+
+
 ## TC-30 — the launch loop uses Google's V8 mark, and nobody has cleared that (2026-08-16, open, proposal)
 
 `demo/meme/` builds the loop on the page at krons.fiu.wtf/pub/turbocharge/ from

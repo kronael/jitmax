@@ -57,7 +57,7 @@
     ordinary-looking patterns break the prediction, and V8 moves to a slower
     path without saying so. Mark a TypeScript function with
     <code>/** @turbocharge */</code> and this checker reports those patterns in
-    it, and in every function it calls.
+    it, and in every function it calls whose source it can read.
   </div>
 </div>
 
@@ -140,7 +140,8 @@ export function total(rows: Row[]): number { … }</code></pre>
     </tr>
     <tr>
       <td>a call into code it cannot read</td>
-      <td>V8 cannot inline what it cannot see</td>
+      <td>a callee too big to inline costs this much &mdash; and the checker
+          cannot tell whether yours is</td>
       <td>3.21&ndash;4.95x</td>
     </tr>
   </tbody>

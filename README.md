@@ -106,9 +106,13 @@ Four things, and the second is the point:
   re-run it yourself with `make bench-*`.
 - **the fix**, concretely, not "consider optimising" — and where the fix itself
   stops paying, wherever applying it to somebody else's function found a limit.
-- **what it could not check** — every call with no readable body is listed by
-  name, and a walk that hits its limit prints `WALK TRUNCATED`, exits `1`, and
-  is never reported as clean.
+- **what it could not check** — a call that resolves to a declaration with no
+  body is listed by name, and a walk that hits its limit prints
+  `WALK TRUNCATED`, exits `1`, and is never reported as clean. A call through a
+  parameter or an interface method is NOT listed: it resolves to a declaration
+  that is neither followable nor a declaration file, and falls through both
+  branches (`BUGS.md` TC-31). Read the coverage line as "the calls it could
+  name", not "everything it could not see".
 
 Exit codes: `0` clean, `1` turbocharge has something to report, `2` the tool
 itself failed. A path that does not exist is a `2`, never a clean run — and a
@@ -119,7 +123,12 @@ proves nothing about part of your call tree is not a clean run either.
 
 Node `>=22.18`, which strips types itself, so there is no build step.
 TypeScript `>=5.0.0` as a peer dependency — turbocharge loads *your* copy, so it
-sees the same code and types your build sees.
+parses with the same compiler your build does. It does **not** yet read your
+`tsconfig.json` when you pass it a path: the config is loaded only for a bare
+`turbocharge` with no arguments, and the documented `turbocharge src` form
+compiles under built-in ES2022/NodeNext options instead. Path aliases, JSX mode
+and ambient types can therefore resolve differently from your build
+(`BUGS.md` TC-32).
 
 ## Why this exists
 
