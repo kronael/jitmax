@@ -8,6 +8,236 @@ Review queue. Found during audits, fixed only when the owner asks.
 > the reviewer's. The reviewer's verdict was "do not publish in its current
 > form", and on the rules it names that verdict is defensible.
 
+## TC-43 — `accumulating-spread` is evaded by three tokens, and no rule is inter-procedural (2026-08-17, open, proposal)
+
+Five annotated functions, each holding the measured defect in a form one
+keystroke from `bench/spread.js`'s `spread` variant. **`0 findings`, exit 0:**
+
+- `this.acc = [...this.acc, x]` — the rule requires `ts.isIdentifier(node.left)`,
+  and a property target is not an identifier.
+- `xs.forEach(x => { acc = [...acc, x] })` — `walkLoops` knows five loop node
+  kinds; `reduce` was hand-special-cased and `forEach` was not.
+- `acc = append(acc, x)` with `append = (a, x) => [...a, x]` — **the walk enters
+  `append`**, but no rule is inter-procedural, so the loop is in one body and
+  the copy is in another and neither sees the other.
+- `const doubled = xs.map(f); const kept = doubled.filter(g)` — the same two
+  allocations `chained-allocation` measures, but `stage()` only matches a call
+  whose receiver is itself a call.
+
+The call-tree walk is the product's premise — the annotation exists so the tool
+can follow calls the way `@njit` follows them — and every rule is a single-body
+syntax match. Hoisting three tokens into a helper the walk already visits
+silences the tool completely.
+
+**Proposal:** either make the allocation rules inter-procedural over
+`mark.reached`, which is the walk's whole point, or say plainly that rules are
+single-body and the walk only widens *where* they are applied.
+
+## TC-42 — the flagship rule cannot detect what its own benchmark measured (2026-08-17, open, proposal)
+
+**The most serious entry in this file.** Both directions were re-run here.
+
+`bench/shapes.js` says what it builds, in its own comment:
+
+> Five key orders. Same three fields, same object size, five distinct maps — so
+> the only thing that varies across variants is shape count.
+
+    (x, y, z) => ({ x, y, z }),  (x, y, z) => ({ x, z, y }),  (x, y, z) => ({ y, x, z }), …
+
+**Key order is not part of a TypeScript type.** All five builders have the type
+`{ x: number; y: number; z: number }`. So the measured program has ONE
+TypeScript type and FIVE V8 maps, and `megamorphic-elements` triggers on the
+count of union MEMBERS — which is 1 there.
+
+Verified with `--allow-natives-syntax` on this machine:
+
+    five aliases of one type share one map:              true
+    five discriminated-union variants share one map:     true
+    five KEY ORDERS share one map:                       false
+
+**Direction A — silent on its own kernel.** `bench/shapes.js` transliterated to
+TypeScript with its construction sites intact:
+
+    turbocharge — 1 annotated function, 0 findings
+      every annotated function is clean.
+
+**Direction B — fires where V8 has one map.** Five *aliases* of one identical
+type, `type P1..P5 = { x: number; y: number }`:
+
+    megamorphic-elements
+      ps unions 5 object types; V8 caches four maps per load site …
+
+The reviewer went further and measured the fired case with this project's own
+`bench/driver.js` and `cellOrVoid`: the key-order control reproduced 10.787x at
+L1 while five union members read **0.898x [0.793-1.009]** — and their
+replications read 0.975 / 1.100 / 1.008 at n=256, which protocol rule 6 rejects
+outright, and 0.961 / 1.139 / 1.210 at n=16384, which rule 13 withdraws. Those
+cells were measured under load above the gate and are not evidence-grade; they
+are recorded here as a reason to run the cell properly, not as a published
+number. **The direction they point is not in doubt, because the map identity
+above is not a measurement — it is what V8 reports.**
+
+**And the printed fix is a rename.** "Get the element type to four shapes or
+fewer" is satisfied by deleting `P5` and writing `P1` in its place:
+`(P1|P2|P3|P4|P1)` — identical emitted JavaScript, `0 findings`, exit 0.
+
+`megamorphic-dispatch` has the same defect in its own form: one class with five
+phantom generic instantiations fires at 14.6-20.0x, and at runtime the five
+instances share one map AND one call target.
+
+This is not TC-2 ("a TypeScript union member is not a V8 map", filed as a known
+imprecision) and not TC-8. TC-2 records the gap as an inference limit and says
+the fix "belongs to a runtime half this project does not have". That excuse does
+not survive the two commonest false-positive classes here: repeated aliases and
+same-key-set discriminated unions are both killable by comparing the members'
+property-name lists, which `checker` already has.
+
+**Proposal, and it decides whether the rule ships at all:**
+
+1. Compare member property-name lists and stay silent when they match. Kills the
+   two false-positive classes above; does nothing for direction A.
+2. Re-measure the cell with five variants that differ the way the RULE detects —
+   different property sets — and publish that number instead. If it reads ~1.0x,
+   the rule has no evidence and should be withdrawn the way `boxed-elements`
+   was.
+3. Withdraw the rule now and reinstate it if (2) finds an effect.
+
+Until one of those happens the page must not print `4.4-11.5x` beside a
+description of what this rule detects. **The page is corrected as of this
+entry.**
+
+## TC-41 — an example's `.after.ts` is a rewrite, and its costly axis is never swept (2026-08-17, open, proposal)
+
+`CLAUDE.md` says `examples/` holds "a `.after.ts` carrying the fix turbocharge
+printed and nothing besides". The printed `delete-property` fix is one English
+sentence with two branches: "assign undefined where the key may stay present,
+**or build the object without it**". `examples/estoolkit-omit.after.ts` takes
+branch two as a nested loop — for each of n keys, a scan over the k omitted
+ones. es-toolkit ships O(n+k); the "fix" is O(n·k).
+
+`examples/workloads.ts:182` pins **k = 2** (`['password', 'token']`) at both
+sizes. n is swept (12 and 48). **k is never swept**, and k is the only axis in
+which the rewrite changes complexity — so protocol rule 12 was applied to the
+axis the rewrite leaves alone.
+
+`1.64-3.36x` is therefore what one hand-chosen reading of an English sentence is
+worth at the most favourable value of the parameter that reading regresses. A
+user who wrote `Object.fromEntries(Object.entries(o).filter(...))` — an equally
+faithful reading — gets a number nobody measured.
+
+**Proposal:** sweep k, and publish what happens where the rewrite loses.
+
+## TC-40 — the published page is a highlight reel of numbers README retracts (2026-08-17, open)
+
+README carries four qualifications it calls the honesty condition. The page
+carries none of them, while printing the same ratios under a column headed
+**Measured**:
+
+| the page says | README says |
+|---|---|
+| `allocating-select` … 2.56-2.87x | **no instance of the measured shape in 850 functions**; all six real findings are cursor advances (TC-18) |
+| `delete-property` … 12.3-23.0x | the 23.0x end is a cell whose three sweeps read 22.98 / 13.73 / 15.53 and do not replicate (TC-27) |
+| `.map().filter()` … 6.48-7.51x | — and its own cell fails rule 13, see TC-37 |
+| a call it cannot read … 3.21-4.95x | `closed-world` "makes no speed claim"; 92% of all findings; n=100000 does not replicate |
+
+The page also carries **no end-to-end number at all**, while README's own table
+puts the delivered result on real functions at 1.03x to 4.88x with three
+rejections and one 9x regression.
+
+**Proposal:** the page inherits the honesty conditions, or the page stops
+quoting the ratios. A number is not more true for being on a nicer background.
+
+## TC-39 — two rules measure MORE where they stay silent than where they fire (2026-08-17, open, proposal)
+
+The page's argument for trusting the rules is: "Every rule also records where
+the same benchmark found nothing, and a test fails if the rule fires there
+anyway." For two of seven rules, "found nothing" is not what the benchmark
+found.
+
+- **`megamorphic-dispatch`** fires on `disp.proto.reads` = **14.6-20.0x** and
+  stays silent on `disp.silent.own` = **3.5-14.8x**. The ranges overlap. The
+  silent case is every shape carrying its OWN function, which the same sweep
+  measured at up to 14.8x — the rule declines to report a cost the size of the
+  one it exists to warn about, because no declared type separates the two.
+- **`allocating-select`** fires at `select.heap` = 2.56-2.87x and is silent at
+  `select.silent.local` = 2.01-2.45x, kept in a local where escape analysis
+  could see it. The ranges do not overlap, but 2.45x is not "nothing".
+
+The `silent` clauses say this in prose, and the prose is honest. The page's
+summary of them is not: "where the benchmark found nothing" is false for both.
+
+**Proposal:** the silent clause is not one thing. Split "measured and rejected"
+from "measured, real, and deliberately not reported", and say which on the page.
+
+## TC-38 — the tool passes its own fix as clean while that fix is 9x worse (2026-08-17, open)
+
+The sharpest defect in this round, because it defeats the exit code.
+
+    node bin/turbocharge.ts examples/remeda-merge-all.before.ts   -> exit 1, 1 finding
+    node bin/turbocharge.ts examples/remeda-merge-all.after.ts    -> exit 0, clean
+
+The `.after.ts` is the fix turbocharge itself printed. `bench/example.jl`
+measures the caller's reads of the result it builds at ratio 0.106-0.123 across
+all twelve sweeps — the fixed object reads **8.15-9.47x SLOWER** than the one
+the defect built, because `Object.assign` in a loop leaves the object in
+`[DictionaryProperties]`.
+
+So the tool reports the strictly worse file as clean, and `CLAUDE.md` is
+explicit that a gate "reads only the second" — the exit code. Anyone who applies
+the advice and re-runs the checker to confirm gets a green run for a regression.
+
+The warning exists, but only in the `fix:` line of the file that still has the
+defect. It is gone at exactly the moment it becomes true.
+
+This is the same class as TC-7 and TC-31: the text and the exit code say
+different things. Unlike those, the text here is not even present.
+
+**Not a documentation fix.** Either `delete-property`/dictionary-mode detection
+has to see the object the fix produces, or the fix line has to stop being
+offered where the measurement says it loses. Both change shipped output.
+
+## TC-37 — protocol rule 13 has no code path to publication (2026-08-17, open, proposal)
+
+`CLAUDE.md` gives rule 13 a paragraph: three whole sweeps per published cell,
+"agreement is a value common to all three intervals … without one the cell is
+**withdrawn as unreplicable**". Three near-identical constructions measuring
+1.64x, 0.91x and 0.89x is the story the whole rule exists for.
+
+`replicates()` is defined at `bench/driver.js:205`. It is imported by
+`bench/run.js`, which uses it to print the word `DISAGREES` to a terminal while
+a sweep runs, and by `bench/tc11-report.js`. **`lib/derive.ts` never calls it,
+and until today no test did either.** Every `agg: 'range'` citation min/maxes
+across sweeps with no agreement check at all.
+
+So the rule was enforced by a human happening to re-read rows. Twelve published
+cells were not re-read:
+
+| cell | three sweeps | verdict |
+|---|---|---|
+| `chained.jl chained\|incl\|1000` | 7.51 / 6.58 / 6.48 | max(lo) 7.152 > min(hi) 7.057 |
+| `inline.jl large\|excl\|100000` | 4.73 / 4.68 / 3.21 | max(lo) 4.282 > min(hi) 3.880 |
+| `shapes-calibrated.jl 3\|incl\|16384\|L2` | 1.57 / 1.37 / 1.28 | no common value |
+| `shapes-calibrated.jl 4\|incl\|16384\|L2` | 1.31 / 1.58 / 1.47 | no common value |
+| plus 8 more, all listed in `test/check.test.ts` | | |
+
+The first two are **on the published page**. `6.48-7.51x` is the
+`.map().filter()` headline. And `3.21-4.95x` is worse than unreplicable: its low
+end 3.21 **is the dissenting sweep's own ratio**, and its high end comes from a
+different cell (n=1000) that does replicate — an advertised interval assembled
+from one cell that agrees with itself and one that does not.
+
+**Fixed in part, today:** `make test` now recomputes agreement for every
+replicated cell in every re-measured file and fails on any disagreement not on
+an explicit list. A new one breaks the build; a listed one that starts agreeing
+also breaks it, so the list cannot rot. That makes the twelve visible and
+bounded.
+
+**Not fixed, and this is the proposal:** the twelve are still published.
+Enforcing rule 13 as written withdraws them, which moves numbers on the page and
+in `EVIDENCE`. That is the owner's call. `lib/derive.ts` should call
+`replicates()` itself and refuse to emit an unreplicable range — the guard
+belongs where the number is made, not in a terminal nobody is reading at 3am.
+
 ## TC-36 — `delete-property` names the wrong V8 mechanism for `delete xs[i]` (2026-08-17, open, proposal)
 
 The rule flags every `DeleteExpression`. Its benchmark deletes a NAMED property
@@ -26,6 +256,18 @@ Deleting an ARRAY ELEMENT does not put the array in dictionary mode. It makes
 the elements backing store holey — a different representation, a different cost,
 and a different part of V8. The number is real and belongs to the named-property
 case; it is being printed about a case nobody measured.
+
+Worse, the printed fix makes it a regression. Verified here:
+
+    fresh array             fastProps true   double true    holey false
+    after delete a[50]      fastProps true   double true    holey true
+    after b[50]=undefined   fastProps true   double false   object true
+
+The array never leaves fast properties — it goes PACKED_DOUBLE to HOLEY_DOUBLE.
+And "assign undefined instead" turns PACKED_DOUBLE_ELEMENTS into
+PACKED_ELEMENTS, which is the boxing `bench/arrays.jl` measured at 1.39-1.66x on
+reads and over which this project WITHDREW a rule. It is also a type error on
+`number[]`.
 
 **Proposal:** narrow the trigger to a named property on a non-array receiver,
 or measure the holey-elements case and give it its own number and its own text.

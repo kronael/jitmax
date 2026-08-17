@@ -115,8 +115,11 @@ export function total(rows: Row[]): number { … }</code></pre>
   <tbody>
     <tr>
       <td>a fifth shape of object reaching one line</td>
-      <td>V8 remembers four. The fifth makes it look up every time.</td>
-      <td>4.4&ndash;11.5x</td>
+      <td>V8 remembers four. A fifth makes it look up every time &mdash; but
+          this rule counts TypeScript union members, and the benchmark measured
+          five key orders of one type, which V8 counts and TypeScript does not.
+          <strong>The two do not line up.</strong></td>
+      <td>see <code>BUGS.md</code> TC-42</td>
     </tr>
     <tr>
       <td><code>delete o[k]</code></td>
