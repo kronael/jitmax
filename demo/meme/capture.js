@@ -13,6 +13,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 import { N as NUMBERS } from '../../lib/numbers.ts';
+import { EVIDENCE } from '../../lib/rules.ts';
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const ROOT = path.resolve(HERE, '..', '..');
@@ -31,6 +32,9 @@ await page.goto('file://' + path.join(HERE, 'rig.html'));
 // {key} placeholders and this injection resolves them from lib/numbers.ts.
 // A key the table lacks throws here and fails the capture.
 await page.evaluate((nums) => window.setNumbers(nums), NUMBERS);
+// The names on the burning room are the rules the tool ships, read from the
+// same table the checker reports from — never a list typed into the rig.
+await page.evaluate((names) => window.setRules(names), Object.keys(EVIDENCE));
 const stage = page.locator('#stage');
 
 for (let i = 0; i < N; i++) {

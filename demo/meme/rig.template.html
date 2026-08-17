@@ -29,13 +29,32 @@
       var(--bg);
     font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'DejaVu Sans', sans-serif;
   }
-  /* Sized so the caption below it is never cropped: the panel is 2.06:1, and a
-     plate wide enough to fill 1200 leaves 66px of frame, which is not a
-     caption. At 860 it ends at y=438 and the act-one caption starts below it;
-     at 980 the caption printed ON the comic and neither could be read. */
-  #plate {
-    position: absolute; left: 50%; top: 20px; width: 860px;
-    transform: translateX(-50%); opacity: 0; display: block;
+  /* No caption strip under the panel any more, so the plate gets the frame. */
+  #panel {
+    position: absolute; left: 50%; top: 86px; width: 940px; height: 457px;
+    transform: translateX(-50%); opacity: 0;
+  }
+  #plate { width: 100%; display: block; }
+  /* The heat. The labels are what is burning, so the room gets hotter as they
+     arrive: a red-p wash on screen blend, which lifts the flames and leaves the
+     ink lines alone. */
+  #heat {
+    position: absolute; inset: 0; opacity: 0; pointer-events: none;
+    mix-blend-mode: screen;
+    background:
+      radial-gradient(560px 300px at 14% 74%, rgba(204,41,54,0.85) 0%, rgba(204,41,54,0) 70%),
+      radial-gradient(520px 320px at 92% 60%, rgba(204,41,54,0.85) 0%, rgba(204,41,54,0) 70%),
+      radial-gradient(420px 260px at 52% 30%, rgba(255,107,107,0.55) 0%, rgba(255,107,107,0) 72%);
+  }
+  /* The meme-label look: condensed, upper case, white with a hard black rim.
+     Liberation Sans Narrow is the metric twin of Arial Narrow and the nearest
+     thing on this machine to Impact, which is not installed. */
+  .lbl {
+    position: absolute; font-family: 'Liberation Sans Narrow', Impact, sans-serif;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 0.005em;
+    color: #ffffff; white-space: nowrap; opacity: 0;
+    -webkit-text-stroke: 4px #0a0a0a; paint-order: stroke fill;
+    text-shadow: 0 2px 6px rgba(10,10,10,0.85);
   }
   #markwrap {
     position: absolute; left: 0; right: 0; top: 58px; height: 330px;
@@ -73,7 +92,6 @@
   #caption .hit  { font-size: 54px; font-weight: 800; letter-spacing: -0.02em; }
   /* Act one sets its own type: the panel owns the top of the frame, so the
      caption has 170px rather than 210 and cannot use act three's sizes. */
-  #caption.act1 { top: 462px; font-size: 36px; }
   /* The provenance line. The claim above it is only as good as its rows, and
      naming the sweep file on the card is the whole thesis in nine words. */
   #caption .src  {
@@ -93,7 +111,16 @@
        fetched, never committed here, and never redrawn. The joke has to be
        about the SILENCE, because that is what the tool is actually for: the
        code returns the right answer the whole time it is slow. -->
-  <img id="plate" src="fine.png" alt="">
+  <div id="panel">
+    <img id="plate" src="fine.png" alt="">
+    <div id="heat"></div>
+    <!-- The joke is IN the panel. A strip of explanation underneath is not a
+         meme, it is a slide with a picture on it, and it concedes that the
+         image did not land on its own. Labels are how this format has always
+         worked: name what is on fire. What is on fire is the rule list, and
+         capture.js injects the names straight out of lib/rules.ts so the room
+         cannot burn with a rule the tool no longer ships. -->
+  </div>
   <div id="markwrap">
     <!-- The V8 mark, fetched from v8.dev/_img/v8-outline.svg. Only the fill and
          stroke attributes are rewritten, to carry the PH3 palette; every
@@ -156,11 +183,44 @@ const shade = (c, k) => mix(c, S.bg, k);
 // [0, ACT_BREAK) and [ACT_BREAK, 1) and the cast sits between them.
 const ACT_BREAK = 0.42;
 
+// Where each label sits on the panel and when it lands. Coordinates are panel
+// pixels (940x457) and chosen to fall on flame rather than on a dog or the
+// speech bubble. The order is the order they arrive, and the last one lands
+// just before the cut — the room is still filling up when the film moves on.
+// These names are long — "megamorphic-elements" is 240px at this size — so the
+// scatter is laid out on rows that clear each other rather than by eye. Two
+// labels sharing a row overlapped in the first render and neither could be
+// read. The speech bubble owns panel two's top right corner and nothing goes
+// under it.
+const LABELS = [
+  { at: 0.060, x:  14, y:  96, size: 26, rot: -6 },
+  { at: 0.108, x: 226, y: 182, size: 24, rot:  4 },
+  { at: 0.152, x: 500, y: 140, size: 25, rot:  5 },
+  { at: 0.198, x:  24, y: 302, size: 25, rot:  3 },
+  { at: 0.244, x: 262, y: 374, size: 24, rot: -3 },
+  { at: 0.292, x: 780, y: 216, size: 26, rot: -5 },
+  { at: 0.340, x: 556, y: 402, size: 27, rot:  4 },
+];
+
+// The rule names come from lib/rules.ts, never from this file. A rule that is
+// withdrawn stops burning; a rule that is added starts. The panel is a picture
+// of what the tool actually reports.
+window.setRules = function (names) {
+  const panel = el('panel');
+  LABELS.forEach((L, i) => {
+    if (i >= names.length) return;
+    const b = document.createElement('b');
+    b.className = 'lbl';
+    b.id = `lbl${i}`;
+    b.textContent = names[i];
+    b.style.cssText =
+      `left:${L.x}px;top:${L.y}px;font-size:${L.size}px;transform:rotate(${L.rot}deg)`;
+    panel.appendChild(b);
+  });
+};
+
 const BEATS = [
-  // Act one: the panel, and the reason it is that panel.
-  { at: 0.030, to: 0.140, text: 'Your function passed review.' },
-  { at: 0.175, to: 0.290, text: 'V8 stopped optimising it thousands of calls ago.' },
-  { at: 0.325, to: 0.398, text: '<span class="hit red">Nothing told you.</span>' },
+  // Act one has no beat at all: the panel says it. See #panel.
   // Act three: the mark takes the hit and comes back.
   { at: 0.455, to: 0.590, text: '<span class="num red">{elem.reads} slower.</span><br><span class="sub">on the line you just read.</span>' },
   { at: 0.690, to: 0.975, lockup: true, text:
@@ -185,12 +245,33 @@ window.renderFrame = function (t) {
   // Act one holds the panel; act three holds the mark. They never share a
   // frame — a cut, not a dissolve, because the terminal is spliced between
   // them and a cross-fade into a different act would be a fade to nothing.
-  el('plate').style.opacity =
-    (span(t, 0.000, 0.030) * (1 - span(t, 0.392, ACT_BREAK))).toFixed(3);
+  const shown = span(t, 0.000, 0.028) * (1 - span(t, 0.395, ACT_BREAK));
+  el('panel').style.opacity = shown.toFixed(3);
+  // A slow push in. Nothing in a still panel moves, and a completely static
+  // six seconds reads as a stalled video rather than a held shot.
+  el('panel').style.transform =
+    `translateX(-50%) scale(${(1 + 0.045 * span(t, 0, ACT_BREAK)).toFixed(4)})`;
+  // The labels arrive one at a time. All seven at once is a diagram; arriving
+  // is the joke, because the list keeps going after you have stopped expecting
+  // it to. Each one lands hot and settles.
+  let lit = 0;
+  LABELS.forEach((L, i) => {
+    const e = el(`lbl${i}`);
+    if (!e) return;
+    const a = span(t, L.at, L.at + 0.026);
+    lit += a;
+    e.style.opacity = (shown * a).toFixed(3);
+    e.style.transform =
+      `rotate(${L.rot}deg) scale(${(1 + 0.5 * (1 - a) * a * 4).toFixed(3)})`;
+  });
+  // Hotter with every name. The room is not on fire because of one bad line.
+  el('heat').style.opacity = (shown * 0.17 * lit).toFixed(3);
+  el('plate').style.filter =
+    `saturate(${(0.68 + 0.13 * lit).toFixed(2)}) brightness(${(0.84 + 0.028 * lit).toFixed(3)})`;
+
   const marked = t >= ACT_BREAK;
   el('markwrap').style.opacity = marked ? '1' : '0';
   el('bolt').style.opacity = marked ? '1' : '0';
-  el('caption').classList.toggle('act1', !marked);
 
   // Act three opens ALREADY broken: the panel and the terminal have both
   // shown the damage by now, so replaying the healthy state would be the film

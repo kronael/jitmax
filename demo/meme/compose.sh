@@ -15,7 +15,7 @@ cd "$(dirname "$0")/../.."
 
 BG=0x0a0a0a          # --bg, the colour the terminal is padded out to
 FPS=24
-A1_FRAMES=156        # 6.5s — three captions, each held long enough to read
+A1_FRAMES=180        # 7.5s — seven names arriving one at a time
 A3_FRAMES=120        # 5.0s — the strike and the lockup
 
 node demo/meme/capture.js "$A1_FRAMES" 0    0.42 meme-a1
@@ -40,11 +40,11 @@ ffmpeg -y -loglevel error \
   -map "[v]" -movflags faststart -pix_fmt yuv420p -crf 20 \
   demo/meme/turbo.mp4
 
-# The gif is the fallback for a browser that will not autoplay video. Half size
-# and 10fps, because the full-size gif of a 37-second film is tens of megabytes
-# and nobody waits for it.
+# The gif is only the fallback for a browser that will not autoplay video, so
+# it is sized for someone on a phone who is about to be served it by accident:
+# 480px at 8fps. At 600px and 10fps the same 37 seconds came to 2.7MB.
 ffmpeg -y -loglevel error -i demo/meme/turbo.mp4 \
-  -vf "fps=10,scale=600:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=64[p];[b][p]paletteuse=dither=bayer:bayer_scale=3" \
+  -vf "fps=8,scale=480:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=48[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" \
   demo/meme/turbo.gif
 
 # The social card is a frame of act three, not a separate design: whatever the
