@@ -26,6 +26,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Protocol rule 13's test, imported rather than re-stated. It has one
+// definition, in the file that runs the sweeps, and the gate below is the
+// second caller it should always have had (BUGS TC-37).
+import { replicates } from '../bench/driver.js';
+
 export interface Row {
   runner?: string;
   variant: string;
@@ -79,6 +84,13 @@ interface Citation {
   // show what the replication withdrew. A citation that is merely waiting for
   // its sweep does NOT set this: `REMEASURED` decides that one.
   history?: true;
+  // This citation is ABOUT a cell rule 13 withdrew, and quotes its three
+  // disagreeing sweeps as the refutation they are. Without this flag the gate
+  // below removes exactly the rows such a citation exists to show. A citation
+  // that sets it and finds its cell now REPLICATES fails loudly, for the same
+  // reason a stale exception list fails the test suite: the withdrawal has to
+  // stop being claimed the moment it stops being true.
+  unreplicable?: true;
 }
 
 // Rows the current runner wrote. CLAUDE.md: a superseded sweep is history,
@@ -108,6 +120,7 @@ const REMEASURED = new Set([
   'chained.jl',
   'example.jl',
   'strings.jl',
+  'dispatch.jl',
 ]);
 
 const files = (c: Citation): string[] => (Array.isArray(c.file) ? c.file : [c.file]);
@@ -164,7 +177,12 @@ export const CITATIONS: Record<string, Citation> = {
   'disp.proto.reads': {
     file: 'dispatch.jl',
     cells: 'a method on a prototype, five and six shapes, reads only',
-    pick: (r) => r.family === 'cls' && r.mode === 'excl' && (r.k ?? 0) >= 5 && fresh(r),
+    // `fresh(r)` sat in this pick and in the two construction ones, to keep the
+    // one-sweep rows apart from the cells TC-11 had re-run. Every cell in this
+    // file now carries three sweeps under one runner, so the qualifier matched
+    // nothing and the citation failed at `no rows match` — which is what it is
+    // for. Agreement across the three is the gate's job, not the pick's.
+    pick: (r) => r.family === 'cls' && r.mode === 'excl' && (r.k ?? 0) >= 5,
     agg: 'range',
     dp: 1,
     readme: true,
@@ -197,23 +215,20 @@ export const CITATIONS: Record<string, Citation> = {
       (r.family === 'cls' || r.family === 'lit') &&
       r.mode === 'incl' &&
       r.k === 5 &&
-      (r.size === 'L1' || r.size === 'L2') &&
-      fresh(r),
+      (r.size === 'L1' || r.size === 'L2'),
     agg: 'range',
     dp: 1,
   },
   'disp.constr.l3.five': {
     file: 'dispatch.jl',
-    cells: 'a method on a prototype at RAM size, five and six shapes, the replicated cells',
-    pick: (r) =>
-      r.family === 'cls' && r.mode === 'incl' && r.size === 'L3' && (r.k ?? 0) >= 5 && replicated(r),
+    cells: 'a method on a prototype at RAM size, five and six shapes',
+    pick: (r) => r.family === 'cls' && r.mode === 'incl' && r.size === 'L3' && (r.k ?? 0) >= 5,
     agg: 'range',
   },
   'disp.constr.l3.four': {
     file: 'dispatch.jl',
     cells: 'the same cells at two to four shapes',
-    pick: (r) =>
-      r.family === 'cls' && r.mode === 'incl' && r.size === 'L3' && (r.k ?? 0) <= 4 && replicated(r),
+    pick: (r) => r.family === 'cls' && r.mode === 'incl' && r.size === 'L3' && (r.k ?? 0) <= 4,
     agg: 'range',
   },
   'disp.cells': {
@@ -227,6 +242,7 @@ export const CITATIONS: Record<string, Citation> = {
     cells: 'four shapes on a prototype method, reads only, every size — where the rule is quiet',
     pick: (r) => r.family === 'cls' && r.mode === 'excl' && r.k === 4,
     agg: 'range',
+    readme: true,
   },
   'disp.silent.shared4': {
     file: 'dispatch.jl',
@@ -240,6 +256,9 @@ export const CITATIONS: Record<string, Citation> = {
     pick: (r) => r.family === 'lit' && r.mode === 'excl',
     agg: 'range',
     dp: 1,
+    // Quoted in README's defects list, where it was hand-typed as 7.7-11.9x and
+    // went on being hand-typed while the sweep moved underneath it.
+    readme: true,
   },
 
   // accumulating-spread
@@ -376,25 +395,38 @@ export const CITATIONS: Record<string, Citation> = {
 
   // chained-allocation. The 0.3 sweep carries `kernel`; the rows before it are
   // from the switch-dispatched kernel TurboFan miscompiled and are void.
+  // Both sizes, not the flattering one. This citation named n=1000 alone, and
+  // that cell's three sweeps read 7.51 / 6.58 / 6.48 with no common value —
+  // rule 13 withdraws it, and what the rule may claim is what is left (TC-37).
   'chained.mapfilter': {
     file: 'chained.jl',
-    cells: 'xs.map(f).filter(g) against one fused pass at n=1000, construction counted',
+    cells: 'xs.map(f).filter(g) against one fused pass, construction counted, both sizes',
+    pick: (r) =>
+      r.variant === 'chained' &&
+      r.baseline === 'fused' &&
+      r.mode === 'incl' &&
+      r.kernel === 'dispatch-table',
+    agg: 'range',
+  },
+  'chained.mapfilter.withdrawn': {
+    file: 'chained.jl',
+    cells: 'the three sweeps of the n=1000 cell this rule used to headline',
     pick: (r) =>
       r.variant === 'chained' &&
       r.baseline === 'fused' &&
       r.mode === 'incl' &&
       r.n === 1000 &&
       r.kernel === 'dispatch-table',
-    agg: 'range',
+    agg: 'points',
+    unreplicable: true,
   },
   'chained.mapfilter.ci': {
     file: 'chained.jl',
-    cells: 'every interval measured for that cell',
+    cells: 'every interval measured for the cells that replicate',
     pick: (r) =>
       r.variant === 'chained' &&
       r.baseline === 'fused' &&
       r.mode === 'incl' &&
-      r.n === 1000 &&
       r.kernel === 'dispatch-table',
     agg: 'cispan',
   },
@@ -483,11 +515,14 @@ export const CITATIONS: Record<string, Citation> = {
     agg: 'range',
     readme: true,
   },
-  'inline.ci100k': {
+  // `inline.ci100k` stood here and quoted the interval at n=100000. Rule 13
+  // withdraws that cell, so what is published about it is the disagreement.
+  'inline.withdrawn.100k': {
     file: 'inline.jl',
-    cells: 'the interval at n=100000',
+    cells: 'the three sweeps at n=100000',
     pick: (r) => r.n === 100000,
-    agg: 'cispan',
+    agg: 'points',
+    unreplicable: true,
   },
   'inline.ci1000': {
     file: 'inline.jl',
@@ -564,11 +599,15 @@ export const CITATIONS: Record<string, Citation> = {
     pick: (r) => r.variant === 'rowundef' && r.mode === 'excl',
     agg: 'cispan',
   },
-  'delete.silent.undef.build': {
+  // `delete.silent.undef.build` stood here, for the construction-counted half
+  // of the same clause. Its one cell does not replicate; the clause quotes the
+  // three sweeps instead of a range they do not agree on.
+  'delete.silent.undef.build.withdrawn': {
     file: 'delete.jl',
-    cells: 'the same, with construction counted',
+    cells: 'the three construction-counted sweeps at n=16384',
     pick: (r) => r.variant === 'rowundef' && r.mode === 'incl',
-    agg: 'range',
+    agg: 'points',
+    unreplicable: true,
   },
 
   // The end-to-end examples, where a printed `fix:` line was applied to
@@ -583,6 +622,62 @@ export const CITATIONS: Record<string, Citation> = {
   },
 };
 
+// What makes two rows the same cell. Every discriminator a sweep records, so a
+// file that pairs one variant against several baselines does not collapse them
+// into one cell and a size-swept file keeps its sizes apart. Undefined fields
+// drop out, which is how sweeps that never recorded a baseline compare equal to
+// themselves.
+const cellKey = (r: Row): string =>
+  [r.variant, r.baseline, r.mode, r.n, r.size, r.family, r.k, r.kernel, r.example]
+    .filter((x) => x !== undefined)
+    .join('|');
+
+// Rule 13, enforced where the number is made. `replicates()` used to be called
+// only by `bench/run.js`, to print the word DISAGREES to a terminal while a
+// sweep ran, so a cell whose three sweeps refute each other was withdrawn only
+// when a human happened to re-read the rows at 3am — and twelve were not
+// re-read (BUGS TC-37). A citation now aggregates the cells that replicate and
+// nothing else.
+//
+// A cell measured ONCE is not a replicated cell and rule 13 has nothing to say
+// about it. A cell measured twice or more is, however the runner labelled the
+// rows: `protocol: 'replicated'` records that a row came from a `--replicate`
+// invocation, and a cell whose three sweeps were run as one plain sweep and one
+// pair of replications is still three sweeps of that cell under one protocol.
+// Reading the marker instead of the count let 46 dispatch cells past this gate.
+//
+// `mode` is 'gate' for a published number, 'about' for a citation that quotes a
+// withdrawal, and 'off' for a citation reading a superseded sweep — rule 13 is
+// about the current protocol's rows, and the sweeps kept as history are kept
+// BECAUSE they disagree.
+type Mode = 'gate' | 'about' | 'off';
+
+function replicating(matched: Row[], mode: Mode = 'gate'): { live: Row[]; withdrawn: string[] } {
+  const cells = new Map<string, Row[]>();
+  for (const r of matched) {
+    const k = cellKey(r);
+    const at = cells.get(k);
+    if (at) at.push(r);
+    else cells.set(k, [r]);
+  }
+  const live: Row[] = [];
+  const withdrawn: string[] = [];
+  for (const [key, cell] of cells) {
+    const fails = mode !== 'off' && cell.length >= 2 && !replicates(cell);
+    if (fails === (mode === 'about')) live.push(...cell);
+    else if (fails) withdrawn.push(key);
+  }
+  return { live, withdrawn: withdrawn.sort() };
+}
+
+// Every cell in one sweep file whose three sweeps refute each other, whether or
+// not a citation quotes it. `replicating()` sees only the rows one citation
+// picks; this sees the file, so a cell that STARTS disagreeing is caught before
+// a number is derived from it rather than after. `make test` holds the list.
+export function unreplicable(root: string, file: string): string[] {
+  return replicating(rows(root, file).filter(current)).withdrawn;
+}
+
 export function rows(root: string, file: string): Row[] {
   const p = path.join(root, 'bench', file);
   const text = fs.readFileSync(p, 'utf8').trim();
@@ -593,7 +688,7 @@ export function rows(root: string, file: string): Row[] {
 // published strings carry, which is the precision the harness can defend.
 const places = (v: number): number => (v < 10 ? 2 : v < 100 ? 1 : 0);
 
-function render(key: string, c: Citation, matched: Row[]): string {
+function render(key: string, c: Citation, matched: Row[], withdrawn: string[]): string {
   const live = matched.filter((r) => !r.void && r.ratio !== undefined);
   if (c.agg === 'count') {
     // How many distinct CELLS, not how many rows: a cell measured three times is
@@ -609,7 +704,20 @@ function render(key: string, c: Citation, matched: Row[]): string {
     );
     return String(cells.size);
   }
-  if (live.length === 0) throw new Error(`${key}: no rows match — the citation is stale`);
+  if (live.length === 0) {
+    // Two different failures, and a reader has to be able to tell them apart:
+    // a citation whose cells were renamed matches nothing, and a citation whose
+    // every cell refutes itself has data and may not publish it.
+    throw new Error(
+      c.unreplicable
+        ? `${key}: this citation quotes a withdrawal, and its cell now replicates — ` +
+          'the withdrawal has stopped being true and the sentence quoting it must go'
+        : withdrawn.length > 0
+          ? `${key}: every cell is unreplicable under rule 13 (${withdrawn.join(', ')}) — ` +
+            'this number cannot be published; withdraw the claim or re-measure'
+          : `${key}: no rows match — the citation is stale`
+    );
+  }
   const fmt = (v: number, ref: number): string => v.toFixed(c.dp ?? places(ref));
   if (c.agg === 'cispan') {
     const hi = Math.max(...live.map((r) => r.hi!));
@@ -623,9 +731,18 @@ function render(key: string, c: Citation, matched: Row[]): string {
   return lo === hi ? `${lo}x` : `${lo}-${hi}x`;
 }
 
-export function derive(root: string): Record<string, string> {
+export interface Derived {
+  value: string;
+  // The cells rule 13 withdrew, by key. Published in the provenance, because a
+  // range over four cells and a range over six cells are different claims and
+  // the string alone cannot say which it is.
+  withdrawn: string[];
+  cells: number;
+}
+
+export function deriveDetail(root: string): Record<string, Derived> {
   const cache = new Map<string, Row[]>();
-  const out: Record<string, string> = {};
+  const out: Record<string, Derived> = {};
   for (const [key, c] of Object.entries(CITATIONS)) {
     const all: Row[] = [];
     for (const f of files(c)) {
@@ -639,9 +756,22 @@ export function derive(root: string): Record<string, string> {
     // Never both. A range that spans two protocols is a range whose ends were
     // measured under different rules, and the file gives no sign of it.
     const want = !readsHistory(c);
-    out[key] = render(key, c, all.filter((r) => current(r) === want && c.pick(r)));
+    const matched = all.filter((r) => current(r) === want && c.pick(r));
+    const mode: Mode = c.history ? 'off' : c.unreplicable ? 'about' : 'gate';
+    const { live, withdrawn } = replicating(matched, mode);
+    out[key] = {
+      value: render(key, c, live, withdrawn),
+      withdrawn,
+      cells: new Set(matched.map(cellKey)).size,
+    };
   }
   return out;
+}
+
+export function derive(root: string): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(deriveDetail(root)).map(([k, d]) => [k, d.value])
+  );
 }
 
 const HEADER = `// GENERATED by \`make numbers\` from the .jl sweeps. Do not edit by hand:
@@ -654,13 +784,20 @@ const HEADER = `// GENERATED by \`make numbers\` from the .jl sweeps. Do not edi
 // from is derived from the same flag that decides which rows it reads, so the
 // two cannot drift, and a citation that gets re-measured stops claiming to be
 // old the moment its flag comes off.
-const provenance = (c: Citation): string =>
-  `${c.cells}${readsHistory(c) ? ` — the older sweep, not re-measured under ${RUNNER}` : ''}`;
+const provenance = (c: Citation, d: Derived): string =>
+  `${c.cells}` +
+  (c.unreplicable ? ' — withdrawn under rule 13, quoted as the refutation it is' : '') +
+  (readsHistory(c) ? ` — the older sweep, not re-measured under ${RUNNER}` : '') +
+  (d.withdrawn.length > 0
+    ? ` — ${d.withdrawn.length} of ${d.cells} cells withdrawn as unreplicable (rule 13): ` +
+      d.withdrawn.join(', ')
+    : '');
 
 export function generate(root: string): string {
-  const values = derive(root);
+  const values = deriveDetail(root);
   const lines = Object.entries(CITATIONS).map(([key, c]) => {
-    return `  // ${files(c).join(' + ')}: ${provenance(c)}\n  '${key}': '${values[key]}',`;
+    const d = values[key]!;
+    return `  // ${files(c).join(' + ')}: ${provenance(c, d)}\n  '${key}': '${d.value}',`;
   });
   return `${HEADER}\nexport const N: Record<string, string> = {\n${lines.join('\n')}\n};\n`;
 }
@@ -673,11 +810,11 @@ const BEGIN = '<!-- generated: numbers -->';
 const END = '<!-- /generated -->';
 
 export function markdown(root: string): string {
-  const values = derive(root);
+  const values = deriveDetail(root);
   const lines = Object.entries(CITATIONS).map(
     ([key, c]) =>
-      `| \`${values[key]}\` | ${files(c).map((f) => `\`bench/${f}\``).join(' + ')} — ` +
-      `${provenance(c)} |`
+      `| \`${values[key]!.value}\` | ${files(c).map((f) => `\`bench/${f}\``).join(' + ')} — ` +
+      `${provenance(c, values[key]!)} |`
   );
   return [
     BEGIN,

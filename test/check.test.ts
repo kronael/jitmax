@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { CITATIONS, derive, markdown, withoutBlock } from '../lib/derive.ts';
+import { CITATIONS, derive, markdown, unreplicable, withoutBlock } from '../lib/derive.ts';
 import { N } from '../lib/numbers.ts';
 import { load, program } from '../lib/ts.ts';
 import { scan, type Mark } from '../lib/scan.ts';
@@ -542,65 +542,60 @@ test('every ratio on the published page is a derived number', () => {
 
 // Protocol rule 13 — three whole sweeps per published cell, and agreement is a
 // value common to all three intervals — had no code path to publication.
-// `replicates()` lives in bench/driver.js and is called from exactly two
+// `replicates()` lives in bench/driver.js and was called from exactly two
 // places: bench/run.js, where it prints the word DISAGREES to a terminal while
 // a sweep runs, and bench/tc11-report.js. `lib/derive.ts` never called it and
 // neither did any test, so a cell that refuted itself was withdrawn only when a
-// human happened to re-read its rows. Twelve did not get re-read.
+// human happened to re-read its rows. Twelve did not get re-read (BUGS TC-37).
 //
-// This does not withdraw those cells — that changes published numbers and is
-// the owner's call (BUGS TC-37). It pins them. A NEW disagreement fails the
+// `lib/derive.ts` now withdraws them where the number is made, so this test is
+// no longer the enforcement — it is the register. A NEW disagreement fails the
 // build, and a listed cell that starts agreeing fails it too, because a stale
-// exception list is how this became invisible in the first place.
+// exception list is how this became invisible in the first place. The check
+// itself is `unreplicable()`, imported rather than re-implemented: a second
+// copy of rule 13 in a test file is how a project ends up with two answers to
+// whether a cell replicates.
 const DISAGREE = new Set([
-  // Behind numbers on the published page. The worst two.
-  'chained.jl chained|incl|1000',            // 7.51 / 6.58 / 6.48 — the `.map().filter()` headline
-  'inline.jl large|excl|100000',             // 4.73 / 4.68 / 3.21 — closed-world's floor IS the dissenter
-  // Behind megamorphic-elements' construction-counted range.
-  'shapes-calibrated.jl 3|incl|16384|L2',
-  'shapes-calibrated.jl 4|incl|16384|L2',
-  // Already recorded by hand, BUGS TC-27.
-  'delete.jl rowdel|excl|262144',
-  'delete.jl rowdel|incl|16384',
-  'delete.jl rowundef|incl|16384',
-  // Silent-clause cells: the rule stays quiet either way, so the disagreement
-  // does not move a warning — but it is still a published range.
-  'chained.jl splitjoin|excl|1000',
-  'chained.jl splitjoin|excl|10000',
-  'strings.jl pluseq|build|1000',
-  'strings.jl concat|excl|1000',
-  'example.jl zod-clean-enum/before|excl|16',
+  // Quoted as refutations, by a citation that says so.
+  'chained.jl chained|fused|incl|1000|dispatch-table',   // the old .map().filter() headline
+  'inline.jl large|small|excl|100000',                   // closed-world's old floor
+  'delete.jl rowundef|rowbase|incl|16384|dispatch-table',
+  // Withdrawn, and the surviving cells carry the claim.
+  'chained.jl splitjoin|packed|excl|1000|dispatch-table',
+  'delete.jl rowdel|rowbase|excl|262144|dispatch-table',
+  'delete.jl rowdel|rowbase|incl|16384|dispatch-table',
+  'delete.jl rowdel|rowbase|incl|262144|dispatch-table',
+  'spread.jl concat|push|incl|10000',
+  'spread-object.jl assign-copy|assign|incl|2000',
+  'spread-object.jl spread|assign|incl|2000',
+  'strings.jl concat|joined|excl|1000|dispatch-table',
+  'strings.jl pluseq|joined|build|1000|dispatch-table',
+  'shapes-calibrated.jl 3|1|incl|16384|L2',
+  'shapes-calibrated.jl 4|1|incl|16384|L2',
+  'example.jl zod-clean-enum/before|zod-clean-enum/after|excl|16|zod-clean-enum',
+  'dispatch.jl cls2|cls1|excl|262144|L3|cls|2|dispatch-table',
+  'dispatch.jl cls5|cls1|incl|262144|L3|cls|5|dispatch-table',
+  'dispatch.jl lit6|lit1|incl|262144|L3|lit|6|dispatch-table',
+  'dispatch.jl tgt3|lit1|excl|256|L1|tgt|3|dispatch-table',
+  'dispatch.jl tgt5|lit1|excl|16384|L2|tgt|5|dispatch-table',
+  'dispatch.jl lit6|lit1|incl|16384|L2|lit|6|dispatch-table',
+  'dispatch.jl tgt2|lit1|excl|256|L1|tgt|2|dispatch-table',
 ]);
 
 test('no published cell disagrees with itself except the ones on record', () => {
-  // The re-measured sweeps — `REMEASURED` in lib/derive.ts — plus the
-  // end-to-end file. dispatch.jl is deliberately absent: it is mid-sweep and
-  // its citations already read the older rows and say so.
+  // Every sweep a citation reads. A file is here whether or not it is in
+  // `REMEASURED`: a cell that refutes itself does so under the protocol that
+  // measured it, and a number read out of older rows is still a published
+  // number.
   const files = [
     'chained.jl', 'inline.jl', 'select.jl', 'delete.jl', 'spread.jl',
     'spread-object.jl', 'strings.jl', 'shapes-calibrated.jl', 'example.jl',
+    'dispatch.jl', 'addprop.jl', 'arrays.jl',
   ];
 
-  const found = new Set();
+  const found = new Set<string>();
   for (const file of files) {
-    const rows = fs.readFileSync(path.join(root, 'bench', file), 'utf8')
-      .split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
-      .filter((r) => r.runner === 'r2' && r.protocol === 'replicated');
-
-    const cells = new Map();
-    for (const r of rows) {
-      const k = [r.variant, r.mode, r.n, r.size].filter((x) => x !== undefined).join('|');
-      if (!cells.has(k)) cells.set(k, []);
-      cells.get(k).push(r);
-    }
-    for (const [k, rs] of cells) {
-      if (rs.length < 3) continue;
-      // Agreement is a value common to every interval, which is exactly
-      // max(lo) <= min(hi). Not "the ranges look similar".
-      if (Math.max(...rs.map((r) => r.lo)) > Math.min(...rs.map((r) => r.hi))) {
-        found.add(`${file} ${k}`);
-      }
-    }
+    for (const cell of unreplicable(root, file)) found.add(`${file} ${cell}`);
   }
 
   const fresh = [...found].filter((c) => !DISAGREE.has(c)).sort();

@@ -91,7 +91,7 @@ turbocharge — 37 annotated functions, 14 findings
     delete-property
       demo/lib.ts:111
       delete o[k] puts its object in dictionary mode
-      measured 12.3-23.0x per property load once the object is in dictionary mode … [bench/delete.jl]
+      measured 12.3-13.6x per property load once the object is in dictionary mode … [bench/delete.jl]
       fix: assign undefined where the key may stay present, or build the object without it —
       the rebuild helps at 12 keys and not at 48, where filling it key by key normalizes it too
       known defect: TC-9 — rules fire outside the conditions their own evidence establishes
@@ -161,13 +161,15 @@ input size.
 
 **Every rule includes the benchmark that earned it, and the case where the same
 benchmark found nothing.** `closed-world` measures the mechanism a call boundary
-controls: a callee V8 refuses to inline costs 3.21-4.95x in a hot loop. Read
-that as a bound on what one unchecked call can cost, not a claim about any
-particular one — and read the bottom of it as a warning about the measurement
-rather than about the callee. That range used to be 4.42-4.79x, one sweep per
-size. Re-measured three times over, the n=1000 cell replicates at 4.64-4.95x
-and the n=100000 cell **does not replicate at all**: 4.73x, 4.68x and 3.21x,
-with intervals 4.28-5.39, 3.88-5.58 and 2.54-3.88 that share no common value.
+controls: a callee V8 refuses to inline costs 4.64-4.95x in a hot loop at
+n=1000. Read that as a bound on what one unchecked call can cost, not a claim
+about any particular one. That range used to be 4.42-4.79x, one sweep per size,
+and then 3.21-4.95x. Re-measured three times over, the n=1000 cell replicates
+and the n=100000 cell **does not replicate at all**: 3.21x, 4.68x and 4.73x,
+with intervals 2.54-3.88, 3.88-5.58 and 4.28-5.39 that share no common value.
+`lib/derive.ts` now withdraws that cell instead of quoting it, which is why the
+range no longer reaches down to 3.21x: the old bottom end **was** the dissenting
+sweep.
 If a rule fires in a case a test declares silent, `make test` fails.
 Measurements have blocked a rule or a rule's extension from shipping seven times.
 Two went further and took something away from a rule that was already shipping.
@@ -236,21 +238,21 @@ published number is no longer what its rows say.
 | Number | The rows it is |
 |---|---|
 | `4.4-11.5x` | `bench/shapes-calibrated.jl` — five shapes, reads only, L1 through RAM |
-| `1.28-3.91x` | `bench/shapes-calibrated.jl` — construction counted, L1 and L2, two to five shapes |
+| `1.36-3.91x` | `bench/shapes-calibrated.jl` — construction counted, L1 and L2, two to five shapes — 2 of 8 cells withdrawn as unreplicable (rule 13): 3|1|incl|16384|L2, 4|1|incl|16384|L2 |
 | `1.00-1.22x` | `bench/shapes-calibrated.jl` — construction counted at RAM size, two to five shapes |
-| `24` | `bench/shapes-calibrated.jl` — the whole sweep |
+| `22` | `bench/shapes-calibrated.jl` — the whole sweep — 2 of 24 cells withdrawn as unreplicable (rule 13): 3|1|incl|16384|L2, 4|1|incl|16384|L2 |
 | `1.05-1.81x` | `bench/shapes-calibrated.jl` — two to four shapes, reads only, every size — where the rule stays quiet |
-| `14.6-20.0x` | `bench/dispatch.jl` — a method on a prototype, five and six shapes, reads only — the older sweep, not re-measured under r2 |
-| `1.56x` | `bench/dispatch.jl` — a method on a prototype, four shapes, reads only at L1 — the older sweep, not re-measured under r2 |
-| `19.37x` | `bench/dispatch.jl` — a method on a prototype, five shapes, reads only at L1 — the older sweep, not re-measured under r2 |
-| `6.9-8.2x` | `bench/dispatch.jl` — one shared function held as an own property, five and six shapes, reads only — the older sweep, not re-measured under r2 |
-| `1.9-5.5x` | `bench/dispatch.jl` — five shapes with construction counted, prototype and own-property, L1 and L2 — the older sweep, not re-measured under r2 |
-| `1.46-1.94x` | `bench/dispatch.jl` — a method on a prototype at RAM size, five and six shapes, the replicated cells — the older sweep, not re-measured under r2 |
-| `0.93-1.20x` | `bench/dispatch.jl` — the same cells at two to four shapes — the older sweep, not re-measured under r2 |
-| `80` | `bench/dispatch.jl` — the whole sweep — the older sweep, not re-measured under r2 |
-| `1.38-1.56x` | `bench/dispatch.jl` — four shapes on a prototype method, reads only, every size — where the rule is quiet — the older sweep, not re-measured under r2 |
-| `2.14-2.21x` | `bench/dispatch.jl` — four shapes on one shared own-property function, reads only, every size — the older sweep, not re-measured under r2 |
-| `3.5-14.8x` | `bench/dispatch.jl` — every shape carrying its OWN function, reads only, two to six targets, every size — the older sweep, not re-measured under r2 |
+| `12.9-22.7x` | `bench/dispatch.jl` — a method on a prototype, five and six shapes, reads only |
+| `1.52-1.65x` | `bench/dispatch.jl` — a method on a prototype, four shapes, reads only at L1 |
+| `19.22-22.71x` | `bench/dispatch.jl` — a method on a prototype, five shapes, reads only at L1 |
+| `7.1-9.0x` | `bench/dispatch.jl` — one shared function held as an own property, five and six shapes, reads only |
+| `1.9-5.8x` | `bench/dispatch.jl` — five shapes with construction counted, prototype and own-property, L1 and L2 |
+| `1.58-1.72x` | `bench/dispatch.jl` — a method on a prototype at RAM size, five and six shapes — 1 of 2 cells withdrawn as unreplicable (rule 13): cls5|cls1|incl|262144|L3|cls|5|dispatch-table |
+| `1.00-1.14x` | `bench/dispatch.jl` — the same cells at two to four shapes |
+| `73` | `bench/dispatch.jl` — the whole sweep — 7 of 80 cells withdrawn as unreplicable (rule 13): cls2|cls1|excl|262144|L3|cls|2|dispatch-table, cls5|cls1|incl|262144|L3|cls|5|dispatch-table, lit6|lit1|incl|16384|L2|lit|6|dispatch-table, lit6|lit1|incl|262144|L3|lit|6|dispatch-table, tgt2|lit1|excl|256|L1|tgt|2|dispatch-table, tgt3|lit1|excl|256|L1|tgt|3|dispatch-table, tgt5|lit1|excl|16384|L2|tgt|5|dispatch-table |
+| `1.41-1.65x` | `bench/dispatch.jl` — four shapes on a prototype method, reads only, every size — where the rule is quiet |
+| `2.10-2.28x` | `bench/dispatch.jl` — four shapes on one shared own-property function, reads only, every size |
+| `3.5-15.8x` | `bench/dispatch.jl` — every shape carrying its OWN function, reads only, two to six targets, every size |
 | `149-166x` | `bench/spread.jl` — array spread against push at n=1000, construction counted, both sweeps |
 | `1766-1889x` | `bench/spread.jl` — the same at n=10000, the three replications |
 | `1877x and 2348x` | `bench/spread.jl` — the two sweeps of that cell that predate the replication — the older sweep, not re-measured under r2 |
@@ -261,7 +263,7 @@ published number is no longer what its rows say.
 | `186-200x` | `bench/spread-object.jl` — object spread against keyed assignment at n=500, the three replications |
 | `814-887x` | `bench/spread-object.jl` — Object.assign({}, acc, …) at n=500, the three replications |
 | `0.03-1.87x` | `bench/spread.jl` + `bench/spread-object.jl` — all four accumulating forms with construction excluded, every size |
-| `0.26-0.52x` | `bench/strings.jl` — s = s + x, s += x and s = s.concat(x) against a push-and-join, building only |
+| `0.26-0.52x` | `bench/strings.jl` — s = s + x, s += x and s = s.concat(x) against a push-and-join, building only — 1 of 9 cells withdrawn as unreplicable (rule 13): pluseq|joined|build|1000|dispatch-table |
 | `0.78-1.13x` | `bench/strings.jl` — the same three with the read back counted |
 | `0.71-1.48` | `bench/strings.jl` — every interval measured for those nine cells |
 | `2.56-2.87x` | `bench/select.jl` — the chosen value stored where it outlives the loop, both sizes |
@@ -271,32 +273,33 @@ published number is no longer what its rows say.
 | `0.88-1.22x` | `bench/select.jl` — the same loop on numbers, both sizes — where the rule stays quiet |
 | `0.84-1.30` | `bench/select.jl` — every interval measured on numbers |
 | `2.01-2.45x` | `bench/select.jl` — the boxed form kept in a local, where escape analysis could see it, both sizes |
-| `6.48-7.51x` | `bench/chained.jl` — xs.map(f).filter(g) against one fused pass at n=1000, construction counted |
-| `5.62-7.90` | `bench/chained.jl` — every interval measured for that cell |
+| `1.44-1.52x` | `bench/chained.jl` — xs.map(f).filter(g) against one fused pass, construction counted, both sizes — 1 of 2 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table |
+| `6.48x and 6.58x and 7.51x` | `bench/chained.jl` — the three sweeps of the n=1000 cell this rule used to headline — withdrawn under rule 13, quoted as the refutation it is |
+| `1.37-1.63` | `bench/chained.jl` — every interval measured for the cells that replicate — 1 of 2 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table |
 | `3.67-3.76x` | `bench/chained.jl` — Object.entries(o).map(f) against a for-in walk at n=1000, construction counted |
 | `3.50-4.04` | `bench/chained.jl` — every interval measured for that cell |
 | `2.55-2.61x` | `bench/chained.jl` — the same at n=10000 |
 | `2.23-2.97` | `bench/chained.jl` — every interval measured for that cell |
-| `24` | `bench/chained.jl` — the 0.3 sweep, which is every row the dispatch-table kernel wrote |
-| `0.95-1.10x` | `bench/chained.jl` — reading the finished array back, all six chained forms, both sizes |
+| `22` | `bench/chained.jl` — the 0.3 sweep, which is every row the dispatch-table kernel wrote — 2 of 24 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table, splitjoin|packed|excl|1000|dispatch-table |
+| `0.95-1.10x` | `bench/chained.jl` — reading the finished array back, all six chained forms, both sizes — 1 of 12 cells withdrawn as unreplicable (rule 13): splitjoin|packed|excl|1000|dispatch-table |
 | `1.44-1.52x` | `bench/chained.jl` — map then filter with construction counted at n=100000, where bandwidth dominates |
 | `0.84-1.00x` | `bench/chained.jl` — Object.keys(o).map(f) against the for-in walk that fuses it, construction counted |
 | `0.99-1.09x` | `bench/chained.jl` — xs.map(f).sort() against the same map, construction counted — .sort() is in place |
 | `0.91-1.22` | `bench/chained.jl` — every interval measured for those cells |
 | `0.99-1.10x` | `bench/chained.jl` — s.split(sep).map(f).join(sep) against two different fusions, construction counted |
-| `3.21-4.95x` | `bench/inline.jl` — a callee past the inlining budget against the same callee under it |
-| `2.54-5.58` | `bench/inline.jl` — the interval at n=100000 |
+| `4.64-4.95x` | `bench/inline.jl` — a callee past the inlining budget against the same callee under it — 1 of 2 cells withdrawn as unreplicable (rule 13): large|small|excl|100000 |
+| `3.21x and 4.68x and 4.73x` | `bench/inline.jl` — the three sweeps at n=100000 — withdrawn under rule 13, quoted as the refutation it is |
 | `4.34-5.22` | `bench/inline.jl` — the interval at n=1000 |
-| `2` | `bench/inline.jl` — the whole sweep |
-| `12.3-23.0x` | `bench/delete.jl` — one delete per object, reads only, at n=16384 and n=262144 |
+| `1` | `bench/inline.jl` — the whole sweep — 1 of 2 cells withdrawn as unreplicable (rule 13): large|small|excl|100000 |
+| `12.3-13.6x` | `bench/delete.jl` — one delete per object, reads only, at n=16384 and n=262144 — 1 of 2 cells withdrawn as unreplicable (rule 13): rowdel|rowbase|excl|262144|dispatch-table |
 | `11.5-13.2x` | `bench/delete.jl` — the same delete against assigning undefined instead, n=16384 |
 | `13.1-15.1x` | `bench/delete.jl` — one object with one delete, reads only, every size and every sweep |
 | `23.7-24.8x` | `bench/delete.jl` — one delete per object with construction counted, n=256 |
 | `3.3-8.7x` | `bench/delete.jl` — the single object with construction counted, every size |
-| `16` | `bench/delete.jl` — the whole sweep |
+| `12` | `bench/delete.jl` — the whole sweep — 4 of 16 cells withdrawn as unreplicable (rule 13): rowdel|rowbase|excl|262144|dispatch-table, rowdel|rowbase|incl|16384|dispatch-table, rowdel|rowbase|incl|262144|dispatch-table, rowundef|rowbase|incl|16384|dispatch-table |
 | `1.00-1.06x` | `bench/delete.jl` — assigning undefined instead of deleting, reads only — the fix, not the defect |
 | `0.96-1.12` | `bench/delete.jl` — every interval measured for that cell |
-| `0.98-1.18x` | `bench/delete.jl` — the same, with construction counted |
+| `0.98x and 1.05x and 1.18x` | `bench/delete.jl` — the three construction-counted sweeps at n=16384 — withdrawn under rule 13, quoted as the refutation it is |
 | `0.11-0.12x` | `bench/example.jl` — remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps |
 
 <!-- /generated -->
@@ -413,9 +416,11 @@ printed:
   sweeps that could not agree at a 16-member one. Re-run, both sizes now clear
   1.0: **1.10–1.12x** at 16 and **1.03–1.10x** at 256, neither interval spanning
   it. So the fix is worth something, and what it is worth is three to twelve
-  percent against a rule that cites **6.48-7.51x** for `map` then `filter` at
-  n=1000, where the loop body is one multiply and the allocation is the whole
-  cost. In zod's `cleanEnum` the same two stages sit next to an `Object.entries`
+  percent against a rule that cites **1.44-1.52x** for `map` then `filter`,
+  where the loop body is one multiply and the allocation is the whole cost.
+  That figure read 6.48-7.51x until rule 13 was enforced in `lib/derive.ts`:
+  it came from an n=1000 cell whose three sweeps share no common value, and
+  what is left is the cell that replicates. In zod's `cleanEnum` the same two stages sit next to an `Object.entries`
   allocation neither version avoids and a `Number.parseInt` per key that dwarfs
   both, and the fused loop pays back most of what it saved by growing its result
   array instead of getting it pre-sized by `.map()`. Two orders of magnitude
@@ -447,7 +452,7 @@ builtin the walk cannot read into. That is the honest shape of the rule on real
 code, and `BUGS.md` TC-10.
 
 **`megamorphic-dispatch` never fired once** in 850 annotated functions. The
-sharpest cliff this project measured, 14.6-20.0x, has still never been seen on
+sharpest cliff this project measured, 12.9-22.7x, has still never been seen on
 somebody else's code.
 
 **`megamorphic-elements` fired ten times, and all ten are one function** —
@@ -541,11 +546,13 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
   triggers it, even though nothing there can go megamorphic. The demo fixture
   `fiveShapes` is that false positive. `BUGS.md` TC-8.
 - `megamorphic-dispatch` fires on the fifth object type. That is right for a
-  method on a class: four types cost 1.16-1.56x and the fifth costs
-  14.6-20.0x, the sharpest step measured here. It is late for an object that
+  method on a class: four types cost 1.41-1.65x and the fifth costs
+  12.9-22.7x, the sharpest step measured here. It is late for an object that
   carries its own function in a field. There the cost starts at the *second*
-  one, 7.7-11.9x, with no threshold at all, and no declared type tells the two
-  apart. The rule misses that case rather than guessing at it.
+  one — 3.5-15.8x, flat from two targets to six, no threshold at all — and no
+  declared type tells the two apart. The rule misses that case rather than
+  guessing at it, which is a miss and not a refutation: it is in the rule's
+  `unreported` clause, never in its `silent` one.
 - A TypeScript union member is not a V8 map, which is the engine's internal
   object shape. `megamorphic-elements` estimates the shape count from the
   declared type. It can report a problem even if no load site ever sees five maps.

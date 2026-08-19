@@ -6,7 +6,17 @@ import { N } from './numbers.ts';
 export interface Evidence {
   cost: string;
   source: string;
+  // Where the same benchmark measured the pattern and found nothing worth
+  // warning about. A rule that fires here contradicts its own evidence, and a
+  // test asserts it stays quiet.
   silent: string;
+  // Where the same benchmark found a REAL cost that this rule deliberately does
+  // not report, because no declared type separates that case from one it would
+  // be wrong to warn about. Split out of `silent` because the two were being
+  // summarised as one thing — "where the benchmark found nothing" — and for two
+  // rules that summary was false (BUGS TC-39). A rule with nothing to say here
+  // leaves it out.
+  unreported?: string;
   // BUGS.md issue numbers this rule is known to be wrong or unproven about.
   // Empty when the rule carries no open defect. This is the register a
   // config or an annotation disables by defect code instead of by name.
@@ -72,11 +82,13 @@ export const EVIDENCE: Record<string, Evidence> = {
     silent:
       `four shapes cost ${N['disp.silent.proto4']} on a prototype method and ` +
       `${N['disp.silent.shared4']} on a shared one — an order of magnitude below the fifth, ` +
-      'which is why the rule starts there; and the threshold is wrong in the direction of ' +
-      'silence for one form the same sweep measured: when every shape carries its OWN ' +
-      `function the cost starts at the SECOND target (${N['disp.silent.own']}, flat from two ` +
-      'to six, no threshold at all), and no declared type separates that from a prototype ' +
-      'method, so the rule misses it rather than guessing',
+      'which is why the rule starts there',
+    unreported:
+      'when every shape carries its OWN function the cost starts at the SECOND target ' +
+      `(${N['disp.silent.own']}, flat from two to six, no threshold at all) — a cost the ` +
+      'size of the one this rule exists to report, and the same sweep measured it. No ' +
+      'declared type separates that form from a prototype method, so the rule misses it ' +
+      'rather than guessing. This is a miss, not a refutation',
     defects: ['TC-13'],
   },
   'accumulating-spread': {
@@ -121,9 +133,12 @@ export const EVIDENCE: Record<string, Evidence> = {
       'because Math.min allocates nothing and what is left is the loop, not the rule. ' +
       'This clause said "no effect at all, both intervals spanning 1" until the cells were ' +
       'run three times each (BUGS TC-23); the rule still stays out, but on a smaller ' +
-      'margin than it claimed. Escape analysis does not rescue the boxed form either: kept ' +
-      `in a local, where the compiler can see it, the same loop still costs ` +
-      `${N['select.silent.local']}`,
+      'margin than it claimed',
+    unreported:
+      'escape analysis does not rescue the boxed form: kept in a local, where the compiler ' +
+      `can see it, the same loop still costs ${N['select.silent.local']} — below the cell ` +
+      'this rule fires on, and well above nothing. The rule stays out of it because a value ' +
+      'that never leaves the loop is the case the fix line already asks for',
     defects: [],
   },
   'chained-allocation': {
@@ -131,8 +146,12 @@ export const EVIDENCE: Record<string, Evidence> = {
     // It was measured under the single cold calibration probe TC-5 rejected,
     // and its rows are in bench/chained-oldcal.jl as history, not as evidence.
     cost:
-      `map then filter ${N['chained.mapfilter']} with construction counted at n=1000 ` +
-      `(CI ${N['chained.mapfilter.ci']}); Object.entries(o).map(f) ` +
+      `map then filter ${N['chained.mapfilter']} with construction counted ` +
+      `(CI ${N['chained.mapfilter.ci']}) — this rule headlined ` +
+      `${N['chained.mapfilter.withdrawn']} until rule 13 was enforced where the numbers are ` +
+      'made, and those three are one cell measured three times with no value common to all ' +
+      `three, so the cell is withdrawn and ${N['chained.mapfilter']} is the size that ` +
+      'replicates (TC-37); Object.entries(o).map(f) ' +
       `${N['chained.entries.n1000']} at n=1000 (CI ${N['chained.entries.n1000.ci']}) and ` +
       `${N['chained.entries.n10000']} at n=10000 (CI ${N['chained.entries.n10000.ci']}), ` +
       'where the waste is a two-element array per key on top of the array itself — every ' +
@@ -155,8 +174,10 @@ export const EVIDENCE: Record<string, Evidence> = {
   'closed-world': {
     cost:
       'an opaque call is an inlining boundary, and a callee V8 refuses to inline costs ' +
-      `${N['inline.reads']} in a hot loop (CI ${N['inline.ci100k']} at n=100000, ` +
-      `${N['inline.ci1000']} at n=1000)`,
+      `${N['inline.reads']} in a hot loop at n=1000 (CI ${N['inline.ci1000']}). The ` +
+      `n=100000 cell read ${N['inline.withdrawn.100k']} across its three sweeps, which have ` +
+      'no value common to all three, so rule 13 withdraws it and this range no longer ' +
+      'reaches down into it (TC-37)',
     source:
       `bench/inline.jl, ${N['inline.cells']} cells, 20 pairs each; the inlining decision ` +
       'itself confirmed with --trace-turbo-inlining, which reports the padded callee as ' +
@@ -182,9 +203,10 @@ export const EVIDENCE: Record<string, Evidence> = {
     silent:
       'assigning undefined instead of deleting is the fix and not the defect — it costs ' +
       `${N['delete.silent.undef.reads']} on reads, every interval ` +
-      `(${N['delete.silent.undef.reads.ci']}) spanning 1, and ` +
-      `${N['delete.silent.undef.build']} to build; so is adding a property, which never ` +
-      'demotes at any count. The old ' +
+      `(${N['delete.silent.undef.reads.ci']}) spanning 1; its construction-counted cell ` +
+      `read ${N['delete.silent.undef.build.withdrawn']} and is withdrawn as unreplicable, ` +
+      'so this clause claims the reads and not the build. So is adding a property, which ' +
+      'never demotes at any count. The old ' +
       'singleton exception is withdrawn: it was measured on a probe whose fast side a ' +
       'loop-invariant load could serve, and a kernel that has to load the object every ' +
       'pass says a single delete costs the same as a hundred thousand of them',

@@ -5,36 +5,36 @@
 export const N: Record<string, string> = {
   // shapes-calibrated.jl: five shapes, reads only, L1 through RAM
   'elem.reads': '4.4-11.5x',
-  // shapes-calibrated.jl: construction counted, L1 and L2, two to five shapes
-  'elem.constr.l1l2': '1.28-3.91x',
+  // shapes-calibrated.jl: construction counted, L1 and L2, two to five shapes — 2 of 8 cells withdrawn as unreplicable (rule 13): 3|1|incl|16384|L2, 4|1|incl|16384|L2
+  'elem.constr.l1l2': '1.36-3.91x',
   // shapes-calibrated.jl: construction counted at RAM size, two to five shapes
   'elem.constr.l3': '1.00-1.22x',
-  // shapes-calibrated.jl: the whole sweep
-  'elem.cells': '24',
+  // shapes-calibrated.jl: the whole sweep — 2 of 24 cells withdrawn as unreplicable (rule 13): 3|1|incl|16384|L2, 4|1|incl|16384|L2
+  'elem.cells': '22',
   // shapes-calibrated.jl: two to four shapes, reads only, every size — where the rule stays quiet
   'elem.silent.24': '1.05-1.81x',
-  // dispatch.jl: a method on a prototype, five and six shapes, reads only — the older sweep, not re-measured under r2
-  'disp.proto.reads': '14.6-20.0x',
-  // dispatch.jl: a method on a prototype, four shapes, reads only at L1 — the older sweep, not re-measured under r2
-  'disp.proto.four': '1.56x',
-  // dispatch.jl: a method on a prototype, five shapes, reads only at L1 — the older sweep, not re-measured under r2
-  'disp.proto.five': '19.37x',
-  // dispatch.jl: one shared function held as an own property, five and six shapes, reads only — the older sweep, not re-measured under r2
-  'disp.shared.reads': '6.9-8.2x',
-  // dispatch.jl: five shapes with construction counted, prototype and own-property, L1 and L2 — the older sweep, not re-measured under r2
-  'disp.constr.l1l2': '1.9-5.5x',
-  // dispatch.jl: a method on a prototype at RAM size, five and six shapes, the replicated cells — the older sweep, not re-measured under r2
-  'disp.constr.l3.five': '1.46-1.94x',
-  // dispatch.jl: the same cells at two to four shapes — the older sweep, not re-measured under r2
-  'disp.constr.l3.four': '0.93-1.20x',
-  // dispatch.jl: the whole sweep — the older sweep, not re-measured under r2
-  'disp.cells': '80',
-  // dispatch.jl: four shapes on a prototype method, reads only, every size — where the rule is quiet — the older sweep, not re-measured under r2
-  'disp.silent.proto4': '1.38-1.56x',
-  // dispatch.jl: four shapes on one shared own-property function, reads only, every size — the older sweep, not re-measured under r2
-  'disp.silent.shared4': '2.14-2.21x',
-  // dispatch.jl: every shape carrying its OWN function, reads only, two to six targets, every size — the older sweep, not re-measured under r2
-  'disp.silent.own': '3.5-14.8x',
+  // dispatch.jl: a method on a prototype, five and six shapes, reads only
+  'disp.proto.reads': '12.9-22.7x',
+  // dispatch.jl: a method on a prototype, four shapes, reads only at L1
+  'disp.proto.four': '1.52-1.65x',
+  // dispatch.jl: a method on a prototype, five shapes, reads only at L1
+  'disp.proto.five': '19.22-22.71x',
+  // dispatch.jl: one shared function held as an own property, five and six shapes, reads only
+  'disp.shared.reads': '7.1-9.0x',
+  // dispatch.jl: five shapes with construction counted, prototype and own-property, L1 and L2
+  'disp.constr.l1l2': '1.9-5.8x',
+  // dispatch.jl: a method on a prototype at RAM size, five and six shapes — 1 of 2 cells withdrawn as unreplicable (rule 13): cls5|cls1|incl|262144|L3|cls|5|dispatch-table
+  'disp.constr.l3.five': '1.58-1.72x',
+  // dispatch.jl: the same cells at two to four shapes
+  'disp.constr.l3.four': '1.00-1.14x',
+  // dispatch.jl: the whole sweep — 7 of 80 cells withdrawn as unreplicable (rule 13): cls2|cls1|excl|262144|L3|cls|2|dispatch-table, cls5|cls1|incl|262144|L3|cls|5|dispatch-table, lit6|lit1|incl|16384|L2|lit|6|dispatch-table, lit6|lit1|incl|262144|L3|lit|6|dispatch-table, tgt2|lit1|excl|256|L1|tgt|2|dispatch-table, tgt3|lit1|excl|256|L1|tgt|3|dispatch-table, tgt5|lit1|excl|16384|L2|tgt|5|dispatch-table
+  'disp.cells': '73',
+  // dispatch.jl: four shapes on a prototype method, reads only, every size — where the rule is quiet
+  'disp.silent.proto4': '1.41-1.65x',
+  // dispatch.jl: four shapes on one shared own-property function, reads only, every size
+  'disp.silent.shared4': '2.10-2.28x',
+  // dispatch.jl: every shape carrying its OWN function, reads only, two to six targets, every size
+  'disp.silent.own': '3.5-15.8x',
   // spread.jl: array spread against push at n=1000, construction counted, both sweeps
   'spread.array.n1000': '149-166x',
   // spread.jl: the same at n=10000, the three replications
@@ -55,7 +55,7 @@ export const N: Record<string, string> = {
   'spread.assign': '814-887x',
   // spread.jl + spread-object.jl: all four accumulating forms with construction excluded, every size
   'spread.silent.reads': '0.03-1.87x',
-  // strings.jl: s = s + x, s += x and s = s.concat(x) against a push-and-join, building only
+  // strings.jl: s = s + x, s += x and s = s.concat(x) against a push-and-join, building only — 1 of 9 cells withdrawn as unreplicable (rule 13): pluseq|joined|build|1000|dispatch-table
   'spread.silent.strings.build': '0.26-0.52x',
   // strings.jl: the same three with the read back counted
   'spread.silent.strings.incl': '0.78-1.13x',
@@ -75,10 +75,12 @@ export const N: Record<string, string> = {
   'select.silent.number.ci': '0.84-1.30',
   // select.jl: the boxed form kept in a local, where escape analysis could see it, both sizes
   'select.silent.local': '2.01-2.45x',
-  // chained.jl: xs.map(f).filter(g) against one fused pass at n=1000, construction counted
-  'chained.mapfilter': '6.48-7.51x',
-  // chained.jl: every interval measured for that cell
-  'chained.mapfilter.ci': '5.62-7.90',
+  // chained.jl: xs.map(f).filter(g) against one fused pass, construction counted, both sizes — 1 of 2 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table
+  'chained.mapfilter': '1.44-1.52x',
+  // chained.jl: the three sweeps of the n=1000 cell this rule used to headline — withdrawn under rule 13, quoted as the refutation it is
+  'chained.mapfilter.withdrawn': '6.48x and 6.58x and 7.51x',
+  // chained.jl: every interval measured for the cells that replicate — 1 of 2 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table
+  'chained.mapfilter.ci': '1.37-1.63',
   // chained.jl: Object.entries(o).map(f) against a for-in walk at n=1000, construction counted
   'chained.entries.n1000': '3.67-3.76x',
   // chained.jl: every interval measured for that cell
@@ -87,9 +89,9 @@ export const N: Record<string, string> = {
   'chained.entries.n10000': '2.55-2.61x',
   // chained.jl: every interval measured for that cell
   'chained.entries.n10000.ci': '2.23-2.97',
-  // chained.jl: the 0.3 sweep, which is every row the dispatch-table kernel wrote
-  'chained.cells': '24',
-  // chained.jl: reading the finished array back, all six chained forms, both sizes
+  // chained.jl: the 0.3 sweep, which is every row the dispatch-table kernel wrote — 2 of 24 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table, splitjoin|packed|excl|1000|dispatch-table
+  'chained.cells': '22',
+  // chained.jl: reading the finished array back, all six chained forms, both sizes — 1 of 12 cells withdrawn as unreplicable (rule 13): splitjoin|packed|excl|1000|dispatch-table
   'chained.silent.reads': '0.95-1.10x',
   // chained.jl: map then filter with construction counted at n=100000, where bandwidth dominates
   'chained.silent.big': '1.44-1.52x',
@@ -101,16 +103,16 @@ export const N: Record<string, string> = {
   'chained.silent.sort.ci': '0.91-1.22',
   // chained.jl: s.split(sep).map(f).join(sep) against two different fusions, construction counted
   'chained.silent.split': '0.99-1.10x',
-  // inline.jl: a callee past the inlining budget against the same callee under it
-  'inline.reads': '3.21-4.95x',
-  // inline.jl: the interval at n=100000
-  'inline.ci100k': '2.54-5.58',
+  // inline.jl: a callee past the inlining budget against the same callee under it — 1 of 2 cells withdrawn as unreplicable (rule 13): large|small|excl|100000
+  'inline.reads': '4.64-4.95x',
+  // inline.jl: the three sweeps at n=100000 — withdrawn under rule 13, quoted as the refutation it is
+  'inline.withdrawn.100k': '3.21x and 4.68x and 4.73x',
   // inline.jl: the interval at n=1000
   'inline.ci1000': '4.34-5.22',
-  // inline.jl: the whole sweep
-  'inline.cells': '2',
-  // delete.jl: one delete per object, reads only, at n=16384 and n=262144
-  'delete.rows': '12.3-23.0x',
+  // inline.jl: the whole sweep — 1 of 2 cells withdrawn as unreplicable (rule 13): large|small|excl|100000
+  'inline.cells': '1',
+  // delete.jl: one delete per object, reads only, at n=16384 and n=262144 — 1 of 2 cells withdrawn as unreplicable (rule 13): rowdel|rowbase|excl|262144|dispatch-table
+  'delete.rows': '12.3-13.6x',
   // delete.jl: the same delete against assigning undefined instead, n=16384
   'delete.vs.undefined': '11.5-13.2x',
   // delete.jl: one object with one delete, reads only, every size and every sweep
@@ -119,14 +121,14 @@ export const N: Record<string, string> = {
   'delete.rows.constr': '23.7-24.8x',
   // delete.jl: the single object with construction counted, every size
   'delete.single.constr': '3.3-8.7x',
-  // delete.jl: the whole sweep
-  'delete.cells': '16',
+  // delete.jl: the whole sweep — 4 of 16 cells withdrawn as unreplicable (rule 13): rowdel|rowbase|excl|262144|dispatch-table, rowdel|rowbase|incl|16384|dispatch-table, rowdel|rowbase|incl|262144|dispatch-table, rowundef|rowbase|incl|16384|dispatch-table
+  'delete.cells': '12',
   // delete.jl: assigning undefined instead of deleting, reads only — the fix, not the defect
   'delete.silent.undef.reads': '1.00-1.06x',
   // delete.jl: every interval measured for that cell
   'delete.silent.undef.reads.ci': '0.96-1.12',
-  // delete.jl: the same, with construction counted
-  'delete.silent.undef.build': '0.98-1.18x',
+  // delete.jl: the three construction-counted sweeps at n=16384 — withdrawn under rule 13, quoted as the refutation it is
+  'delete.silent.undef.build.withdrawn': '0.98x and 1.05x and 1.18x',
   // example.jl: remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps
   'ex.mergeall.reads': '0.11-0.12x',
 };

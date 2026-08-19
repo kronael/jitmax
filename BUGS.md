@@ -196,7 +196,7 @@ different things. Unlike those, the text here is not even present.
 has to see the object the fix produces, or the fix line has to stop being
 offered where the measurement says it loses. Both change shipped output.
 
-## TC-37 — protocol rule 13 has no code path to publication (2026-08-17, open, proposal)
+## TC-37 — protocol rule 13 has no code path to publication (2026-08-17, FIXED 2026-08-19)
 
 `CLAUDE.md` gives rule 13 a paragraph: three whole sweeps per published cell,
 "agreement is a value common to all three intervals … without one the cell is
@@ -232,11 +232,32 @@ an explicit list. A new one breaks the build; a listed one that starts agreeing
 also breaks it, so the list cannot rot. That makes the twelve visible and
 bounded.
 
-**Not fixed, and this is the proposal:** the twelve are still published.
-Enforcing rule 13 as written withdraws them, which moves numbers on the page and
-in `EVIDENCE`. That is the owner's call. `lib/derive.ts` should call
-`replicates()` itself and refuse to emit an unreplicable range — the guard
-belongs where the number is made, not in a terminal nobody is reading at 3am.
+**Fixed 2026-08-19.** `lib/derive.ts` groups every citation's rows into cells and
+calls `replicates()` on each one. A cell whose sweeps share no common value is
+withdrawn from the aggregate; the count and the cell keys go into the
+provenance, so a range over four cells cannot pass for a range over six. A
+citation left with nothing throws, and the number cannot be published at all.
+
+Three citations were left with nothing, and all three carried a claim:
+
+| citation | was | now |
+|---|---|---|
+| `chained.mapfilter` | 6.48-7.51x, one cell, n=1000 | **1.44-1.52x**, the cell that replicates |
+| `inline.reads` | 3.21-4.95x, low end from the dissenting sweep | **4.64-4.95x**, n=1000 only |
+| `delete.silent.undef.build` | 0.98-1.18x | gone; the clause claims the reads and not the build |
+
+The three withdrawn cells are still published — as refutations. A citation may
+set `unreplicable: true`, which reads the withdrawn cell and quotes its three
+sweeps as the three numbers they are (`6.48x and 6.58x and 7.51x`). Such a
+citation throws if its cell ever starts replicating, for the same reason the
+register below fails on a healed entry.
+
+The gate counts SWEEPS, not the `protocol: 'replicated'` marker a row carries.
+Reading the marker let 46 dispatch cells past it: each had one plain sweep and
+two replicated ones, which is three sweeps of that cell under one runner.
+
+`test/check.test.ts` keeps the register, over every sweep file rather than only
+the cited cells, and calls the same `unreplicable()` the gate uses.
 
 ## TC-36 — `delete-property` names the wrong V8 mechanism for `delete xs[i]` (2026-08-17, open, proposal)
 

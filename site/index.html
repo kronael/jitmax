@@ -124,7 +124,7 @@ export function total(rows: Row[]): number { … }</code></pre>
     <tr>
       <td><code>delete o[k]</code></td>
       <td>the object moves to a slower kind of storage, and stays there</td>
-      <td>12.3&ndash;23.0x</td>
+      <td>12.3&ndash;13.6x</td>
     </tr>
     <tr>
       <td><code>acc = [...acc, v]</code> in a loop</td>
@@ -134,7 +134,7 @@ export function total(rows: Row[]): number { … }</code></pre>
     <tr>
       <td><code>.map(f).filter(g)</code></td>
       <td>the first array is built, then thrown away</td>
-      <td>6.48&ndash;7.51x</td>
+      <td>1.44&ndash;1.52x</td>
     </tr>
     <tr>
       <td><code>x = Lib.min(x, y)</code> in a loop</td>
@@ -145,7 +145,7 @@ export function total(rows: Row[]): number { … }</code></pre>
       <td>a call into code it cannot read</td>
       <td>a callee too big to inline costs this much &mdash; and the checker
           cannot tell whether yours is</td>
-      <td>3.21&ndash;4.95x</td>
+      <td>4.64&ndash;4.95x</td>
     </tr>
   </tbody>
 </table>
