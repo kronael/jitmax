@@ -3,6 +3,13 @@
   "version": "0.7.0",
   "description": "Annotation checker for TypeScript: mark a function, keep it on V8's fast path.",
   "license": "GPL-2.0-only",
+  "private": true,
+  "files": [
+    "bin/",
+    "lib/",
+    "README.md",
+    "LICENSE"
+  ],
   "bin": {
     "turbocharge": "bin/turbocharge.ts"
   },
