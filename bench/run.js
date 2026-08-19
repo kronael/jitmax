@@ -89,8 +89,13 @@ const { flags, rest } = parseArgs(process.argv.slice(2));
 
 const num = (name, fallback) => {
   if (!flags.has(name)) return fallback;
-  const v = Number(flags.get(name));
-  if (!Number.isFinite(v)) die(`--${name} needs a number, got ${flags.get(name)}`);
+  const raw = flags.get(name);
+  // `Number('')` is 0, and only `--only` takes its value as the next argument —
+  // so `--replicate 3` parsed as an empty value, ran each cell ZERO times, and
+  // printed `=> REPLICATES` for a cell that measured nothing.
+  if (raw === undefined || raw === '') die(`--${name}=<n> needs a value (use =, not a space)`);
+  const v = Number(raw);
+  if (!Number.isFinite(v)) die(`--${name} needs a number, got ${raw}`);
   return v;
 };
 
@@ -161,7 +166,12 @@ function sweep(name, env) {
   const cells = selected(bench);
   if (!cells.length) die(`selection matched no cell of ${name}`);
 
-  const times = num('replicate', bench.replicated ? 3 : 1);
+  // Protocol rule 13 applies to every published cell, so three is the default
+  // for every sweep. It used to be three only where a sweep set
+  // `replicated: true` — four of thirteen — so `make bench-dispatch`, the
+  // documented way to verify that rule's numbers, ran one sweep per cell, and
+  // on a file already holding three it ran none at all.
+  const times = num('replicate', 3);
   const tiers = !flags.has('no-tiers');
   const force = flags.has('force');
 

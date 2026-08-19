@@ -2,7 +2,7 @@
 // lib/derive.ts holds the query behind every string here, and `make test`
 // fails when this file and the data disagree.
 
-export const N: Record<string, string> = {
+export const N = {
   // shape-sets.jl: five distinct property sets, reads only, L1 through RAM
   'elem.reads': '3.4-11.3x',
   // shape-sets.jl: construction counted, five property sets, L1 and L2 — 1 of 2 cells withdrawn as unreplicable (rule 13): 5|1|incl|16384|L2

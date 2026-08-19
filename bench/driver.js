@@ -203,6 +203,11 @@ export function replicate(opts, onRun, times = 3, report) {
 // quantity. Derived from the intervals the cells already carry — there is no
 // threshold here to pick, and picking one is what TC-11's first fix got wrong.
 export function replicates(runs) {
+  // Rule 13 asks for THREE whole sweeps. Fewer than three is not agreement, it
+  // is an absence of the test — and `Math.max()` of an empty list is -Infinity,
+  // so without this line an empty cell and a single-sweep cell both answered
+  // `true` and passed every gate that reads this.
+  if (runs.length < 3) return false;
   if (runs.some((r) => r.void)) return false;
   return Math.max(...runs.map((r) => r.lo)) <= Math.min(...runs.map((r) => r.hi));
 }
