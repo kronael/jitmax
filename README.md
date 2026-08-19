@@ -149,6 +149,14 @@ seventh reports where the walk stops. Megamorphic means one code location has
 seen many object shapes. Quadratic means the work grows with the square of the
 input size.
 
+Each rule carries two clauses, and they are not the same clause. `silent` is
+where the same benchmark **refused** the rule — it measured the case and found
+nothing worth reporting, and a test fails if the rule fires there. `unreported`
+is where the benchmark found a **real cost the rule does not report**, because
+no declared type separates that case from one it would be wrong to warn about.
+Two rules have one. Summarising both as "where the benchmark found nothing" was
+false for both (`BUGS.md` TC-39).
+
 | Rule | What it looks for | Where the measurement found no effect |
 |---|---|---|
 | `megamorphic-elements` | the fifth object shape at a load site | two to four shapes |
@@ -162,8 +170,11 @@ input size.
 **Every rule includes the benchmark that earned it, and the case where the same
 benchmark found nothing.** `closed-world` measures the mechanism a call boundary
 controls: a callee V8 refuses to inline costs 4.64-4.95x in a hot loop at
-n=1000. Read that as a bound on what one unchecked call can cost, not a claim
-about any particular one. That range used to be 4.42-4.79x, one sweep per size,
+n=1000. That is a bound on what one unchecked call can cost, not a claim about
+any particular one — and the report prints the word `bound` there rather than
+`measured`, because the rule fires on a callee with no readable body and the
+sweep measures a readable one padded past the inlining budget (`BUGS.md`
+TC-33). That range used to be 4.42-4.79x, one sweep per size,
 and then 3.21-4.95x. Re-measured three times over, the n=1000 cell replicates
 and the n=100000 cell **does not replicate at all**: 3.21x, 4.68x and 4.73x,
 with intervals 2.54-3.88, 3.88-5.58 and 4.28-5.39 that share no common value.
@@ -547,6 +558,14 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
   also has a hard cap of 200 function bodies. When the walk hits the cap, it
   prints `WALK TRUNCATED` and exits `1`. The run is not reported as clean, in
   the text or in the exit code.
+- **Every rule matches inside one body.** The walk widens *where* the rules are
+  applied — it visits every callee whose source the program has — and it does
+  not widen what any single rule can see. So `acc = append(acc, x)` in a loop,
+  with `append = (a, x) => [...a, x]` next to it, is a loop in one body and a
+  copy in another, and no rule here joins them, even though the walk reads both
+  files. Hoisting the measured pattern into a helper silences the tool.
+  `BUGS.md` TC-43 holds the two forms this still misses and what closing them
+  would take.
 - `megamorphic-elements` does not check that your code loads anything. It reads
   the parameter's type and reports. A function that only reads `rows.length`
   triggers it, even though nothing there can go megamorphic. The demo fixture
@@ -576,7 +595,7 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
 ## Development
 
 ```sh
-make test    # 57 unit tests, including the must-stay-silent cases
+make test    # 59 unit tests, including the must-stay-silent cases
 make lint    # tsc --noEmit
 make numbers # re-derive every published number from the .jl sweeps
 make check   # run the checker against demo/
@@ -605,6 +624,8 @@ travel with them, alongside the four copyright holders and the commit each
 function came from. The point of the whole exercise is that the code measured
 there is somebody else's.
 
-Status: v0.6.0, single machine, seven rules. Eight of the nine sweeps behind a
-published number are re-measured whole under the current runner; `dispatch.jl`
-is 34 cells of 80, so every number it feeds says so on its own line.
+Status: v0.7.0, single machine, seven rules. Every sweep behind a published
+number is re-measured whole under the current runner: three sweeps per cell, and
+a cell whose three share no common value is withdrawn by `lib/derive.ts` before
+the number is written. Twenty-two are withdrawn today, and `test/check.test.ts`
+lists every one.

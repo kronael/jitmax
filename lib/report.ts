@@ -50,7 +50,15 @@ export function render(
         out.push(`      ${path.relative(cwd, f.file) || f.file}:${f.line}`);
       }
       out.push(`      ${f.message}`);
-      if (f.evidence) out.push(`      measured ${f.evidence.cost} [${f.evidence.source}]`);
+      // `measured` is a claim about the line above it. Where a rule's benchmark
+      // measures the MECHANISM rather than the trigger — `closed-world` fires on
+      // a callee with no body and prices one padded past the inlining budget —
+      // the word has to change, or the number reads as a measurement of this
+      // call (BUGS TC-33).
+      if (f.evidence) {
+        const lead = f.evidence.bound ? 'bound' : 'measured';
+        out.push(`      ${lead} ${f.evidence.cost} [${f.evidence.source}]`);
+      }
       out.push(`      fix: ${f.fix}`);
       for (const code of f.evidence?.defects ?? []) {
         out.push(`      known defect: ${code} — ${DEFECT[code] ?? code}`);

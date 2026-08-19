@@ -10,6 +10,14 @@ export interface Evidence {
   // warning about. A rule that fires here contradicts its own evidence, and a
   // test asserts it stays quiet.
   silent: string;
+  // This rule's number is a BOUND on a mechanism, not a measurement of what it
+  // reports. `closed-world` fires when TypeScript resolves a callee to a
+  // declaration file — it has the signature and no body — and its benchmark
+  // measures two visible local functions, one padded past V8's inlining budget.
+  // Those are different programs, and the report printed `measured N` beside
+  // 1539 findings about callees nobody measured (BUGS TC-33). The word the
+  // report prints comes from here.
+  bound?: true;
   // Where the same benchmark found a REAL cost that this rule deliberately does
   // not report, because no declared type separates that case from one it would
   // be wrong to warn about. Split out of `silent` because the two were being
@@ -31,6 +39,7 @@ export const DEFECT: Record<string, string> = {
   'TC-9': 'rules fire outside the conditions their own evidence establishes',
   'TC-10': 'the walk follows calls but not constructors',
   'TC-13': 'a method in a field has no four-map budget',
+  'TC-33': "closed-world's trigger and its benchmark measure different things",
 };
 
 export interface Finding extends Site {
@@ -182,10 +191,14 @@ export const EVIDENCE: Record<string, Evidence> = {
       `bench/inline.jl, ${N['inline.cells']} cells, 20 pairs each; the inlining decision ` +
       'itself confirmed with --trace-turbo-inlining, which reports the padded callee as ' +
       '"cannot consider"',
+    bound: true,
     silent:
       'this bounds what ONE unchecked call can cost, not what any particular one does cost ' +
-      '— a small callee is inlined and the boundary costs nothing',
-    defects: ['TC-10'],
+      '— a small callee is inlined and the boundary costs nothing. The trigger and the ' +
+      'benchmark are different programs: the rule fires on a callee with no readable body, ' +
+      'and the sweep measures a readable one padded past the inlining budget, because a ' +
+      'callee nobody can read is a callee nobody can size (TC-33)',
+    defects: ['TC-10', 'TC-33'],
   },
   'delete-property': {
     cost:

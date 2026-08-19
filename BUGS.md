@@ -163,7 +163,15 @@ faithful reading — gets a number nobody measured.
 
 **Proposal:** sweep k, and publish what happens where the rewrite loses.
 
-## TC-40 — the published page is a highlight reel of numbers README retracts (2026-08-17, open)
+**Not done, and disclosed rather than fixed (2026-08-19).** Sweeping k means new
+cells in `example.jl` and another hour of quiet machine, and the machine this
+runs on is not quiet enough today to add cells to a published sweep. What ships
+instead is the disclosure: README and the page both say the fix helps at 12 keys
+and rejects at 48, and `ex.omit.reads48` is a derived citation reading
+`0.99-1.05x` — the interval that spans 1.0 — so the rejection is on the page in
+the same column as the win. The k axis stays unswept and this entry stays open.
+
+## TC-40 — the published page is a highlight reel of numbers README retracts (2026-08-17, FIXED 2026-08-19)
 
 README carries four qualifications it calls the honesty condition. The page
 carries none of them, while printing the same ratios under a column headed
@@ -180,10 +188,17 @@ The page also carries **no end-to-end number at all**, while README's own table
 puts the delivered result on real functions at 1.03x to 4.88x with three
 rejections and one 9x regression.
 
-**Proposal:** the page inherits the honesty conditions, or the page stops
-quoting the ratios. A number is not more true for being on a nicer background.
+**Fixed 2026-08-19.** The page inherits them, in the column next to the number.
+Every rule row now carries the end-to-end result on somebody else's function,
+and the three that reject say REJECTS. `allocating-select` says no instance of
+its measured shape exists in 850 real functions; `closed-world` says it is 92%
+of all findings and is coverage rather than cost; `megamorphic-elements` prints
+no ratio at all until TC-42's sweep lands. The six end-to-end numbers are
+citations in `lib/derive.ts` like every other number, so the page cannot drift
+from the rows, and `make test` checks every ratio on the page against the
+derived data.
 
-## TC-39 — two rules measure MORE where they stay silent than where they fire (2026-08-17, open, proposal)
+## TC-39 — two rules measure MORE where they stay silent than where they fire (2026-08-17, FIXED 2026-08-19)
 
 The page's argument for trusting the rules is: "Every rule also records where
 the same benchmark found nothing, and a test fails if the rule fires there
@@ -202,8 +217,13 @@ found.
 The `silent` clauses say this in prose, and the prose is honest. The page's
 summary of them is not: "where the benchmark found nothing" is false for both.
 
-**Proposal:** the silent clause is not one thing. Split "measured and rejected"
-from "measured, real, and deliberately not reported", and say which on the page.
+**Fixed 2026-08-19.** `Evidence` has two clauses. `silent` is where the
+benchmark refused the rule, and a test still fails if the rule fires there.
+`unreported` is where the benchmark found a real cost the rule does not report,
+because no declared type separates that case from one it would be wrong to warn
+about. `megamorphic-dispatch` and `allocating-select` have one each, and both
+say in the clause itself that it is a miss and not a refutation. README and the
+page both carry the distinction.
 
 ## TC-38 — the tool passes its own fix as clean while that fix is 9x worse (2026-08-17, open)
 
@@ -408,6 +428,15 @@ positive.
 The most load-bearing entry here, because this rule is **1539 of the 1672
 findings** in the twelve-library survey — 92% of everything the tool has ever
 said about real code.
+
+> **Answered in part, 2026-08-19.** The report no longer prints `measured` beside
+> this rule's number. `Evidence.bound` marks a rule whose benchmark prices the
+> MECHANISM rather than the trigger, and the finding prints `bound 4.64-4.95x`
+> instead — a bound on what one unchecked call can cost, next to a finding that
+> makes no claim about this call. The rule also carries TC-33 in its `defects`
+> list, so every one of those 1539 findings names this entry. What is NOT fixed
+> is the gap itself: no benchmark here measures a callee nobody can read,
+> because a callee nobody can read is a callee nobody can size.
 
 - The rule fires when TypeScript resolves a callee to a declaration file: it has
   the signature and no body (`lib/scan.ts`, `unreadable()`).
