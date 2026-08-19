@@ -40,6 +40,7 @@ export const DEFECT: Record<string, string> = {
   'TC-10': 'the walk follows calls but not constructors',
   'TC-13': 'a method in a field has no four-map budget',
   'TC-33': "closed-world's trigger and its benchmark measure different things",
+  'TC-42': 'megamorphic-elements is measured on key order and fires on key sets',
 };
 
 export interface Finding extends Site {
@@ -68,12 +69,18 @@ export const EVIDENCE: Record<string, Evidence> = {
       `at RAM size — ${N['elem.constr.l3']} there, flat from two shapes to five, each cell ` +
       'replicated three times',
     source:
-      `bench/shapes-calibrated.jl, ${N['elem.cells']} cells, 20 pairs each, the four at RAM ` +
-      'size replicated three times',
+      `bench/shapes-calibrated.jl, ${N['elem.cells']} cells, 20 pairs each, every cell ` +
+      'replicated three times — and read the kernel before the number: it varies key ORDER, ' +
+      'five builders over one key set, which is five V8 maps and ONE TypeScript type. This ' +
+      'rule counts distinct property SETS, so the program that produced this number is a ' +
+      'program the rule is silent on. bench/shape-sets.js measures the shapes the rule can ' +
+      'see; until that sweep lands, the figure above prices the mechanism and not the ' +
+      'trigger (BUGS TC-42)',
     silent:
       `two to four shapes cost ${N['elem.silent.24']} on reads — real, and measured, but an ` +
       'order of magnitude below the fifth, which is why the rule starts there and not earlier',
-    defects: ['TC-8', 'TC-2', 'TC-9'],
+    bound: true,
+    defects: ['TC-8', 'TC-2', 'TC-9', 'TC-42'],
   },
   'megamorphic-dispatch': {
     cost:
