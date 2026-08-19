@@ -96,14 +96,24 @@ export const EVIDENCE: Record<string, Evidence> = {
       `sides pay, and ${N['disp.constr.l3.five']} at RAM size against ` +
       `${N['disp.constr.l3.four']} at two to four shapes, each of those cells replicated ` +
       'three times',
+    bound: true,
     source:
-      `bench/dispatch.jl, ${N['disp.cells']} cells, 20 pairs each, the ten at RAM size ` +
-      'replicated three times',
+      `bench/dispatch.jl, ${N['disp.cells']} cells, 20 pairs each, every cell measured ` +
+      'three whole times. Read the kernel before the number, for the same reason ' +
+      'megamorphic-elements had to (TC-42): every family in that sweep varies key ORDER, ' +
+      'the call TARGET, or where the function is held — all of them over ONE property set. ' +
+      'This rule counts distinct property SETS, so it is silent on all four families, and ' +
+      'the figure above prices the mechanism rather than the trigger. No sweep here varies ' +
+      'the key set at a CALL site yet',
     silent:
       `four shapes cost ${N['disp.silent.proto4']} on a prototype method and ` +
       `${N['disp.silent.shared4']} on a shared one — an order of magnitude below the fifth, ` +
       'which is why the rule starts there',
     unreported:
+      'five classes with identical fields are five V8 maps and ONE property set, so this ' +
+      'rule reports none of them — and that is what its own benchmark measures. Nothing ' +
+      'static separates five classes that agree on their fields from one class used five ' +
+      'times, which is the same limit as key order at a load site. Also: ' +
       'when every shape carries its OWN function the cost starts at the SECOND target ' +
       `(${N['disp.silent.own']}, flat from two to six, no threshold at all) — a cost the ` +
       'size of the one this rule exists to report, and the same sweep measured it. No ' +
@@ -127,9 +137,11 @@ export const EVIDENCE: Record<string, Evidence> = {
       `forms measure ${N['spread.silent.reads']}, two to three orders of magnitude below ` +
       'the loop, so the cost is the re-copying and not the value it leaves behind — but ' +
       'read the bottom of that range the other way round, because it is the FIX being ' +
-      'slower and not the defect being cheap: an object filled key by key reads ' +
-      `${N['spread.object.reads']} of the spread-built one, which is why the object form ` +
-      'of the fix line carries a condition and the array form does not (TC-16); ' +
+      'slower and not the defect being cheap: the SPREAD-built object reads ' +
+      `${N['spread.object.reads']} of what the same object costs once it has been filled ` +
+      'key by key, so the copy this rule reports leaves behind the cheaper object to read. ' +
+      'That is why the object form of the fix line carries a condition and the array form ' +
+      'does not (TC-16); ' +
       'Object.assign(acc, …) mutates in place and is the fix rather than the defect, so it ' +
       'stays silent too; and a STRING is not this rule at any n — s = s + x, s += x and ' +
       `s = s.concat(x) build in ${N['spread.silent.strings.build']} of a push-and-join, ` +
@@ -157,8 +169,11 @@ export const EVIDENCE: Record<string, Evidence> = {
     unreported:
       'escape analysis does not rescue the boxed form: kept in a local, where the compiler ' +
       `can see it, the same loop still costs ${N['select.silent.local']} — below the cell ` +
-      'this rule fires on, and well above nothing. The rule stays out of it because a value ' +
-      'that never leaves the loop is the case the fix line already asks for',
+      'this rule fires on, and well above nothing. This clause said "the rule stays out of ' +
+      'it", and the rule does not: nothing in it asks where the target lives, so a purely ' +
+      `local accumulator is reported with the ${N['select.heap']} measured for a value that ` +
+      'escapes. The cost is real either way and the printed figure is the wrong one of the ' +
+      'two (BUGS TC-44)',
     defects: [],
   },
   'chained-allocation': {
@@ -240,6 +255,16 @@ export const EVIDENCE: Record<string, Evidence> = {
 
 type Add = (f: Omit<Finding, 'evidence'>) => void;
 type Rule = (ts: Ts, checker: TS.TypeChecker, body: Body, add: Add) => void;
+
+// A function boundary, for walks that must not cross one.
+const isFunctionLike = (ts: Ts, n: TS.Node): boolean =>
+  ts.isFunctionDeclaration(n) ||
+  ts.isFunctionExpression(n) ||
+  ts.isArrowFunction(n) ||
+  ts.isMethodDeclaration(n) ||
+  ts.isGetAccessor(n) ||
+  ts.isSetAccessor(n) ||
+  ts.isConstructorDeclaration(n);
 
 const isLoop = (ts: Ts, n: TS.Node): boolean =>
   ts.isForStatement(n) ||
@@ -522,8 +547,9 @@ const accumulatingSpread: Rule = (ts, checker, body, add) => {
     object:
       'there is no rewrite here this project has measured as a win on both halves. Assigning ' +
       `the key on NAME instead builds faster, ${N['spread.object']} at n=500, and fills the ` +
-      'result key by key, which normalizes the object: its reads measured ' +
-      `${N['ex.mergeall.reads']} of the spread-built one (remeda mergeAll). Mutate where the ` +
+      'result key by key, which normalizes the object: the SPREAD-built object reads ' +
+      `${N['ex.mergeall.reads']} of what the filled one costs (remeda mergeAll), so the ` +
+      'copy you are being asked to delete is the cheaper one to read back. Mutate where the ' +
       'result is written more than it is read; keep the copy where it is read hot. No rule ' +
       'here detects a dictionary-mode object, so the mutating form checks CLEAN',
   };
@@ -602,16 +628,28 @@ const allocatingSelect: Rule = (ts, checker, body, add) => {
     if (!decl || !('body' in decl)) return false;
     const fnBody = (decl as { body?: TS.Node }).body;
     if (!fnBody) return false;
+    // Two limits on where the allocation may sit, both of them cases the rule
+    // fired on: it must be inside a `return`, because a scratch array the
+    // callee keeps to itself is not the value the loop stores; and the walk
+    // stops at a nested function, because an object literal inside a callback
+    // the callee never invokes is not an allocation this call makes.
     let found = false;
-    walk(ts, fnBody, (n) => {
+    const visit = (n: TS.Node, returning: boolean): void => {
+      if (found) return;
+      if (n !== fnBody && isFunctionLike(ts, n)) return;
+      const inReturn = returning || ts.isReturnStatement(n);
       if (
-        ts.isNewExpression(n) ||
-        ts.isObjectLiteralExpression(n) ||
-        ts.isArrayLiteralExpression(n)
+        inReturn &&
+        (ts.isNewExpression(n) ||
+          ts.isObjectLiteralExpression(n) ||
+          ts.isArrayLiteralExpression(n))
       ) {
         found = true;
+        return;
       }
-    });
+      ts.forEachChild(n, (c) => visit(c, inReturn));
+    };
+    visit(fnBody, false);
     return found;
   };
 

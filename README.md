@@ -423,8 +423,10 @@ printed:
   a quadratic build and created a per-load cost it never mentioned, so the rule
   now prints a different fix for each form: pushing onto an **array** costs the
   reader nothing (0.96-1.02x) and carries no condition, and the **object** form
-  says *"that fills the result key by key, which normalizes it: its reads
-  measured 0.11-0.12x of the spread-built object's"*. Same detection, honest
+  says *"that fills the result key by key, which normalizes the object: the
+  SPREAD-built object reads 0.11-0.12x of what the filled one costs"*. Read the
+  ratio in that direction: the object the defect builds is the CHEAPER one to
+  read back, which is the whole reason the clause exists. Same detection, honest
   advice — radash's `assign` is the same fix with the reads coming out
   1.57–2.06x *faster*, which is why it is a condition to check and not a rule to
   apply. `BUGS.md` TC-16. And zod's `cleanEnum` reads went the other way from

@@ -44,6 +44,7 @@ test('a function is checked only where it is annotated', () => {
       'appendOnce',
       'areaOfFive',
       'areaOfFour',
+      'cheapest',
       'collect',
       'collectByAssign',
       'collectByConcat',
@@ -356,6 +357,13 @@ test('a select whose callee allocates nothing stays silent', () => {
   assert.deepStrictEqual(rules('nearest'), []);
 });
 
+// The second half of the same defect: the body-walk crossed into a nested
+// function and counted an object literal in a callback the callee never calls,
+// and counted a scratch value it never returns.
+test('an allocation the callee neither returns nor reaches stays silent', () => {
+  assert.deepStrictEqual(rules('cheapest'), []);
+});
+
 test('the same loop on numbers stays silent', () => {
   assert.deepStrictEqual(rules('lowestNumber'), []);
 });
@@ -471,9 +479,14 @@ test('every published number is what its own data file says', () => {
   // block cut out, or the block would only be matching itself, and with the
   // typographic dash normalised, because prose uses one and code does not.
   const prose = withoutBlock(readme).replace(/[–—]/g, '-');
+  // `N` is a literal object now, so a citation key that does not exist is a
+  // compile error at every USE site — which is the point. This loop walks
+  // CITATIONS at runtime, so it is the one place the cast is honest: derive()
+  // and N are asserted equal three lines up.
+  const table = N as Record<string, string>;
   for (const [key, c] of Object.entries(CITATIONS)) {
     if (!c.readme) continue;
-    assert.ok(prose.includes(N[key]), `README prose no longer quotes ${key} = ${N[key]}`);
+    assert.ok(prose.includes(table[key]!), `README prose no longer quotes ${key} = ${table[key]}`);
   }
 });
 
@@ -657,9 +670,12 @@ const DISAGREE = new Set([
   'shape-sets.jl 4|1|incl|16384|L2',
   'shape-sets.jl 5|1|incl|16384|L2',
   'shape-sets.jl 2|1|incl|262144|L3',
+  // Withdrawn for the other reason the gate withdraws a cell: it has two
+  // sweeps, and rule 13 asks for three. No citation reads this file.
+  'addprop.jl added|literal|build|256|dispatch-table',
 ]);
 
-test('no published cell disagrees with itself except the ones on record', () => {
+test('no published cell is withdrawn except the ones on record', () => {
   // Every sweep a citation reads. A file is here whether or not it is in
   // `REMEASURED`: a cell that refutes itself does so under the protocol that
   // measured it, and a number read out of older rows is still a published
@@ -677,6 +693,6 @@ test('no published cell disagrees with itself except the ones on record', () => 
 
   const fresh = [...found].filter((c) => !DISAGREE.has(c)).sort();
   const healed = [...DISAGREE].filter((c) => !found.has(c)).sort();
-  assert.deepStrictEqual(fresh, [], `these cells now refute themselves and nothing said so: ${fresh.join(', ')}`);
-  assert.deepStrictEqual(healed, [], `DISAGREE lists cells that now agree — remove them: ${healed.join(', ')}`);
+  assert.deepStrictEqual(fresh, [], `these cells are withdrawn and nothing said so: ${fresh.join(', ')}`);
+  assert.deepStrictEqual(healed, [], `DISAGREE lists cells that now replicate — remove them: ${healed.join(', ')}`);
 });

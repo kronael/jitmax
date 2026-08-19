@@ -393,3 +393,19 @@ export function nearest(pts: Pt[]): Pt {
   for (const y of pts) x = nearer(x, y);
   return x;
 }
+
+/** Allocates, but only inside a callback it never calls, and never returns the
+ * allocation. `builds()` walked the whole body including nested functions, so
+ * this read as "returns a new object every pass" (BUGS TC-34, second half). */
+function cheaperOf(a: Pt, b: Pt): Pt {
+  const describe = () => ({ label: 'unused' });
+  void describe;
+  return a.a <= b.a ? a : b;
+}
+
+/** @turbocharge */
+export function cheapest(pts: Pt[]): Pt {
+  let x = pts[0];
+  for (const y of pts) x = cheaperOf(x, y);
+  return x;
+}
