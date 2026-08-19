@@ -129,6 +129,18 @@ export const N: Record<string, string> = {
   'delete.silent.undef.reads.ci': '0.96-1.12',
   // delete.jl: the three construction-counted sweeps at n=16384 — withdrawn under rule 13, quoted as the refutation it is
   'delete.silent.undef.build.withdrawn': '0.98x and 1.05x and 1.18x',
+  // example.jl: radash assign — the whole call, both sizes, three sweeps each
+  'ex.assign.whole': '3.22-4.65x',
+  // example.jl: es-toolkit omit — the whole call, 12 and 48 keys
+  'ex.omit.whole': '1.62-3.32x',
+  // example.jl: es-toolkit omit — the caller's reads of the result at 12 keys
+  'ex.omit.reads12': '11.2-11.6x',
+  // example.jl: the same at 48 keys, where the fix stops fixing the read
+  'ex.omit.reads48': '0.99-1.05x',
+  // example.jl: zod cleanEnum — the whole call, both sizes
+  'ex.cleanenum.whole': '1.03-1.20x',
+  // example.jl: remeda mergeAll — building the result at n=8
+  'ex.mergeall.build': '1.36-1.38x',
   // example.jl: remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps
   'ex.mergeall.reads': '0.11-0.12x',
 };

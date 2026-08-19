@@ -614,6 +614,45 @@ export const CITATIONS: Record<string, Citation> = {
   // somebody else's function and the whole call was timed. This one is here
   // because a rule QUOTES it: the object form of accumulating-spread's fix
   // makes the caller's reads slower, and the fix line has to say so (TC-16).
+  // The whole call, not the line — what a reader actually gets. Every one of
+  // these is far below the microbenchmark ratio the rule cites, which is the
+  // most useful thing in the file and the reason the page prints both.
+  'ex.assign.whole': {
+    file: 'example.jl',
+    cells: 'radash assign — the whole call, both sizes, three sweeps each',
+    pick: (r) => r.example === 'radash-assign' && r.mode === 'incl',
+    agg: 'range',
+  },
+  'ex.omit.whole': {
+    file: 'example.jl',
+    cells: 'es-toolkit omit — the whole call, 12 and 48 keys',
+    pick: (r) => r.example === 'estoolkit-omit' && r.mode === 'incl',
+    agg: 'range',
+  },
+  'ex.omit.reads12': {
+    file: 'example.jl',
+    cells: "es-toolkit omit — the caller's reads of the result at 12 keys",
+    pick: (r) => r.example === 'estoolkit-omit' && r.mode === 'excl' && r.n === 12,
+    agg: 'range',
+  },
+  'ex.omit.reads48': {
+    file: 'example.jl',
+    cells: 'the same at 48 keys, where the fix stops fixing the read',
+    pick: (r) => r.example === 'estoolkit-omit' && r.mode === 'excl' && r.n === 48,
+    agg: 'range',
+  },
+  'ex.cleanenum.whole': {
+    file: 'example.jl',
+    cells: 'zod cleanEnum — the whole call, both sizes',
+    pick: (r) => r.example === 'zod-clean-enum' && r.mode === 'incl',
+    agg: 'range',
+  },
+  'ex.mergeall.build': {
+    file: 'example.jl',
+    cells: 'remeda mergeAll — building the result at n=8',
+    pick: (r) => r.example === 'remeda-merge-all' && r.mode === 'incl' && r.n === 8,
+    agg: 'range',
+  },
   'ex.mergeall.reads': {
     file: 'example.jl',
     cells: "remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps",

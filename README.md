@@ -300,6 +300,12 @@ published number is no longer what its rows say.
 | `1.00-1.06x` | `bench/delete.jl` — assigning undefined instead of deleting, reads only — the fix, not the defect |
 | `0.96-1.12` | `bench/delete.jl` — every interval measured for that cell |
 | `0.98x and 1.05x and 1.18x` | `bench/delete.jl` — the three construction-counted sweeps at n=16384 — withdrawn under rule 13, quoted as the refutation it is |
+| `3.22-4.65x` | `bench/example.jl` — radash assign — the whole call, both sizes, three sweeps each |
+| `1.62-3.32x` | `bench/example.jl` — es-toolkit omit — the whole call, 12 and 48 keys |
+| `11.2-11.6x` | `bench/example.jl` — es-toolkit omit — the caller's reads of the result at 12 keys |
+| `0.99-1.05x` | `bench/example.jl` — the same at 48 keys, where the fix stops fixing the read |
+| `1.03-1.20x` | `bench/example.jl` — zod cleanEnum — the whole call, both sizes |
+| `1.36-1.38x` | `bench/example.jl` — remeda mergeAll — building the result at n=8 |
 | `0.11-0.12x` | `bench/example.jl` — remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps |
 
 <!-- /generated -->
@@ -368,8 +374,8 @@ cost is actually paid — by the caller, not inside the function:
 | zod `cleanEnum` | 256 | 1.02 / 1.01 / 1.05 | **0.98–1.07, REJECTED** |
 
 **The honesty condition.** An end-to-end number is far below the microbenchmark
-ratio, always. `accumulating-spread` cites 186–200x for an object spread at
-n=500; applied to radash's `assign` it moves the whole call 3.1–4.8x, because
+ratio, always. `accumulating-spread` cites 186-200x for an object spread at
+n=500; applied to radash's `assign` it moves the whole call 3.22-4.65x, because
 the function around that one line also allocates, recurses and branches. That
 gap is the most useful thing in this table: it is what a reader gets, and the
 200x is not.
@@ -469,8 +475,8 @@ is which is worth more than four more tables.
 
 | Rule | End to end |
 |---|---|
-| `accumulating-spread` | radash `assign`, remeda `mergeAll` — **3.15–4.88x**, and a read cost the fix line now carries |
-| `delete-property` | es-toolkit `omit` — **1.64–3.36x**, and a width past which it stops |
+| `accumulating-spread` | radash `assign`, remeda `mergeAll` — **3.22-4.65x**, and a read cost the fix line now carries |
+| `delete-property` | es-toolkit `omit` — **1.62-3.32x**, and a width past which it stops |
 | `chained-allocation` | zod `cleanEnum` — **rejects at both sizes**, published above |
 | `allocating-select` | **no instance of the measured shape in 850 functions.** Its six findings are all `x = advance(x, step)` — `date = addMinutes(date, step)` in four date-fns functions, `sink = lazy(sink)` in es-toolkit's `pipe`. The benchmark measured a *choice* between two values where the incumbent almost always wins, and the fix, "compare first and assign only when x really changes", saves an allocation exactly on the passes that change nothing. A cursor changes on every pass. `BUGS.md` TC-18 |
 | `megamorphic-elements` | **structurally impossible.** The rule fires on a *parameter*, so its fix — "get the element type to four shapes or fewer, or give it one construction path" — is always a change to whoever built the array, never to the function that was flagged. No before/after pair of the flagged function can carry it. `BUGS.md` TC-19 |

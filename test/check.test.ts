@@ -584,12 +584,22 @@ test('every vendored example is covered by the MIT notice, and the notice covers
 test('every ratio on the published page is a derived number', () => {
   const page = fs.readFileSync(path.join(root, 'site', 'index.html'), 'utf8')
     .replace(/&ndash;|&mdash;|[–—]/g, '-');
+  // The derived strings, and the individual ratios inside them. A citation
+  // whose aggregate is `points` renders "6.48x and 6.58x and 7.51x" — three
+  // sweeps of a cell rule 13 withdrew — and prose quotes those three with
+  // commas and an "and", which no whole-string comparison can match. So the
+  // page may quote a derived string or any ratio the derived data contains,
+  // and nothing else.
+  const RATIO = /\b\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?x\b/g;
   const values = new Set(Object.values(N));
+  for (const v of Object.values(N)) {
+    for (const m of v.matchAll(RATIO)) values.add(m[0]);
+  }
 
   // A ratio is a number, or a range of them, followed by x: `4.4-11.5x`,
   // `149-166x`, `0.03x`. Version strings and pixel counts have no x and do not
   // match.
-  const quoted = [...page.matchAll(/\b\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?x\b/g)].map((m) => m[0]);
+  const quoted = [...page.matchAll(RATIO)].map((m) => m[0]);
   assert.ok(quoted.length > 0, 'site/index.html quotes no ratios — the regex has stopped matching');
 
   const stale = [...new Set(quoted)].filter((q) => !values.has(q));

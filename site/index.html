@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="krons:type" content="products">
-<meta name="krons:date" content="2026-08-16">
+<meta name="krons:date" content="2026-08-19">
 <meta name="krons:pin"  content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="V8 runs your JavaScript fast by guessing what your code will do. A few normal-looking patterns make it guess wrong. turbocharge finds them and shows what each one costs.">
+<meta name="description" content="V8 runs your JavaScript fast by guessing what your code will do. A few normal-looking patterns make it guess wrong. turbocharge finds them, prints what each one cost when it was measured, and prints where the measurement refused.">
 <title>turbocharge — mark the function you need fast</title>
 <link rel="stylesheet" href="/pub/krons/assets/hub.css">
 <meta property="og:title" content="turbocharge — mark the function you need fast">
-<meta property="og:description" content="V8 gets fast by guessing what your code will do. A few normal-looking patterns make it guess wrong, and nothing warns you. This is that list, measured.">
+<meta property="og:description" content="V8 gets fast by guessing what your code will do. A few normal-looking patterns make it guess wrong, and nothing warns you. This is that list, measured — including the measurements that refused.">
 <meta property="og:image" content="https://krons.fiu.wtf/pub/turbocharge/turbo-card.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -23,6 +23,7 @@
                      margin: 1.5em 0; border: 1px solid var(--border);
                      border-radius: 3px; }
 .hub-container td { font-variant-numeric: tabular-nums; }
+.hub-container table { display: block; overflow-x: auto; }
 .cap { font-size: 0.9em; opacity: 0.75; margin-top: -0.8em; }
 </style>
 </head>
@@ -108,52 +109,74 @@ export function total(rows: Row[]): number { … }</code></pre>
 
 <h2>What it looks for</h2>
 
+<p>
+  Seven rules ship. The third column carries the argument: the microbenchmark
+  ratio first, then what the same fix did to somebody else's function. The
+  second number is always smaller than the first, and three times it is below
+  one.
+</p>
+
 <table>
   <thead>
-    <tr><th>The pattern</th><th>Why V8 slows down</th><th>Measured</th></tr>
+    <tr><th>The pattern</th><th>Why V8 slows down</th><th>Measured, and what the number does not cover</th></tr>
   </thead>
   <tbody>
     <tr>
       <td>a fifth shape of object reaching one line</td>
-      <td>V8 remembers four. A fifth makes it look up every time &mdash; but
-          this rule counts TypeScript union members, and the benchmark measured
-          five key orders of one type, which V8 counts and TypeScript does not.
-          <strong>The two do not line up.</strong></td>
-      <td>see <code>BUGS.md</code> TC-42</td>
+      <td>V8 remembers four. A fifth makes it look up every time.</td>
+      <td>The rule counts distinct property sets, which is as much as a
+          TypeScript type can say about a V8 shape. The benchmark beside it
+          varies key <em>order</em>, which no type can express, so the trigger
+          and the number are about different programs. The number is off this
+          page until the matching sweep lands. <code>BUGS.md</code> TC-42.</td>
     </tr>
     <tr>
-      <td><code>delete o[k]</code></td>
+      <td><code>delete o.k</code></td>
       <td>the object moves to a slower kind of storage, and stays there</td>
-      <td>12.3&ndash;13.6x</td>
+      <td>12.3&ndash;13.6x per property load. On es-toolkit's <code>omit</code>
+          the whole call moves 1.62&ndash;3.32x &mdash; and the read half
+          <strong>rejects at 48 keys</strong>, 0.99&ndash;1.05x, because filling
+          a wide object key by key normalizes it exactly as
+          <code>delete</code> does.</td>
     </tr>
     <tr>
       <td><code>acc = [...acc, v]</code> in a loop</td>
       <td>every pass copies everything the last pass built</td>
-      <td>149&ndash;166x at 1000 items</td>
+      <td>149&ndash;166x at 1000 items. On radash's <code>assign</code> the
+          whole call moves 3.22&ndash;4.65x. On remeda's <code>mergeAll</code>
+          the fix builds 1.36&ndash;1.38x faster and leaves the caller's
+          <em>reads</em> at 0.11&ndash;0.12x &mdash; eight times slower. The
+          printed fix line says that, because the exit code cannot.</td>
     </tr>
     <tr>
       <td><code>.map(f).filter(g)</code></td>
       <td>the first array is built, then thrown away</td>
-      <td>1.44&ndash;1.52x</td>
+      <td>1.44&ndash;1.52x. A week ago this page carried a figure four times
+          larger, taken from a cell whose three sweeps read 6.48x, 6.58x and
+          7.51x. No value sits inside all three intervals, so the cell is
+          withdrawn and what is left is the size that replicates. On zod's
+          <code>cleanEnum</code> the fix <strong>rejects</strong> &mdash;
+          1.03&ndash;1.20x, intervals spanning 1.</td>
     </tr>
     <tr>
       <td><code>x = Lib.min(x, y)</code> in a loop</td>
       <td>a fresh object every pass, even when nothing changed</td>
-      <td>2.56&ndash;2.87x</td>
+      <td>2.56&ndash;2.87x. <strong>No instance of that shape appears in the 850
+          real functions surveyed.</strong> All six findings were cursor
+          advances, where the value changes every pass and the fix saves
+          nothing. <code>BUGS.md</code> TC-18.</td>
     </tr>
     <tr>
       <td>a call into code it cannot read</td>
       <td>a callee too big to inline costs this much &mdash; and the checker
           cannot tell whether yours is</td>
-      <td>4.64&ndash;4.95x</td>
+      <td>4.64&ndash;4.95x for a callee past V8's inlining budget. The rule makes
+          no claim about your callee, and it is <strong>1539 of the 1672
+          findings</strong> on real code &mdash; 92%, nearly all of them a
+          builtin. Read it as coverage, not as cost.</td>
     </tr>
   </tbody>
 </table>
-
-<p>
-  Seven rules ship. Each one names the file its number came from, and you can
-  re-run that measurement yourself.
-</p>
 
 <h2>Why the numbers are worth anything</h2>
 
@@ -163,18 +186,27 @@ export function total(rows: Row[]): number { … }</code></pre>
     source is a guess about cost until a benchmark prices it.
   </li>
   <li>
-    Every rule also records <strong>where the same benchmark found nothing</strong>,
-    and a test fails if the rule fires there anyway. Four shapes is fine. Two
-    shapes is fine. Only the fifth is reported.
+    Every rule records <strong>where the same benchmark refused it</strong>, and
+    a test fails if the rule fires there anyway. Four shapes is fine. Two shapes
+    is fine. Only the fifth is reported.
   </li>
   <li>
-    Measurements have stopped rules from shipping seven times, and taken
-    something away from two rules that had already shipped. One rule was
-    withdrawn completely. Those results are published next to the wins.
+    Two rules also record a <strong>real cost they deliberately do not
+    report</strong> — a different thing, filed under the same heading until
+    recently. An object carrying its own function costs 3.5&ndash;15.8x from the
+    <em>second</em> shape, and no declared type separates that from the case
+    where four are free. The rule misses it rather than guessing, and now says
+    which of the two it is doing.
   </li>
   <li>
-    Every number on this page is read out of the raw timing data, not typed by
-    hand. If a number and its data disagree, the test suite fails.
+    Every cell is measured three whole times. A cell whose three sweeps share no
+    common value is withdrawn where the number is made, not noted in a log —
+    22 cells are withdrawn today, and two of them were headline numbers on this
+    page a week ago.
+  </li>
+  <li>
+    Every number here is read out of the raw timing rows, never typed by hand.
+    If a number and its data disagree, the test suite fails.
   </li>
 </ul>
 
@@ -187,13 +219,25 @@ export function total(rows: Row[]): number { … }</code></pre>
   function the profiler pointed at.
 </p>
 
+<p>
+  It will not follow a pattern across a function boundary either. The walk
+  visits every callee whose source it can read, and each rule then matches
+  inside one body — so a loop in one function and the copy that loop re-runs in
+  another are invisible to both. The annotation widens <em>where</em> the rules
+  are applied, not what any one of them can see.
+</p>
+
+<p>
+  Open defects are listed in <code>BUGS.md</code>, in the repository, at the
+  same size as everything above.
+</p>
+
 <div class="hub-footer">
   <p>
-    v0.6.0, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
+    v0.7.0, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
     those terms; a derivative work carries the same licence. Not on npm — clone
     the repository and run it from there. Needs Node 22.18 or newer, which
-    strips TypeScript types itself, so there is no build step. Open defects are
-    listed in <code>BUGS.md</code>.
+    strips TypeScript types itself, so there is no build step.
   </p>
 </div>
 
