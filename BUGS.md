@@ -8,6 +8,177 @@ Review queue. Found during audits, fixed only when the owner asks.
 > the reviewer's. The reviewer's verdict was "do not publish in its current
 > form", and on the rules it names that verdict is defensible.
 
+> **2026-08-19 — CEO and CTO audits.** TC-44 through TC-50 come from two
+> commissioned reviews, one commercial and one technical, both told to argue the
+> tool is not fit to release. Every technical claim below was re-run here before
+> it was written down. Nine of the technical findings were fixed the same day and
+> are recorded in the entries they belong to; these are the ones that are not.
+
+## TC-50 — the two rules with evidence are already shipped, on no evidence (2026-08-19, open, owner decision)
+
+Not a defect. A commercial finding that changes what this project is for, and
+the owner has to decide it.
+
+- **oxlint** ships `no-accumulating-spread` in its `perf` category (13.5M
+  downloads/week). **Biome** ships `noAccumulatingSpread` AND `noDelete` in
+  `performance` (11.3M/week). Those are this project's `accumulating-spread` and
+  `delete-property` — the two rules with a real end-to-end result.
+- Neither incumbent measured anything. oxlint's rule cites a blog post and says
+  "this can lead to O(n²)". Biome justifies `noDelete`'s V8 claim by citing a
+  **WebKit** blog post.
+- The five rules unique to turbocharge are the five with no confirmed true
+  positive in 850 real functions (TC-18, TC-19, and the survey table in README).
+- `@e18e/deopt` entered the space 2026-06-24 and is runtime rather than static.
+  Every older static tool in the category is dormant: `deoptigate` 2022,
+  `v8-deopt-viewer` 2023, Deopt Explorer 2023, `eslint-plugin-perf-standard`
+  2016.
+
+**The reviewer's conclusion, and it is worth the entry:** as a linter there is
+little here that is not already installed 24 million times a week. What is here
+and nowhere else is `bench/*.jl` — paired-process timings, bootstrap intervals,
+three-way replication, published refutations — and 14 V8 citations verified
+against a pinned checkout. The proposal is to publish the measurements as the
+artifact and offer them to the rules that ship without any.
+
+**Blocked by the licence, and that is the operative point.** GPL-2.0-only is
+incompatible with Apache-2.0 (oxlint, Biome, TypeScript) and, being `-only`,
+carries no GPLv3 upgrade path. No incumbent can take the evidence while the
+repo is licensed this way. Running turbocharge over proprietary source imposes
+nothing — the GNU FAQ is explicit that a program's output is not covered — but
+the tool copies literal `fix:` prose into that output, which is the shape the
+FSF's Bison exception exists for. A one-line output exception costs nothing.
+
+**Also owner decisions, recorded so they are not discovered at launch:** the npm
+name `turbocharge` is taken and npm's dispute policy refuses transfers on
+demand; "turbo" returns 3,991 npm packages, and Vercel claims bare **Turbo** as
+a brand.
+
+## TC-49 — nothing binds a rule to its evidence or to a fixture (2026-08-19, open, proposal)
+
+`RULES` is an array of functions; `EVIDENCE` is a table keyed by rule name; no
+test relates them. An eighth rule added to `RULES` with no `EVIDENCE` entry, no
+`silent` clause and no demo fixture passes the whole suite. It would also be
+undisableable, because `resolveDisabled` throws for a name absent from
+`EVIDENCE` — so the only way to turn it off is to delete it.
+
+This project's stated rule is that a rule ships with a measurement and with a
+cell where it must stay quiet. Nothing enforces the first half.
+
+**Proposal:** export the rule names beside `RULES` and assert set equality with
+`Object.keys(EVIDENCE)`, plus at least one demo fixture per rule.
+
+## TC-48 — hand-typed integers in EVIDENCE contradict the derived numbers beside them (2026-08-19, open)
+
+`make numbers` derives every ratio, and `make test` binds them. It binds no
+other numeral, so integers typed into the same sentences drift against the
+ratios they sit next to:
+
+- `megamorphic-elements.source` said "the same 24 cells" while
+  `N['elem.cells']` in the same sentence rendered `20`, because four cells are
+  withdrawn. **Fixed today** by removing the numeral.
+- `accumulating-spread.silent` said "every one of those nine cells" with one of
+  the nine withdrawn. **Fixed today**, same way.
+- `delete-property.cost` still says "(n=16384 and n=262144, three replications
+  each)" while the n=262144 cell is withdrawn and excluded from the number it
+  introduces.
+
+**Proposal:** derive the counts, or assert that no `EVIDENCE` string contains a
+bare integer that is not part of an `n=` size.
+
+## TC-47 — every published `select` number rests on rows whose recorded load is false (2026-08-19, open)
+
+All 18 `runner: "r2"` rows in `bench/select.jl` carry no top-level `load1`. They
+carry `load1: 0.97` frozen inside `env` — the identical value on every row,
+which is the failure `bench/env.js` documents as fixed: *"a recorded environment
+that is false is worse than none"*. `RUNNER` was not bumped, so `lib/derive.ts`
+accepts them and `select.jl` sits in `REMEASURED`.
+
+`allocating-select`'s entire cost line rests on those rows. The fix is to
+re-measure the sweep; it is six cells.
+
+## TC-46 — the load gate is inoperative, and 592 of 707 published rows were written above it (2026-08-19, open, proposal)
+
+`bench/env.js` sets `MAX_LOAD = CORES - 1`, and this machine reports 2 cores, so
+the gate is 1. Rows written while their own recorded `load1` exceeded their own
+recorded `maxLoad`:
+
+| file | rows over gate |
+|---|---|
+| `dispatch.jl` | 205/240 |
+| `strings.jl` | 67/81 |
+| `chained.jl` | 58/72 |
+| `shape-sets.jl` | 57/72 |
+| `delete.jl` | 46/48 |
+| `example.jl` | 45/48 |
+| `spread-object.jl` | 23/24 |
+| `spread.jl` | 21/24 |
+
+Worst observed: `load1` 4.32 against `maxLoad` 1.
+
+Two causes, and the first is the harness itself. The gate is checked before each
+cell and never between the three sweeps of a replicated one; the pinned measured
+child contributes about 1.0 to the load average by itself; and `bench/tiers.js`
+spawns four **unpinned** `--trace-opt` children per row, during the sweep that
+CLAUDE.md says nothing else may run during. Nothing in `lib/derive.ts` or `make
+test` ever reads `load1`, so no published number knows what it was measured
+under.
+
+**Proposal, and it is a redesign, so it waits for sign-off:** subtract the
+harness's own pinned process from the gate, defer `tierPair` until after the
+sweep, and fail a published citation whose rows exceed their gate. The last part
+withdraws most of the corpus, which is why this is a proposal and not a fix.
+
+## TC-45 — a call through an interface or a parameter is invisible twice (2026-08-19, open, proposal)
+
+TC-31 recorded that a call through a parameter is neither followed nor reported.
+The reproduction is worse than the entry: the canonical megamorphic program is
+silent, and silent in BOTH directions.
+
+```ts
+interface Shape { area(): number }
+// five classes implementing it, dispatched in a loop
+```
+
+    turbocharge — 1 annotated function, 0 findings
+    every annotated function is clean.
+
+`megamorphic-dispatch` sees a declared type that is not a union, so
+`objectShapes` answers 0. And `closed-world` skips it because `lib/scan.ts`
+computes `unchecked = next.length === 0 && (decls.length === 0 ||
+decls.some(unreadable))` — a `MethodSignature` in a `.ts` file is neither
+followable nor unreadable, so it falls through both branches. A callback
+parameter behaves the same way.
+
+So nothing on the terminal separates *"we looked and it was fine"* from *"we
+could not look"*, which is the promise `closed-world` exists to keep. TC-31 is
+not in `closed-world.defects` either, so no finding names it.
+
+**Proposal:** treat a callee that resolves only to declarations with no body — a
+parameter, a `MethodSignature`, a `CallSignature` — as an escape. One clause in
+`unchecked`, and it widens published output on every codebase that uses an
+interface, which is why it waits.
+
+## TC-44 — `allocating-select` fires on a value that never escapes, and prints the wrong cell's number (2026-08-19, open, proposal)
+
+The rule's `unreported` clause said *"the rule stays out of it"* about a target
+kept in a local. It does not — nothing in `allocatingSelect` asks where the
+target lives:
+
+```ts
+let lo = xs[0]!;
+for (const y of xs) lo = Money.min(lo, y);   // lo never leaves the function
+```
+
+    lo is replaced by Money.min(...), which returns a new object every pass
+    measured 2.56-2.87x when the chosen value is stored somewhere that outlives the loop
+
+The printed figure is `select.heap`, measured for a value that escapes. The
+figure for this program is `select.silent.local`, and it is smaller. The clause
+is corrected as of today; the rule is not.
+
+**Proposal:** gate the rule on the target escaping the loop, and cite the local
+cell where it does not. Both change shipped output.
+
 ## TC-43 — `accumulating-spread` is evaded by three tokens, and no rule is inter-procedural (2026-08-17, open — two of four closed 2026-08-19)
 
 Five annotated functions, each holding the measured defect in a form one
@@ -524,6 +695,19 @@ constructors: the walk has a third way of stopping silently.
 
 
 ## TC-30 — the launch loop uses Google's V8 mark, and nobody has cleared that (2026-08-16, open, proposal)
+
+> **2026-08-19, researched.** "V8" is not on Google's published trademark list
+> (0 hits across 514 marks) and `v8.dev/logo` offers the SVG with no terms — but
+> `v8.dev/terms` says *"Google's trademarks and other brand features are not
+> included in this license"*, and Google's brand rules say *"Don't display any
+> Google Brand Feature as the most prominent element in your content"*, which
+> act three of the film does literally. *Toyota v. Tabari* (9th Cir. 2010) is the
+> shape of it: the word "Lexus" was nominative fair use, the logo was "more use
+> of the mark than necessary". **Cheapest complete fix:** keep the word V8
+> everywhere in the text, drop the mark from the film, and add one line to
+> README — *"V8 is a trademark of Google LLC. This project is not affiliated
+> with or endorsed by Google."* README names V8 eighteen times today with no
+> attribution line at all.
 
 `demo/meme/` builds the loop on the page at krons.fiu.wtf/pub/turbocharge/ from
 `v8.dev/_img/v8-outline.svg` — Google's V8 logo, recoloured to the PH3 palette.

@@ -641,6 +641,10 @@ travel with them, alongside the four copyright holders and the commit each
 function came from. The point of the whole exercise is that the code measured
 there is somebody else's.
 
+V8 is a trademark of Google LLC. This project is not affiliated with, endorsed
+by, or sponsored by Google, and every use of the name here is a reference to the
+engine the measurements were taken on.
+
 Status: v0.7.0, single machine, seven rules. Every sweep behind a published
 number is re-measured whole under the current runner: three sweeps per cell, and
 a cell whose three share no common value is withdrawn by `lib/derive.ts` before

@@ -72,7 +72,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       `bench/shape-sets.jl, ${N['elem.cells']} cells, 20 pairs each. This rule quoted ` +
       'bench/shapes-calibrated.jl until 2026-08-19, and that sweep varies key ORDER — five ' +
       'builders over one key set, five V8 maps, and exactly ONE TypeScript type. It priced a ' +
-      'program this rule is silent on (BUGS TC-42). bench/shape-sets.js is the same 24 cells ' +
+      'program this rule is silent on (BUGS TC-42). bench/shape-sets.js sweeps the same cells ' +
       'over five key SETS, which is the shape a declared type can express and this rule counts',
     silent:
       `two to four property sets cost ${N['elem.silent.24']} on reads — real at L1, nothing ` +
@@ -145,7 +145,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       'Object.assign(acc, …) mutates in place and is the fix rather than the defect, so it ' +
       'stays silent too; and a STRING is not this rule at any n — s = s + x, s += x and ' +
       `s = s.concat(x) build in ${N['spread.silent.strings.build']} of a push-and-join, ` +
-      'every one of those nine cells far below 1, because V8 appends into a cons-string. ' +
+      'every one of those cells far below 1, because V8 appends into a cons-string. ' +
       `Counting the caller's read back they measure ${N['spread.silent.strings.incl']} ` +
       `(intervals ${N['spread.silent.strings.incl.ci']}), which is a weaker claim than it ` +
       'looks: most of those intervals span 1.0, so once the result is read back the string ' +
