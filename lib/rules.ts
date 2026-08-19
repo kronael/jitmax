@@ -255,10 +255,37 @@ const reassignedInLoop = (ts: Ts, node: TS.Node, inLoop: boolean): node is TS.Bi
 // megamorphic rules fire on the fifth map, from one threshold rather than two.
 const MAX_CACHED_MAPS = 4;
 
-// Members that could reach a site as distinct maps; a non-union answers 0,
-// which is under every threshold, so callers only ask whether there are too many.
-const objectShapes = (ts: Ts, t: TS.Type): number =>
-  t.isUnion() ? t.types.filter((x) => x.flags & ts.TypeFlags.Object).length : 0;
+// The property names a member carries, sorted. V8 keys a map on the property
+// names AND the order they were added, and a TypeScript type records neither
+// order nor identity — so a type can only ever answer the first half. Sorting
+// is the answer that keeps the rule quiet where it cannot tell: two members
+// with the same names are treated as one map even if a program could build them
+// in two orders, because the alternative is warning about a program whose maps
+// nobody has counted.
+const shapeKey = (checker: TS.TypeChecker, t: TS.Type): string =>
+  checker
+    .getPropertiesOfType(t)
+    .map((sym) => sym.getName())
+    .sort()
+    .join(',');
+
+// Shapes that could reach a site as DISTINCT maps; a non-union answers 0, which
+// is under every threshold, so callers only ask whether there are too many.
+//
+// This counted union MEMBERS until 2026-08-19, and a member is not a map (BUGS
+// TC-42). Five aliases of one type share one map — `%HaveSameMap` says true —
+// and so do five variants of a discriminated union over the same key set, and
+// the rule fired on both while quoting a benchmark that measured neither. The
+// count is over distinct property-name sets, so a rename cannot make a shape
+// and the printed fix cannot be satisfied by one.
+const objectShapes = (ts: Ts, checker: TS.TypeChecker, t: TS.Type): number =>
+  t.isUnion()
+    ? new Set(
+        t.types
+          .filter((x) => x.flags & ts.TypeFlags.Object)
+          .map((x) => shapeKey(checker, x))
+      ).size
+    : 0;
 
 const elementType = (ts: Ts, checker: TS.TypeChecker, t: TS.Type): TS.Type | undefined =>
   checker.getIndexTypeOfType(t, ts.IndexKind.Number);
@@ -306,18 +333,21 @@ function arrayParams(
 // this file has already had three drift (BUGS TC-28).
 const megamorphicElements: Rule = (ts, checker, body, add) => {
   for (const { p, element } of arrayParams(ts, checker, body)) {
-    const shapes = objectShapes(ts, element);
+    const shapes = objectShapes(ts, checker, element);
     if (shapes <= MAX_CACHED_MAPS) continue;
     add({
       ...at(body.sf, p),
       rule: 'megamorphic-elements',
-      // A union member is not a V8 map. Five members reach a load site as five
-      // maps only if they really are five shapes, so the finding says "unions",
-      // states the mechanism, and lets the reader judge.
+      // What the count is, said in the words of the thing counted. It read
+      // "unions N object types" while counting union members, and a reader who
+      // took that literally could satisfy the fix by renaming a member (TC-42).
+      // Distinct property sets cannot be merged by a rename.
       message:
-        `${p.name.getText(body.sf)} unions ${shapes} object types; V8 caches four maps ` +
-        'per load site, so loads here go megamorphic unless some of them share a shape',
-      fix: 'get the element type to four shapes or fewer, or give it one construction path',
+        `${p.name.getText(body.sf)} reaches this line as ${shapes} distinct property sets; ` +
+        'V8 caches four maps per load site, so a fifth makes every load here a lookup',
+      fix:
+        'get the element type to four distinct property sets or fewer, or give it one ' +
+        'construction path — renaming a member does not merge two shapes',
     });
   }
 };
@@ -338,25 +368,27 @@ const megamorphicDispatch: Rule = (ts, checker, body, add) => {
   // `consumed` check exists to avoid. The shipped rule keeps the finding.
   const claimed = new Set<TS.Type>();
   for (const { element } of arrayParams(ts, checker, body)) {
-    if (objectShapes(ts, element) > MAX_CACHED_MAPS) claimed.add(element);
+    if (objectShapes(ts, checker, element) > MAX_CACHED_MAPS) claimed.add(element);
   }
 
   walk(ts, body.node, (node) => {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const receiver = node.expression.expression;
       const t = checker.getTypeAtLocation(receiver);
-      const shapes = objectShapes(ts, t);
+      const shapes = objectShapes(ts, checker, t);
       if (shapes > MAX_CACHED_MAPS && !claimed.has(t)) {
         add({
           ...at(body.sf, node),
           rule: 'megamorphic-dispatch',
-          // Same care as megamorphic-elements: a union member is not a V8 map
-          // (TC-2). State the count, state the mechanism, leave the judgement.
+          // Counted the same way as megamorphic-elements, and for the same
+          // reason: five names for one property set are one map (TC-42).
           message:
-            `${receiver.getText(body.sf)} unions ${shapes} object types and ` +
-            `.${node.expression.name.text}() is called on it; V8 caches four maps per call ` +
-            'site, so this call goes megamorphic unless some of them share a shape',
-          fix: 'get the receiver to four object types or fewer, or give the call site one shape',
+            `${receiver.getText(body.sf)} reaches this call as ${shapes} distinct property ` +
+            `sets and .${node.expression.name.text}() is called on it; V8 caches four maps ` +
+            'per call site, so a fifth makes every call here a lookup',
+          fix:
+            'get the receiver to four distinct property sets or fewer, or give the call ' +
+            'site one shape',
         });
       }
     }

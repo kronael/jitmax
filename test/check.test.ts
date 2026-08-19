@@ -39,6 +39,7 @@ test('a function is checked only where it is annotated', () => {
     [...found.keys()].sort(),
     [
       'addField',
+      'aliasedShapes',
       'appendOnce',
       'areaOfFive',
       'areaOfFour',
@@ -67,6 +68,7 @@ test('a function is checked only where it is annotated', () => {
       'optionalField',
       'sortedStages',
       'splitJoin',
+      'taggedShapes',
       'total',
       'totalArea',
       'twoStages',
@@ -89,18 +91,33 @@ test('a plain number[] stays silent', () => {
   assert.ok(!rules('fourShapes').includes('boxed-elements'));
 });
 
-test('the fifth shape fires: 3.6-10.6x on reads, the cliff', () => {
+test('the fifth distinct property set fires: the cliff', () => {
   assert.deepStrictEqual(rules('fiveShapes'), ['megamorphic-elements']);
 });
 
+// The two false-positive classes TC-42 named, both verified with
+// `%HaveSameMap` before these tests were written: five aliases of one type
+// share a map, and so do five discriminated-union variants over one key set.
+// The rule counted union members and reported both. A test rather than a
+// comment, because the fix is one line of counting and one line is easy to
+// undo.
+test('five aliases of one property set stay silent: a rename is not a shape', () => {
+  assert.deepStrictEqual(rules('aliasedShapes'), []);
+});
+
+test('a discriminated union over one key set stays silent', () => {
+  assert.deepStrictEqual(rules('taggedShapes'), []);
+});
+
 // The same V8 constant at a call site, found from the other end. Four shapes
-// cost 1.16-1.56x — the band four shapes cost at a load site — and the fifth
-// costs 14.6-20.0x, because it loses the inlining as well as the cached lookup.
+// cost about what four cost at a load site, and the fifth costs an order of
+// magnitude more, because it loses the inlining as well as the cached lookup.
+// The figures live in EVIDENCE, where a re-measurement moves them.
 test('four shapes at a call site stay silent', () => {
   assert.deepStrictEqual(rules('areaOfFour'), []);
 });
 
-test('the fifth shape at a call site fires: 14.6-20.0x on reads', () => {
+test('the fifth shape at a call site fires', () => {
   assert.deepStrictEqual(rules('areaOfFive'), ['megamorphic-dispatch']);
 });
 

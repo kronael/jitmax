@@ -7,6 +7,20 @@ type C = { c: number };
 type D = { d: number };
 type E = { e: number };
 
+// Five aliases of one property set, and a five-member discriminated union over
+// another: the two shapes `megamorphic-elements` used to report and V8 builds
+// one map for.
+type Row1 = { x: number; y: number };
+type Row2 = { x: number; y: number };
+type Row3 = { x: number; y: number };
+type Row4 = { x: number; y: number };
+type Row5 = { x: number; y: number };
+type Ev1 = { kind: 'a'; v: number };
+type Ev2 = { kind: 'b'; v: number };
+type Ev3 = { kind: 'c'; v: number };
+type Ev4 = { kind: 'd'; v: number };
+type Ev5 = { kind: 'e'; v: number };
+
 function scale(v: number): number {
   return v * 1.5;
 }
@@ -18,16 +32,39 @@ export function total(rows: Row[]): number {
   return s;
 }
 
-/** Four shapes cost 1.18-1.58x and a plain number[] costs nothing: silent. */
+/** Four shapes are under the four-map budget and a plain number[] has no
+ * shapes at all: silent. The figure is in EVIDENCE, where a re-measurement
+ * moves it; a comment quoting one is a copy nothing updates. */
 /** @turbocharge */
 export function fourShapes(rows: (A | B | C | D)[], gaps: number[]): number {
   return rows.length + gaps.length;
 }
 
-/** The fifth shape is the cliff: 5.34x at L1. */
+/** The fifth distinct property set is the cliff. */
 /** @turbocharge */
 export function fiveShapes(rows: (A | B | C | D | E)[]): number {
   return rows.length;
+}
+
+/** Five names for one property set. V8 keys a map on the property names, so
+ * these five reach the load site as ONE map — `%HaveSameMap` says true — and
+ * the rule that counted union members reported them anyway (BUGS TC-42).
+ * Silent. */
+/** @turbocharge */
+export function aliasedShapes(rows: (Row1 | Row2 | Row3 | Row4 | Row5)[]): number {
+  let s = 0;
+  for (const r of rows) s += r.x + r.y;
+  return s;
+}
+
+/** A discriminated union over ONE key set: five members, five literal types for
+ * `kind`, and one map at runtime, because a string literal type is not a
+ * property name. Silent, for the same reason. */
+/** @turbocharge */
+export function taggedShapes(evts: (Ev1 | Ev2 | Ev3 | Ev4 | Ev5)[]): number {
+  let s = 0;
+  for (const e of evts) s += e.v;
+  return s;
 }
 
 /** The trigger `boxed-elements` used to fire on. V8 picks the elements kind

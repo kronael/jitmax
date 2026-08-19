@@ -33,7 +33,7 @@ silences the tool completely.
 `mark.reached`, which is the walk's whole point, or say plainly that rules are
 single-body and the walk only widens *where* they are applied.
 
-## TC-42 — the flagship rule cannot detect what its own benchmark measured (2026-08-17, open, proposal)
+## TC-42 — the flagship rule cannot detect what its own benchmark measured (2026-08-17, open — half fixed 2026-08-19)
 
 **The most serious entry in this file.** Both directions were re-run here.
 
@@ -105,6 +105,23 @@ property-name lists, which `checker` already has.
 Until one of those happens the page must not print `4.4-11.5x` beside a
 description of what this rule detects. **The page is corrected as of this
 entry.**
+
+**Proposal 1 shipped 2026-08-19.** `objectShapes` counts distinct property-name
+sets, not union members. Five aliases of one type answer 1, so do five
+discriminated-union variants over one key set, and both are demo fixtures with a
+test each. The printed finding says "reaches this line as N distinct property
+sets" and the fix line says a rename does not merge two shapes — the old wording
+could be satisfied by deleting `P5` and writing `P1`. `megamorphic-dispatch`
+counts the same way, which closes its half of this entry too.
+
+**Proposal 2 is running.** `bench/shape-sets.js` is `bench/shapes.js` with the
+five key ORDERS replaced by five key SETS — the shapes a TypeScript type can
+express and this rule can see, at the same three sizes, in both modes, three
+sweeps per cell. `%HaveSameMap` reports the five as five distinct maps here as
+well, so the kernel and the rule finally agree about what is being counted. If
+the cell reads about 1.0x the rule has no evidence and follows `boxed-elements`
+out of the tool; until it lands, `EVIDENCE` still quotes the key-order sweep and
+the page still points here.
 
 ## TC-41 — an example's `.after.ts` is a rewrite, and its costly axis is never swept (2026-08-17, open, proposal)
 
