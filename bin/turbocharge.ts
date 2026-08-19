@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import path from 'node:path';
+
 import { load, program } from '../lib/ts.ts';
 import { scan } from '../lib/scan.ts';
 import { check, resolveDisabled } from '../lib/rules.ts';
@@ -8,7 +10,19 @@ import { loadConfig } from '../lib/config.ts';
 try {
   const cwd = process.cwd();
   const ts = load(cwd);
-  const args = process.argv.slice(2).filter((a) => !a.startsWith('-'));
+  // Every argument is positional. There are no flags, so an argument that
+  // LOOKS like one was a mistake — and this line used to drop it silently, so
+  // `turbocharge --config=cfg.toml src` scanned src with the config never
+  // loaded and exited 0. A configuration that was never read is the same
+  // silent lie `loadConfig` and `resolveDisabled` throw on everywhere else.
+  const argv = process.argv.slice(2);
+  const flag = argv.find((a) => a.startsWith('-'));
+  if (flag !== undefined) {
+    throw new Error(
+      `${flag}: turbocharge takes no options. Usage: turbocharge [config.toml] [path…]`
+    );
+  }
+  const args = argv;
 
   // `turbocharge turbocharge.toml src` — the config is the first positional,
   // named by its .toml suffix, and optional: `turbocharge src` still works,
@@ -22,6 +36,20 @@ try {
   resolveDisabled(configDisabled);
 
   const p = program(ts, cwd, inputs);
+  // A file that does not parse yields a garbage AST, every type-based rule
+  // goes quiet on it, and the run reported `every annotated function is clean`
+  // and exited 0 — a gate reads that as a pass. Same class as TC-7 and TC-17:
+  // the tool must never call a run clean when it could not read the code.
+  // Syntax only: a type error is somebody's build problem and not evidence
+  // that this tool could not look.
+  const broken = p.getSyntacticDiagnostics();
+  if (broken.length > 0) {
+    const where = [...new Set(broken.map((d) => d.file?.fileName ?? '<unknown>'))];
+    throw new Error(
+      `${broken.length} syntax error${broken.length > 1 ? 's' : ''} — nothing here was ` +
+        `checked: ${where.map((f) => path.relative(cwd, f) || f).join(', ')}`
+    );
+  }
   const { checker, marks } = scan(ts, p);
 
   const allKeys = new Set(configDisabled);
