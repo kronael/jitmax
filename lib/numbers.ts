@@ -3,16 +3,18 @@
 // fails when this file and the data disagree.
 
 export const N: Record<string, string> = {
-  // shapes-calibrated.jl: five shapes, reads only, L1 through RAM
-  'elem.reads': '4.4-11.5x',
-  // shapes-calibrated.jl: construction counted, L1 and L2, two to five shapes — 2 of 8 cells withdrawn as unreplicable (rule 13): 3|1|incl|16384|L2, 4|1|incl|16384|L2
-  'elem.constr.l1l2': '1.36-3.91x',
-  // shapes-calibrated.jl: construction counted at RAM size, two to five shapes
-  'elem.constr.l3': '1.00-1.22x',
-  // shapes-calibrated.jl: the whole sweep — 2 of 24 cells withdrawn as unreplicable (rule 13): 3|1|incl|16384|L2, 4|1|incl|16384|L2
-  'elem.cells': '22',
-  // shapes-calibrated.jl: two to four shapes, reads only, every size — where the rule stays quiet
-  'elem.silent.24': '1.05-1.81x',
+  // shape-sets.jl: five distinct property sets, reads only, L1 through RAM
+  'elem.reads': '3.4-11.3x',
+  // shape-sets.jl: construction counted, five property sets, L1 and L2 — 1 of 2 cells withdrawn as unreplicable (rule 13): 5|1|incl|16384|L2
+  'elem.constr.l1l2': '3.61-3.71x',
+  // shape-sets.jl: construction counted at RAM size, five property sets
+  'elem.constr.l3': '1.08-1.20x',
+  // shape-sets.jl: the whole sweep — 4 of 24 cells withdrawn as unreplicable (rule 13): 2|1|incl|16384|L2, 2|1|incl|262144|L3, 4|1|incl|16384|L2, 5|1|incl|16384|L2
+  'elem.cells': '20',
+  // shape-sets.jl: two to four property sets, reads only, every size — where the rule stays quiet
+  'elem.silent.24': '0.95-1.47x',
+  // shapes-calibrated.jl: five key orders of ONE key set, reads only, L1 through RAM
+  'elem.keyorder.reads': '4.4-11.5x',
   // dispatch.jl: a method on a prototype, five and six shapes, reads only
   'disp.proto.reads': '12.9-22.7x',
   // dispatch.jl: a method on a prototype, four shapes, reads only at L1

@@ -159,7 +159,7 @@ false for both (`BUGS.md` TC-39).
 
 | Rule | What it looks for | Where the measurement found no effect |
 |---|---|---|
-| `megamorphic-elements` | the fifth object shape at a load site | two to four shapes |
+| `megamorphic-elements` | the fifth distinct property set at a load site — 3.4-11.3x on reads | two to four sets, 0.95-1.47x |
 | `megamorphic-dispatch` | `x.step()` where `x` is one of five object types | two to four types, for a method on a class |
 | `accumulating-spread` | `[...acc, v]`, `{ ...acc, k: v }`, `acc.concat(v)` or `Object.assign({}, acc, …)` in a loop — quadratic | no loop re-runs the copy; `Object.assign(acc, …)`, which mutates; strings, which V8 appends to instead of copying |
 | `chained-allocation` | `.map().filter()` or `Object.entries(o).map()` allocates between stages | one stage; large n; `Object.keys(o).map()`, `.sort()`, `.split().map().join()` |
@@ -248,11 +248,12 @@ published number is no longer what its rows say.
 
 | Number | The rows it is |
 |---|---|
-| `4.4-11.5x` | `bench/shapes-calibrated.jl` — five shapes, reads only, L1 through RAM |
-| `1.36-3.91x` | `bench/shapes-calibrated.jl` — construction counted, L1 and L2, two to five shapes — 2 of 8 cells withdrawn as unreplicable (rule 13): 3|1|incl|16384|L2, 4|1|incl|16384|L2 |
-| `1.00-1.22x` | `bench/shapes-calibrated.jl` — construction counted at RAM size, two to five shapes |
-| `22` | `bench/shapes-calibrated.jl` — the whole sweep — 2 of 24 cells withdrawn as unreplicable (rule 13): 3|1|incl|16384|L2, 4|1|incl|16384|L2 |
-| `1.05-1.81x` | `bench/shapes-calibrated.jl` — two to four shapes, reads only, every size — where the rule stays quiet |
+| `3.4-11.3x` | `bench/shape-sets.jl` — five distinct property sets, reads only, L1 through RAM |
+| `3.61-3.71x` | `bench/shape-sets.jl` — construction counted, five property sets, L1 and L2 — 1 of 2 cells withdrawn as unreplicable (rule 13): 5|1|incl|16384|L2 |
+| `1.08-1.20x` | `bench/shape-sets.jl` — construction counted at RAM size, five property sets |
+| `20` | `bench/shape-sets.jl` — the whole sweep — 4 of 24 cells withdrawn as unreplicable (rule 13): 2|1|incl|16384|L2, 2|1|incl|262144|L3, 4|1|incl|16384|L2, 5|1|incl|16384|L2 |
+| `0.95-1.47x` | `bench/shape-sets.jl` — two to four property sets, reads only, every size — where the rule stays quiet |
+| `4.4-11.5x` | `bench/shapes-calibrated.jl` — five key orders of ONE key set, reads only, L1 through RAM |
 | `12.9-22.7x` | `bench/dispatch.jl` — a method on a prototype, five and six shapes, reads only |
 | `1.52-1.65x` | `bench/dispatch.jl` — a method on a prototype, four shapes, reads only at L1 |
 | `19.22-22.71x` | `bench/dispatch.jl` — a method on a prototype, five shapes, reads only at L1 |
@@ -580,8 +581,18 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
   `unreported` clause, never in its `silent` one.
 - A TypeScript union member is not a V8 map, which is the engine's internal
   object shape. `megamorphic-elements` estimates the shape count from the
-  declared type. It can report a problem even if no load site ever sees five maps.
-  `BUGS.md` TC-2.
+  declared type. It can report a problem even if no load site ever sees five
+  maps. What it no longer does is count NAMES: five aliases of one type, and
+  five discriminated-union variants over one key set, are one map each —
+  `%HaveSameMap` says so — and the rule counted them as five until 2026-08-19.
+  It counts distinct property-name sets, which no rename can change. `BUGS.md`
+  TC-2 and TC-42.
+- The same rule's benchmark used to measure a program the rule is silent on.
+  `bench/shapes.js` varies key ORDER — five builders, one key set, five V8 maps,
+  and exactly one TypeScript type. `bench/shape-sets.js` varies the key SET, at
+  the same three sizes and in both modes, and that is where 3.4-11.3x comes
+  from. The key-order sweep is still on disk and still quoted, in the rule's
+  `unreported` clause: it costs 4.4-11.5x and nothing static can find it.
 - One measured effect ships no rule, because nothing static can find it. A
   boxed array costs 1.39-1.66x to read, and 1.58-1.69x to build at RAM size, and
   whether an array is boxed depends on what was stored in it, which a type

@@ -121,6 +121,7 @@ const REMEASURED = new Set([
   'example.jl',
   'strings.jl',
   'dispatch.jl',
+  'shape-sets.jl',
 ]);
 
 const files = (c: Citation): string[] => (Array.isArray(c.file) ? c.file : [c.file]);
@@ -137,40 +138,55 @@ const replicated = (r: Row): boolean => r.protocol === 'replicated';
 
 export const CITATIONS: Record<string, Citation> = {
   // megamorphic-elements
-  // `fresh(r)` used to sit in these three picks, to keep the one-sweep rows
-  // apart from the handful of cells TC-11 re-ran. Under the current runner
-  // EVERY cell is replicated, so `fresh` matches nothing and a pick that still
-  // asked for it would fail at `no rows match` — which is what it is for.
+  //
+  // These read `shape-sets.jl`, not `shapes-calibrated.jl`. The older sweep
+  // varies key ORDER: five builders over one key set, which is five V8 maps and
+  // exactly one TypeScript type — so it prices a program this rule is silent on
+  // (BUGS TC-42). `shape-sets.jl` is the same 24 cells over five key SETS, the
+  // shapes a declared type can express and this rule counts. The key-order
+  // sweep stays on disk and stays quoted, as the contrast it is.
   'elem.reads': {
-    file: 'shapes-calibrated.jl',
-    cells: 'five shapes, reads only, L1 through RAM',
+    file: 'shape-sets.jl',
+    cells: 'five distinct property sets, reads only, L1 through RAM',
     pick: (r) => r.mode === 'excl' && r.shapes === 5,
     agg: 'range',
     dp: 1,
+    readme: true,
   },
   'elem.constr.l1l2': {
-    file: 'shapes-calibrated.jl',
-    cells: 'construction counted, L1 and L2, two to five shapes',
-    pick: (r) => r.mode === 'incl' && (r.size === 'L1' || r.size === 'L2'),
+    file: 'shape-sets.jl',
+    cells: 'construction counted, five property sets, L1 and L2',
+    pick: (r) => r.mode === 'incl' && r.shapes === 5 && (r.size === 'L1' || r.size === 'L2'),
     agg: 'range',
   },
   'elem.constr.l3': {
-    file: 'shapes-calibrated.jl',
-    cells: 'construction counted at RAM size, two to five shapes',
-    pick: (r) => r.mode === 'incl' && r.size === 'L3',
+    file: 'shape-sets.jl',
+    cells: 'construction counted at RAM size, five property sets',
+    pick: (r) => r.mode === 'incl' && r.shapes === 5 && r.size === 'L3',
     agg: 'range',
   },
   'elem.cells': {
-    file: 'shapes-calibrated.jl',
+    file: 'shape-sets.jl',
     cells: 'the whole sweep',
     pick: () => true,
     agg: 'count',
   },
   'elem.silent.24': {
-    file: 'shapes-calibrated.jl',
-    cells: 'two to four shapes, reads only, every size — where the rule stays quiet',
+    file: 'shape-sets.jl',
+    cells: 'two to four property sets, reads only, every size — where the rule stays quiet',
     pick: (r) => r.mode === 'excl' && (r.shapes ?? 0) <= 4,
     agg: 'range',
+  },
+  // The key-order sweep, kept because the contrast is the finding: the same
+  // five maps at the same load site, reached through a shape no TypeScript type
+  // can express. It is what the rule CANNOT see, and it costs the same order as
+  // what it can.
+  'elem.keyorder.reads': {
+    file: 'shapes-calibrated.jl',
+    cells: 'five key orders of ONE key set, reads only, L1 through RAM',
+    pick: (r) => r.mode === 'excl' && r.shapes === 5,
+    agg: 'range',
+    dp: 1,
   },
 
   // megamorphic-dispatch

@@ -651,6 +651,12 @@ const DISAGREE = new Set([
   'dispatch.jl tgt5|lit1|excl|16384|L2|tgt|5|dispatch-table',
   'dispatch.jl lit6|lit1|incl|16384|L2|lit|6|dispatch-table',
   'dispatch.jl tgt2|lit1|excl|256|L1|tgt|2|dispatch-table',
+  // Construction-counted cells of the new shape sweep. The reads-only cells,
+  // which are the ones the rule cites, all replicate.
+  'shape-sets.jl 2|1|incl|16384|L2',
+  'shape-sets.jl 4|1|incl|16384|L2',
+  'shape-sets.jl 5|1|incl|16384|L2',
+  'shape-sets.jl 2|1|incl|262144|L3',
 ]);
 
 test('no published cell disagrees with itself except the ones on record', () => {
@@ -661,7 +667,7 @@ test('no published cell disagrees with itself except the ones on record', () => 
   const files = [
     'chained.jl', 'inline.jl', 'select.jl', 'delete.jl', 'spread.jl',
     'spread-object.jl', 'strings.jl', 'shapes-calibrated.jl', 'example.jl',
-    'dispatch.jl', 'addprop.jl', 'arrays.jl',
+    'dispatch.jl', 'addprop.jl', 'arrays.jl', 'shape-sets.jl',
   ];
 
   const found = new Set<string>();

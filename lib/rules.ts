@@ -40,7 +40,6 @@ export const DEFECT: Record<string, string> = {
   'TC-10': 'the walk follows calls but not constructors',
   'TC-13': 'a method in a field has no four-map budget',
   'TC-33': "closed-world's trigger and its benchmark measure different things",
-  'TC-42': 'megamorphic-elements is measured on key order and fires on key sets',
 };
 
 export interface Finding extends Site {
@@ -64,23 +63,28 @@ export interface Finding extends Site {
 export const EVIDENCE: Record<string, Evidence> = {
   'megamorphic-elements': {
     cost:
-      `${N['elem.reads']} on reads across L1, L2 and L3; ${N['elem.constr.l1l2']} once ` +
-      'construction is counted at L1 and L2, where allocation swamps the load, and nothing ' +
-      `at RAM size — ${N['elem.constr.l3']} there, flat from two shapes to five, each cell ` +
-      'replicated three times',
+      `${N['elem.reads']} on reads across L1, L2 and L3 — five distinct property sets ` +
+      `against one, three whole sweeps per cell; ${N['elem.constr.l1l2']} once construction ` +
+      'is counted at L1, where allocation swamps the load, and the L2 cell there does not ' +
+      `replicate and is withdrawn; ${N['elem.constr.l3']} at RAM size, where bandwidth ` +
+      'dominates and the fifth shape costs nothing',
     source:
-      `bench/shapes-calibrated.jl, ${N['elem.cells']} cells, 20 pairs each, every cell ` +
-      'replicated three times — and read the kernel before the number: it varies key ORDER, ' +
-      'five builders over one key set, which is five V8 maps and ONE TypeScript type. This ' +
-      'rule counts distinct property SETS, so the program that produced this number is a ' +
-      'program the rule is silent on. bench/shape-sets.js measures the shapes the rule can ' +
-      'see; until that sweep lands, the figure above prices the mechanism and not the ' +
-      'trigger (BUGS TC-42)',
+      `bench/shape-sets.jl, ${N['elem.cells']} cells, 20 pairs each. This rule quoted ` +
+      'bench/shapes-calibrated.jl until 2026-08-19, and that sweep varies key ORDER — five ' +
+      'builders over one key set, five V8 maps, and exactly ONE TypeScript type. It priced a ' +
+      'program this rule is silent on (BUGS TC-42). bench/shape-sets.js is the same 24 cells ' +
+      'over five key SETS, which is the shape a declared type can express and this rule counts',
     silent:
-      `two to four shapes cost ${N['elem.silent.24']} on reads — real, and measured, but an ` +
-      'order of magnitude below the fifth, which is why the rule starts there and not earlier',
-    bound: true,
-    defects: ['TC-8', 'TC-2', 'TC-9', 'TC-42'],
+      `two to four property sets cost ${N['elem.silent.24']} on reads — real at L1, nothing ` +
+      'at RAM size, and an order of magnitude below the fifth, which is why the rule starts ' +
+      'there and not earlier',
+    unreported:
+      'five key ORDERS of one key set are five maps at the same load site and cost ' +
+      `${N['elem.keyorder.reads']} on reads — the same order as the case this rule does ` +
+      'report. Key order is not part of a TypeScript type, so nothing static separates that ' +
+      'program from one where the five builders agree. The rule misses it rather than ' +
+      'guessing, and bench/shapes-calibrated.jl is what it misses',
+    defects: ['TC-8', 'TC-2', 'TC-9'],
   },
   'megamorphic-dispatch': {
     cost:

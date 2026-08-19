@@ -124,11 +124,12 @@ export function total(rows: Row[]): number { … }</code></pre>
     <tr>
       <td>a fifth shape of object reaching one line</td>
       <td>V8 remembers four. A fifth makes it look up every time.</td>
-      <td>The rule counts distinct property sets, which is as much as a
-          TypeScript type can say about a V8 shape. The benchmark beside it
-          varies key <em>order</em>, which no type can express, so the trigger
-          and the number are about different programs. The number is off this
-          page until the matching sweep lands. <code>BUGS.md</code> TC-42.</td>
+      <td>3.4&ndash;11.3x on reads &mdash; highest in L1, lowest at RAM size,
+          where memory bandwidth dominates instead. Two to four shapes cost
+          0.95&ndash;1.47x, so the step really is at the fifth. This number is
+          one day old: the rule used to quote a sweep that varies key
+          <em>order</em> &mdash; five V8 maps, and one TypeScript type &mdash;
+          which is a program the rule stays silent on.</td>
     </tr>
     <tr>
       <td><code>delete o.k</code></td>

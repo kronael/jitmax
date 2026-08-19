@@ -52,7 +52,7 @@ special case; both need machinery the rules do not have:
 Until then README says plainly that rules are single-body and the walk widens
 only *where* they are applied.
 
-## TC-42 — the flagship rule cannot detect what its own benchmark measured (2026-08-17, open — half fixed 2026-08-19)
+## TC-42 — the flagship rule cannot detect what its own benchmark measured (2026-08-17, FIXED 2026-08-19)
 
 **The most serious entry in this file.** Both directions were re-run here.
 
@@ -133,14 +133,28 @@ sets" and the fix line says a rename does not merge two shapes — the old wordi
 could be satisfied by deleting `P5` and writing `P1`. `megamorphic-dispatch`
 counts the same way, which closes its half of this entry too.
 
-**Proposal 2 is running.** `bench/shape-sets.js` is `bench/shapes.js` with the
-five key ORDERS replaced by five key SETS — the shapes a TypeScript type can
-express and this rule can see, at the same three sizes, in both modes, three
-sweeps per cell. `%HaveSameMap` reports the five as five distinct maps here as
-well, so the kernel and the rule finally agree about what is being counted. If
-the cell reads about 1.0x the rule has no evidence and follows `boxed-elements`
-out of the tool; until it lands, `EVIDENCE` still quotes the key-order sweep and
-the page still points here.
+**Proposal 2 ran, and the rule keeps its number.** `bench/shape-sets.js` is
+`bench/shapes.js` with the five key ORDERS replaced by five key SETS — the
+shapes a TypeScript type can express and this rule counts. 24 cells, both modes,
+three sizes, three whole sweeps each, 53m36s, no void cells. Reads only, five
+property sets against one:
+
+| size | three sweeps |
+|---|---|
+| L1 | 10.78 / 11.35 / 11.00 |
+| L2 | 9.09 / 8.96 / 8.51 |
+| L3 | 4.04 / 4.12 / 3.37 |
+
+All three replicate. Two to four sets read `0.95-1.47x` across every size, so the
+threshold really is at the fifth and it is not an artefact of key order. The
+rule's `cost` is now `3.4-11.3x` from `bench/shape-sets.jl`, its `silent` clause
+is `0.95-1.47x` from the same file, and `elem.cells` is 20 of 24 — four
+construction-counted cells do not replicate and `lib/derive.ts` withdrew them.
+
+The key-order sweep is not deleted and not demoted to history. It measures a
+real cost — `4.4-11.5x`, the same order — that **nothing static can find**,
+because key order is not part of a type. That is the definition of the
+`unreported` clause TC-39 introduced, and it is where it now lives.
 
 ## TC-41 — an example's `.after.ts` is a rewrite, and its costly axis is never swept (2026-08-17, open, proposal)
 
