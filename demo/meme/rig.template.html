@@ -30,16 +30,22 @@
     font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'DejaVu Sans', sans-serif;
   }
   /* No caption strip under the panel any more, so the plate gets the frame. */
+  /* A WINDOW onto the plate, not the plate. The width is animated: act one
+     opens on panel one alone and widens to reveal panel two, because "THIS IS
+     FINE." is the punchline and a punchline that is on screen from the first
+     frame is not one. The plate and the heat keep a FIXED width so the art
+     does not stretch as the window grows — only more of it becomes visible. */
   #panel {
     position: absolute; left: 50%; top: 86px; width: 940px; height: 457px;
-    transform: translateX(-50%); opacity: 0;
+    transform: translateX(-50%); opacity: 0; overflow: hidden;
   }
-  #plate { width: 100%; display: block; }
+  #plate { width: 940px; display: block; }
   /* The heat. The labels are what is burning, so the room gets hotter as they
      arrive: a red-p wash on screen blend, which lifts the flames and leaves the
      ink lines alone. */
   #heat {
-    position: absolute; inset: 0; opacity: 0; pointer-events: none;
+    position: absolute; left: 0; top: 0; width: 940px; height: 457px;
+    opacity: 0; pointer-events: none;
     mix-blend-mode: screen;
     background:
       radial-gradient(560px 300px at 14% 74%, rgba(204,41,54,0.85) 0%, rgba(204,41,54,0) 70%),
@@ -217,8 +223,8 @@ const shade = (c, k) => mix(c, S.bg, k);
 // [0, ACT_BREAK) and [ACT_BREAK, 1) and the cast sits between them.
 const ACT_BREAK = 0.42;
 
-// Where each label sits on the panel and when it lands. Coordinates are panel
-// pixels (940x457) and chosen to fall on flame rather than on a dog or the
+// Where each label sits on the plate and when it lands. Coordinates are plate
+// pixels (940x457) and chosen to fall on flame rather than on a dog or a
 // speech bubble. The order is the order they arrive, and the last one lands
 // just before the cut — the room is still filling up when the film moves on.
 // These names are long — "megamorphic-elements" is 240px at this size — so the
@@ -245,7 +251,7 @@ const ACT_BREAK = 0.42;
 const BUBBLES = [
   { at: 0.034, x:  18, y:   8, w: 268, h: 80, size: 30, tx: 176, rot: -14,
     lines: ["it's strictly typed."] },
-  { at: 0.300, x: 246, y:  96, w: 216, h: 94, size: 25, tx:  16, rot:  26,
+  { at: 0.245, x: 230, y:  96, w: 216, h: 94, size: 25, tx:  16, rot:  26,
     lines: ['zero-cost', 'abstraction.'] },
 ];
 
@@ -264,14 +270,28 @@ function buildBubbles() {
 }
 
 const LABELS = [
-  { at: 0.060, x:   8, y: 262, size: 26, rot: -6 },
-  { at: 0.108, x: 214, y: 306, size: 24, rot:  4 },
-  { at: 0.152, x: 500, y: 140, size: 25, rot:  5 },
-  { at: 0.198, x:  16, y: 398, size: 25, rot:  3 },
-  { at: 0.244, x: 228, y: 424, size: 24, rot: -3 },
-  { at: 0.292, x: 780, y: 216, size: 26, rot: -5 },
-  { at: 0.340, x: 556, y: 402, size: 27, rot:  4 },
+  // Panel one, while the window is still closed on it — so these four must fit
+  // inside 465px, not 940 — and inside it AT THE TOP OF THE POP, which grows
+  // each label by 11% of its width on either side. `megamorphic-dispatch` is
+  // 275px at 24px and sets the margin for its row.
+  { at: 0.072, x:  34, y: 250, size: 24, rot: -6 },
+  { at: 0.112, x: 150, y: 306, size: 24, rot:  4 },
+  { at: 0.152, x:  30, y: 360, size: 25, rot:  3 },
+  { at: 0.192, x: 210, y: 406, size: 24, rot: -3 },
+  // Panel two, and every one of these lands AFTER the reveal — a label that
+  // arrives while its half of the plate is cropped away arrives to nobody.
+  { at: 0.318, x: 500, y: 152, size: 25, rot:  5 },
+  { at: 0.356, x: 712, y: 216, size: 26, rot: -5 },
+  { at: 0.394, x: 556, y: 402, size: 27, rot:  4 },
 ];
+
+// The reveal. Panel one alone is 465 of the plate's 940 rendered pixels, so the
+// window opens there and runs out to the full width once the dog has said both
+// of its lines. Eased, and slow enough to read as a camera pulling back rather
+// than as a wipe.
+const SHUT = 465;
+const OPEN = 940;
+const REVEAL = [0.252, 0.312];
 
 // The rule names come from lib/rules.ts, never from this file. A rule that is
 // withdrawn stops burning; a rule that is added starts. The panel is a picture
@@ -322,6 +342,10 @@ window.renderFrame = function (t) {
   // six seconds reads as a stalled video rather than a held shot.
   el('panel').style.transform =
     `translateX(-50%) scale(${(1 + 0.045 * span(t, 0, ACT_BREAK)).toFixed(4)})`;
+  // The window opens. `translateX(-50%)` keeps it centred at every width, so
+  // panel one sits in the middle of the frame until panel two is earned.
+  el('panel').style.width =
+    `${(SHUT + (OPEN - SHUT) * ease(span(t, REVEAL[0], REVEAL[1]))).toFixed(1)}px`;
   // The labels arrive one at a time. All seven at once is a diagram; arriving
   // is the joke, because the list keeps going after you have stopped expecting
   // it to. Each one lands hot and settles.
@@ -343,8 +367,11 @@ window.renderFrame = function (t) {
     const a = span(t, L.at, L.at + 0.026);
     lit += a;
     e.style.opacity = (shown * a).toFixed(3);
+    // The overshoot was 1.5x, which grows a 275px label by 69px on each side
+    // — enough to push two of them through the closed window's crop and lose
+    // their last syllable for the length of the pop. 1.22 still lands hot.
     e.style.transform =
-      `rotate(${L.rot}deg) scale(${(1 + 0.5 * (1 - a) * a * 4).toFixed(3)})`;
+      `rotate(${L.rot}deg) scale(${(1 + 0.22 * (1 - a) * a * 4).toFixed(3)})`;
   });
   // Hotter with every name. The room is not on fire because of one bad line.
   el('heat').style.opacity = (shown * 0.17 * lit).toFixed(3);
