@@ -56,6 +56,40 @@
     -webkit-text-stroke: 4px #0a0a0a; paint-order: stroke fill;
     text-shadow: 0 2px 6px rgba(10,10,10,0.85);
   }
+  /* The dog talks. The plate's own bubble is dark with light lettering —
+     asset.py feeds the ramp INVERTED luminance, so the comic's white bubble
+     lands on near-black — and a white bubble added next to it would read as a
+     sticker rather than as the same drawing. So: near-black fill, white-p
+     outline, the plate's own lettering weight. */
+  .bub {
+    position: absolute; opacity: 0;
+    background: var(--bg); border: 5px solid var(--white-p);
+    border-radius: 48% / 60%;
+    color: var(--white-p);
+    font-family: 'Liberation Sans Narrow', Impact, sans-serif;
+    font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.055em; text-align: center; line-height: 1.06;
+    display: flex; align-items: center; justify-content: center;
+    padding: 6px 16px;
+  }
+  /* The tail, drawn as two stacked triangles: the outline, then the fill
+     inset over it, so the bubble's border reads as continuous around the
+     wedge. `--trot` aims it and CSS rotation is clockwise, so a tail leaning
+     RIGHT is a NEGATIVE angle. */
+  .bub::after, .bub::before {
+    content: ''; position: absolute; width: 0; height: 0;
+    transform: rotate(var(--trot)); transform-origin: 50% 0;
+  }
+  .bub::after {
+    left: var(--tx); top: calc(100% - 2px);
+    border-left: 15px solid transparent; border-right: 15px solid transparent;
+    border-top: 44px solid var(--white-p);
+  }
+  .bub::before {
+    left: calc(var(--tx) + 5px); top: calc(100% - 9px); z-index: 1;
+    border-left: 10px solid transparent; border-right: 10px solid transparent;
+    border-top: 36px solid var(--bg);
+  }
   #markwrap {
     position: absolute; left: 0; right: 0; top: 58px; height: 330px;
     display: flex; justify-content: center; align-items: center;
@@ -190,14 +224,51 @@ const ACT_BREAK = 0.42;
 // These names are long — "megamorphic-elements" is 240px at this size — so the
 // scatter is laid out on rows that clear each other rather than by eye. Two
 // labels sharing a row overlapped in the first render and neither could be
-// read. The speech bubble owns panel two's top right corner and nothing goes
-// under it.
+// read. Three regions are spoken for and nothing goes under them: the plate's
+// own bubble in panel two's top right corner, and the two the dog says in
+// panel one — the first two labels moved down to clear those.
+// What the dog says, and the only text in this film that is not derived from
+// a measurement — because it is a joke, not a claim. Both lines are in panel
+// ONE: panel two already carries the canonical "THIS IS FINE.", which is the
+// thing that makes the image readable at a glance, and painting over it would
+// throw away the reference the whole panel is quoting.
+//
+// The joke is the one every TypeScript reader already knows and does not say
+// out loud: the types are erased before V8 ever sees them. "Zero-cost
+// abstraction" is literally true of them and that is exactly the problem —
+// zero cost, and zero help. The dog doubles down while the room fills with the
+// rule names, which is the whole product in one panel.
+//
+// `at` is when it pops. The first lands before any flame is named, the second
+// after six of the seven, so the reader has read `megamorphic-elements` before
+// the dog explains that everything is fine.
+const BUBBLES = [
+  { at: 0.034, x:  18, y:   8, w: 268, h: 80, size: 30, tx: 176, rot: -14,
+    lines: ["it's strictly typed."] },
+  { at: 0.300, x: 246, y:  96, w: 216, h: 94, size: 25, tx:  16, rot:  26,
+    lines: ['zero-cost', 'abstraction.'] },
+];
+
+function buildBubbles() {
+  const panel = el('panel');
+  BUBBLES.forEach((B, i) => {
+    const d = document.createElement('div');
+    d.className = 'bub';
+    d.id = `bub${i}`;
+    d.innerHTML = B.lines.join('<br>');
+    d.style.cssText =
+      `left:${B.x}px;top:${B.y}px;width:${B.w}px;height:${B.h}px;` +
+      `font-size:${B.size}px;--tx:${B.tx}px;--trot:${B.rot}deg`;
+    panel.appendChild(d);
+  });
+}
+
 const LABELS = [
-  { at: 0.060, x:  14, y:  96, size: 26, rot: -6 },
-  { at: 0.108, x: 226, y: 182, size: 24, rot:  4 },
+  { at: 0.060, x:   8, y: 262, size: 26, rot: -6 },
+  { at: 0.108, x: 214, y: 306, size: 24, rot:  4 },
   { at: 0.152, x: 500, y: 140, size: 25, rot:  5 },
-  { at: 0.198, x:  24, y: 302, size: 25, rot:  3 },
-  { at: 0.244, x: 262, y: 374, size: 24, rot: -3 },
+  { at: 0.198, x:  16, y: 398, size: 25, rot:  3 },
+  { at: 0.244, x: 228, y: 424, size: 24, rot: -3 },
   { at: 0.292, x: 780, y: 216, size: 26, rot: -5 },
   { at: 0.340, x: 556, y: 402, size: 27, rot:  4 },
 ];
@@ -226,7 +297,7 @@ const BEATS = [
   { at: 0.690, to: 0.975, lockup: true, text:
       '<span class="name">turbocharge</span><br>' +
       '<span class="sub">finds the line. <span class="volt">Measured: {elem.reads}.</span></span>' +
-      '<span class="src">five shapes, reads only, L1 through RAM &mdash; bench/shapes-calibrated.jl</span>' },
+      '<span class="src">five property sets, reads only, L1 through RAM &mdash; bench/shape-sets.jl</span>' },
 ];
 
 // The only transform on a number is typographic: the hyphen of a range becomes
@@ -254,6 +325,17 @@ window.renderFrame = function (t) {
   // The labels arrive one at a time. All seven at once is a diagram; arriving
   // is the joke, because the list keeps going after you have stopped expecting
   // it to. Each one lands hot and settles.
+  // The bubbles pop rather than fade: a speech bubble that dissolves in reads
+  // as a lower third, and this one is the dog talking.
+  BUBBLES.forEach((B, i) => {
+    const e = el(`bub${i}`);
+    if (!e) return;
+    const on = span(t, B.at, B.at + 0.022);
+    e.style.opacity = (on * shown).toFixed(3);
+    const pop = 1 + 0.16 * bump(span(t, B.at, B.at + 0.055));
+    e.style.transform = `scale(${(pop * (0.72 + 0.28 * ease(on))).toFixed(4)})`;
+  });
+
   let lit = 0;
   LABELS.forEach((L, i) => {
     const e = el(`lbl${i}`);
@@ -337,6 +419,7 @@ window.renderFrame = function (t) {
   el('wordmark').style.opacity = ((0.62 + 0.38 * charge) * (1 - lock)).toFixed(3);
 };
 
+buildBubbles();
 window.renderFrame(0);
 </script>
 </body>
