@@ -29,6 +29,7 @@ const KERNEL = { kernel: 'dispatch-table' };
 // failure the never-overwrite rule exists to prevent.
 const SWEEP = {
   shapes: { script: 'shapes.js', out: 'shapes-calibrated.jl' },
+  shapeSets: { script: 'shape-sets.js', out: 'shape-sets.jl' },
   spread: { script: 'spread.js', out: 'spread.jl' },
   spreadObject: { script: 'spread-object.js', out: 'spread-object.jl' },
   strings: { script: 'strings.js', out: 'strings.jl', recordBaseline: true, extra: KERNEL },
@@ -53,6 +54,22 @@ export const BENCHMARKS = {
     modes: ['excl', 'incl'],
     // `shapes` and `size` are the names this sweep has always published, and
     // bench/meme.js reads them.
+    sizes: NAMED,
+    cells: [2, 3, 4, 5].map((shapes) => ({
+      baseline: '1',
+      variant: String(shapes),
+      extra: { shapes },
+    })),
+  },
+
+  // The same sweep over shapes the rule can actually see: five key SETS rather
+  // than five key orders. `shapes` prices a program `megamorphic-elements` is
+  // silent on, so this one prices the program it fires on, cell for cell, at
+  // the same sizes and in both modes (BUGS TC-42).
+  'shape-sets': {
+    ...SWEEP.shapeSets,
+    what: 'the same 24 cells, over shapes a TypeScript type can express',
+    modes: ['excl', 'incl'],
     sizes: NAMED,
     cells: [2, 3, 4, 5].map((shapes) => ({
       baseline: '1',

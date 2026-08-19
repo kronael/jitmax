@@ -38,6 +38,7 @@ test('a function is checked only where it is annotated', () => {
   assert.deepStrictEqual(
     [...found.keys()].sort(),
     [
+      'addAll',
       'addField',
       'aliasedShapes',
       'appendOnce',
@@ -47,8 +48,10 @@ test('a function is checked only where it is annotated', () => {
       'collectByAssign',
       'collectByConcat',
       'collectByReduce',
+      'collectInForEach',
       'collectObject',
       'drop',
+      'dropElement',
       'dropQuiet',
       'entriesMap',
       'fiveShapes',
@@ -64,6 +67,7 @@ test('a function is checked only where it is annotated', () => {
       'mergeInto',
       'mergeOnce',
       'mixed',
+      'nearest',
       'oneStage',
       'optionalField',
       'sortedStages',
@@ -71,6 +75,7 @@ test('a function is checked only where it is annotated', () => {
       'taggedShapes',
       'total',
       'totalArea',
+      'trimTail',
       'twoStages',
       'usesDependency',
       'usesHelper',
@@ -200,8 +205,33 @@ test('the fix differs by form: the array half is unconditional and the object ha
   assert.match(fixFor('collect'), /^push onto acc /);
   assert.doesNotMatch(fixFor('collect'), /normalizes/);
   assert.match(fixFor('collectByConcat'), /^push onto acc /);
-  assert.match(fixFor('collectObject'), /^assign the key on acc .* normalizes it/);
-  assert.match(fixFor('collectByAssign'), /normalizes it/);
+  // The object half stopped being an instruction (BUGS TC-38): applying it
+  // makes the build faster and the reads 8x slower, and the tool reports the
+  // result CLEAN — so the text has to carry what the exit code cannot.
+  assert.match(fixFor('collectObject'), /^there is no rewrite here/);
+  assert.match(fixFor('collectObject'), /normalizes the object/);
+  assert.match(fixFor('collectObject'), /checks CLEAN/);
+  assert.match(fixFor('collectByAssign'), /normalizes the object/);
+});
+
+// Three tokens moved the measured defect out of the rule's sight, and both are
+// forms the benchmark priced: the copy is the same copy either way (BUGS
+// TC-43). A property target is not an identifier, and a forEach callback is a
+// loop the syntax does not spell.
+test('the accumulator on a field fires: a property target is still the target', () => {
+  assert.deepStrictEqual(rules('addAll'), ['accumulating-spread']);
+});
+
+test('the same copy inside a forEach callback fires', () => {
+  assert.deepStrictEqual(rules('collectInForEach'), ['accumulating-spread']);
+});
+
+// bench/delete.js deletes a NAMED property from an object. Deleting an array
+// element makes the backing store holey instead — a different representation,
+// and the printed fix boxes the array, which is the effect that withdrew
+// `boxed-elements` (BUGS TC-36).
+test('delete on an array element stays silent: a different mechanism', () => {
+  assert.deepStrictEqual(rules('dropElement'), []);
 });
 
 // The other half of TC-16, and the only place the width is stated: "build the
@@ -209,6 +239,13 @@ test('the fix differs by form: the array half is unconditional and the object ha
 test('the delete fix says where the rebuild stops paying', () => {
   const f = rawFindings('drop').find((x) => x.rule === 'delete-property');
   assert.match(f?.fix ?? '', /12 keys and not at 48/);
+});
+
+// A chain on a string allocates no array at all, and the rule matched the
+// method names without reading the receiver's type (BUGS TC-35). The same sweep
+// that keeps accumulating-spread off strings keeps this rule off them.
+test('a two-stage chain on a STRING stays silent', () => {
+  assert.deepStrictEqual(rules('trimTail'), []);
 });
 
 test('a two-stage chain fires', () => {
@@ -312,6 +349,13 @@ test('choosing between boxed values with an allocating call fires', () => {
 
 // Math.min returns a number. There is no allocation to remove, and the branch
 // would only save one field store, which is what the number cell measured.
+// The benchmark measured `Box.min`, whose body runs `new Box(...)`. A callee
+// that returns one of its arguments allocates on no pass, and the rule read the
+// return TYPE and asserted an allocation on every one (BUGS TC-34).
+test('a select whose callee allocates nothing stays silent', () => {
+  assert.deepStrictEqual(rules('nearest'), []);
+});
+
 test('the same loop on numbers stays silent', () => {
   assert.deepStrictEqual(rules('lowestNumber'), []);
 });

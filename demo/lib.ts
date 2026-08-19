@@ -308,14 +308,15 @@ type Rect = { id: number; w: number; h: number; area(): number };
 type Tri = { id: number; b: number; t: number; area(): number };
 type Hex = { id: number; e: number; area(): number };
 
-/** Four shapes at a call site cost 1.16-1.56x, the same band four shapes cost
- * at a load site: silent, for the same reason. */
+/** Four shapes at a call site cost the band four shapes cost at a load site:
+ * silent, for the same reason. */
 /** @turbocharge */
 export function areaOfFour(x: Circle | Square | Rect | Tri): number {
   return x.area();
 }
 
-/** The fifth shape at a call site is the cliff: 14.6-20.0x on reads. */
+/** The fifth shape at a call site is the cliff, and sharper than at a load
+ * site: the fifth map costs the inlining as well as the cached lookup. */
 /** @turbocharge */
 export function areaOfFive(x: Circle | Square | Rect | Tri | Hex): number {
   return x.area();
@@ -335,4 +336,60 @@ export function totalArea(rows: (Circle | Square | Rect | Tri | Hex)[]): number 
   let s = 0;
   for (const r of rows) s += r.area();
   return s;
+}
+
+
+/** The accumulator on a FIELD. `this.acc` is not an identifier, and requiring
+ * one silenced the measured defect completely (BUGS TC-43). */
+export class Collector {
+  acc: number[] = [];
+
+  /** @turbocharge */
+  addAll(xs: number[]): void {
+    for (const x of xs) this.acc = [...this.acc, x];
+  }
+}
+
+/** The same copy inside a `forEach` callback. `reduce` was special-cased for
+ * this and `forEach` was not, so three tokens moved the defect out of sight. */
+/** @turbocharge */
+export function collectInForEach(xs: number[]): number[] {
+  let acc: number[] = [];
+  xs.forEach((x) => {
+    acc = [...acc, x];
+  });
+  return acc;
+}
+
+/** A chain on a STRING. No array is allocated anywhere in it, and the rule
+ * matched the method names and said one was (BUGS TC-35). The same measurement
+ * that keeps `accumulating-spread` off strings keeps this off them. Silent. */
+/** @turbocharge */
+export function trimTail(str: string): string {
+  return str.concat('x').slice(1);
+}
+
+/** `delete` on an ARRAY ELEMENT. It makes the backing store holey; it does not
+ * put the array in dictionary mode, which is the only thing bench/delete.jl
+ * measured, and "assign undefined instead" boxes the array (BUGS TC-36).
+ * Silent. */
+/** @turbocharge */
+export function dropElement(xs: number[], i: number): number[] {
+  delete xs[i];
+  return xs;
+}
+
+type Pt = { a: number };
+
+/** Returns one of its arguments and allocates on no pass. The rule read the
+ * return TYPE and asserted an allocation on every pass (BUGS TC-34). */
+function nearer(a: Pt, b: Pt): Pt {
+  return a.a < b.a ? a : b;
+}
+
+/** @turbocharge */
+export function nearest(pts: Pt[]): Pt {
+  let x = pts[0];
+  for (const y of pts) x = nearer(x, y);
+  return x;
 }

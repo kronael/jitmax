@@ -29,9 +29,28 @@ can follow calls the way `@njit` follows them — and every rule is a single-bod
 syntax match. Hoisting three tokens into a helper the walk already visits
 silences the tool completely.
 
-**Proposal:** either make the allocation rules inter-procedural over
-`mark.reached`, which is the walk's whole point, or say plainly that rules are
-single-body and the walk only widens *where* they are applied.
+**Two of the four are fixed, 2026-08-19.**
+
+- `this.acc = [...this.acc, x]` fires. The accumulator is matched by TEXT, so a
+  property target is a target; `demo/lib.ts` `Collector.addAll` is the fixture.
+- `xs.forEach(x => { acc = [...acc, x] })` fires. A callback that an array
+  method re-runs per element is a loop, which is what `reduce`'s hand-written
+  special case already assumed; `walkLoops` now knows the whole family, and only
+  the callback arguments count — the receiver is evaluated once.
+
+**Still open, and the proposal narrows to these two.** Neither is a missing
+special case; both need machinery the rules do not have:
+
+- `acc = append(acc, x)` where `append` spreads. The walk enters `append`; no
+  rule is inter-procedural, so the loop is in one body and the copy is in
+  another. Making the allocation rules inter-procedural over `mark.reached` is
+  the walk's whole point and is the real proposal here.
+- `const doubled = xs.map(f); const kept = doubled.filter(g)`. `stage()` matches
+  a call whose receiver is itself a call; following a stage through a local
+  binding needs dataflow inside the body.
+
+Until then README says plainly that rules are single-body and the walk widens
+only *where* they are applied.
 
 ## TC-42 — the flagship rule cannot detect what its own benchmark measured (2026-08-17, open — half fixed 2026-08-19)
 
@@ -209,9 +228,21 @@ defect. It is gone at exactly the moment it becomes true.
 This is the same class as TC-7 and TC-31: the text and the exit code say
 different things. Unlike those, the text here is not even present.
 
-**Not a documentation fix.** Either `delete-property`/dictionary-mode detection
-has to see the object the fix produces, or the fix line has to stop being
-offered where the measurement says it loses. Both change shipped output.
+**Fixed 2026-08-19, in the half the evidence supports.** The object form's fix
+line is no longer an instruction. It states both measured outcomes — the build is
+`186-200x` faster, the reads are `0.11-0.12x` — names the condition that decides
+between them, and ends with the sentence the exit code cannot say: *no rule here
+detects a dictionary-mode object, so the mutating form checks CLEAN*. A reader
+who applies the change and re-runs the tool has been told in advance what the
+green run means.
+
+The other half — a rule that SEES the dictionary-mode object — stays open, and
+its blocker is on record: how many keys a loop adds is not knowable statically,
+`bench/addprop.jl` measured adding properties as free at small counts, and
+`demo/lib.ts` `growByKey` is a shipped silent case saying so. A rule that fired
+on every keyed store in a loop would contradict that measurement. What is
+missing is a sweep over the KEY COUNT at which V8 normalizes, which would give
+the rule a threshold instead of a guess.
 
 ## TC-37 — protocol rule 13 has no code path to publication (2026-08-17, FIXED 2026-08-19)
 
@@ -276,7 +307,7 @@ two replicated ones, which is three sweeps of that cell under one runner.
 `test/check.test.ts` keeps the register, over every sweep file rather than only
 the cited cells, and calls the same `unreplicable()` the gate uses.
 
-## TC-36 — `delete-property` names the wrong V8 mechanism for `delete xs[i]` (2026-08-17, open, proposal)
+## TC-36 — `delete-property` names the wrong V8 mechanism for `delete xs[i]` (2026-08-17, FIXED 2026-08-19)
 
 The rule flags every `DeleteExpression`. Its benchmark deletes a NAMED property
 from an object (`bench/delete.js`, the middle property of a fixed shape), and
@@ -307,11 +338,14 @@ PACKED_ELEMENTS, which is the boxing `bench/arrays.jl` measured at 1.39-1.66x on
 reads and over which this project WITHDREW a rule. It is also a type error on
 `number[]`.
 
-**Proposal:** narrow the trigger to a named property on a non-array receiver,
-or measure the holey-elements case and give it its own number and its own text.
-Either changes shipped output, so it waits for sign-off.
+**Fixed 2026-08-19.** The trigger is narrowed: a `delete` whose target is a
+property of an ARRAY is not reported. The rule fires where `bench/delete.js`
+measured — a property on something that is not an array — and the holey-elements
+case is now nobody's finding rather than the wrong rule's. `demo/lib.ts`
+`dropElement` is the fixture and a test asserts the silence. Measuring the holey
+case and giving it its own rule stays open as work, not as a defect.
 
-## TC-35 — `chained-allocation` matches method NAMES, so it fires on strings (2026-08-17, open, proposal)
+## TC-35 — `chained-allocation` matches method NAMES, so it fires on strings (2026-08-17, FIXED 2026-08-19)
 
 The rule pairs adjacent calls whose names are in a set (`map`, `filter`,
 `concat`, `slice`, …) and deliberately does not consult the receiver's type.
@@ -330,10 +364,12 @@ returns `this`. This is sharper than TC-9, which is about the rule not knowing
 `accumulating-spread` already consults the receiver's type for exactly this
 reason — the string case was measured there and found to be FASTER.
 
-**Proposal:** check the receiver type the way `accumulating-spread` does. The
-type is available; the rule declines to read it.
+**Fixed 2026-08-19.** The rule reads the receiver's type and fires only where it
+is an array, exactly as `accumulating-spread` does and against the same
+measurement. `demo/lib.ts` `trimTail` is the fixture; a test asserts the
+silence.
 
-## TC-34 — `allocating-select` reads an object return TYPE as an allocation (2026-08-17, open, proposal)
+## TC-34 — `allocating-select` reads an object return TYPE as an allocation (2026-08-17, FIXED 2026-08-19)
 
 `allocates()` asks whether the call's static return type is an object.
 
@@ -359,8 +395,13 @@ This compounds TC-18, which already records that the rule's six real-world
 findings are all cursor advances rather than the measured shape. Between them,
 the rule has no confirmed true positive on real code.
 
-**Proposal:** require evidence of allocation in the callee's body when the body
-is readable, and stay silent when it is not.
+**Fixed 2026-08-19.** The rule resolves the call to its declaration and requires
+the body to contain something that builds an object — a `new`, an object literal
+or an array literal. A callee with no readable body is `closed-world`'s finding,
+not this one's, so the rule stays out there too. `demo/lib.ts` `nearest` is the
+fixture and a test asserts the silence. TC-18 stands: the six real-world findings
+are still cursor advances, and this narrowing does not manufacture a true
+positive.
 
 ## TC-33 — `closed-world`'s trigger and its benchmark measure different things (2026-08-17, open, proposal)
 

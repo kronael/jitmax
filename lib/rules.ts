@@ -233,13 +233,29 @@ function walk(ts: Ts, root: TS.Node, fn: (n: TS.Node) => void): void {
   ts.forEachChild(root, visit);
 }
 
+// A callback an array method re-runs per element is a loop the syntax does not
+// spell. `reduce` was hand-special-cased for exactly this reason and `forEach`
+// was not, so `xs.forEach(x => { acc = [...acc, x] })` — the same quadratic copy
+// with the accumulator in a closure instead of a parameter — went unreported
+// (BUGS TC-43). Only the callback ARGUMENTS count as the loop body: the
+// receiver is evaluated once, so a spread there is not re-run.
+const ITERATION = new Set(['forEach', 'map', 'flatMap', 'filter', 'some', 'every', 'find']);
+
+const iterationCallbacks = (ts: Ts, n: TS.Node): TS.Node[] =>
+  ts.isCallExpression(n) &&
+  ts.isPropertyAccessExpression(n.expression) &&
+  ITERATION.has(n.expression.name.text)
+    ? n.arguments.filter((a) => ts.isArrowFunction(a) || ts.isFunctionExpression(a))
+    : [];
+
 // The same walk carrying whether a loop re-runs this node. Two rules price a
 // statement per pass, so the enclosing loop is half of what they match: the
 // same line outside one is a case their own benchmark rejected.
 function walkLoops(ts: Ts, root: TS.Node, fn: (n: TS.Node, inLoop: boolean) => void): void {
   const visit = (node: TS.Node, inLoop: boolean): void => {
     fn(node, inLoop);
-    ts.forEachChild(node, (c) => visit(c, inLoop || isLoop(ts, node)));
+    const bodies = new Set(iterationCallbacks(ts, node));
+    ts.forEachChild(node, (c) => visit(c, inLoop || isLoop(ts, node) || bodies.has(c)));
   };
   ts.forEachChild(root, (c) => visit(c, false));
 }
@@ -418,7 +434,10 @@ const accumulatingSpread: Rule = (ts, checker, body, add) => {
     // `(acc, x) => ({ ...acc, k: x })` wraps the literal in parentheses.
     let node = outer;
     while (ts.isParenthesizedExpression(node)) node = node.expression;
-    const isAcc = (e: TS.Node): boolean => ts.isIdentifier(e) && e.text === name;
+    // Compared as TEXT, not as an identifier. `this.acc = [...this.acc, x]` is
+    // the measured defect with the accumulator on a field, and requiring an
+    // identifier here silenced it completely (BUGS TC-43).
+    const isAcc = (e: TS.Node): boolean => e.getText(body.sf) === name;
     if (ts.isArrayLiteralExpression(node)) {
       return node.elements.some((e) => ts.isSpreadElement(e) && isAcc(e.expression))
         ? 'array'
@@ -471,9 +490,18 @@ const accumulatingSpread: Rule = (ts, checker, body, add) => {
   // build ever cost, and this rule shipped for months without saying so.
   const FIX: Record<Form, string> = {
     array: `push onto NAME instead of rebuilding it — the finished array reads the same either way, ${N['spread.array.reads']}`,
+    // Not an instruction. Assigning the key on NAME is faster to BUILD and
+    // slower to READ, both measured, and turbocharge reports the mutating form
+    // as clean — so a reader who takes the instruction and re-runs the tool
+    // gets a green run on an 8x read regression (BUGS TC-38). The exit code
+    // cannot say that, so the text does.
     object:
-      'assign the key on NAME instead of rebuilding it — but that fills the result key by key, which ' +
-      `normalizes it: its reads measured ${N['ex.mergeall.reads']} of the spread-built object's (remeda mergeAll)`,
+      'there is no rewrite here this project has measured as a win on both halves. Assigning ' +
+      `the key on NAME instead builds faster, ${N['spread.object']} at n=500, and fills the ` +
+      'result key by key, which normalizes the object: its reads measured ' +
+      `${N['ex.mergeall.reads']} of the spread-built one (remeda mergeAll). Mutate where the ` +
+      'result is written more than it is read; keep the copy where it is read hot. No rule ' +
+      'here detects a dictionary-mode object, so the mutating form checks CLEAN',
   };
 
   const report = (node: TS.Node, name: string, form: Form): void =>
@@ -509,9 +537,13 @@ const accumulatingSpread: Rule = (ts, checker, body, add) => {
   };
 
   walkLoops(ts, body.node, (node, inLoop) => {
-    if (reassignedInLoop(ts, node, inLoop) && ts.isIdentifier(node.left)) {
-      const form = spreadsSelf(node.left.text, node.right);
-      if (form) report(node, node.left.text, form);
+    if (
+      reassignedInLoop(ts, node, inLoop) &&
+      (ts.isIdentifier(node.left) || ts.isPropertyAccessExpression(node.left))
+    ) {
+      const target = node.left.getText(body.sf);
+      const form = spreadsSelf(target, node.right);
+      if (form) report(node, target, form);
     }
     reduceCallback(node);
   });
@@ -535,11 +567,39 @@ const allocatingSelect: Rule = (ts, checker, body, add) => {
     return members(t).every((x) => Boolean(x.flags & ts.TypeFlags.Object));
   };
 
+  // A return TYPE is not an allocation site. `pick(a, b) { return a }` returns
+  // an object and allocates on no pass at all, and this rule asserted one on
+  // every pass (BUGS TC-34). The benchmark measured `Box.min`, whose body runs
+  // `new Box(...)`. So read the body the program already has, and require
+  // something in it that builds an object. Where there is no body the rule
+  // stays out: an unreadable callee is `closed-world`'s finding, not this one's.
+  const builds = (call: TS.CallExpression): boolean => {
+    const decl = checker.getResolvedSignature(call)?.declaration;
+    if (!decl || !('body' in decl)) return false;
+    const fnBody = (decl as { body?: TS.Node }).body;
+    if (!fnBody) return false;
+    let found = false;
+    walk(ts, fnBody, (n) => {
+      if (
+        ts.isNewExpression(n) ||
+        ts.isObjectLiteralExpression(n) ||
+        ts.isArrayLiteralExpression(n)
+      ) {
+        found = true;
+      }
+    });
+    return found;
+  };
+
   walkLoops(ts, body.node, (node, inLoop) => {
     if (reassignedInLoop(ts, node, inLoop) && ts.isCallExpression(node.right)) {
       const target = node.left.getText(body.sf);
       const call = node.right;
-      if (call.arguments.some((a) => a.getText(body.sf) === target) && allocates(call)) {
+      if (
+        call.arguments.some((a) => a.getText(body.sf) === target) &&
+        allocates(call) &&
+        builds(call)
+      ) {
         add({
           ...at(body.sf, node),
           rule: 'allocating-select',
@@ -575,7 +635,7 @@ const stageText = (name: string): string =>
 // and discards. Fusing the stages into one pass allocates once. The cost is
 // allocation, which is why it shows up with construction counted and washes out
 // at large n, where memory bandwidth dominates instead.
-const chainedAllocation: Rule = (ts, _checker, body, add) => {
+const chainedAllocation: Rule = (ts, checker, body, add) => {
   const stage = (node: TS.Node): string | undefined => {
     if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) {
       return undefined;
@@ -601,7 +661,14 @@ const chainedAllocation: Rule = (ts, _checker, body, add) => {
         node.parent &&
         ts.isPropertyAccessExpression(node.parent) &&
         Boolean(stage(node.parent.parent));
-      if (inner && !consumed) {
+      // The receiver has to BE an array. The rule paired call names and never
+      // read the type, so `str.concat("x").slice(1)` — a string, no array
+      // allocated anywhere in it — was reported as allocating one between the
+      // stages (BUGS TC-35). `accumulating-spread` reads the receiver's type
+      // for the same reason and against the same measurement: on a string,
+      // `concat` is faster than the rewrite this rule would ask for.
+      const onArray = isArray(checker, checker.getTypeAtLocation(node.expression.expression));
+      if (inner && !consumed && onArray) {
         add({
           ...at(body.sf, node),
           rule: 'chained-allocation',
@@ -624,9 +691,22 @@ const chainedAllocation: Rule = (ts, _checker, body, add) => {
 // one — `%HasFastProperties` is false on BOTH sides there, because a wide
 // object filled key by key normalizes exactly as `delete` does. The rule cannot
 // see the width, so the fix line states it instead of pretending it away.
-const deleteProperty: Rule = (ts, _checker, body, add) => {
+const deleteProperty: Rule = (ts, checker, body, add) => {
+  // Deleting an array ELEMENT does not put the array in dictionary mode. It
+  // makes the elements backing store holey — PACKED_DOUBLE to HOLEY_DOUBLE, a
+  // different representation in a different part of V8, and a cost nobody
+  // measured here. The printed fix made it worse: assigning undefined turns
+  // PACKED_DOUBLE_ELEMENTS into PACKED_ELEMENTS, which is the boxing
+  // bench/arrays.jl priced at 1.39-1.66x and over which `boxed-elements` was
+  // withdrawn — and on `number[]` it does not even typecheck (BUGS TC-36).
+  // The rule fires where its benchmark measured: a property on something that
+  // is not an array.
+  const onArray = (node: TS.Expression): boolean =>
+    (ts.isElementAccessExpression(node) || ts.isPropertyAccessExpression(node)) &&
+    isArray(checker, checker.getTypeAtLocation(node.expression));
+
   walk(ts, body.node, (node) => {
-    if (ts.isDeleteExpression(node)) {
+    if (ts.isDeleteExpression(node) && !onArray(node.expression)) {
       add({
         ...at(body.sf, node),
         rule: 'delete-property',
