@@ -85,11 +85,11 @@ clean because rules were switched off says so.
 ## What you get
 
 ```
-turbocharge — 37 annotated functions, 14 findings
+turbocharge — 44 annotated functions, 16 findings
 
-  demo/lib.ts:116  viaCallee()
+  demo/lib.ts:153  viaCallee()
     delete-property
-      demo/lib.ts:111
+      demo/lib.ts:148
       delete o[k] puts its object in dictionary mode
       measured 12.3-13.6x per property load once the object is in dictionary mode … [bench/delete.jl]
       fix: assign undefined where the key may stay present, or build the object without it —
@@ -97,9 +97,13 @@ turbocharge — 37 annotated functions, 14 findings
       known defect: TC-9 — rules fire outside the conditions their own evidence establishes
 ```
 
+The `measured` line is cut here; the real one carries every cell the rule cites.
+A rule whose benchmark prices the mechanism rather than the thing it fires on
+prints `bound` instead of `measured` — `closed-world` is the one that does.
+
 Four things, and the second is the point:
 
-- **the line**, `demo/lib.ts:111` — which is inside `dropInner`, a function
+- **the line**, `demo/lib.ts:148` — which is inside `dropInner`, a function
   nobody annotated. `viaCallee` has the annotation; turbocharge followed the
   call and reported where the cost actually is.
 - **the measurement**, so you can judge whether it is worth your time, and
