@@ -8,7 +8,7 @@ Review queue. Found during audits, fixed only when the owner asks.
 > the reviewer's. The reviewer's verdict was "do not publish in its current
 > form", and on the rules it names that verdict is defensible.
 
-## TC-43 — `accumulating-spread` is evaded by three tokens, and no rule is inter-procedural (2026-08-17, open, proposal)
+## TC-43 — `accumulating-spread` is evaded by three tokens, and no rule is inter-procedural (2026-08-17, open — two of four closed 2026-08-19)
 
 Five annotated functions, each holding the measured defect in a form one
 keystroke from `bench/spread.js`'s `spread` variant. **`0 findings`, exit 0:**
@@ -156,7 +156,7 @@ real cost — `4.4-11.5x`, the same order — that **nothing static can find**,
 because key order is not part of a type. That is the definition of the
 `unreported` clause TC-39 introduced, and it is where it now lives.
 
-## TC-41 — an example's `.after.ts` is a rewrite, and its costly axis is never swept (2026-08-17, open, proposal)
+## TC-41 — an example's `.after.ts` is a rewrite, and its costly axis is never swept (2026-08-17, open — disclosed, not swept, 2026-08-19)
 
 `CLAUDE.md` says `examples/` holds "a `.after.ts` carrying the fix turbocharge
 printed and nothing besides". The printed `delete-property` fix is one English
@@ -239,7 +239,7 @@ about. `megamorphic-dispatch` and `allocating-select` have one each, and both
 say in the clause itself that it is a miss and not a refutation. README and the
 page both carry the distinction.
 
-## TC-38 — the tool passes its own fix as clean while that fix is 9x worse (2026-08-17, open)
+## TC-38 — the tool passes its own fix as clean while that fix is 9x worse (2026-08-17, open — the fix line says so as of 2026-08-19)
 
 The sharpest defect in this round, because it defeats the exit code.
 
@@ -437,7 +437,7 @@ fixture and a test asserts the silence. TC-18 stands: the six real-world finding
 are still cursor advances, and this narrowing does not manufacture a true
 positive.
 
-## TC-33 — `closed-world`'s trigger and its benchmark measure different things (2026-08-17, open, proposal)
+## TC-33 — `closed-world`'s trigger and its benchmark measure different things (2026-08-17, open — the report says `bound` as of 2026-08-19)
 
 The most load-bearing entry here, because this rule is **1539 of the 1672
 findings** in the twelve-library survey — 92% of everything the tool has ever
