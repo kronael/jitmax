@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { CITATIONS, derive, markdown, unreplicable, withoutBlock } from '../lib/derive.ts';
+import { CITATIONS, derive, markdown, overGate, unreplicable, withoutBlock } from '../lib/derive.ts';
 import { N } from '../lib/numbers.ts';
 import { load, program } from '../lib/ts.ts';
 import { scan, type Mark } from '../lib/scan.ts';
@@ -675,19 +675,21 @@ const DISAGREE = new Set([
   'addprop.jl added|literal|build|256|dispatch-table',
 ]);
 
-test('no published cell is withdrawn except the ones on record', () => {
-  // Every sweep a citation reads. A file is here whether or not it is in
-  // `REMEASURED`: a cell that refutes itself does so under the protocol that
-  // measured it, and a number read out of older rows is still a published
-  // number.
-  const files = [
-    'chained.jl', 'inline.jl', 'select.jl', 'delete.jl', 'spread.jl',
-    'spread-object.jl', 'strings.jl', 'shapes-calibrated.jl', 'example.jl',
-    'dispatch.jl', 'addprop.jl', 'arrays.jl', 'shape-sets.jl',
-  ];
+// Every sweep a citation reads. A file is here whether or not it is in
+// `REMEASURED`: a cell that refutes itself does so under the protocol that
+// measured it, and a number read out of older rows is still a published
+// number. Both registers below — rule 13's and rule 9's — watch this one list,
+// because "which files are published" is one fact and two copies of it would
+// drift.
+const SWEPT = [
+  'chained.jl', 'inline.jl', 'select.jl', 'delete.jl', 'spread.jl',
+  'spread-object.jl', 'strings.jl', 'shapes-calibrated.jl', 'example.jl',
+  'dispatch.jl', 'addprop.jl', 'arrays.jl', 'shape-sets.jl',
+];
 
+test('no published cell is withdrawn except the ones on record', () => {
   const found = new Set<string>();
-  for (const file of files) {
+  for (const file of SWEPT) {
     for (const cell of unreplicable(root, file)) found.add(`${file} ${cell}`);
   }
 
@@ -695,4 +697,55 @@ test('no published cell is withdrawn except the ones on record', () => {
   const healed = [...DISAGREE].filter((c) => !found.has(c)).sort();
   assert.deepStrictEqual(fresh, [], `these cells are withdrawn and nothing said so: ${fresh.join(', ')}`);
   assert.deepStrictEqual(healed, [], `DISAGREE lists cells that now replicate — remove them: ${healed.join(', ')}`);
+});
+
+// Protocol rule 9's load gate, in the same shape as rule 13's register above:
+// the known state is written down, a NEW violation fails the build, and a
+// healed entry fails it too. Counts per file, because an appended row has no
+// identity beyond its position.
+//
+// Every one of these 592 rows was written while its own recorded `load1`
+// exceeded its own recorded gate, and the gate never noticed, because the
+// one-minute average it read was mostly the sweep's own children — one pinned
+// child at a time, each worth ~1.0 in the window, so an idle two-core machine
+// read ~1.5 against a gate of 1 (TC-25, TC-46). That is why these rows are
+// REGISTERED and not withdrawn: the old observable cannot say which of them
+// had a real tenant behind the harness, only that the gate was not answering
+// its question, and withdrawing most of the corpus on a number like that is
+// the owner's call, not this file's. Rows the reworked runner writes carry
+// `runnable` — the count of runnable threads outside the harness, read as the
+// row is written — and THAT pair is meaningful, so a new row over it lands
+// here as a count the register does not explain, and stays until someone
+// either re-measures the cell or registers it as a decision.
+const OVER_GATE: Record<string, number> = {
+  'addprop.jl': 2,
+  'arrays.jl': 0,
+  'chained.jl': 58,
+  'delete.jl': 46,
+  'dispatch.jl': 205,
+  'example.jl': 45,
+  'inline.jl': 4,
+  'select.jl': 0,
+  'shape-sets.jl': 57,
+  'shapes-calibrated.jl': 64,
+  'spread.jl': 21,
+  'spread-object.jl': 23,
+  'strings.jl': 67,
+};
+
+test('no published row is over its own gate except the ones on record', () => {
+  for (const file of SWEPT) {
+    const known = OVER_GATE[file] ?? 0;
+    const found = overGate(root, file);
+    assert.ok(
+      found <= known,
+      `${file}: ${found - known} new row(s) written over their own recorded gate — ` +
+        're-measure the cell, or register the count here as a decision'
+    );
+    assert.ok(
+      found >= known,
+      `${file}: the register says ${known} over-gate rows and the file holds ${found} — ` +
+        'appended rows never disappear, so the .jl was rewritten'
+    );
+  }
 });

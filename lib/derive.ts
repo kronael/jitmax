@@ -49,6 +49,14 @@ export interface Row {
   protocol?: string;
   replicate?: number;
   void?: boolean;
+  // What the machine was doing as the row was written, and the gate it ran
+  // under. `load1`/`env.maxLoad` is the pair the first runner recorded;
+  // `runnable`/`env.maxRunnable` — runnable threads outside the harness — is
+  // the pair the gate actually governs since TC-46. `overGate` below reads
+  // whichever pair a row has.
+  load1?: number;
+  runnable?: number;
+  env?: { maxLoad?: number; maxRunnable?: number };
 }
 
 interface Citation {
@@ -731,6 +739,34 @@ function replicating(matched: Row[], mode: Mode = 'gate'): { live: Row[]; withdr
 // a number is derived from it rather than after. `make test` holds the list.
 export function unreplicable(root: string, file: string): string[] {
   return replicating(rows(root, file).filter(current)).withdrawn;
+}
+
+// Protocol rule 9's load gate, checked where the data is read — the same shape
+// as `unreplicable` above, and like it, the register lives in `make test`. A
+// row is over the gate when the reading recorded AS IT WAS WRITTEN exceeds the
+// gate recorded beside it: `runnable` against `env.maxRunnable` on rows the
+// reworked runner writes, `load1` against `env.maxLoad` on every row before
+// it. A row that recorded no gate, or no reading (18 select rows predate the
+// per-row field, TC-24), cannot be judged and is not counted.
+//
+// UNLIKE rule 13's gate, this one withdraws nothing. The old pair cannot
+// separate a tenant from the harness itself — the one-minute average was
+// mostly the sweep's own children (TC-25) — so the 592 published rows over it
+// are rows whose gate was not answering its question, not rows known to be
+// contaminated, and whether any of them must go is a judgement about the
+// corpus, not a query over it (TC-46). What a query CAN do is keep the number
+// visible and frozen: the register in test/check.test.ts fails on a count this
+// one does not explain — a new row written over its (now meaningful) gate —
+// and on a count that shrinks, which appended rows never do.
+export function overGate(root: string, file: string): number {
+  let over = 0;
+  for (const r of rows(root, file)) {
+    const meaningful = r.env?.maxRunnable !== undefined;
+    const limit = meaningful ? r.env?.maxRunnable : r.env?.maxLoad;
+    const seen = meaningful ? r.runnable : r.load1;
+    if (limit !== undefined && seen !== undefined && seen > limit) over++;
+  }
+  return over;
 }
 
 export function rows(root: string, file: string): Row[] {

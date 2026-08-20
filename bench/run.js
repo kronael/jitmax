@@ -15,11 +15,16 @@
 //   --plan              print the selected cells and measure nothing
 //
 // Options:
-//   --max-load=<x>      the load gate, default `nproc - 1`. See bench/env.js.
+//   --max-load=<x>      the gate: runnable threads outside the harness, default
+//                       `nproc - 1`. See bench/env.js.
 //   --wait-load=<sec>   poll instead of refusing, up to <sec>
 //   --force             re-measure cells this protocol has already written
-//   --no-tiers          skip the tier diagnostic (bench/tiers.js)
 //   --scratch           append to bench/scratch.jl instead of the sweep's file
+//
+// The tier diagnostic (bench/tiers.js) is NOT here. It used to run per row, on
+// by default, spawning unpinned --trace-opt children in the middle of the sweep
+// protocol rule 8 says must carry no tracing (TC-46). It runs after a sweep,
+// via `make tiers`, in its own processes, and appends to bench/tiers.jl.
 //
 // `--scratch` exists because exercising the runner is not measuring: a row
 // produced while checking that a flag parses, on whatever the machine was doing
@@ -35,14 +40,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { cellOrVoid, replicate, replicates } from './driver.js';
 import { BENCHMARKS, plan, label } from './sweeps.js';
-import { environment, gate, load1, MAX_LOAD, CORES } from './env.js';
-import { tierPair } from './tiers.js';
+import { environment, gate, load1, runnable, MAX_RUNNABLE, CORES } from './env.js';
 
-// The marker that says a row came from this runner: it carries the environment,
-// the load the sweep started at, and the tier each side reached. `protocol`
-// keeps meaning what it has always meant — whether the cell was replicated —
-// so the queries in lib/derive.ts that select on it keep selecting the same
-// rows. Resume reads this field and nothing else.
+// The marker that says a row came from this runner: it carries the environment
+// and what the machine was doing as the row was written. `protocol` keeps
+// meaning what it has always meant — whether the cell was replicated — so the
+// queries in lib/derive.ts that select on it keep selecting the same rows.
+// Resume reads this field and nothing else. Still `r2` through the TC-46
+// rework: what the measured processes run has not changed, and a new marker
+// would orphan every published citation that selects on this one. A row from
+// the reworked runner is the one carrying `runnable`.
 const RUNNER = 'r2';
 
 // Every sweep, in the order `--all` runs them. Declared rather than taken from
@@ -172,12 +179,12 @@ function sweep(name, env) {
   // documented way to verify that rule's numbers, ran one sweep per cell, and
   // on a file already holding three it ran none at all.
   const times = num('replicate', 3);
-  const tiers = !flags.has('no-tiers');
   const force = flags.has('force');
 
   out(`${name}: ${bench.what}\n`);
   out(`  ${cells.length} cells x ${times} run${times > 1 ? 's' : ''}, ` +
-    `node ${env.node} / v8 ${env.v8}, pin ${env.pin}, load ${env.loadStart} (gate ${env.maxLoad})\n`);
+    `node ${env.node} / v8 ${env.v8}, pin ${env.pin}, ` +
+    `${env.runnableStart} runnable at start (gate ${env.maxRunnable})\n`);
 
   const started = Date.now();
   let ran = 0;
@@ -215,7 +222,8 @@ function sweep(name, env) {
     // recorded the load from cell 1. Stopping here loses nothing: resume picks
     // the sweep up at the cell that did not run.
     try {
-      gate({ maxLoad: env.maxLoad, waitFor: num('wait-load', 0), log: (m) => out(`      ${m}\n`) });
+      gate({ maxRunnable: env.maxRunnable, waitFor: num('wait-load', 0),
+        log: (m) => out(`      ${m}\n`) });
     } catch (err) {
       out(`\n${name}: stopped at cell ${i + 1} of ${cells.length}\n` +
         `  ${err instanceof Error ? err.message : String(err)}\n` +
@@ -224,19 +232,22 @@ function sweep(name, env) {
     }
 
     const write = (r) => {
-      // The environment travels with every row, and the tier of each side sits
-      // next to the rep counts that bought it — recorded as a fact, never as a
-      // gate. A pair that tiers asymmetrically is a pair whose ratio is partly
-      // a measurement of tiering, and the row says so rather than leaving it to
-      // be re-derived.
-      const t = tiers && !r.void
-        ? tierPair({ script, ...opts, repsBase: r.repsBase, repsTest: r.repsTest })
-        : {};
-      // `load1` is read HERE, as the row is written, because that is what "the
-      // load at the time" means for a sweep that runs for hours.
+      // `load1` and `runnable` are read HERE, as the row is written, because
+      // that is what "what the machine was doing" means for a sweep that runs
+      // for hours. `runnable` is the gate's own observable — the harness's
+      // children are all dead at this instant, so the count is other tenants
+      // and nothing else — which makes the row itself say whether the gate it
+      // ran under was still holding when it was written. A row over it is
+      // still written (the measurement happened, and rule 10 reports failures
+      // in the same format as wins); test/check.test.ts holds the register
+      // that fails the build on any such row nobody has accounted for (TC-46).
+      const seen = runnable();
       fs.appendFileSync(file, JSON.stringify({ ...r, ...extra, baseline: opts.baseline,
-        runner: RUNNER, load1: load1(), env, ...t }) + '\n');
-      if (t.tierMismatch) out(`      TIER MISMATCH on ${t.tierMismatch.join(', ')}\n`);
+        runner: RUNNER, load1: load1(), runnable: seen, env }) + '\n');
+      if (seen > env.maxRunnable) {
+        out(`      OVER GATE: ${seen} runnable outside the harness against ` +
+          `${env.maxRunnable} — recorded in the row, and make test will name it\n`);
+      }
       if (r.void) voids++;
       ran++;
     };
@@ -260,11 +271,23 @@ function sweep(name, env) {
     }
     // Whole sweeps per published cell (protocol rule 13), each written as it
     // finishes. Agreement is a value common to all the intervals; its absence
-    // says the sweeps cannot all be describing the same quantity.
-    const runs = replicate({ script, ...opts }, (r) => {
-      write(r);
-      out(`      #${r.replicate}: ${line(r)}\n`);
-    }, need, report);
+    // says the sweeps cannot all be describing the same quantity. The gate runs
+    // again between the sweeps — the check before the cell covered the first
+    // one, and covering all three with it is what let 592 rows past (TC-46).
+    let runs;
+    try {
+      runs = replicate({ script, ...opts }, (r) => {
+        write(r);
+        out(`      #${r.replicate}: ${line(r)}\n`);
+      }, need, report, () =>
+        gate({ maxRunnable: env.maxRunnable, waitFor: num('wait-load', 0),
+          log: (m) => out(`      ${m}\n`) }));
+    } catch (err) {
+      out(`\n${name}: stopped inside ${label(opts)} (cell ${i + 1} of ${cells.length})\n` +
+        `  ${err instanceof Error ? err.message : String(err)}\n` +
+        `  ${ran} rows written. Re-run the same command to continue from here.\n`);
+      break;
+    }
     measured++;
     const shown = runs.map((r) => (r.void ? 'VOID' : `${r.ratio.toFixed(2)}x`)).join(' ');
     out(`      => ${replicates(runs) ? 'REPLICATES' : 'DISAGREES'}  ${shown}\n\n`);
@@ -273,13 +296,13 @@ function sweep(name, env) {
   const seconds = Math.round((Date.now() - started) / 1000);
   out(`${name}: ${ran} rows, ${skipped} skipped, ${voids} void, ${hms(Date.now() - started)}\n\n`);
   return { sweep: name, started: new Date(started).toISOString(), seconds, cells: cells.length,
-    rows: ran, skipped, voids, replicate: times, tiers, env,
+    rows: ran, skipped, voids, replicate: times, env,
     selection: [...flags].map(([k, v]) => (v === '' ? `--${k}` : `--${k}=${v}`)).join(' ') };
 }
 
 const usage = () =>
   `usage: node bench/run.js <${Object.keys(BENCHMARKS).join('|')}> [--only=..] [--variant=..]\n` +
-  `       [--mode=..] [--n=..] [--replicate=k] [--plan] [--force] [--no-tiers]\n` +
+  `       [--mode=..] [--n=..] [--replicate=k] [--plan] [--force]\n` +
   `       [--max-load=x] [--wait-load=sec]\n` +
   `       node bench/run.js --all\n`;
 
@@ -303,15 +326,15 @@ if (flags.has('plan')) {
 // a sweep that starts on a busy machine is measuring the other processes too.
 // The gate is derived from the core count and stated in bench/env.js so it can
 // be argued with; whatever value was in force goes into every row.
-const maxLoad = num('max-load', MAX_LOAD);
+const maxRunnable = num('max-load', MAX_RUNNABLE);
 let startedAt;
 try {
-  startedAt = gate({ maxLoad, waitFor: num('wait-load', 0), log: (m) => out(`${m}\n`) });
+  startedAt = gate({ maxRunnable, waitFor: num('wait-load', 0), log: (m) => out(`${m}\n`) });
 } catch (err) {
   die(err instanceof Error ? err.message : String(err));
 }
-const env = { ...environment(maxLoad), loadStart: startedAt };
-out(`${CORES} cores, load ${startedAt} at start, gate ${maxLoad}\n\n`);
+const env = { ...environment(maxRunnable), runnableStart: startedAt };
+out(`${CORES} cores, ${startedAt} runnable outside the harness at start, gate ${maxRunnable}\n\n`);
 
 // Rule 9 again, at the level of a release: one artifact that says what ran,
 // when, on what, and how long. Appended, like every other file this writes.

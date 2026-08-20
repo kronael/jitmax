@@ -188,9 +188,17 @@ export function cellOrVoid(opts, report) {
 // `onRun` receives each sweep as it finishes, because a sweep that is written
 // only after all three are done is a sweep that is lost when the run is
 // interrupted — the same reason the runners append synchronously (TC-6).
-export function replicate(opts, onRun, times = 3, report) {
+// `between` runs before every sweep after the first, and it exists for rule
+// 9's gate: a cell's three whole sweeps are tens of minutes, and a machine the
+// gate found quiet before the cell is not thereby quiet at the third sweep —
+// the gate used to be checked between cells only, and never inside one
+// (TC-46). It is injected by the caller because the driver measures and the
+// runner gates. A throw stops HERE, after every finished sweep was handed to
+// `onRun` and written, so nothing measured is lost and resume runs the rest.
+export function replicate(opts, onRun, times = 3, report, between = () => {}) {
   const runs = [];
   for (let i = 1; i <= times; i++) {
+    if (i > 1) between(i);
     const r = { ...cellOrVoid(opts, report), replicate: i, protocol: 'replicated' };
     runs.push(r);
     onRun(r);

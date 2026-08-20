@@ -96,7 +96,50 @@ accepts them and `select.jl` sits in `REMEASURED`.
 `allocating-select`'s entire cost line rests on those rows. The fix is to
 re-measure the sweep; it is six cells.
 
-## TC-46 — the load gate is inoperative, and 592 of 707 published rows were written above it (2026-08-19, open, proposal)
+## ✅ FIXED 2026-08-20 — TC-46 — the load gate is inoperative, and 592 published rows were written above it (2026-08-19)
+
+Fixed by reworking the gate, not the corpus — no sweep re-run, no `.jl` touched,
+no published number moved. Four parts:
+
+1. **The gate's observable changed.** It counted the one-minute load average, a
+   window dominated by the sweep's own previous children — an idle two-core
+   machine read ~1.5 against a gate of 1 and tripped over itself, and when it
+   did not trip the number could not separate a tenant from the harness (TC-25).
+   `bench/env.js` now counts **runnable threads outside the harness, right
+   now**: the instantaneous runnable count in `/proc/loadavg`, median of five
+   samples 100ms apart, this process subtracted — which subtracts the whole
+   harness, because the driver's children are dead whenever the gate reads. The
+   threshold stays `nproc - 1`, now compared against the thing it was always
+   meant to bound. Model stated in `bench/env.js` and CLAUDE.md rule 9.
+2. **The tier diagnostic is out of the evidence run.** `bench/run.js` called
+   `tierPair` per row, on by default, spawning unpinned `--trace-opt` children
+   mid-sweep against protocol rule 8. The per-row path is deleted — `make
+   tiers` / `bench/tiers.jl` was already the same diagnostic at the same rep
+   counts, so the duplicate path is consolidated into it, not preserved. Rows
+   already carrying `tierBase`/`tierTest` keep them; new rows never will.
+3. **The gate re-checks between the whole sweeps of a replicated cell**, not
+   only between cells: `replicate()` takes a `between` hook the runner points at
+   the gate. A trip stops after the finished sweep was written; resume runs the
+   rest.
+4. **A violation is visible in the data and in `make test`.** Every row now
+   records `runnable` as it is written, next to `env.maxRunnable` — a
+   comparable pair, which `load1`/`maxLoad` never was. `lib/derive.ts:overGate`
+   counts rows over their own recorded gate (new pair where present, old pair
+   otherwise), and `test/check.test.ts` holds the register in rule 13's shape:
+   592 rows across 11 files, a NEW over-gate row fails the build, and a count
+   that shrinks fails it too, because appended rows never disappear.
+
+The rows stay published. The old pair cannot say which of the 592 had a real
+tenant behind the harness — that inseparability is the defect — so withdrawing
+them is a judgement about the corpus the register makes visible without making.
+
+What this entry undercounted, found while building the register: the table
+below lists 8 files summing to 522, but the corpus holds 592 over-gate rows —
+it omits `shapes-calibrated.jl` (64/72), `inline.jl` (4/6) and `addprop.jl`
+(2/2). And the worst observed is `load1` **5.66** (`shapes-calibrated.jl`), not
+4.32; within the 8 listed files, 4.47.
+
+The record as filed:
 
 `bench/env.js` sets `MAX_LOAD = CORES - 1`, and this machine reports 2 cores, so
 the gate is 1. Rows written while their own recorded `load1` exceeded their own
@@ -113,8 +156,6 @@ recorded `maxLoad`:
 | `spread-object.jl` | 23/24 |
 | `spread.jl` | 21/24 |
 
-Worst observed: `load1` 4.32 against `maxLoad` 1.
-
 Two causes, and the first is the harness itself. The gate is checked before each
 cell and never between the three sweeps of a replicated one; the pinned measured
 child contributes about 1.0 to the load average by itself; and `bench/tiers.js`
@@ -122,11 +163,6 @@ spawns four **unpinned** `--trace-opt` children per row, during the sweep that
 CLAUDE.md says nothing else may run during. Nothing in `lib/derive.ts` or `make
 test` ever reads `load1`, so no published number knows what it was measured
 under.
-
-**Proposal, and it is a redesign, so it waits for sign-off:** subtract the
-harness's own pinned process from the gate, defer `tierPair` until after the
-sweep, and fail a published citation whose rows exceed their gate. The last part
-withdraws most of the corpus, which is why this is a proposal and not a fix.
 
 ## TC-45 — a call through an interface or a parameter is invisible twice (2026-08-19, open, proposal)
 
@@ -932,7 +968,19 @@ rule's scope. Two proposals:
 The rule's behaviour does not change either way: it stays silent on strings, and
 the build half is why.
 
-## TC-25 — a row's `load1` cannot be compared to the `maxLoad` beside it (2026-08-15, open)
+## ✅ FIXED 2026-08-20 — TC-25 — a row's `load1` cannot be compared to the `maxLoad` beside it (2026-08-15)
+
+Fixed by the TC-46 rework, which shipped this entry's second proposal in a
+stronger form: every row now records the gate's own observable — `runnable`,
+the count of runnable threads outside the harness, read as the row is written,
+while the harness's children are dead — next to `env.maxRunnable`. That pair is
+comparable by construction. `load1` stays on the row for the reason this entry
+gives: its spread across a file is where an outside process announces itself.
+The rows already written stay incomparable forever (runners append, never
+rewrite); the register in `test/check.test.ts` counts them with exactly this
+entry's caveat attached.
+
+The record as filed:
 
 Every row the runner writes carries both `env.maxLoad`, the gate it declared,
 and `load1`, the one-minute average read as that row was written. They sit two

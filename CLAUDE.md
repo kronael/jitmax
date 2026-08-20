@@ -90,25 +90,38 @@ implements it and names these numbers next to the code that enforces each one;
    region. The driver compares checksums inside every pair.
 8. **No tracing, profiling, forced GC or `%GetOptimizationStatus` in an evidence
    run.** A `kinds` mode that needs `--allow-natives-syntax` is a diagnostic and
-   never a measurement, and so is `bench/tiers.js`: it re-runs a cell's exact
-   shape under `--trace-opt --trace-deopt` in its **own** processes, and the
-   tier it finds is written into the row as a fact next to `repsBase`/`repsTest`.
-   A pair whose two sides reach different tiers has a ratio that is partly a
-   measurement of tiering, and `tierMismatch` says so in the row. It is recorded,
-   never gated on.
+   never a measurement, and so is `bench/tiers.js`: run via `make tiers` AFTER a
+   sweep — never inside one, which is where it first ran, unpinned, during the
+   very sweeps this rule protects (TC-46) — it re-runs every published cell's
+   exact shape under `--trace-opt --trace-deopt` in its **own** processes, at
+   the rep counts the cell was published at, and appends what it finds to
+   `bench/tiers.jl`. A pair whose two sides reach different tiers has a ratio
+   that is partly a measurement of tiering, and `tierMismatch` says so in that
+   file's row. It is recorded, never gated on.
 9. **Publish the environment with the numbers**: Node and V8 version, flags,
    seeds, warmup counts, core affinity — in **every row**, not in a report
-   beside it. `bench/env.js` writes them, and the row also carries the load
-   **read as that row was written**, the load the sweep started at, and **the
-   gate it was allowed to run under**. Read per row because a sweep runs for
-   hours and the load it started at stops being true within minutes; the gate is
-   re-checked before every cell for the same reason, and a sweep that finds the
-   machine busy stops and is resumed rather than measuring anyway. The gate is
-   `nproc - 1`: the driver pins every observation to one core, the remaining
-   cores absorb the rest of the machine, and a one-minute load above that means
-   something is contending for the pinned core. That is a model and not a
-   measurement — it is written here so it can be argued with rather than
-   discovered in an `if`. `--max-load` overrides it and the override is recorded.
+   beside it. `bench/env.js` writes them, and the row also carries the machine
+   state **read as that row was written** — the one-minute load and the gate's
+   own observable — plus what the gate let the sweep begin at and **the gate it
+   was allowed to run under**. Read per row because a sweep runs for hours and
+   the load it started at stops being true within minutes; the gate is
+   re-checked before every cell AND between the whole sweeps of a replicated
+   cell for the same reason, and a sweep that finds the machine busy stops and
+   is resumed rather than measuring anyway. The gate counts **runnable threads
+   outside the harness, right now** — the instantaneous runnable count in
+   `/proc/loadavg`, median of five samples, this process subtracted, which is
+   the whole harness because the driver's children are dead whenever it reads —
+   and refuses above `nproc - 1`: the driver pins every observation to one
+   core, the other cores can absorb at most `nproc - 1` runnable threads, and
+   one more means the scheduler must put something on the pinned core. It
+   replaced a one-minute load average whose window was dominated by the sweep's
+   own previous children — a gate that tripped on an idle machine and could not
+   see a tenant behind the harness; 592 published rows were written above it,
+   registered per file in `make test` and withdrawn nowhere (TC-46). That is a
+   model and not a measurement — it is written here so it can be argued with
+   rather than discovered in an `if`. What it cannot see is a tenant asleep at
+   every sample; the per-row reading is where that one shows up, after the
+   fact. `--max-load` overrides the gate and the override is recorded.
 10. **Report failures in the same format as wins** — `REJ`, and a void cell
     printed with its error.
 11. **Both halves, always**: reads-only and with construction. Measuring one
