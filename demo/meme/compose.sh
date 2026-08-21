@@ -15,7 +15,8 @@ cd "$(dirname "$0")/../.."
 
 BG=0x0a0a0a          # --bg, the colour the terminal is padded out to
 FPS=24
-A1_FRAMES=180        # 7.5s — seven names arriving one at a time
+A1_FRAMES=204        # 8.5s — seven names arriving one at a time. 180 gave
+                     # the last name 0.02s at full opacity before the fade.
 A3_FRAMES=120        # 5.0s — the strike and the lockup
 
 node demo/meme/capture.js "$A1_FRAMES" 0    0.42 meme-a1

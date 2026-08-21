@@ -246,12 +246,12 @@ const ACT_BREAK = 0.42;
 // rule names, which is the whole product in one panel.
 //
 // `at` is when it pops. The first lands before any flame is named, the second
-// after six of the seven, so the reader has read `megamorphic-elements` before
-// the dog explains that everything is fine.
+// after all four of panel one's, so the reader has read the room before the dog
+// explains that everything is fine — and before the camera pulls back.
 const BUBBLES = [
   { at: 0.034, x:  18, y:   8, w: 268, h: 80, size: 30, tx: 176, rot: -14,
     lines: ["it's strictly typed."] },
-  { at: 0.245, x: 230, y:  96, w: 216, h: 94, size: 25, tx:  16, rot:  26,
+  { at: 0.172, x: 230, y:  96, w: 216, h: 94, size: 25, tx:  16, rot:  26,
     lines: ['zero-cost', 'abstraction.'] },
 ];
 
@@ -279,19 +279,33 @@ const LABELS = [
   { at: 0.152, x:  30, y: 360, size: 25, rot:  3 },
   { at: 0.192, x: 210, y: 406, size: 24, rot: -3 },
   // Panel two, and every one of these lands AFTER the reveal — a label that
-  // arrives while its half of the plate is cropped away arrives to nobody.
-  { at: 0.318, x: 500, y: 152, size: 25, rot:  5 },
-  { at: 0.356, x: 712, y: 216, size: 26, rot: -5 },
-  { at: 0.394, x: 556, y: 402, size: 27, rot:  4 },
+  // arrives while its half of the plate is cropped away arrives to nobody. The
+  // last one is the seventh rule and the film's final name, so it lands 0.046
+  // before the act-one fade rather than 0.001: at 0.394 it was still popping
+  // when the panel started to go, and `deleteproperty` was never once legible.
+  { at: 0.288, x: 500, y: 152, size: 25, rot:  5 },
+  { at: 0.322, x: 712, y: 216, size: 26, rot: -5 },
+  { at: 0.356, x: 556, y: 402, size: 27, rot:  4 },
 ];
 
 // The reveal. Panel one alone is 465 of the plate's 940 rendered pixels, so the
 // window opens there and runs out to the full width once the dog has said both
 // of its lines. Eased, and slow enough to read as a camera pulling back rather
 // than as a wipe.
+//
+// The window WIDENS and the camera PULLS BACK on the same eased t, because a
+// window that grows at a fixed scale is a wipe: panel two slides in and nothing
+// about the shot changed. Panel one is square and the frame is 2:1, so the shot
+// that reads is the one filling the frame's HEIGHT — 1.33x is 606 of 630 rows,
+// which puts a 24px label on screen at 32px. 1.24x is the largest scale at
+// which BOTH panels still fit 1200px wide, so that is where the pull stops. The
+// first cut ran the whole act at 1.045x: a 465px panel adrift in a 1200px frame,
+// with the rule names too small to read on a phone.
 const SHUT = 465;
 const OPEN = 940;
-const REVEAL = [0.252, 0.312];
+const CLOSE = 1.33;
+const WIDE = 1.24;
+const REVEAL = [0.216, 0.276];
 
 // The rule names come from lib/rules.ts, never from this file. A rule that is
 // withdrawn stops burning; a rule that is added starts. The panel is a picture
@@ -336,16 +350,16 @@ window.renderFrame = function (t) {
   // Act one holds the panel; act three holds the mark. They never share a
   // frame — a cut, not a dissolve, because the terminal is spliced between
   // them and a cross-fade into a different act would be a fade to nothing.
-  const shown = span(t, 0.000, 0.028) * (1 - span(t, 0.395, ACT_BREAK));
+  const shown = span(t, 0.000, 0.028) * (1 - span(t, 0.402, ACT_BREAK));
   el('panel').style.opacity = shown.toFixed(3);
-  // A slow push in. Nothing in a still panel moves, and a completely static
-  // six seconds reads as a stalled video rather than a held shot.
+  // The camera. One eased t drives both the window and the scale, so panel two
+  // arrives because the camera moved, not because the art shrank under a fixed
+  // crop. `translateX(-50%)` keeps it centred at every width, so panel one sits
+  // in the middle of the frame until panel two is earned.
+  const pull = ease(span(t, REVEAL[0], REVEAL[1]));
   el('panel').style.transform =
-    `translateX(-50%) scale(${(1 + 0.045 * span(t, 0, ACT_BREAK)).toFixed(4)})`;
-  // The window opens. `translateX(-50%)` keeps it centred at every width, so
-  // panel one sits in the middle of the frame until panel two is earned.
-  el('panel').style.width =
-    `${(SHUT + (OPEN - SHUT) * ease(span(t, REVEAL[0], REVEAL[1]))).toFixed(1)}px`;
+    `translateX(-50%) scale(${(CLOSE + (WIDE - CLOSE) * pull).toFixed(4)})`;
+  el('panel').style.width = `${(SHUT + (OPEN - SHUT) * pull).toFixed(1)}px`;
   // The labels arrive one at a time. All seven at once is a diagram; arriving
   // is the joke, because the list keeps going after you have stopped expecting
   // it to. Each one lands hot and settles.
@@ -443,7 +457,10 @@ window.renderFrame = function (t) {
   // The wordmark lights volt as the charge lands, then yields: the lockup IS
   // the name, and two turbocharges on one frame is one too many.
   el('wordmark').style.color = mix(S.muted, S.volt, charge);
-  el('wordmark').style.opacity = ((0.62 + 0.38 * charge) * (1 - lock)).toFixed(3);
+  // ...and it is not in act one at all: the panel is scaled to fill the frame
+  // now, so a wordmark under it either collides or forces the shot smaller.
+  el('wordmark').style.opacity =
+    ((0.62 + 0.38 * charge) * (1 - lock) * (1 - shown)).toFixed(3);
 };
 
 buildBubbles();
