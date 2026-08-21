@@ -525,6 +525,41 @@ every node of the converted AST when the parser is asked not to emit them, and
 goes to dictionary mode, and every rule that later reads that node reads it
 from a dictionary.
 
+### A wider net, and the one thing it settled
+
+Twelve libraries and two applications left one rule with no instance of the
+shape its own benchmark measured. Eight more codebases were run the same way,
+so that the absence would mean something:
+
+| Codebase | annotated | findings | what fired besides `closed-world` |
+|---|---|---|---|
+| svelte (`packages/svelte/src`) | 504 | 8412 | 91 `chained-allocation`, 34 `allocating-select`, 23 `delete-property`, 13 `accumulating-spread` |
+| vue (`packages/*/src`) | 409 | 6666 | 46 `megamorphic-elements`, 32 each `delete-property` and `chained-allocation`, 14 each `allocating-select` and `accumulating-spread`, 11 `megamorphic-dispatch` |
+| typebox | 199 | 201 | **119 `accumulating-spread`**, 31 `delete-property` |
+| mobx | 49 | 114 | 6 `delete-property` |
+| valibot | 87 | 232 | 9 `chained-allocation`, 1 `delete-property` |
+| rxjs | 60 | 328 | nothing |
+| immer | 10 | 42 | 4 `delete-property` |
+| ts-pattern | 9 | 47 | nothing |
+
+**Vue is the first codebase to fire six of the seven rules.** A framework is
+not a pipeline, and both megamorphic rules find shapes in it that no utility
+library has.
+
+**TypeBox spends 119 of its 199 annotated functions on accumulating spread** —
+60% of everything the tool says about it is one pattern. `FromObject` in
+`value/create/from_object.ts` is six lines and is the whole rule:
+`required.reduce((result, key) => ({ ...result, [key]: … }), {})`.
+
+**`allocating-select` has now fired 77 times across 2953 annotated functions,
+and not once on the shape it measures.** Every finding is a value being
+*advanced* or *wrapped* — `date = addMinutes(date, step)`, `initial =
+b.call('$.proxy', initial)`, `spread = getSpreadType(…)` — where the value
+changes on every pass and "compare first" saves nothing. The benchmark measured
+a *choice* between two values where the incumbent almost always wins. Twenty-two
+codebases is a large enough net that this stops reading as a gap in the search
+and starts reading as a verdict on the rule. `BUGS.md` TC-18.
+
 ### Which rules have an end-to-end example, and which cannot have one
 
 `examples/` can only hold a rule whose printed fix is a change to the function
@@ -536,7 +571,7 @@ is which is worth more than four more tables.
 | `accumulating-spread` | radash `assign`, remeda `mergeAll` — **3.22-4.65x**, and a read cost the fix line now carries |
 | `delete-property` | es-toolkit `omit` — **1.62-3.32x**, and a width past which it stops |
 | `chained-allocation` | zod `cleanEnum` — **rejects at both sizes**, published above |
-| `allocating-select` | **no instance of the measured shape in 850 functions.** Its six findings are all `x = advance(x, step)` — `date = addMinutes(date, step)` in four date-fns functions, `sink = lazy(sink)` in es-toolkit's `pipe`. The benchmark measured a *choice* between two values where the incumbent almost always wins, and the fix, "compare first and assign only when x really changes", saves an allocation exactly on the passes that change nothing. A cursor changes on every pass. `BUGS.md` TC-18 |
+| `allocating-select` | **no instance of the measured shape in 2953 functions.** Its six findings are all `x = advance(x, step)` — `date = addMinutes(date, step)` in four date-fns functions, `sink = lazy(sink)` in es-toolkit's `pipe`. The benchmark measured a *choice* between two values where the incumbent almost always wins, and the fix, "compare first and assign only when x really changes", saves an allocation exactly on the passes that change nothing. A cursor changes on every pass. `BUGS.md` TC-18 |
 | `megamorphic-elements` | **structurally impossible.** The rule fires on a *parameter*, so its fix — "get the element type to four shapes or fewer, or give it one construction path" — is always a change to whoever built the array, never to the function that was flagged. No before/after pair of the flagged function can carry it. `BUGS.md` TC-19 |
 | `megamorphic-dispatch` | **nothing to demonstrate.** Zero findings in 850 functions |
 | `closed-world` | makes no speed claim; it reports what was not checked |
