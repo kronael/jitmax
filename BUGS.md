@@ -2077,7 +2077,7 @@ and the onepager both claimed "every rule carries the benchmark that earned
 it", which was false for one rule in six. The claim has been corrected; the
 rule has not.
 
-Found by the adversarial teardown in `useless2.md`, all four points verified
+Found by the adversarial teardown in `.diary/20260811-review-turbocharge.md`, all four points verified
 here against the code and the demo output.
 
 Proposal: either give each rule a machine-checked precondition matching its
@@ -2106,7 +2106,7 @@ ever read, so no element load site exists, so nothing can go megamorphic — and
 the rule fires anyway, quoting the full cliff. `test/check.test.ts` asserts this
 firing, which means the suite currently locks in a false positive.
 
-Found by the adversarial teardown in `useless2.md`, verified here by running
+Found by the adversarial teardown in `.diary/20260811-review-turbocharge.md`, verified here by running
 the demo. This is the same family as TC-2 (a union member is not a V8 map) but
 strictly worse: TC-2 is an unsound inference about how many maps reach a site,
 TC-8 is firing where there is no site at all.

@@ -18,7 +18,7 @@
 // (BUGS TC-16): the rule used to print "mutate acc in place" with no condition
 // on it, and on remeda's `mergeAll` the condition is the whole result.
 //
-// `demo-real.md` is the full record of that run, including the three
+// `.diary/20260811-radash-run.md` is the full record of that run, including the three
 // false-positive classes it took to get down to this one finding.
 //
 // THE INPUT, which is where a comparison like this is usually cheated: the

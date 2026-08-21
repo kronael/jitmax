@@ -358,8 +358,9 @@ the sweep.
 Nothing here was searched for. Eleven libraries were cloned shallow and
 annotated by `examples/annotate.js` — every function not nested inside another
 whose body loops — and these are the findings that came back. radash is the
-twelfth, marked by hand a round earlier; `demo-real.md` is that run in full,
-including the three false-positive classes it took to get to one finding. The
+twelfth, marked by hand a round earlier;
+`.diary/20260811-radash-run.md` is that run in full, including the three
+false-positive classes it took to get to one finding. The
 ratio is before/after, so above 1.0 the shipped code costs that much more and
 **below 1.0 the fix made it slower**. Three whole sweeps per cell, per §4
 rule 13, all three printed.
@@ -467,7 +468,7 @@ nothing.
 | date-fns 4.4.0 (`core`) | 28 | 36 | 29 `closed-world`, 4 `allocating-select`, 1 each `delete-property`, `chained-allocation`, `accumulating-spread` |
 | dinero.js 2.0.2 | 20 | 102 | 100 `closed-world`, 1 `chained-allocation`, 1 `accumulating-spread` |
 | big.js 7.0.1 | 13 | 87 | 87 `closed-world` |
-| radash 12.1.1 | 8 | 1 | 1 `accumulating-spread` — see `demo-real.md` |
+| radash 12.1.1 | 8 | 1 | 1 `accumulating-spread` — see `.diary/20260811-radash-run.md` |
 
 Three things in that table are about the tool rather than the libraries.
 
@@ -635,9 +636,9 @@ make meme    # re-render the launch loop from demo/meme/
 ```
 
 `CLAUDE.md` holds the layout, the rules of this repo, and how to verify both
-kinds of evidence. `BUGS.md` holds the open queue. `useless.md` and `useless2.md`
-are the adversarial teardowns — why the old design failed, and the case that
-this one is worthless.
+kinds of evidence. `BUGS.md` holds the open queue. `.diary/` holds the shipping
+log, including the two adversarial teardowns — why the old design failed, and
+the case that this one is worthless.
 
 ## Licence
 
