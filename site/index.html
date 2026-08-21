@@ -179,6 +179,49 @@ export function total(rows: Row[]): number { … }</code></pre>
   </tbody>
 </table>
 
+<h2>On two programs nobody calls fast</h2>
+
+<p>
+  Twelve utility libraries were surveyed the same way &mdash; cloned shallow,
+  annotated by rule and not by hand. Between them the flagship rule fired on
+  one function, and the sharpest cliff this project measured never fired at
+  all. A library is a pipeline; neither shape lives there. So the same run went
+  at two programs whose slowness is the reason other tools exist.
+</p>
+
+<p>
+  <strong>TypeScript 5.9.3</strong>, the compiler Microsoft is rewriting in Go
+  for speed: 465 functions annotated, <strong>19 megamorphic-element
+  findings</strong> against ten in all twelve libraries. The widest is
+  <code>checker.ts:44260</code> &mdash; <code>checkUnusedIdentifiers</code>
+  reads <code>node.kind</code> off every element of a
+  <code>PotentiallyUnusedIdentifier[]</code>, and that union is
+  <strong>20 distinct property sets at one load site</strong>, against the four
+  V8 caches. A union member is not a V8 map, and that caveat holds here; 20
+  against 4 is still the widest gap this survey has found.
+</p>
+
+<p>
+  <strong>typescript-eslint 8.67.0</strong>, the linter every speed-first
+  rewrite benchmarks itself against: 311 functions annotated, and
+  <strong>megamorphic-dispatch fired for the first time on code this project
+  did not write</strong> &mdash; <code>no-misused-promises.ts:543</code> calls
+  <code>tsNode.name.getText()</code> on a name that reaches it as six distinct
+  property sets. Its plainest finding needs no caveat at all:
+  <code>typescript-estree/src/ast-converter.ts:48</code> deletes
+  <code>range</code> and <code>loc</code> from <em>every node of the converted
+  AST</em>, and every rule that reads those nodes afterwards reads them out of
+  dictionary mode.
+</p>
+
+<p>
+  It also reported <strong>4140 findings</strong> on that linter, and 4115 of
+  them are one rule naming an import the program could not resolve, because the
+  checkout had no dependencies installed. That is a defect in this tool, it is
+  filed as <code>BUGS.md</code> TC-51, and it is why these two runs are quoted
+  beside the twelve-library survey rather than folded into it.
+</p>
+
 <h2>Why the numbers are worth anything</h2>
 
 <ul>

@@ -475,15 +475,55 @@ Three things in that table are about the tool rather than the libraries.
 builtin the walk cannot read into. That is the honest shape of the rule on real
 code, and `BUGS.md` TC-10.
 
-**`megamorphic-dispatch` never fired once** in 850 annotated functions. The
-sharpest cliff this project measured, 12.9-22.7x, has still never been seen on
-somebody else's code.
+**`megamorphic-dispatch` never fired once** in these 850 annotated functions.
+The sharpest cliff this project measured, 12.9-22.7x, is not a shape utility
+libraries have. It does appear in the two applications below.
 
 **`megamorphic-elements` fired ten times, and all ten are one function** —
 zod's `prefixIssues`, whose `issues` parameter unions twelve issue types and
 which loads and mutates `.path` on every element. Nine of the ten are that same
-site reported from nine different annotated roots that reach it. Until this
-survey the rule had never fired either; one function in 850 is what it is worth.
+site reported from nine different annotated roots that reach it. One function
+in 850 is what the flagship rule is worth across twelve libraries.
+
+### Two applications, and the rules twelve libraries could not reach
+
+A utility library is a pipeline. Two programs that are neither small nor fast
+were run exactly the same way — cloned shallow, annotated by
+`examples/annotate.js`, nothing picked by hand:
+
+| Program | annotated | findings | what fired |
+|---|---|---|---|
+| TypeScript 5.9.3 (`src/compiler`) | 465 | 909 | 805 `closed-world`, 40 `chained-allocation`, 23 `allocating-select`, 19 `megamorphic-elements`, 12 `accumulating-spread`, 10 `delete-property` |
+| typescript-eslint 8.67.0 | 311 | 4140 | 4115 `closed-world`, 22 `chained-allocation`, 2 `delete-property`, 1 `megamorphic-dispatch` |
+
+Read 4140 as a defect in this tool before reading it as anything about that
+codebase. Neither checkout had `node_modules` installed, so every call into a
+missing package is an unresolvable callee, reported once per annotated caller
+that reaches it — 99.4% of that row. `BUGS.md` TC-51. The two rows are kept out
+of the table above for the same reason: mixed in they would move
+`closed-world`'s share from 92% to 96% and teach a reader nothing.
+
+Under the flood are the two rules twelve libraries never exercised.
+
+**`megamorphic-dispatch` fired, for the first time on code this project did not
+write.** `packages/eslint-plugin/src/rules/no-misused-promises.ts:543` calls
+`tsNode.name.getText()`, and `name` reaches that call as six distinct property
+sets — a TypeScript declaration name is not one node type. Six is past the four
+maps V8 caches for the site.
+
+**`megamorphic-elements` fired 19 times in the compiler**, against ten times in
+all twelve libraries, and its widest instance is `checker.ts:44260`:
+`checkUnusedIdentifiers` walks a `PotentiallyUnusedIdentifier[]` and reads
+`node.kind` off every element, where that union is 20 distinct property sets at
+one load site. TC-2's caveat still applies — a union member is not a V8 map —
+but 20 against a budget of 4 is the widest gap this survey has found.
+
+The plainest finding in either program needs no caveat at all.
+`typescript-estree/src/ast-converter.ts:48` deletes `range` and `loc` from
+every node of the converted AST when the parser is asked not to emit them, and
+`delete` is the one pattern here whose mechanism is not an estimate: the object
+goes to dictionary mode, and every rule that later reads that node reads it
+from a dictionary.
 
 ### Which rules have an end-to-end example, and which cannot have one
 
