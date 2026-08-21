@@ -53,6 +53,31 @@ name `turbocharge` is taken and npm's dispute policy refuses transfers on
 demand; "turbo" returns 3,991 npm packages, and Vercel claims bare **Turbo** as
 a brand.
 
+## TC-51 — closed-world drowns a real checkout that has no node_modules (2026-08-21, open)
+
+`node bin/turbocharge.ts` on a typescript-eslint checkout reported 4140
+findings. 4115 of them — 99.4% — are `closed-world` naming an import the
+program cannot resolve, because the dependencies are not installed. Every
+`tsutils.isTypeFlagSet` in the tree is reported as an opaque callee, once per
+annotated function that reaches it.
+
+The rule is not wrong: an unresolved callee IS an inlining boundary at runtime.
+But an unresolved callee at CHECK time is a missing `npm install`, and the tool
+cannot tell the two apart. The 25 findings that carry signal — two
+`delete node.range` / `delete node.loc` calls on every node of the ESTree AST
+in `typescript-estree/src/ast-converter.ts:48`, eleven `.map().filter()` pairs
+in `convert.ts`, one megamorphic dispatch — are unfindable underneath them.
+
+Not fixed inline: telling "the package is absent" from "the callee is genuinely
+opaque" needs the checker to look at module resolution rather than at the
+symbol, which changes what the rule reads. Proposal, needs sign-off: when a
+call's symbol is unresolved AND its module specifier resolves to nothing on
+disk, report it once per FILE as an unresolved-dependency note outside the
+findings list, and exit 1 with `DEPENDENCIES MISSING` — the same
+say-what-you-cannot-see contract the walk already keeps for truncation.
+
+Found by: running the tool on typescript-eslint, 2026-08-21.
+
 ## TC-49 — nothing binds a rule to its evidence or to a fixture (2026-08-19, open, proposal)
 
 `RULES` is an array of functions; `EVIDENCE` is a table keyed by rule name; no
