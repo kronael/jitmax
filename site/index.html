@@ -206,6 +206,17 @@ export function total(rows: Row[]): number { … }</code></pre>
     page a week ago.
   </li>
   <li>
+    A sweep refuses to start on a busy machine, and until 2026-08-21 that gate
+    was <strong>reading the wrong number</strong>. It watched the one-minute
+    load average, which on two cores was mostly the sweep&rsquo;s own children,
+    so it tripped on an idle machine and barely moved for a real tenant sitting
+    behind it. It now counts runnable threads outside the harness, read as each
+    row is written. The <strong>592 rows published above the old gate are
+    registered file by file in the test suite and withdrawn nowhere</strong>:
+    the old reading cannot say which of them had a tenant, only that it was not
+    answering the question. A new row over the reworked gate fails the build.
+  </li>
+  <li>
     Every number here is read out of the raw timing rows, never typed by hand.
     If a number and its data disagree, the test suite fails.
   </li>
@@ -235,7 +246,7 @@ export function total(rows: Row[]): number { … }</code></pre>
 
 <div class="hub-footer">
   <p>
-    v0.7.0, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
+    v0.8.0, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
     those terms; a derivative work carries the same licence. Not on npm — clone
     the repository and run it from there. Needs Node 22.18 or newer, which
     strips TypeScript types itself, so there is no build step.

@@ -556,6 +556,19 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
   value, and both are inside a range this page quotes. They are left in rather
   than dropped, because a range that quietly excluded its worst-behaved cell
   would read tighter than the measurement was. `BUGS.md` TC-21.
+- **592 published rows were measured under a load gate that could not see a
+  tenant.** Protocol rule 9 refuses to start a cell while the machine is busy.
+  Until 2026-08-21 the gate read the one-minute load average, and on a two-core
+  machine that average was mostly the sweep's own children — one pinned child at
+  a time, each worth about 1.0 in the window — so an idle machine read ~1.5
+  against a gate of 1, while a real tenant sitting behind the harness moved it
+  barely at all. The gate now counts runnable threads outside the harness, read
+  as each row is written, and refuses above `nproc - 1`. The rows written above
+  the old gate are **registered per file in `test/check.test.ts` and withdrawn
+  nowhere**: the old pair cannot say which of them had a real tenant, only that
+  the gate was not answering its question, and withdrawing most of the corpus on
+  a number like that is the owner's call rather than a query's. A new row over
+  the reworked gate fails `make test`. `BUGS.md` TC-46.
 - **One of V8's two optimizing tiers was switched off the whole time.** This
   Node reports `--maglev` as `default: --no-maglev`, so the ladder under every
   number here is Ignition → Sparkplug → TurboFan, with no Maglev in it. A tier
@@ -645,7 +658,7 @@ V8 is a trademark of Google LLC. This project is not affiliated with, endorsed
 by, or sponsored by Google, and every use of the name here is a reference to the
 engine the measurements were taken on.
 
-Status: v0.7.0, single machine, seven rules. Every sweep behind a published
+Status: v0.8.0, single machine, seven rules. Every sweep behind a published
 number is re-measured whole under the current runner: three sweeps per cell, and
 a cell whose three share no common value is withdrawn by `lib/derive.ts` before
 the number is written. Twenty-two are withdrawn today, and `test/check.test.ts`

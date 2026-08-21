@@ -749,3 +749,15 @@ test('no published row is over its own gate except the ones on record', () => {
     );
   }
 });
+
+// README tells a reader the corpus number; this register IS the corpus number.
+// Typing it into prose is the one way it can drift out of the rows, so the
+// prose is read back and compared against the sum.
+test('README quotes the over-gate register, not a number beside it', () => {
+  const total = Object.values(OVER_GATE).reduce((a, b) => a + b, 0);
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  assert.ok(
+    readme.includes(`${total} published rows were measured under a load gate`),
+    `README no longer quotes the over-gate total of ${total} rows`
+  );
+});
