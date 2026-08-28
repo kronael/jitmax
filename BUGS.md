@@ -142,6 +142,24 @@ Still open from this entry: the `suggest` mode for the writing consumer, and
 `min_self_pct` remains a constant nobody has measured — it is printed on every
 run and the TOML owns it, which is the disclosure and not the fix.
 
+## TC-70 — a derived count is interpolated into prose that assumes it is plural (2026-08-28, open)
+
+`closed-world`'s source string renders "bench/inline.jl, 1 cells, 20 pairs
+each". The numeral is derived, correctly — `N['inline.cells']` is 1 because that
+sweep has one cell — and the word beside it is hand-written and fixed. Every
+`EVIDENCE` string that says "N cells" has the same shape and will read wrongly
+the moment rule 13 withdraws a sweep down to one.
+
+It is cosmetic, and it is in published output: README's rules section quotes
+these strings.
+
+**Proposal:** a `plural()` in the interpolation, or phrase the sentences so the
+count never precedes a bare noun. `lib/report.ts` already has a `plural()`;
+`lib/rules.ts` would need it too, which is one import and no new mechanism.
+
+Found 2026-08-28 while reading the strings for TC-48. Recorded and not fixed,
+per the triage protocol.
+
 ## TC-69 — closed-world cannot see through an interface-typed callee, so it is loudest on the best-abstracted code (2026-08-28, partly fixed 2026-08-28 — named, not followed)
 
 `@noble/curves`, 26 files: **2,113 warnings against 2 errors**. The top callees:
