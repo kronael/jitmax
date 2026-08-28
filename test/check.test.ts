@@ -7,7 +7,7 @@ import { CITATIONS, derive, markdown, overGate, unreplicable, withoutBlock } fro
 import { N } from '../lib/numbers.ts';
 import { load, program } from '../lib/ts.ts';
 import { scan, type Mark } from '../lib/scan.ts';
-import { check, resolveDisabled } from '../lib/rules.ts';
+import { check, EVIDENCE, resolveDisabled } from '../lib/rules.ts';
 import { loadConfig } from '../lib/config.ts';
 import { render } from '../lib/report.ts';
 
@@ -56,6 +56,7 @@ test('a function is checked only where it is annotated', () => {
       'dropQuiet',
       'entriesMap',
       'fiveShapes',
+      'fiveShapesNoLoad',
       'fourShapes',
       'growByKey',
       'helper',
@@ -99,6 +100,15 @@ test('a plain number[] stays silent', () => {
 
 test('the fifth distinct property set fires: the cliff', () => {
   assert.deepStrictEqual(rules('fiveShapes'), ['megamorphic-elements']);
+});
+
+// TC-8, and the rule's own benchmark is what closes it: the kernel measured is
+// `s += r.x + r.y`, so the cost needs a load off an ELEMENT. `rows.length`
+// loads off the array, whose map does not change with the element type. The
+// annotation cannot rescue this one — hot code that touches no property still
+// touches no property.
+test('five property sets with no load off an element stay silent', () => {
+  assert.deepStrictEqual(rules('fiveShapesNoLoad'), []);
 });
 
 // The two false-positive classes TC-42 named, both verified with
@@ -503,8 +513,42 @@ test('a truncated walk exits 1: not clean, even with no findings', () => {
     { cwd: root, encoding: 'utf8' }
   );
   assert.match(run.stdout, /WALK TRUNCATED/);
-  assert.match(run.stdout, /0 findings/);
+  assert.match(run.stdout, /0 errors/);
   assert.strictEqual(run.status, 1);
+});
+
+// Severity is the exit-code contract, so it is tested through the binary too.
+// `closed-world` fires on a callee with no readable body and no sweep measures
+// that program, so it warns rather than erring — and a warning must not fail a
+// build. It was 96.7% of every finding across the 22-codebase survey, so before
+// this it decided nearly every exit code on evidence the project does not have
+// (BUGS TC-52).
+
+test('a run whose only finding is a warning exits 0', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'opaque')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /0 errors, 1 warning/);
+  assert.match(run.stdout, /warn {2}closed-world/);
+  assert.strictEqual(run.status, 0);
+});
+
+// Every rule states a severity, and only a rule with no benchmark of the
+// program it fires on may warn. A rule added without one would default to
+// `warn` in the reporter and gate nothing, silently — which is the same lie a
+// missing key tells anywhere else in this project.
+test('every rule states a severity, and closed-world is the only warning', () => {
+  for (const [name, e] of Object.entries(EVIDENCE)) {
+    assert.ok(e.severity === 'error' || e.severity === 'warn', `${name} states no severity`);
+  }
+  assert.deepStrictEqual(
+    Object.entries(EVIDENCE)
+      .filter(([, e]) => e.severity === 'warn')
+      .map(([name]) => name),
+    ['closed-world']
+  );
 });
 
 // The end-to-end examples. Each `.before.ts` is a function a library ships and

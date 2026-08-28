@@ -40,9 +40,20 @@ export function fourShapes(rows: (A | B | C | D)[], gaps: number[]): number {
   return rows.length + gaps.length;
 }
 
-/** The fifth distinct property set is the cliff. */
+/** The fifth distinct property set is the cliff — at a load site, which is why
+ * this reads a property off an element and not off the array. */
 /** @jitmax */
 export function fiveShapes(rows: (A | B | C | D | E)[]): number {
+  let s = 0;
+  for (const r of rows) s += r.x;
+  return s;
+}
+
+/** Five property sets and nothing loaded off one of them: silent. `rows.length`
+ * is a load off the ARRAY, whose map is the same whatever the elements are, so
+ * there is no site here for a fifth map to reach (BUGS TC-8). */
+/** @jitmax */
+export function fiveShapesNoLoad(rows: (A | B | C | D | E)[]): number {
   return rows.length;
 }
 

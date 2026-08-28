@@ -4,7 +4,7 @@ import path from 'node:path';
 import { load, program } from '../lib/ts.ts';
 import { scan } from '../lib/scan.ts';
 import { check, resolveDisabled } from '../lib/rules.ts';
-import { render } from '../lib/report.ts';
+import { render, severity } from '../lib/report.ts';
 import { loadConfig } from '../lib/config.ts';
 
 try {
@@ -70,7 +70,19 @@ try {
   // the call tree was never checked, so silence from it is unproven — and `1`
   // already means "jitmax has something to report". A fourth code would be
   // a new contract for every gate that reads this one (BUGS TC-17).
-  process.exitCode = results.some((r) => r.findings.length > 0 || r.mark.truncated) ? 1 : 0;
+  //
+  // A warning does not. `closed-world` fires on a callee whose body nobody can
+  // read, and no benchmark measures that program — its number bounds a
+  // mechanism on a different one (BUGS TC-33). It was 96.7% of every finding
+  // across the 22-codebase survey, so it decided the exit code of nearly every
+  // run on evidence this project does not have. It is still printed, still
+  // counted in the header, and the report says in words that warnings do not
+  // fail the run, so the text and the exit code agree.
+  process.exitCode = results.some(
+    (r) => r.findings.some((f) => severity(f) === 'error') || r.mark.truncated
+  )
+    ? 1
+    : 0;
 } catch (err) {
   process.stderr.write(`jitmax: ${(err as Error).message}\n`);
   process.exitCode = 2;

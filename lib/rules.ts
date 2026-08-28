@@ -10,14 +10,6 @@ export interface Evidence {
   // warning about. A rule that fires here contradicts its own evidence, and a
   // test asserts it stays quiet.
   silent: string;
-  // This rule's number is a BOUND on a mechanism, not a measurement of what it
-  // reports. `closed-world` fires when TypeScript resolves a callee to a
-  // declaration file — it has the signature and no body — and its benchmark
-  // measures two visible local functions, one padded past V8's inlining budget.
-  // Those are different programs, and the report printed `measured N` beside
-  // 1539 findings about callees nobody measured (BUGS TC-33). The word the
-  // report prints comes from here.
-  bound?: true;
   // Where the same benchmark found a REAL cost that this rule deliberately does
   // not report, because no declared type separates that case from one it would
   // be wrong to warn about. Split out of `silent` because the two were being
@@ -25,6 +17,19 @@ export interface Evidence {
   // rules that summary was false (BUGS TC-39). A rule with nothing to say here
   // leaves it out.
   unreported?: string;
+  // `error` when a benchmark measures the program this rule fires on, `warn`
+  // when none does. Only an error sets the exit code; a warning is printed and
+  // does not fail a build. Stated per rule and not per finding, because what
+  // separates the two is the evidence and not the site.
+  //
+  // This replaces the `bound` flag, which existed so the report could print the
+  // word `bound` instead of `measured` beside a number (BUGS TC-33). The report
+  // prints no number now, so that flag had no reader left. Severity is the
+  // stronger form of the same distinction and it reaches the exit code, which
+  // is what a CI user actually feels. `closed-world` is the only `warn`: it
+  // fires on a callee with no readable body, and no sweep here measures that
+  // program.
+  severity: 'error' | 'warn';
   // BUGS.md issue numbers this rule is known to be wrong or unproven about.
   // Empty when the rule carries no open defect. This is the register a
   // config or an annotation disables by defect code instead of by name.
@@ -35,7 +40,6 @@ export interface Evidence {
 // sync with BUGS.md: a code appears here only if a rule's `defects` cites it.
 export const DEFECT: Record<string, string> = {
   'TC-2': 'a TypeScript union member is not a V8 map',
-  'TC-8': 'megamorphic-elements fires without a property load',
   'TC-9': 'rules fire outside the conditions their own evidence establishes',
   'TC-10': 'the walk follows calls but not constructors',
   'TC-13': 'a method in a field has no four-map budget',
@@ -84,7 +88,8 @@ export const EVIDENCE: Record<string, Evidence> = {
       'report. Key order is not part of a TypeScript type, so nothing static separates that ' +
       'program from one where the five builders agree. The rule misses it rather than ' +
       'guessing, and bench/shapes-calibrated.jl is what it misses',
-    defects: ['TC-8', 'TC-2', 'TC-9'],
+    severity: 'error',
+    defects: ['TC-2', 'TC-9'],
   },
   'megamorphic-dispatch': {
     cost:
@@ -96,7 +101,6 @@ export const EVIDENCE: Record<string, Evidence> = {
       `sides pay, and ${N['disp.constr.l3.five']} at RAM size against ` +
       `${N['disp.constr.l3.four']} at two to four shapes, each of those cells replicated ` +
       'three times',
-    bound: true,
     source:
       `bench/dispatch.jl, ${N['disp.cells']} cells, 20 pairs each, every cell measured ` +
       'three whole times. Read the kernel before the number, for the same reason ' +
@@ -119,6 +123,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       'size of the one this rule exists to report, and the same sweep measured it. No ' +
       'declared type separates that form from a prototype method, so the rule misses it ' +
       'rather than guessing. This is a miss, not a refutation',
+    severity: 'error',
     defects: ['TC-13'],
   },
   'accumulating-spread': {
@@ -151,6 +156,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       'looks: most of those intervals span 1.0, so once the result is read back the string ' +
       'and the rewrite are indistinguishable rather than the string winning. Every cell is ' +
       'replicated three times and the ones whose sweeps disagree are in the file',
+    severity: 'error',
     defects: [],
   },
   'allocating-select': {
@@ -174,6 +180,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       `local accumulator is reported with the ${N['select.heap']} measured for a value that ` +
       'escapes. The cost is real either way and the printed figure is the wrong one of the ' +
       'two (BUGS TC-44)',
+    severity: 'error',
     defects: [],
   },
   'chained-allocation': {
@@ -204,6 +211,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       `s.split(sep).map(f).join(sep) measured ${N['chained.silent.split']} against two ` +
       'different fusions, which is at the 1.10x a broad warning needs rather than clear of ' +
       'it — the rule stays out and the margin is one hundredth',
+    severity: 'error',
     defects: ['TC-9'],
   },
   'closed-world': {
@@ -217,7 +225,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       `bench/inline.jl, ${N['inline.cells']} cells, 20 pairs each; the inlining decision ` +
       'itself confirmed with --trace-turbo-inlining, which reports the padded callee as ' +
       '"cannot consider"',
-    bound: true,
+    severity: 'warn',
     silent:
       'this bounds what ONE unchecked call can cost, not what any particular one does cost ' +
       '— a small callee is inlined and the boundary costs nothing. The trigger and the ' +
@@ -249,6 +257,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       'singleton exception is withdrawn: it was measured on a probe whose fast side a ' +
       'loop-invariant load could serve, and a kernel that has to load the object every ' +
       'pass says a single delete costs the same as a hundred thousand of them',
+    severity: 'error',
     defects: ['TC-9'],
   },
 };
@@ -391,6 +400,51 @@ function arrayParams(
 // string from the one that will not, so there is no narrower trigger to retreat
 // to. bench/arrays.jl keeps the effect; the tool no longer reports it.
 
+// Whether this body READS a property off an element of the array. What goes
+// megamorphic is not a load specifically, it is a map-keyed inline cache site,
+// and V8 has several: LoadIC, StoreIC, the call site's own, KeyedHasIC for
+// `in`. Each carries the same four-map budget. TypeScript writes the first
+// three as one AST node, so one check finds them all.
+//
+// It is narrowed to a READ anyway, because the benchmark measured one — the
+// kernel is `s += r.x + r.y`. A body whose only contact with the element is
+// `r.x = v` pays a StoreIC that nothing in bench/shape-sets.jl priced, and
+// firing there would quote a read's number for a write. `in` is left out for
+// the same reason and is the known gap.
+//
+// A method call counts: `r.area()` loads `area` off r's map before calling it.
+// So does a destructure, which is the same read written without a dot.
+function readsFromElement(
+  ts: Ts,
+  checker: TS.TypeChecker,
+  body: Body,
+  element: TS.Type
+): boolean {
+  const isElement = (t: TS.Type): boolean =>
+    t === element || members(element).includes(t);
+  // `r.x = v` writes and never reads. `r.x += v` and `r.x++` read first, so
+  // only the plain assignment is excluded.
+  const isStoreTarget = (node: TS.Node): boolean =>
+    node.parent !== undefined &&
+    ts.isBinaryExpression(node.parent) &&
+    node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+    node.parent.left === node;
+  let found = false;
+  walk(ts, body.node, (node) => {
+    if (found) return;
+    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+      if (!isStoreTarget(node) && isElement(checker.getTypeAtLocation(node.expression))) {
+        found = true;
+      }
+      return;
+    }
+    if (ts.isObjectBindingPattern(node) && isElement(checker.getTypeAtLocation(node))) {
+      found = true;
+    }
+  });
+  return found;
+}
+
 // V8's inline cache holds four maps, and the fifth is an order of magnitude
 // past the fourth, which is why the rule starts at five rather than earlier.
 // The two figures are `elem.reads` and `elem.silent.24`; they are not repeated
@@ -400,6 +454,15 @@ const megamorphicElements: Rule = (ts, checker, body, add) => {
   for (const { p, element } of arrayParams(ts, checker, body)) {
     const shapes = objectShapes(ts, checker, element);
     if (shapes <= MAX_CACHED_MAPS) continue;
+    // The load has to be there. This rule read the parameter's type and
+    // inferred a megamorphic load site from it, so a function whose whole body
+    // is `return rows.length` was billed the fifth map's cost — and
+    // `rows.length` loads off the ARRAY, which has one shape whatever the
+    // elements are. The benchmark's kernel is `s += r.x + r.y`; with no load
+    // off an element there is no site to go megamorphic, and the annotation
+    // cannot rescue it, because hot code that never reads a property still
+    // never reads a property (BUGS TC-8).
+    if (!readsFromElement(ts, checker, body, element)) continue;
     add({
       ...at(body.sf, p),
       rule: 'megamorphic-elements',

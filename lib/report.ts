@@ -4,6 +4,26 @@ import { DEFECT, type Finding } from './rules.ts';
 
 const plural = (n: number, s: string): string => `${n} ${s}${n === 1 ? '' : 's'}`;
 
+// A finding no benchmark prices is a warning, not an error, and a warning does
+// not fail a build. A rule that carries no evidence at all defaults to the same
+// place, because a gate that fails on an unmeasured claim is failing on
+// something this project cannot support (BUGS TC-33, TC-52).
+export const severity = (f: Finding): 'error' | 'warn' => f.evidence?.severity ?? 'warn';
+
+const wrap = (text: string, indent: string, width = 88): string[] => {
+  const lines: string[] = [];
+  let line = indent;
+  for (const word of text.split(/\s+/)) {
+    if (line !== indent && line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = indent;
+    }
+    line += line === indent ? word : ` ${word}`;
+  }
+  if (line !== indent) lines.push(line);
+  return lines;
+};
+
 export interface Suppression {
   // Findings a config or an annotation removed before they reached this
   // report. Zero is the common case and prints nothing.
@@ -20,8 +40,13 @@ export function render(
   suppression: Suppression = { count: 0, keys: [] }
 ): string {
   const out: string[] = [];
-  const total = results.reduce((n, r) => n + r.findings.length, 0);
-  out.push(`jitmax — ${plural(results.length, 'annotated function')}, ${plural(total, 'finding')}`);
+  const all = results.flatMap((r) => r.findings);
+  const warnings = all.filter((f) => severity(f) === 'warn').length;
+  const total = all.length - warnings;
+  out.push(
+    `jitmax — ${plural(results.length, 'annotated function')}, ${plural(total, 'error')}` +
+      (warnings > 0 ? `, ${plural(warnings, 'warning')}` : '')
+  );
   // Suppression is never silent: a run that looks clean because rules were
   // switched off says so here, every time, not only when it would otherwise
   // read as clean. BUGS TC-7 is the same class of lie in a different place.
@@ -42,7 +67,7 @@ export function render(
       );
     }
     for (const f of findings) {
-      out.push(`    ${f.rule}`);
+      out.push(`    ${severity(f)}  ${f.rule}`);
       // The walk follows callees, so a finding is often not in the annotated
       // function at all. Saying where it is is the difference between a report
       // and a riddle.
@@ -50,16 +75,18 @@ export function render(
         out.push(`      ${path.relative(cwd, f.file) || f.file}:${f.line}`);
       }
       out.push(`      ${f.message}`);
-      // `measured` is a claim about the line above it. Where a rule's benchmark
-      // measures the MECHANISM rather than the trigger — `closed-world` fires on
-      // a callee with no body and prices one padded past the inlining budget —
-      // the word has to change, or the number reads as a measurement of this
-      // call (BUGS TC-33).
-      if (f.evidence) {
-        const lead = f.evidence.bound ? 'bound' : 'measured';
-        out.push(`      ${lead} ${f.evidence.cost} [${f.evidence.source}]`);
-      }
       out.push(`      fix: ${f.fix}`);
+      // The sweep that priced the RULE, named — and no ratio. A ratio is a
+      // property of the input: chained allocation is one number at n=1000 and
+      // another at n=100000, and the annotation says this function is hot, not
+      // how large its data is. Printing one here states a cost at a site whose
+      // size and shape the tool cannot see, which is the whole of BUGS TC-9.
+      // `EVIDENCE` still binds each rule to its measurement; only the print
+      // site moved. The numbers are in README.md and in the file named here.
+      if (f.evidence) {
+        const data = f.evidence.source.match(/bench\/[a-z-]+\.jl/g) ?? [];
+        if (data.length > 0) out.push(`      measured in ${data.join(' and ')}`);
+      }
       for (const code of f.evidence?.defects ?? []) {
         out.push(`      known defect: ${code} — ${DEFECT[code] ?? code}`);
       }
@@ -68,12 +95,18 @@ export function render(
 
   out.push(
     '',
-    total === 0 && partial.length === 0
+    total === 0 && warnings === 0 && partial.length === 0
       ? '  every annotated function is clean.'
-      : total === 0
+      : total === 0 && partial.length > 0
       ? `  no findings, but ${plural(partial.length, 'walk')} truncated: this is not a clean run.`
-      : '  Costs above are microbenchmark ratios, not a prediction for this\n' +
-        '  workload. They say the pattern can cost that much, not that it does.'
+      : total === 0
+      ? `  no errors: ${plural(warnings, 'warning')}, and a warning prices no program\n` +
+        '  this project measured, so it does not fail this run.'
+      : '  No cost is printed beside a finding. Every rule is measured, and the\n' +
+        '  measurements are in README.md and in the bench/*.jl named above — but a\n' +
+        '  ratio is a property of the input, and the annotation says this function\n' +
+        '  is hot, not how large its data is. Each rule also records where its own\n' +
+        '  benchmark found nothing; README.md prints that beside the cost.'
   );
   return out.join('\n');
 }
