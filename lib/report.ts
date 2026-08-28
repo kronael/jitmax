@@ -50,18 +50,25 @@ export function render(
   // finding was counted, and that rule only made it visible first because it
   // fires most (BUGS TC-62). The finding is kept under the first annotated
   // function that reaches it, and how many others do is printed.
-  const seen = new Map<string, number>();
   const key = (f: Finding): string => `${f.rule}|${f.file}|${f.line}|${f.column}`;
+  // Counted first, then rendered, because the fan-in is printed ON the finding
+  // and the last caller is not known until every mark has been walked. The
+  // fan-in is kept rather than discarded: a line reached by 28 annotated
+  // functions is a better fix than one reached by one.
+  const reach = new Map<string, number>();
+  for (const f of results.flatMap((r) => r.findings)) {
+    reach.set(key(f), (reach.get(key(f)) ?? 0) + 1);
+  }
+  const shown = new Set<string>();
   const perSite = results.map(({ mark, findings }) => ({
     mark,
     findings: findings.filter((f) => {
-      const k = key(f);
-      const n = seen.get(k) ?? 0;
-      seen.set(k, n + 1);
-      return n === 0;
+      if (shown.has(key(f))) return false;
+      shown.add(key(f));
+      return true;
     }),
   }));
-  const alsoReached = [...seen.values()].reduce((n, c) => n + (c - 1), 0);
+  const alsoReached = [...reach.values()].reduce((n, c) => n + (c - 1), 0);
   const all = perSite.flatMap((r) => r.findings);
   const warnings = all.filter((f) => severity(f) === 'warn').length;
   const total = all.length - warnings;
@@ -110,8 +117,12 @@ export function render(
       // The walk follows callees, so a finding is often not in the annotated
       // function at all. Saying where it is is the difference between a report
       // and a riddle.
+      const from = reach.get(key(f)) ?? 1;
+      const alsoFrom = from > 1 ? ` — reached by ${from} annotated functions` : '';
       if (f.file !== mark.file || f.line !== mark.line) {
-        out.push(`      ${path.relative(cwd, f.file) || f.file}:${f.line}`);
+        out.push(`      ${path.relative(cwd, f.file) || f.file}:${f.line}${alsoFrom}`);
+      } else if (alsoFrom !== '') {
+        out.push(`     ${alsoFrom}`);
       }
       out.push(`      ${f.message}`);
       out.push(`      fix: ${f.fix}`);

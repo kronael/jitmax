@@ -931,8 +931,18 @@ function closedWorld(mark: Mark, add: Add): void {
       line: c.line,
       column: c.column,
       rule: 'closed-world',
-      message: `calls ${c.text}, which we have no body for; the promise stops here`,
-      fix: `inline what you need from ${c.text}, or accept that this call is unchecked`,
+      // Three causes, and only two of them are "we have no body". An interface
+      // member's body is in this checkout; the walk cannot tell which
+      // implementation reaches the site, and telling the author to inline it
+      // would be telling them to undo the abstraction (BUGS TC-69).
+      message: c.viaInterface
+        ? `calls ${c.text} through an interface, so the walk cannot tell which ` +
+          'implementation runs here; the promise stops here'
+        : `calls ${c.text}, which we have no body for; the promise stops here`,
+      fix: c.viaInterface
+        ? `check the implementations of ${c.text} yourself, or narrow the value to one of ` +
+          'them at this call — do not inline the abstraction away on this rule\'s account'
+        : `inline what you need from ${c.text}, or accept that this call is unchecked`,
     });
   }
 }

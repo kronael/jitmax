@@ -24,6 +24,14 @@ export interface Site {
 
 export interface Call extends Site {
   text: string;
+  // The callee resolves to an interface member declared in this program's own
+  // source — `Fp.mul` where `Fp` is an interface-typed value. The body exists
+  // in the checkout and the walk cannot pick which one, which is a third cause
+  // behind this rule and a different one from a missing `npm install` (TC-51)
+  // or a native builtin (TC-55). It is the worst of the three, because the
+  // pattern it punishes is good design: @noble/curves abstracts its field
+  // arithmetic behind an interface and gets 2,113 notes for it (BUGS TC-69).
+  viaInterface: boolean;
 }
 
 export interface Body {
@@ -257,6 +265,10 @@ function reach(
   // readable (BUGS TC-55).
   const isPlatform = (d: TS.Node): boolean =>
     d.getSourceFile()?.fileName.includes('/@types/node/') === true;
+  // An interface member written here, not in a dependency's `.d.ts`.
+  const isOwnInterfaceMember = (d: TS.Node): boolean =>
+    (ts.isMethodSignature(d) || ts.isPropertySignature(d)) &&
+    d.getSourceFile()?.isDeclarationFile === false;
 
   const reached: Body[] = [{ node: root.node, sf: root.sf, name: root.name }];
   const seen = new Set<TS.Node>([root.node]);
@@ -298,18 +310,29 @@ function reach(
             seen.add(d);
             reached.push({ node: d, sf: d.getSourceFile(), name: nameOf(ts, d) });
           }
-          // The promise ends wherever we cannot look: a callee that exists
-          // only as a type, AND a callee we could not resolve at all. The
-          // second case used to fall through both branches and vanish, which
-          // made a silent run mean two different things.
-          const unchecked =
-            next.length === 0 && (decls.length === 0 || decls.some(unreadable));
+          // The promise ends wherever we cannot look, and the test is simply
+          // that nothing was followable. It used to also require the callee to
+          // be types-only or unresolvable, so a call that resolved to an
+          // interface member — a body that IS in this checkout, at a site the
+          // walk cannot bind to one implementation — fell through both branches
+          // and vanished (BUGS TC-45, TC-31). A coverage report that silently
+          // omits a case is the lie this rule exists to prevent.
+          const unchecked = next.length === 0;
           const site = at(body.sf, node);
           const key = `${site.file}:${site.line}:${site.column}`;
           if (unchecked && !reported.has(key)) {
             reported.add(key);
-            if (decls.some(isPlatform)) platform++;
-            else escapes.push({ ...site, text });
+            // The platform is `@types/node` and V8's own builtins, and neither
+            // will ever have a readable body. Everything else is somebody's
+            // code and is named.
+            const native =
+              decls.some(isPlatform) ||
+              decls.some((d) => {
+                const sf = d.getSourceFile();
+                return Boolean(sf) && program.isSourceFileDefaultLibrary(sf);
+              });
+            if (native) platform++;
+            else escapes.push({ ...site, text, viaInterface: decls.some(isOwnInterfaceMember) });
           }
         }
       }

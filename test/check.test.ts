@@ -21,6 +21,11 @@ function rulesByFunction(dir: string): Map<string, string[]> {
 
 const found = rulesByFunction('demo');
 const rules = (name: string): string[] => found.get(name) ?? assert.fail(`no mark ${name}`);
+// The dispatch fixtures are object TYPES with method signatures, so the walk
+// cannot follow `x.area()` into a body and `closed-world` reports it — which is
+// correct and is what TC-45 asked for. These tests are about the dispatch rule,
+// so they ask about the dispatch rule.
+const shapeRules = (name: string): string[] => rules(name).filter((r) => r !== 'closed-world');
 
 // A second scan that keeps the marks themselves, for the config and
 // annotation-override tests below: they need `mark.disabled` and the raw,
@@ -138,25 +143,37 @@ test('a discriminated union over one key set stays silent', () => {
 // magnitude more, because it loses the inlining as well as the cached lookup.
 // The figures live in EVIDENCE, where a re-measurement moves them.
 test('four shapes at a call site stay silent', () => {
-  assert.deepStrictEqual(rules('areaOfFour'), []);
+  assert.deepStrictEqual(shapeRules('areaOfFour'), []);
 });
 
 test('the fifth shape at a call site fires', () => {
-  assert.deepStrictEqual(rules('areaOfFive'), ['megamorphic-dispatch']);
+  assert.deepStrictEqual(shapeRules('areaOfFive'), ['megamorphic-dispatch']);
 });
 
 // TC-8 is the flagship rule reporting a megamorphic load from a parameter's
 // type without checking that anything is loaded. This rule requires the call,
 // so five object types with nothing called on them is not a finding.
 test('five object types with no method call stay silent', () => {
-  assert.deepStrictEqual(rules('idOfFive'), []);
+  assert.deepStrictEqual(shapeRules('idOfFive'), []);
+});
+
+// TC-45, and TC-31 with it: a call through an interface or an object type
+// resolved to a declaration that was neither followable nor in a declaration
+// file, so it fell through both branches of the escape test and vanished. A
+// coverage report that silently omits a case is the lie this rule exists to
+// prevent. `area()` is a method signature with no body anywhere in the program.
+test('a call the walk cannot follow is reported, not silently dropped', () => {
+  assert.ok(
+    rules('areaOfFour').includes('closed-world'),
+    'a call through an object-type method signature vanished from the coverage report'
+  );
 });
 
 // One union reaching one site is one finding. megamorphic-elements has the
 // array parameter, so the dispatch rule steps aside rather than billing it
 // twice.
 test('an array of a five-way union with method calls reports once', () => {
-  assert.deepStrictEqual(rules('totalArea'), ['megamorphic-elements']);
+  assert.deepStrictEqual(shapeRules('totalArea'), ['megamorphic-elements']);
 });
 
 // bench/arrays.jl withdrew boxed-elements. The array a `(number | string)[]`
