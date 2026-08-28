@@ -41,6 +41,8 @@ const SWEEP = {
   delete: { script: 'delete.js', out: 'delete.jl', recordBaseline: true, extra: KERNEL },
   arrays: { script: 'arrays.js', out: 'arrays.jl', recordBaseline: true, extra: KERNEL },
   example: { script: 'example.js', out: 'example.jl', recordBaseline: true },
+  arguments: { script: 'arguments.js', out: 'arguments.jl', recordBaseline: true },
+  sparse: { script: 'sparse.js', out: 'sparse.jl', recordBaseline: true },
 };
 
 export const BENCHMARKS = {
@@ -156,6 +158,45 @@ export const BENCHMARKS = {
     modes: ['excl'],
     sizes: [1000, 100000],
     cells: [{ baseline: 'small', variant: 'large' }],
+  },
+
+  // BUGS TC-53. There is no rule here and this sweep is not a bid for one: it
+  // exists to publish a null. Every JS performance guide still says the
+  // arguments object is slow, TurboFan's escape analysis says it is only slow
+  // where it escapes, and this project has no business repeating either
+  // without measuring. Each variant is paired against the rest-parameter
+  // rewrite computing the same value, so a variant that computes something
+  // else is a failed run and not a fast one. One mode: the arguments object is
+  // built inside the callee on every call, so construction is inside the timed
+  // region by definition.
+  arguments: {
+    ...SWEEP.arguments,
+    what: 'the arguments object against rest parameters',
+    modes: ['excl'],
+    sizes: WIDE,
+    cells: [
+      { baseline: 'restlen', variant: 'arglen' },
+      { baseline: 'restidx', variant: 'argidx' },
+      { baseline: 'restesc', variant: 'argesc' },
+    ],
+  },
+
+  // BUGS TC-52. The elements-kind transition nobody here has measured. Holey
+  // is already known to be free (0.93-1.06x, which is why boxed-elements was
+  // withdrawn), so it is swept beside dictionary rather than instead of it: if
+  // the two columns do not separate, the outcome is a published null and no
+  // rule. Both modes, because entering the transition and living with it are
+  // different costs and this project has had a verdict reversed by measuring
+  // only one.
+  sparse: {
+    ...SWEEP.sparse,
+    what: 'holey and dictionary elements against a packed array',
+    modes: ['excl', 'incl'],
+    sizes: WIDE,
+    cells: [
+      { baseline: 'packed', variant: 'holey' },
+      { baseline: 'packed', variant: 'dict' },
+    ],
   },
 
   // Does adding a property after construction cost anything? The claim is the

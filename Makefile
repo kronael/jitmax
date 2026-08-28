@@ -43,6 +43,12 @@ bench-inline:
 bench-addprop:
 	node bench/run.js addprop
 
+bench-arguments:
+	node bench/run.js arguments
+
+bench-sparse:
+	node bench/run.js sparse
+
 bench-dispatch:
 	node bench/run.js dispatch
 
