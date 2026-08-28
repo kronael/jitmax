@@ -429,11 +429,28 @@ function readsFromElement(
     ts.isBinaryExpression(node.parent) &&
     node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
     node.parent.left === node;
+  // `(iss as any).path` loads `path` off iss's map exactly as `iss.path` does —
+  // the cast is a claim about the type checker, not about the object. zod's
+  // `prefixIssues` is written that way and is the one true instance of this
+  // rule twelve libraries contain; reading the type off the cast instead of off
+  // the value silenced it.
+  const receiver = (e: TS.Expression): TS.Expression => {
+    let n = e;
+    while (
+      ts.isAsExpression(n) ||
+      ts.isParenthesizedExpression(n) ||
+      ts.isNonNullExpression(n) ||
+      ts.isTypeAssertionExpression(n)
+    ) {
+      n = n.expression;
+    }
+    return n;
+  };
   let found = false;
   walk(ts, body.node, (node) => {
     if (found) return;
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
-      if (!isStoreTarget(node) && isElement(checker.getTypeAtLocation(node.expression))) {
+      if (!isStoreTarget(node) && isElement(checker.getTypeAtLocation(receiver(node.expression)))) {
         found = true;
       }
       return;

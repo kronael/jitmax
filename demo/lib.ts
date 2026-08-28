@@ -49,6 +49,17 @@ export function fiveShapes(rows: (A | B | C | D | E)[]): number {
   return s;
 }
 
+/** A cast is a claim about the type checker, not about the object: `(r as any).x`
+ * loads `x` off r's map exactly as `r.x` does. zod's `prefixIssues` writes the
+ * one true instance of this rule in twelve libraries that way, and reading the
+ * type off the cast instead of off the value silenced it. */
+/** @jitmax */
+export function fiveShapesCast(rows: (A | B | C | D | E)[]): number {
+  let s = 0;
+  for (const r of rows) s += (r as any).x;
+  return s;
+}
+
 /** Five property sets and nothing loaded off one of them: silent. `rows.length`
  * is a load off the ARRAY, whose map is the same whatever the elements are, so
  * there is no site here for a fifth map to reach (BUGS TC-8). */

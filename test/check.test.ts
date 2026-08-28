@@ -57,6 +57,7 @@ test('a function is checked only where it is annotated', () => {
       'dropQuiet',
       'entriesMap',
       'fiveShapes',
+      'fiveShapesCast',
       'fiveShapesNoLoad',
       'fourShapes',
       'growByKey',
@@ -109,6 +110,10 @@ test('the fifth distinct property set fires: the cliff', () => {
 // loads off the array, whose map does not change with the element type. The
 // annotation cannot rescue this one — hot code that touches no property still
 // touches no property.
+test('a cast does not hide the read: the map is the object\'s, not the checker\'s', () => {
+  assert.deepStrictEqual(rules('fiveShapesCast'), ['megamorphic-elements']);
+});
+
 test('five property sets with no load off an element stay silent', () => {
   assert.deepStrictEqual(rules('fiveShapesNoLoad'), []);
 });
