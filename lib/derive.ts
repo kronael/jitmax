@@ -81,7 +81,7 @@ interface Citation {
   // and `cispan` render a single row identically — they needed deleting, and a
   // citation that still wants ONE number out of three sweeps is a citation
   // picking the flattering one.
-  agg: 'range' | 'points' | 'cispan' | 'count' | 'minn';
+  agg: 'range' | 'points' | 'cispan' | 'count' | 'minn' | 'sizes';
   // Decimal places. The default scales with magnitude; an override is here
   // where the published string does not.
   dp?: number;
@@ -580,6 +580,16 @@ export const CITATIONS: Record<string, Citation> = {
     dp: 1,
     readme: true,
   },
+  'delete.rows.sizes': {
+    file: 'delete.jl',
+    cells: 'the sizes the cells behind delete.rows still replicate at',
+    pick: (r) =>
+      r.variant === 'rowdel' &&
+      r.baseline === 'rowbase' &&
+      r.mode === 'excl' &&
+      (r.n === 16384 || r.n === 262144),
+    agg: 'sizes',
+  },
   'delete.vs.undefined': {
     file: 'delete.jl',
     cells: 'the same delete against assigning undefined instead, n=16384',
@@ -825,6 +835,15 @@ function render(key: string, c: Citation, matched: Row[], withdrawn: string[]): 
   // starts, and typing that integer here would be the hand-typed constant this
   // project forbids everywhere else (BUGS TC-54).
   if (c.agg === 'minn') return String(Math.min(...live.map((r) => r.n)));
+  // The sizes a citation's SURVIVING cells were measured at. Typed into a
+  // sentence beside a derived ratio, a size drifts the moment rule 13 withdraws
+  // one of the cells — `delete-property` claimed "n=16384 and n=262144" while
+  // the second was withdrawn and excluded from the very number the sentence
+  // introduces (BUGS TC-48).
+  if (c.agg === 'sizes') {
+    const ns = [...new Set(live.map((r) => r.n))].sort((a, b) => a - b);
+    return ns.length === 1 ? `n=${ns[0]}` : `n=${ns.slice(0, -1).join(', n=')} and n=${ns.at(-1)}`;
+  }
   const ratios = live.map((r) => r.ratio!).sort((a, b) => a - b);
   const top = ratios[ratios.length - 1]!;
   if (c.agg === 'points') return ratios.map((v) => `${fmt(v, top)}x`).join(' and ');

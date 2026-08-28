@@ -117,6 +117,8 @@ export const N = {
   'inline.cells': '1',
   // delete.jl: one delete per object, reads only, at n=16384 and n=262144 — 1 of 2 cells withdrawn as unreplicable (rule 13): rowdel|rowbase|excl|262144|dispatch-table
   'delete.rows': '12.3-13.6x',
+  // delete.jl: the sizes the cells behind delete.rows still replicate at — 1 of 2 cells withdrawn as unreplicable (rule 13): rowdel|rowbase|excl|262144|dispatch-table
+  'delete.rows.sizes': 'n=16384',
   // delete.jl: the same delete against assigning undefined instead, n=16384
   'delete.vs.undefined': '11.5-13.2x',
   // delete.jl: one object with one delete, reads only, every size and every sweep

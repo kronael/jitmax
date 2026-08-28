@@ -236,8 +236,9 @@ export const EVIDENCE: Record<string, Evidence> = {
   },
   'delete-property': {
     cost:
-      `${N['delete.rows']} per property load once the object is in dictionary mode (n=16384 ` +
-      `and n=262144, three replications each), and ${N['delete.vs.undefined']} against ` +
+      `${N['delete.rows']} per property load once the object is in dictionary mode ` +
+      `(${N['delete.rows.sizes']}, three replications each), and ` +
+      `${N['delete.vs.undefined']} against ` +
       `assigning undefined instead — and ${N['delete.single']} for ONE object with a single ` +
       'delete, at every working set and in all nine of its sweeps, which overturns the 0x ' +
       'this project published for that case since round 1; with construction counted ' +

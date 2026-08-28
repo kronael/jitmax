@@ -344,6 +344,7 @@ published number is no longer what its rows say.
 | `4.34-5.22` | `bench/inline.jl` — the interval at n=1000 |
 | `1` | `bench/inline.jl` — the whole sweep — 1 of 2 cells withdrawn as unreplicable (rule 13): large|small|excl|100000 |
 | `12.3-13.6x` | `bench/delete.jl` — one delete per object, reads only, at n=16384 and n=262144 — 1 of 2 cells withdrawn as unreplicable (rule 13): rowdel|rowbase|excl|262144|dispatch-table |
+| `n=16384` | `bench/delete.jl` — the sizes the cells behind delete.rows still replicate at — 1 of 2 cells withdrawn as unreplicable (rule 13): rowdel|rowbase|excl|262144|dispatch-table |
 | `11.5-13.2x` | `bench/delete.jl` — the same delete against assigning undefined instead, n=16384 |
 | `13.1-15.1x` | `bench/delete.jl` — one object with one delete, reads only, every size and every sweep |
 | `23.7-24.8x` | `bench/delete.jl` — one delete per object with construction counted, n=256 |
