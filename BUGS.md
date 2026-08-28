@@ -55,6 +55,728 @@ brand. The project is now `jitmax`, and `registry.npmjs.org/jitmax` returns 404
 — the name is free. The relicensing decision above is unchanged and still the
 owner's.
 
+## TC-67 — split-construction: the owner's "crazy interfaces", measured at 7.3x (2026-08-28, open, proposal)
+
+The owner's challenge was that real code deoptimizes through messy interfaces
+rather than through textbook patterns. Probed on V8 12.4.254.21, it is right.
+
+One TypeScript interface with optional properties, built by five ordinary code
+paths — a full literal, a partial literal, a literal plus a conditional
+assignment, the same keys in a different ORDER, and one with `undefined`
+assigned — produces **five distinct V8 maps**. `%HaveSameMap` is false across
+every pair but one. A hot load over the mixture costs **102 ms against 14 ms**
+monomorphic, **7.3x**.
+
+**It emits no deopt at all.** The code stays TurboFan-optimized and pays a
+megamorphic IC silently, every call, forever. `--trace-deopt` shows nothing, so
+the flags already used in `bench/` cannot see this; `--trace-ic` can. A tool
+looking for deopts would miss the single largest effect found in this
+investigation.
+
+**Prevalence is measured too, in TC-65:** 480 of 2030 object types across seven
+corpora carry three or more optional properties, and there are 394 conditional
+field assignments and 75 conditional spreads. This is the mechanism behind those
+counts.
+
+**The trigger does NOT repeat TC-2.** TC-2's defect is counting union members as
+if they were maps, which they are not. Here the count is over object LITERALS
+assignable to one named type, and a literal's key list and key order genuinely
+determine its map. Counting literal shapes counts maps.
+
+**Trigger:** two or more object literals assignable to the same named type whose
+key SETS or key ORDER differ, where a value of that type reaches a property
+access inside the annotated tree. **Silence:** builders with identical key lists
+in identical order; a single construction site.
+
+**And the fix is real and map-level, which is unusual for this project.**
+`{id, a, b: undefined}` shares the map of `{id, a, b: 1}` exactly — proven, not
+inferred. So "give every path the same keys, using `undefined` for the ones it
+lacks" is a rewrite that provably merges the maps, not a trade-off. Contrast
+`accumulating-spread`, whose fix line has to hedge.
+
+Raised 2026-08-28 from a probe run, on the owner's hypothesis.
+
+## TC-66 — megamorphic-store is unpriced and unruled, and its cliff is steeper than the load's (2026-08-28, open, proposal)
+
+The tool has no rule for a property WRITE on a megamorphic receiver. Its own
+code already concedes the gap — `lib/rules.ts` narrows `megamorphic-elements` to
+a read because "a body whose only contact with the element is `r.x = v` pays a
+StoreIC that nothing in bench/shape-sets.jl priced".
+
+**Now priced.** Probed on V8 12.4.254.21, a named store on a receiver reached as
+N maps:
+
+    maps:      1      2      4      5      8
+    store:  19ms   18ms   20ms  181ms  179ms
+    load:   15ms      -      -   93ms      -
+
+The cliff is at exactly five, the same four-map budget the shipped rules use,
+and the store cliff is about **twice as steep as the load cliff** — 9.5x against
+6.2x in the same run. No deopt line appears; the only `--trace-deopt` output in
+the whole store probe was `reason: code dependencies`, from map deprecation.
+
+**Trigger:** the machinery `megamorphic-elements` already has, pointed at a
+write — `r.x = v` or `r.x += v` off an element of an array whose element type
+reaches five or more distinct property sets. **Silence:** below five; array
+receivers, because elements kinds are a different mechanism and TC-36 already
+took them out of another rule; and everything TC-2 forces every map-counting
+rule here to concede.
+
+This is the cheapest new rule on the queue: the analysis exists, only the
+predicate and a `bench/store-sets.jl` sweep are missing.
+
+Raised 2026-08-28.
+
+**Shipped 2026-08-28 in 6cd8ff6, the profile half exactly as proposed.**
+`jitmax run.cpuprofile src` reads V8's own profile, aggregates self time per
+frame from `samples` and `timeDeltas`, and marks every function at or above
+`[profile] min_self_pct`. `reach()`, `check()` and `render()` are untouched and
+cannot tell a profiled mark from an annotated one. Static hotness inference did
+not ship, and is recorded here as refused rather than deferred.
+
+One thing the design did not predict: V8 reports a function's position as its
+parameter list's `(`, not the `function` keyword, so every arrow matched and
+every function declaration did not. The index now carries both positions.
+
+Still open from this entry: the `suggest` mode for the writing consumer, and
+`min_self_pct` remains a constant nobody has measured — it is printed on every
+run and the TOML owns it, which is the disclosure and not the fix.
+
+## TC-68 — two more measured mechanisms with no rule (2026-08-28, open)
+
+Probed alongside TC-66 and TC-67, recorded so they are not re-discovered.
+
+**`late-property-assignment`, the syntactic cause behind TC-67.**
+`const o = {id}; if (cond) o.a = 1` yields a different map per path, and a
+constructor with `if (flag) this.b = 2` yields two maps per class. Detection is
+purely syntactic: an assignment to a property absent from the creating literal,
+or a conditionally guarded `this.x =` in a constructor. It needs no map
+inference at all, which makes it the most precise trigger found in this
+investigation. Silence: when every path assigns the same properties in the same
+order.
+
+**`proxy-on-hot-path`, 5.2x.** An empty-handler `new Proxy` on a load path
+costs 376 ms against 73 ms, with no deopt. TypeScript erases the Proxy — it
+types as its target — so only the `new Proxy(...)` expression itself is
+detectable; the rule would flag that expression flowing into an annotated tree.
+Measured beside it and NOT proposed: per-object getter closures
+(`{get v() {...}}` built per item) cost 10.4x, because each object's accessor
+constant splits its map. That one is a heuristic, not a trigger.
+
+**`shared-helper-pollution`, 1.46x, note tier.** Feedback vectors are per
+function, not per call site. A `get(o) { return o.v }` helper polluted with
+eight shapes from one caller makes a DIFFERENT caller that passes exactly one
+shape pay 97 ms against 67 ms. The walk already visits shared callees, so the
+count is available — but a callee polluted through a `closed-world` boundary
+pollutes invisibly, so an honest version needs runtime. Record it; do not ship
+it.
+
+Raised 2026-08-28.
+
+## TC-65 — the shape-instability surface is six times the surface the rules cover (2026-08-28, open, proposal)
+
+The owner's challenge: "honestly this isn't something people do... more likely
+they will do some crazy interfaces, or force deopts some other way". Measured
+across seven corpora, roughly 192,000 lines — `zod`, `ajv`,
+`agent-twitter-client`, `@anthropic-ai/sdk`, and three `openclaw` trees — the
+challenge holds.
+
+**What the rules cover, counted in the same source:**
+
+    delete <property>                                    213 sites
+    spread-accumulate into acc/prev/result/memo           13 sites
+
+**What destabilizes an object's shape and has no rule:**
+
+    object types with 3 or more optional properties      480 of 2030  (24%)
+    conditional field assignment: if (x) obj.f = v       394 sites
+    dynamic-key store: o[k] = v                          354 sites
+    conditional spread: {...(cond ? {a: 1} : {})}          75 sites
+
+Every one of those four splits a map or risks a dictionary. An object built with
+an optional field and one built without it are two hidden classes; `if (x)
+obj.f = v` produces one of two shapes from a single constructor; `o[k] = v` with
+a non-literal key is how an object reaches dictionary mode without a `delete`
+anywhere; and `{...(cond ? {a: 1} : {})}` emits two distinct maps from ONE source
+location, which is the sharpest of the four because a reader sees a single
+object literal.
+
+That is about 1,300 shape-instability sites against 226 the rules recognise.
+`openclaw/src/config` is the extreme: 159 of its 283 object types — 56% — carry
+three or more optional properties.
+
+**What this entry does and does not claim.** It measures FREQUENCY, by pattern
+matching, and nothing else. It does not show any of these sites costs anything;
+prevalence is not cost, and this project's whole discipline is that the second
+does not follow from the first. Three of the four are also not decidable from a
+declared type alone — TC-2 and TC-60 are what happens when a rule forgets that.
+The conditional spread is the exception and is the one to try first: both maps
+are visible at one syntactic site, with no inference about what the caller
+built.
+
+**Proposal, in order:**
+
+1. Measure the four mechanisms — a `bench/shapes-instability.jl` sweep pricing
+   a map split from an optional field, from a conditional assignment, and from a
+   conditional spread, against a stable shape, at each working set.
+2. Ship a rule ONLY for what separates, and start with conditional spread
+   because its trigger needs no map inference.
+3. Publish the nulls for whatever does not separate, per TC-53.
+
+If most of these turn out free, that is the answer to the owner's challenge and
+it is worth as much as a rule: it would mean ordinary optional-heavy TypeScript
+does not pay, and the textbook patterns really are where the cost is.
+
+Raised 2026-08-28, from a prevalence scan over the TC-64 corpora.
+
+## TC-64 — the expanded survey: eleven corpora (2026-08-28, open, data)
+
+Extends TC-61. Same method — every `export function` and class method annotated
+mechanically, which overstates hotness and is stated here rather than hidden.
+
+    corpus                    files  annotated  errors  warnings
+    zod                         274        586      26       839
+    ajv                         106        257      63      1078
+    entities (parse5)             9         13       0         6
+    agent-twitter-client         35        128     118       729
+    @anthropic-ai/sdk           138        333       9       764
+    eventsource-parser            5          4       0         0
+    eventsource                   4          6       0         0
+    openclaw/src/infra          214        654     139      1316
+    openclaw/src/gateway        208        393     247      8869
+    openclaw/src/config         135        272      81      1203
+    openclaw/src/auto-reply     156        317      90      4736
+
+**What the shape says.** The four libraries with tight, well-written hot code —
+`entities`, `eventsource-parser`, `eventsource`, and `@noble/hashes` from TC-56
+— produced 0, 0, 0 and 0 errors. Every large error count is application code:
+one gateway, one scraper, one schema compiler. That is the right direction for a
+tool of this kind, and it is the first evidence for it beyond a single package.
+
+**The warning column is the problem.** 20,740 warnings against 890 errors across
+the eleven. `openclaw/src/gateway` alone emits 8,869. Every one is
+`closed-world` (TC-55) and the count is inflated per caller (TC-62). Those two
+fixes together are worth more to a first-time user than any new rule on the
+queue.
+
+Raised 2026-08-28.
+
+## TC-63 — delete-property fires on process.env, which is not a JS object with a map (2026-08-28, open)
+
+`openclaw/src/gateway` produced 18 findings of this form:
+
+    delete process.env.OPENCLAW_GATEWAY_TOKEN puts its object in dictionary mode
+
+`process.env` is not a plain object. Node implements it with a V8 named-property
+interceptor — the get, set and delete are C++ callbacks that reach `getenv` and
+`unsetenv`. It has no hidden class to demote, so there is no dictionary-mode
+transition, and `bench/delete.jl`'s per-property-load cost prices something that
+cannot happen here. The finding is not merely mis-sized, as in TC-9; the
+mechanism it names does not exist at this site.
+
+The sites are also test setup and process bootstrap, run once — but that is the
+weaker complaint and it depends on the annotation, which was mechanical here.
+The mechanism claim is wrong regardless of hotness.
+
+**This is a class, not one host object.** `process.env` is the common case;
+`globalThis`, a DOM node, and any object reached through a `Proxy` share the
+property that a JS-level `delete` does not transition a JS map. The rule already
+narrowed itself once on exactly this kind of ground — TC-36 took arrays out
+because deleting an element is a different representation in a different part of
+V8.
+
+**Proposal:** exclude a `delete` whose target resolves to a known host object.
+`process.env` is reachable by symbol — its declared type is
+`ProcessEnv`/`Dict<string>` from `@types/node` — which is the same
+`lib.*.d.ts`-versus-application test TC-55 proposes for `closed-world`. One
+classification helper serves both rules, which is a reason to build it once
+rather than twice.
+
+Found 2026-08-28 in the TC-64 survey.
+
+## TC-62 — findings are counted per reaching caller, not per site (2026-08-28, open)
+
+The headline count, and the exit code behind it, overstate the work by the
+call-graph fan-in. Running over `agent-twitter-client` (see the survey in
+TC-61):
+
+    jitmax — 128 annotated functions, 118 errors, 729 warnings
+
+There are **12** distinct source lines behind those 118 errors.
+`src/timeline-tweet-util.ts:20` is reported **28 times**, once for every
+annotated function whose walk reaches it. Three lines in `timeline-v2.ts` are
+reported 26 times each. The other corpora show the same shape at lower
+multiples: `ajv` 63 findings over 19 lines, `zod` 26 over 17.
+
+TC-51 noticed this for `closed-world` — "once per annotated function that
+reaches it" — and read it as that rule's problem. It is not: it is how every
+finding is counted, and `closed-world` only made it visible first because it
+fires most.
+
+A reader sees 118 problems and there are 12. That is the number the tool leads
+with, so it is the number that decides whether anyone keeps running it.
+
+**Proposal:** deduplicate findings by site — file, line, rule — before counting
+and before rendering. Keep the fan-in as a field on the finding and print it,
+because it is real information: a line reached by 28 annotated callers is a
+better fix than one reached by one. The render becomes
+`src/timeline-tweet-util.ts:20 — reached by 28 annotated functions`. The exit
+code then reads a count of sites rather than a count of paths.
+
+**Confirmed at scale on a second corpus.** `openclaw/src/gateway`, 208 files:
+247 errors from **54** distinct (rule, site) pairs. `accumulating-spread`
+produced **18 findings from ONE line**, `openresponses-http.ts:405`.
+`delete-property` produced 101 findings from 31 sites, with
+`server-chat.ts:527` and `:528` reported 28 times each. The inflation is not a
+long tail — it is a handful of shared helpers multiplied by their callers.
+
+Found 2026-08-28 in the TC-61 survey.
+
+## TC-61 — megamorphic-dispatch's first confirmed true positive on foreign code (2026-08-28, open, closes a TC-50 question)
+
+TC-50 records the commercial case against this project: the two rules with
+evidence are already shipped by oxlint and Biome, and "the five rules unique to
+turbocharge are the five with no confirmed true positive in 850 real
+functions". That last clause now has a counterexample.
+
+**Survey.** Four packages nobody wrote for this tool, every `export function`
+and class method annotated mechanically:
+
+    package                 annotated  errors  warnings  distinct lines
+    zod                           586      26       839              17
+    ajv                           257      63      1078              19
+    entities (parse5)              13       0         6               -
+    agent-twitter-client          128     118       729              12
+
+**The result.** `megamorphic-dispatch` fired 22 times in `ajv`, every one in
+`compile/codegen/index.ts`, on `node.render()`, `node.optimizeNodes()` and
+`node.optimizeNames()` called over a node list. That file defines a `Node` base
+with at least twelve subclasses — `Def`, `Assign`, `AssignOp`, `Label`, `Break`,
+`Throw`, `AnyCode`, `ParentNode`, `BlockNode`, `Root`, `Else`, `If` — and the
+rule reports nine distinct property sets reaching the call site against a
+four-map budget. This is a textbook megamorphic dispatch site in one of the most
+installed packages on npm, found statically, with no execution.
+
+It is also the pattern TypeScript's own compiler team fixed by hand in
+microsoft/TypeScript#51682, stabilizing `Node` shapes to cut polymorphism. A
+rule that finds it automatically is the thing no other linter does — ESLint,
+Biome and oxlint have no inline-cache rule at all, and every deopt tool in the
+space (deoptigate, v8-deopt-viewer, Deopt Explorer) is runtime and dormant.
+
+**What it does not settle.** The rule carries TC-13 as a known defect — a method
+in a field has no four-map budget — and this is a method on a prototype, which
+is the case TC-13 says is measured at its sharpest. The finding stands, but the
+survey is four packages, not the 850 functions TC-50 cites. **Proposal:** re-run
+the 850-function survey against the current rules, now that TC-8 is fixed and
+this counterexample exists, and replace TC-50's clause with the new number
+whichever way it lands.
+
+**Also worth recording:** `entities`, a character-by-character HTML entity
+decoder and the hottest small library in the survey, produced zero errors. The
+tool stayed silent on tight, well-written hot code — for the second time, after
+`@noble/hashes` in TC-56.
+
+Found 2026-08-28.
+
+## TC-60 — megamorphic-elements counts property sets, and seven typed arrays are seven MAPS (2026-08-28, open — claim verified 2026-08-28)
+
+The TC-56 corpus contains exactly one true megamorphic-elements candidate and
+the rule is silent on it. `@noble/hashes/src/utils.ts:335`:
+
+```ts
+export type TypedArray = Int8Array | Uint8ClampedArray | Uint8Array |
+  Uint16Array | Int16Array | Uint32Array | Int32Array;
+
+/** @jitmax */
+export function clean(...arrays: TArg<TypedArray[]>): void {
+  for (let i = 0; i < arrays.length; i++) {
+    arrays[i].fill(0);
+  }
+}
+```
+
+A loop over an array of a SEVEN-member union, calling a method on each element.
+The fixed trigger counts a method call as a read, correctly — `arrays[i].fill`
+loads `fill` off the element's map before calling it. The rule still does not
+fire, because it counts distinct property SETS and these seven share one: every
+typed array carries `buffer`, `byteLength`, `byteOffset`, `length` and the same
+prototype method names.
+
+**V8 does not agree.** Each typed array subclass has its own map with its own
+elements kind and its own prototype object — `Int8Array.prototype` is not
+`Uint8Array.prototype`. Seven maps reach that load site, the site has a
+four-map budget, and it goes megamorphic. The property-set model, which is what
+makes the rule sound against TC-2's over-firing, is what makes it silent here.
+
+**This is TC-2's twin and belongs beside it.** TC-2: a union member is not a V8
+map, so counting members over-fires. TC-60: identical property sets are not one
+map, so counting sets under-fires. Both are the same root cause — the rule
+models a TypeScript-visible proxy for a V8 map, and the proxy is wrong in both
+directions. Neither is fixable by adjusting the count.
+
+**Not proposing a fix, because the cheap ones are wrong.** Special-casing the
+typed-array family would fire on this site and teach the rule nothing; a
+prototype-identity check is exactly the runtime fact TC-36 already concluded
+this project cannot see statically. This entry is here to be counted in the
+survey the queue keeps deferring: it is the first "silent and real" case found
+by running the tool on code nobody wrote for it, and TC-59's experiment is what
+would find the rest.
+
+Found 2026-08-28 in the TC-56 corpus, checking whether the megamorphic rules
+SHOULD have fired rather than only whether they did.
+
+**Verified 2026-08-28, not assumed.** Under `--allow-natives-syntax`,
+`%HaveSameMap` is false for all 21 pairs of the seven typed arrays, and their
+seven `prototype` objects are seven distinct objects. Seven maps reach that load
+site against a four-map budget. The entry's central claim is a measurement now,
+which is the standard this project holds every other claim to; the conclusion —
+that the cheap fixes are wrong — is unchanged.
+
+## TC-59 — two readings of the stated aim, and the experiment that decides between them (2026-08-28, open, owner decision)
+
+The owner stated the aim as "allow you to write code that optimizes to machine
+code eventually". It carries two readings, and TC-58 was written on the first
+before the second was raised.
+
+**Reading A — the consumer is a program.** The tool exists so a model writing
+code gets feedback that keeps its output on V8's fast path. What that needs is
+an output contract a caller can act on: TC-58, a JSON format and a
+`rewrite`/`judgement` verdict.
+
+**Reading B — the evidence is machine code.** The tool should eventually check
+what V8 ACTUALLY did — the optimized output, the IC state at the site, the
+deopt — instead of inferring it from a source pattern.
+
+**They are not alternatives, and that is the resolution.** A is about who reads
+a finding; B is about what a finding rests on. A tool that asks V8 what happened
+and prints JSON satisfies both. The real question is not which aim governs but
+which comes first, and that IS decidable here rather than by preference.
+
+**Reading B is already this project's own conclusion, twice.** TC-36: the
+elements kind is decided by the values stored, so the fix "belongs to a runtime
+half this project does not have — one that asks V8 for the elements kind instead
+of inferring it from a declared type". TC-2: a TypeScript union member is not a
+V8 map. Both defects are the same shape — a static trigger standing in for a
+runtime fact — and both are open.
+
+**The machinery is already in the repository, pointed at the other question.**
+`bench/` runs V8 with `--allow-natives-syntax` at 12 sites, `--trace-opt` at 8,
+`--trace-deopt` at 3 and `--trace-turbo-inlining` at 1, and `%HasFastProperties`
+is what settled TC-36's holey-versus-boxed table. The checker asks V8 nothing.
+Reading B is not new capability; it is capability the benchmarks have and the
+tool does not.
+
+**The experiment that decides the order.** For each of the seven rules, take its
+own bench kernel, run it under `--allow-natives-syntax` plus `--trace-ic` — the
+one flag not yet in use here — and ask V8 whether the mechanism the rule names
+actually occurred at the site the rule fires on. Classify each rule three ways:
+
+- **fired and real** — the rule fired and V8 confirms the mechanism.
+- **fired and absent** — the rule fired and V8 shows no such transition. TC-8
+  was this before it was fixed.
+- **silent and real** — V8 shows the mechanism where no rule fires. This is how
+  the sparse-elements gap in TC-52 would surface without writing a rule first.
+
+If most rules land "fired and real", the static triggers already track reality,
+reading B is confirmation work, and TC-58 is the next build. If a meaningful
+share land "fired and absent", the static half is the weak base and packaging it
+for a generator ships wrong answers faster.
+
+The experiment needs no new benchmark and no new measurement protocol — it reuses
+the kernels that already exist and asks them a different question. It is the
+cheapest thing on this queue that changes what gets built next.
+
+Raised 2026-08-28, from the owner's aim and the ambiguity in it.
+
+## TC-58 — nothing here is consumable by a program, and the stated aim is a program (2026-08-28, open, proposal)
+
+The owner's stated aim for this tool: let a model write code that optimizes to
+good machine code. That consumer is a program, and the tool currently serves
+only a human reader.
+
+**No structured output exists.** `lib/report.ts` renders text and nothing else;
+`JSON.stringify` appears once in the whole tool, in a `lib/config.ts` error
+message. A caller that wants the findings must parse the prose, and the prose is
+deliberately shaped for reading. Now that costs are out of the findings (TC-9,
+shipped) a finding is a small, regular record — rule, file, line, message, fix,
+defects — which is exactly the moment a machine format becomes cheap.
+
+**Some fix lines decline to give a fix.** `accumulating-spread` reads "there is
+no rewrite here this project has measured as a win on both halves", then
+explains a trade-off between a faster build and a cheaper read. That is the
+right answer for a human, who can weigh it. A generator needs a decision:
+rewrite, or leave it alone. Today it gets neither.
+
+**Proposal, two parts, both small:**
+
+1. A `[output] format = "json"` key in the TOML — not a flag, since
+   `bin/jitmax.ts` rejects flags by design — emitting one record per finding
+   with the fields above plus `severity` and the bench file name. The text
+   renderer stays the default and stays unchanged.
+2. Give every rule a `verdict` beside `fix`: `rewrite` when the project has
+   measured a win, or `judgement` when it has not, with the trade-off text
+   attached. Then a generator can act on `rewrite` and escalate `judgement`,
+   instead of parsing a paragraph to discover the rule is not sure.
+
+Neither part invents a measurement, which is why both are cheap: they restate
+what the rules already know in a shape a caller can read.
+
+Raised 2026-08-28, from the owner's statement of the aim.
+
+## TC-57 — whole-codebase mode: measure hotness, do not infer it (2026-08-28, profile half SHIPPED 2026-08-28)
+
+The owner asked for a mode that runs over a whole codebase with no annotations,
+identifies the hot paths itself, reports findings only there, and hides the rest
+as noise — "non-io paths which it would then report and hide the others".
+
+**Static hotness inference should not ship.** Hotness is a property of the
+workload, which is the doctrine this tool prints under every run. The available
+signals do not carry it: a loop with a non-literal trip count is cheap to detect
+and weakly predictive; call-graph fan-in needs a reverse graph whose edges
+through parameters and interface methods already vanish (TC-31), so it is wrong
+exactly in higher-order code; recursion predicts nearly nothing. `tomlValue`
+loops over every config key and runs once.
+
+**The non-IO proxy is half right, and worth keeping as the half that works.** As
+a NEGATIVE signal it holds: an `await` or a sync syscall in a loop body means
+the loop is latency-bound and any V8 finding inside it is noise. As a POSITIVE
+signal it fails — cold pure code is everywhere, and `tomlValue` is the owner's
+own example of it. Purity and hotness are orthogonal.
+
+**It also does not fix the case that motivated it.** In the TC-56 run all 157
+warnings were `closed-world` on `fs` and `path` builtins, which TC-55 removes
+with no hotness model at all, and all 6 errors were `chained-allocation` whose
+real defect is literal-small n (TC-54). Both cheaper fixes are already on file.
+
+**Recommended instead: ingest a real profile.** `--cpu-prof` measures hotness
+rather than guessing it, which is the standard this project holds every rule to,
+and the same standard TC-50 charges oxlint and Biome with failing.
+
+- Trigger: another suffix-named positional, since `bin/jitmax.ts` rejects flags
+  by design — `jitmax jitmax.toml run.cpuprofile src`.
+- Parse `nodes`/`samples`/`timeDeltas`; aggregate self time per
+  `file:line:column`; add `marksFromProfile()` beside `findMarks()` in
+  `lib/scan.ts`, synthesizing a `Mark` per function over a
+  `[profile] min_self_pct` threshold. `reach()`, `check()` and `render()` are
+  untouched, and findings gate exactly as annotated ones do.
+- Node >= 22.18 type stripping preserves positions, so cpuprofile callFrame
+  line/column lands on the TS AST with no source maps.
+- `Mark` carries provenance: the header reads `name() — 34% of samples,
+  run.cpuprofile`.
+- Failures stay loud: a hot frame matching no function-like node is counted and
+  printed; zero matches is exit 2, because that means the profile is stale
+  against edited source.
+
+**The owner's stated aim changes the weighting and belongs in this entry.** The
+intended consumer is not only a human reading a report — it is a model writing
+code, so that what it writes optimizes to good machine code. That consumer has
+no profile yet, because the code is being written. It also inverts the
+precision economics: a false positive costs a human their attention, and costs a
+generator only the choice of the other form. If that consumer is primary, the
+profile mode serves the human half and a `suggest` mode serves the writing half:
+rank candidates and emit proposed `@jitmax` sites for confirmation, so the
+hotness assertion still comes from something that knows the workload rather than
+from the tool. What must NOT happen either way is an inferred hotness wearing
+the word "finding".
+
+**Validate before shipping:** profile a workload with a known kernel and assert
+the kernel is marked while the startup parser is not; re-run the TC-56 corpus
+under a real workload and assert the six cold `chained-allocation` errors drop;
+pin cpuprofile columns against the AST under type stripping. Open: ~1 ms
+sampling undersamples short-lived hot functions, and `min_self_pct` is a
+constant nobody has measured — print it on every run and let the TOML own it.
+
+Raised 2026-08-28.
+
+## TC-56 — the first real-corpus run, and it should become the demo (2026-08-28, open, proposal)
+
+`demo/` is hand-written fixtures. This is the first run over code nobody wrote
+for this tool, and it is worth shipping as the demo because the result is
+favourable and the caveat is honest.
+
+**Corpus.** 67 files: `@noble/hashes/src` (18 files, expert-written hot crypto)
+plus one project's own daemon and CLI TypeScript. Every `export function` was
+annotated mechanically — 103 of them.
+
+**Result.** 6 errors, 157 warnings, exit 1.
+
+- **Zero gating findings in `@noble/hashes`.** The hottest, most carefully
+  written code in the corpus produced no error-level finding. No false-positive
+  storm on exactly the code most likely to trigger one.
+- All 6 errors are `chained-allocation`, all in the ordinary application code.
+- All 157 warnings are `closed-world` — see TC-55.
+
+**The caveat, and it belongs in the demo text.** Annotating 103 exported
+functions mechanically is a false promise: `@jitmax` asserts a function is hot,
+and most of these are not. `tomlValue` writes a config once. The findings are
+real patterns on cold functions, which is the annotator's error and not the
+tool's — and saying so in the demo is a stronger claim for the annotation than
+hiding it.
+
+**Proposal:** vendor the corpus (or a pinned subset) under `demo/corpus/`, record
+the expected counts, and let `make demo` assert them. Then a regression in
+precision shows up as a diff instead of as a feeling.
+
+## TC-55 — closed-world reports Node builtins, which will never have a body (2026-08-28, FIXED 2026-08-28)
+
+157 of the 157 warnings in the TC-56 run are `closed-world` naming a standard
+library or host callee:
+
+    33  path.join
+    16  fs.readFileSync
+    12  fs.renameSync
+    11  fs.readdirSync
+     8  fs.unlinkSync
+     7  new TextEncoder().encode
+     5  fs.writeFileSync
+
+The advice reads "inline what you need from `path.join`". Nobody will, and
+nobody should. This is TC-51's shape with a different cause: there the callee
+had no body because the package was not installed, and `npm install` fixes it;
+here the callee has no body because it is native, and nothing fixes it. The
+`Evidence.severity: 'warn'` flag, read by `severity()` in `lib/report.ts`, keeps these
+out of the exit code, so the damage is noise rather than a false gate — but 157 notes with no action is what makes a tool get turned
+off.
+
+**Proposal:** classify an unresolved callee before reporting it. A symbol whose
+declaration resolves into `lib.*.d.ts` or `@types/node` is a host builtin: count
+it once per run as "N calls into the platform" and print no per-site note. Keep
+the per-site note for a callee that is genuinely opaque application code, which
+is the case `bench/inline.jl` measured.
+
+**FIXED 2026-08-28 in 6b07d5e, as proposed.** A callee declared under
+`@types/node` is counted on `Mark.platform` and never listed; `lib.*.d.ts` was
+already excluded. The report prints one line for the whole run. Across the
+22-codebase survey this removed 650 notes — es-toolkit alone had 101 — and the
+`closed-world` share moved from 97.0% to 96.9% because the notes it removed were
+the ones nobody could act on.
+
+## TC-54 — chained-allocation fires where n is a literal in the chain itself (2026-08-28, FIXED 2026-08-28)
+
+The rule reported this line:
+
+```ts
+const lines = findings
+  .slice(0, 10)
+  .map((f) => `  ${f.severity} ${f.patternId} (line ${f.line}): …`);
+```
+
+The intermediate array is ten elements. `bench/chained.jl` measured 1.44-1.52x
+at n=1000; at n=10 the allocation it asks you to remove is not measurable, and
+the rewrite costs readability for nothing.
+
+**This is not TC-9.** TC-9 says the rule cannot know n, and for a bare
+`xs.filter(f).map(g)` that is true. Here n is written in the chain, as an
+integer literal argument to a call the rule already matched. The rule walks over
+it and does not read it.
+
+**Proposal:** when a stage in the matched chain bounds the result to a literal
+count — `.slice(a, b)` with numeric literals, `.slice(-k)`, a literal-length
+array — compare that bound against the smallest n the rule's own evidence
+covers, and stay silent below it. This is the first case where a rule CAN
+implement its `silent` field cheaply and does not, which makes it the concrete
+half of TC-9 rather than another instance of it.
+
+**Sized 2026-08-28, and it is rare.** Of 99 distinct `chained-allocation` sites
+across the TC-64 corpora, **0** carry a literal bound within two lines of the
+chain. The `.slice(0, 10)` case that raised this entry is real but is one site
+in one file. Fix it because it is cheap and correct, not because it is common.
+
+No prior art found: searching oxlint, Biome and the e18e plugin turns up
+intermediate-allocation rules (`prefer-array-from-map`) but none that suppresses
+on a statically known small size. If this ships it is new.
+
+Found 2026-08-28, running the tool over 67 files of third-party and application
+code (TC-56).
+
+**FIXED 2026-08-28 in 6b07d5e.** `.slice(a, b)` and `.slice(-k)` with integer
+literals bound the chain; below `chained.n.min` the rule stays silent. The
+threshold is a new citation derived from the sweep by `make numbers`, so
+re-measuring at a different size moves the rule with its data instead of leaving
+a constant behind. It changed nothing in the 22-codebase survey — no chain there
+carries a literal bound — so the whole of its effect is the case that found it.
+
+## TC-53 — `arguments` is unmeasured folk advice, and the null belongs in the file (2026-08-28, open, proposal)
+
+`jitmax` reports nothing on a function that reads `arguments`. That is very
+likely correct, and the project cannot currently say so. TurboFan's escape
+analysis materializes the arguments object only where it leaks, so the advice
+every JS performance guide still repeats is probably dead — the same shape as
+the string-concatenation result, where `s += x` measured 0.26-0.52x of
+push-and-join and the received wisdom was backwards.
+
+This is not a request for a rule. Adding one on folk advice is the exact mistake
+this project charges oxlint and Biome with (TC-50). The proposal is a sweep and
+a published null.
+
+**Proposal:** `bench/arguments.jl` over three forms — `arguments.length`, an
+indexed read, and `arguments` passed to another function so it escapes — against
+rest parameters at each working set. Expect no separation on the first two. Then
+record the null in the README's "where these numbers stop" material, whichever
+way it lands. A measured null is this project's distinguishing asset and costs
+one sweep.
+
+**Answered the same day, and the null is confirmed.** Probed under
+`node --allow-natives-syntax --trace-deopt --trace-opt` on V8 12.4.254.21: a
+function that leaks `arguments` to another function still reaches TurboFan. The
+folklore is dead. Three more died in the same probe and belong beside it in
+whatever the README's "where these numbers stop" section becomes:
+
+- **`try`/`catch` in a hot loop optimizes.** Optimization status `1010001`.
+- **Generators optimize** — both the generator body and the driving `for...of`.
+- **`for...in` over `Object.create(null)` is FASTER** than over an equivalent
+  plain object, 90 ms against 132 ms.
+- **A missing key is not the cost.** A monomorphic missing-key read is free
+  (26 ms over 8M checks), and `{b: undefined}` shares the map of a literal that
+  gives `b` a real value. The cost is never the absent key; it is the map split
+  when two builders disagree. That is TC-67.
+
+Still record the sweep properly before publishing — these are single probes, not
+this project's three-replication protocol.
+
+Raised 2026-08-28, from a run over nine hand-written hot functions.
+
+## TC-52 — no rule for the sparse-elements transition, and holey is not it (2026-08-28, open, proposal)
+
+`jitmax` reports nothing on a function that writes far past the end of a short
+array:
+
+```ts
+/** @jitmax */
+export function widen(): any[] {
+  const a: any[] = [];
+  a[0] = 1;
+  a[1000] = 2;
+  return a;
+}
+```
+
+The gap is real but it is NOT the holey case. Holey measured 0.93-1.06x here —
+free — which is why `delete a[i]` was narrowed out of `delete-property` on
+2026-08-19 and why `boxed-elements` was withdrawn (TC-14, TC-36). A large sparse
+jump is a third transition: past V8's `ShouldConvertToSlowElements` threshold the
+backing store becomes `DICTIONARY_ELEMENTS`, a hash table, rather than a
+contiguous store carrying a hole check. Different mechanism, different part of
+V8, and nobody here has measured it. The note left at the end of TC-36 —
+"measuring the holey case and giving it its own rule stays open as work" — is
+this entry, narrowed to the transition that is not already known to be free.
+
+**The trigger has to stay syntactic, or this repeats TC-2.** The elements kind
+is decided by the values actually stored (`Object::OptimalElementsKind`,
+`src/objects/objects-inl.h:700`), so a declared type proves nothing. Three forms
+are decidable without asking V8: `new Array(n)` that no fill reaches, an array
+literal with an elision, and a write whose LITERAL index exceeds the literal
+length at construction. A computed index is undecidable and stays out, stated
+rather than papered over.
+
+**Proposal, and the order matters:** write `bench/sparse.jl` first — packed
+against holey against dictionary, at L1, L2, L3 and RAM — and ship a rule only
+if the dictionary column separates by more than the 1.0-1.7x band this harness
+has twice failed to resolve (TC-11, TC-36). If it does not separate, the outcome
+is a published null and no rule, exactly as in TC-53.
+
+Raised 2026-08-28, from a run over nine hand-written hot functions.
+
 ## TC-51 — closed-world drowns a real checkout that has no node_modules (2026-08-21, open)
 
 `node bin/jitmax.ts` on a typescript-eslint checkout reported 4140
@@ -2087,7 +2809,57 @@ Proposal: either give each rule a machine-checked precondition matching its
 *worst* case rather than the fired case. The second is honest and cheap; the
 first is what the project's own marketing implies.
 
-## TC-8 — megamorphic-elements fires without a property load (2026-08-11, open)
+**2026-08-28 — a third proposal from the owner, and it is the cheapest of the
+three: take the numbers out of the findings.** A finding prints the mechanism
+and the fix. The cost lives in README.md and in `bench/`, reached by rule name.
+Then no rule states a cost at a site whose size and shape it cannot see, and the
+whole class of defect this entry describes stops existing — not by bounding the
+claim, but by not making it where it cannot be supported. `EVIDENCE` still binds
+each rule to its measurement, which is what CLAUDE.md's "two evidences" asks
+for; only the print site moves.
+
+This also answers the objection that the rules should simply fire. They should.
+A rule fires on a pattern the author asked to be warned about — `/**
+@turbocharge */` is the author asserting the function is hot, so "the rule
+cannot know this runs often" is void, the author said so. What the annotation
+does not supply is the data size, which is why the *number* cannot ride along:
+7.13x at n=1000 and 1.45x at n=100000 is a property of the input. Drop the
+number and the rule is free to fire on the pattern alone.
+
+Supersedes the "up to Nx" wording discussed the same day; that keeps a number at
+a site that cannot support one. Recorded as direction, not sign-off.
+
+**Shipped the same day.** Verified by running the tool: a `delete-property`
+finding now prints the mechanism, the fix, the bench file by name and the known
+defect, and no ratio. The report closes with the reasoning rather than the
+number — "a ratio is a property of the input, and the annotation says this
+function is hot, not how large its data is". One finding is 840 bytes. Mark this
+entry ✅ FIXED for the cost-claim half and fill the SHA when it lands; what
+remains open under TC-9 is TC-8's family, where the FINDING and not the number
+is wrong.
+
+## TC-8 — megamorphic-elements fires without a property load (2026-08-11, FIXED 2026-08-28)
+
+**FIXED 2026-08-28 in 0cf1005, with a correction in df8aafb.**
+`readsFromElement` walks the body and the rule stays quiet unless something
+reads a property off an element — a property access, an element access, a method
+call, or a destructure. Narrowed to a READ on purpose: V8 charges the same
+four-map budget at a StoreIC and at `in`, but `bench/shape-sets.js` measures
+`s += r.x + r.y`, so firing on `r.x = v` would quote a read's number for a
+write. `in` is the known gap and the code says so.
+
+The survey then caught the fix overshooting. zod's `prefixIssues` is written
+`(iss as any).path.unshift(path)`, so the receiver's type came back `any` and the
+one true instance of this rule in twelve libraries went silent along with the
+false ones. A cast is a claim about the type checker, not about the object; V8
+loads from the object's map either way. The receiver is unwrapped through `as`,
+`<T>`, `!` and parentheses.
+
+Measured on real code, both directions: vue 46 findings before, 8 after; zod 10
+before, 0 after the first fix, 10 again after the correction; TypeScript 19
+before, 5 after. Across 22 codebases the rule fires 23 times. `fiveShapes` reads
+`r.x`, `fiveShapesCast` reads through a cast, and `fiveShapesNoLoad` is the old
+body — `return rows.length` — with a test asserting silence on it.
 
 The rule reports "loads here go megamorphic" from the *type of a parameter*
 alone. It never checks that the function loads a property from an element. The
@@ -2119,6 +2891,17 @@ sign-off. Proposal: fire only when the annotated call tree contains an element
 access on that parameter — an indexed access followed by a property read, or a
 `for...of` binding whose properties are read — and re-point the demo fixture at
 a kernel that matches the benchmark.
+
+**2026-08-28 — implemented in the working tree, not yet committed.**
+`lib/rules.ts` now requires a property READ off an element before the rule
+fires; `TC-8` is gone from `DEFECT` and from this rule's `defects`. Verified:
+a function whose only contact with a three-member union parameter is
+`items.length` reports nothing, where the entry above says it fired. Mark this
+✅ FIXED and fill the SHA when that change lands.
+
+The narrowing is to a read, deliberately — a body that only writes `r.x = v`
+pays a StoreIC that `bench/shape-sets.jl` never priced, and `in` is left out for
+the same reason. That gap is stated in the code and is the honest boundary.
 
 ## TC-2 — a TypeScript union member is not a V8 map (2026-08-10, partial)
 
