@@ -451,7 +451,7 @@ Found 2026-08-28 in the TC-61 survey.
 
 TC-50 records the commercial case against this project: the two rules with
 evidence are already shipped by oxlint and Biome, and "the five rules unique to
-turbocharge are the five with no confirmed true positive in 850 real
+jitmax are the five with no confirmed true positive in 850 real
 functions". That last clause now has a counterexample.
 
 **Survey.** Four packages nobody wrote for this tool, every `export function`
@@ -2935,7 +2935,7 @@ for; only the print site moves.
 
 This also answers the objection that the rules should simply fire. They should.
 A rule fires on a pattern the author asked to be warned about — `/**
-@turbocharge */` is the author asserting the function is hot, so "the rule
+@jitmax */` is the author asserting the function is hot, so "the rule
 cannot know this runs often" is void, the author said so. What the annotation
 does not supply is the data size, which is why the *number* cannot ride along:
 7.13x at n=1000 and 1.45x at n=100000 is a property of the input. Drop the
