@@ -531,6 +531,63 @@ test('a truncated walk exits 1: not clean, even with no findings', () => {
   assert.strictEqual(run.status, 1);
 });
 
+// Profile mode (BUGS TC-57). The profile is synthesized here rather than
+// committed: a real .cpuprofile carries absolute paths from the machine that
+// recorded it, and a fixture that only works on one machine is not a fixture.
+// The frame positions are V8's — a function's position is its parameter list's
+// `(`, which is why the two columns below are not where the nodes start.
+function writeProfile(target: string, frames: Array<{ line: number; column: number }>): string {
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const url = `file://${path.join(root, 'test', 'fixtures', 'profile', 'work.ts')}`;
+  const nodes = frames.map((f, i) => ({
+    id: i + 1,
+    callFrame: { functionName: 'f', url, lineNumber: f.line - 1, columnNumber: f.column - 1 },
+  }));
+  const profile = {
+    nodes,
+    samples: nodes.map((n) => n.id),
+    timeDeltas: nodes.map((_, i) => (i === 0 ? 995 : 5)),
+  };
+  fs.writeFileSync(target, JSON.stringify(profile));
+  return target;
+}
+
+test('a profile marks the function it measured as hot, and not the other one', () => {
+  const dir = path.join(root, 'test', 'fixtures', 'profile');
+  // A function's position is its parameter list's `(`: line 8 column 23 is
+  // `export function kernel(`, line 4 column 26 is `export function parseOnce(`.
+  // parseOnce gets 0.5% of the samples, under the 1% default, so this also
+  // proves the threshold filters rather than just that the lookup works.
+  const prof = writeProfile(path.join(root, 'tmp', 'test-hot.cpuprofile'), [
+    { line: 8, column: 23 },
+    { line: 4, column: 26 },
+  ]);
+  const run = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), prof, dir], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  fs.unlinkSync(prof);
+  assert.match(run.stdout, /1 hot function, 1 error/);
+  assert.match(run.stdout, /kernel\(\) — 99\.5% of samples/);
+  assert.ok(!run.stdout.includes('parseOnce'), 'the cold function was marked');
+  assert.strictEqual(run.status, 1);
+});
+
+// A profile that matches nothing is a profile taken against different source.
+// Reporting "clean" there would be a run that checked nothing, which is the
+// lie TC-7 and TC-17 are both about.
+test('a profile matching no function in the program is exit 2, never a clean run', () => {
+  const dir = path.join(root, 'test', 'fixtures', 'profile');
+  const prof = writeProfile(path.join(root, 'tmp', 'test-stale.cpuprofile'), [{ line: 900, column: 1 }]);
+  const run = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), prof, dir], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  fs.unlinkSync(prof);
+  assert.match(run.stderr, /stale against these sources/);
+  assert.strictEqual(run.status, 2);
+});
+
 // A call into Node's own API is counted, never listed. 157 of the 157 notes in
 // a run over 67 real files were this, each one advising the reader to inline
 // `path.join` (BUGS TC-55).

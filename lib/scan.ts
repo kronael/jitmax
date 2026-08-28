@@ -1,5 +1,6 @@
 import type * as TS from 'typescript';
 import type { Ts } from './ts.ts';
+import type { HotFrame } from './profile.ts';
 
 // Calls that TurboFan lowers to inline machine code. Reaching one of these is
 // not a hole in the promise. Anything not listed here is user code, and the
@@ -55,6 +56,11 @@ export interface Mark extends Site {
   // `@jitmax -boxed-elements -TC-15`. Unresolved: rules.ts's
   // resolveDisabled() turns these into rule names and validates them.
   disabled: string[];
+  // Where the assertion "this function is hot" came from. Absent for an
+  // annotation: the author asserted it by writing the tag. Present for a
+  // profile-driven mark, and printed, because a hotness claim the tool made for
+  // itself has to say what it rests on (BUGS TC-57).
+  from?: string;
 }
 
 // Termination. The visited set already handles cycles; this bounds a call
@@ -112,6 +118,71 @@ function findMarks(ts: Ts, program: TS.Program): Mark[] {
     ts.forEachChild(sf, visit);
   }
   return marks;
+}
+
+// The same marks, from a measured profile instead of an annotation. The
+// annotation and the profile assert exactly the same thing — that this function
+// is hot — so everything downstream is untouched: reach(), check() and render()
+// cannot tell the two apart, and a profile-driven finding gates as an annotated
+// one does.
+//
+// A frame that matches no function-like node is returned rather than dropped:
+// it usually means the profile is stale against edited source, and a mode that
+// silently checked nothing would be the lie this project throws on everywhere
+// else.
+export function marksFromProfile(
+  ts: Ts,
+  program: TS.Program,
+  hot: HotFrame[],
+  source: string
+): { marks: Mark[]; unmatched: HotFrame[] } {
+  const nodes = new Map<string, { node: TS.SignatureDeclaration; sf: TS.SourceFile }>();
+  const put = (k: string, v: { node: TS.SignatureDeclaration; sf: TS.SourceFile }): void => {
+    if (!nodes.has(k)) nodes.set(k, v);
+  };
+  for (const sf of program.getSourceFiles()) {
+    if (sf.isDeclarationFile || sf.fileName.includes('node_modules')) continue;
+    const visit = (node: TS.Node): void => {
+      if (isFunctionLike(ts, node)) {
+        const site = at(sf, node);
+        put(`${site.file}:${site.line}:${site.column}`, { node, sf });
+        // V8 reports a function's position as its parameter list's `(`, not the
+        // `function` keyword — `export function kernel(` puts the frame 22
+        // columns right of where the node starts. An arrow's two positions
+        // coincide, which is why half the frames matched before this line.
+        const paren = sf.getLineAndCharacterOfPosition(node.parameters.pos - 1);
+        put(`${sf.fileName}:${paren.line + 1}:${paren.character + 1}`, { node, sf });
+      }
+      ts.forEachChild(node, visit);
+    };
+    ts.forEachChild(sf, visit);
+  }
+
+  const marks: Mark[] = [];
+  const unmatched: HotFrame[] = [];
+  const seen = new Set<TS.Node>();
+  for (const frame of hot) {
+    const hit = nodes.get(`${frame.file}:${frame.line}:${frame.column}`);
+    if (!hit) {
+      unmatched.push(frame);
+      continue;
+    }
+    if (seen.has(hit.node)) continue;
+    seen.add(hit.node);
+    marks.push({
+      ...at(hit.sf, hit.node),
+      name: nameOf(ts, hit.node),
+      node: hit.node,
+      sf: hit.sf,
+      reached: [],
+      escapes: [],
+      platform: 0,
+      truncated: false,
+      disabled: [],
+      from: `${frame.pct.toFixed(1)}% of samples, ${source}`,
+    });
+  }
+  return { marks, unmatched };
 }
 
 // `-key` tokens in the promise's own tag: `@jitmax -boxed-elements -TC-15`
@@ -249,9 +320,13 @@ function reach(
   return { reached, escapes, platform, truncated };
 }
 
-export function scan(ts: Ts, program: TS.Program): { checker: TS.TypeChecker; marks: Mark[] } {
+export function scan(
+  ts: Ts,
+  program: TS.Program,
+  given?: Mark[]
+): { checker: TS.TypeChecker; marks: Mark[] } {
   const checker = program.getTypeChecker();
-  const marks = findMarks(ts, program);
+  const marks = given ?? findMarks(ts, program);
   for (const mark of marks) {
     const { reached, escapes, platform, truncated } = reach(ts, program, checker, mark);
     mark.reached = reached;

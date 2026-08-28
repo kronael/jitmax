@@ -5,7 +5,13 @@ export interface Config {
   // and validating them against what the checker actually knows is
   // resolveDisabled()'s job in rules.ts — config.ts only reads the file.
   disabled: Set<string>;
+  // [profile] min_self_pct — the share of sampled time a function must own
+  // before profile mode calls it hot. A constant nobody has measured, so the
+  // TOML owns it and every run prints the value it used (BUGS TC-57).
+  minSelfPct: number;
 }
+
+export const DEFAULT_MIN_SELF_PCT = 1;
 
 type TomlValue = string | number | boolean;
 type TomlTable = Record<string, TomlValue>;
@@ -75,8 +81,10 @@ export function loadConfig(configPath: string): Config {
   // config and every rule stayed on. That is the same lie an unknown rule name
   // tells in resolveDisabled(), which throws, so this throws too.
   for (const name of Object.keys(tables)) {
-    if (name !== 'rules') {
-      throw new Error(`${configPath}: unknown table [${name}] — the only table is [rules]`);
+    if (name !== 'rules' && name !== 'profile') {
+      throw new Error(
+        `${configPath}: unknown table [${name}] — the tables are [rules] and [profile]`
+      );
     }
   }
   const rules = tables.rules ?? {};
@@ -89,5 +97,17 @@ export function loadConfig(configPath: string): Config {
     }
     if (value === false) disabled.add(key);
   }
-  return { disabled };
+  const profile = tables.profile ?? {};
+  for (const key of Object.keys(profile)) {
+    if (key !== 'min_self_pct') {
+      throw new Error(`${configPath}: [profile] has no key "${key}" — only min_self_pct`);
+    }
+  }
+  const pct = profile.min_self_pct ?? DEFAULT_MIN_SELF_PCT;
+  if (typeof pct !== 'number' || pct <= 0 || pct > 100) {
+    throw new Error(
+      `${configPath}: [profile] min_self_pct must be a number in (0, 100], got ${JSON.stringify(pct)}`
+    );
+  }
+  return { disabled, minSelfPct: pct };
 }

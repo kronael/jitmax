@@ -37,14 +37,17 @@ export interface Suppression {
 export function render(
   cwd: string,
   results: Array<{ mark: Mark; findings: Finding[] }>,
-  suppression: Suppression = { count: 0, keys: [] }
+  suppression: Suppression = { count: 0, keys: [] },
+  // What the functions in this run are. An annotation is the author asserting
+  // hotness; a profile is a measurement of it. The report says which.
+  subject = 'annotated function'
 ): string {
   const out: string[] = [];
   const all = results.flatMap((r) => r.findings);
   const warnings = all.filter((f) => severity(f) === 'warn').length;
   const total = all.length - warnings;
   out.push(
-    `jitmax — ${plural(results.length, 'annotated function')}, ${plural(total, 'error')}` +
+    `jitmax — ${plural(results.length, subject)}, ${plural(total, 'error')}` +
       (warnings > 0 ? `, ${plural(warnings, 'warning')}` : '')
   );
   // Suppression is never silent: a run that looks clean because rules were
@@ -63,7 +66,13 @@ export function render(
 
   for (const { mark, findings } of results) {
     if (findings.length === 0 && !mark.truncated) continue;
-    out.push('', `  ${path.relative(cwd, mark.file) || mark.file}:${mark.line}  ${mark.name}()`);
+    out.push(
+      '',
+      `  ${path.relative(cwd, mark.file) || mark.file}:${mark.line}  ${mark.name}()` +
+        // Where "this function is hot" came from, when the tool decided it
+        // rather than the author (BUGS TC-57).
+        (mark.from ? ` — ${mark.from}` : '')
+    );
     if (mark.truncated) {
       out.push(
         '    WALK TRUNCATED',
@@ -101,7 +110,7 @@ export function render(
   out.push(
     '',
     total === 0 && warnings === 0 && partial.length === 0
-      ? '  every annotated function is clean.'
+      ? `  every ${subject} is clean.`
       : total === 0 && partial.length > 0
       ? `  no findings, but ${plural(partial.length, 'walk')} truncated: this is not a clean run.`
       : total === 0
@@ -109,8 +118,8 @@ export function render(
         '  this project measured, so it does not fail this run.'
       : '  No cost is printed beside a finding. Every rule is measured, and the\n' +
         '  measurements are in README.md and in the bench/*.jl named above — but a\n' +
-        '  ratio is a property of the input, and the annotation says this function\n' +
-        '  is hot, not how large its data is. Each rule also records where its own\n' +
+        '  ratio is a property of the input, and being told a function is hot does\n' +
+        '  not say how large its data is. Each rule also records where its own\n' +
         '  benchmark found nothing; README.md prints that beside the cost.'
   );
   return out.join('\n');

@@ -68,7 +68,7 @@ jitmax jitmax.toml src
 /** @jitmax -megamorphic-elements */
 export function total(rows: Row[]): number { … }
 
-/** @jitmax -TC-8 -TC-9 */
+/** @jitmax -TC-2 -TC-9 */
 export function other(rows: Row[]): number { … }
 ```
 
@@ -83,6 +83,32 @@ missing path. Suppression is never silent: the report always says how many
 findings were removed and by what, e.g.
 `3 findings suppressed (TC-9, megamorphic-elements)` — a clean run that is
 clean because rules were switched off says so.
+
+## Or let a profile decide what is hot
+
+The annotation is you asserting a function is hot. A profile is a measurement of
+it. Record one and hand it over as the second suffix-named positional:
+
+```sh
+node --cpu-prof --cpu-prof-dir=. your-workload.js
+jitmax run.cpuprofile src
+```
+
+Every function at or above `[profile] min_self_pct` of the profile's sampled
+self time is marked, and the report says what marked it:
+
+```
+  src/hash.ts:8  compress() — 58.6% of samples, run.cpuprofile
+```
+
+Nothing else changes: the walk, the rules and the exit code cannot tell a
+profiled mark from an annotated one. There is no static "hotness" mode and there
+will not be one — a loop with an unknown trip count and a high call-graph fan-in
+predict hotness weakly, and this tool prints "hotness is a property of the
+workload" under every run it makes. A profile that matches no function in the
+program is exit `2`, not a clean run: it means the profile is stale against the
+source beside it. `min_self_pct` defaults to 1 and is a constant nobody has
+measured, so the TOML owns it and every run prints the value it used.
 
 ## What you get
 
@@ -214,12 +240,15 @@ this harness has twice failed to reproduce. An optional property is no worse,
 and is *cheaper* to build. `make bench-addprop`.
 
 **Read the third column as a limit on the evidence, not as a promise about the
-code.** No rule checks the condition in its own third column at runtime. The
-chaining rule cannot see how big your array is. The `delete` rule fires on a
-delete without knowing whether anything reads the object afterwards, and its
-cost is *per read*. This is a real weakness and it is written up as TC-9 in
-`BUGS.md`, along with TC-8, where the main rule fires without checking that your
-code loads a property at all.
+code.** Two rules now check a condition in their own third column, and the rest
+do not. `megamorphic-elements` requires a read off an element before it fires
+(TC-8, fixed). `chained-allocation` stays silent when a `.slice()` in the chain
+bounds the result to a literal below the smallest n its sweep covers (TC-54,
+fixed) — and where nothing bounds it, the rule still cannot see how big your
+array is, which is the general case and is why no cost is printed beside a
+finding. The `delete` rule fires without knowing whether anything reads the
+object afterwards, and its cost is *per read*. The gap is written up as TC-9 in
+`BUGS.md`.
 
 **One entry left that column by being wrong.** Until 2026-08-15 the `delete` row
 read "a single delete on one object", published since the first round as a case
@@ -675,10 +704,13 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
   files. Hoisting the measured pattern into a helper silences the tool.
   `BUGS.md` TC-43 holds the two forms this still misses and what closing them
   would take.
-- `megamorphic-elements` does not check that your code loads anything. It reads
-  the parameter's type and reports. A function that only reads `rows.length`
-  triggers it, even though nothing there can go megamorphic. The demo fixture
-  `fiveShapes` is that false positive. `BUGS.md` TC-8.
+- `megamorphic-elements` used to report from the parameter's type alone, so a
+  function whose only contact with the array was `rows.length` triggered it —
+  46 of vue's 46 findings were that shape, and 38 of them survived nothing else.
+  It now requires a READ off an element, and it is narrowed to a read on
+  purpose: V8 charges the same four-map budget at a store and at `in`, but the
+  sweep measures `s += r.x + r.y`, so firing on `r.x = v` would quote a read's
+  number for a write. `in` is the remaining gap. `BUGS.md` TC-8.
 - `megamorphic-dispatch` fires on the fifth object type. That is right for a
   method on a class: four types cost 1.41-1.65x and the fifth costs
   12.9-22.7x, the sharpest step measured here. It is late for an object that
