@@ -26,7 +26,7 @@ the owner has to decide it.
 - Neither incumbent measured anything. oxlint's rule cites a blog post and says
   "this can lead to O(n²)". Biome justifies `noDelete`'s V8 claim by citing a
   **WebKit** blog post.
-- The five rules unique to turbocharge are the five with no confirmed true
+- The five rules unique to jitmax are the five with no confirmed true
   positive in 850 real functions (TC-18, TC-19, and the survey table in README).
 - `@e18e/deopt` entered the space 2026-06-24 and is runtime rather than static.
   Every older static tool in the category is dormant: `deoptigate` 2022,
@@ -43,19 +43,21 @@ artifact and offer them to the rules that ship without any.
 **Blocked by the licence, and that is the operative point.** GPL-2.0-only is
 incompatible with Apache-2.0 (oxlint, Biome, TypeScript) and, being `-only`,
 carries no GPLv3 upgrade path. No incumbent can take the evidence while the
-repo is licensed this way. Running turbocharge over proprietary source imposes
+repo is licensed this way. Running jitmax over proprietary source imposes
 nothing — the GNU FAQ is explicit that a program's output is not covered — but
 the tool copies literal `fix:` prose into that output, which is the shape the
 FSF's Bison exception exists for. A one-line output exception costs nothing.
 
-**Also owner decisions, recorded so they are not discovered at launch:** the npm
-name `turbocharge` is taken and npm's dispute policy refuses transfers on
-demand; "turbo" returns 3,991 npm packages, and Vercel claims bare **Turbo** as
-a brand.
+**The name half is settled; the licence half is not.** Under the old name the
+npm package `turbocharge` was taken, npm's dispute policy refuses transfers on
+demand, bare "turbo" returned 3,991 packages, and Vercel claims **Turbo** as a
+brand. The project is now `jitmax`, and `registry.npmjs.org/jitmax` returns 404
+— the name is free. The relicensing decision above is unchanged and still the
+owner's.
 
 ## TC-51 — closed-world drowns a real checkout that has no node_modules (2026-08-21, open)
 
-`node bin/turbocharge.ts` on a typescript-eslint checkout reported 4140
+`node bin/jitmax.ts` on a typescript-eslint checkout reported 4140
 findings. 4115 of them — 99.4% — are `closed-world` naming an import the
 program cannot resolve, because the dependencies are not installed. Every
 `tsutils.isTypeFlagSet` in the tree is reported as an opaque callee, once per
@@ -200,7 +202,7 @@ interface Shape { area(): number }
 // five classes implementing it, dispatched in a loop
 ```
 
-    turbocharge — 1 annotated function, 0 findings
+    jitmax — 1 annotated function, 0 findings
     every annotated function is clean.
 
 `megamorphic-dispatch` sees a declared type that is not a union, so
@@ -309,7 +311,7 @@ Verified with `--allow-natives-syntax` on this machine:
 **Direction A — silent on its own kernel.** `bench/shapes.js` transliterated to
 TypeScript with its construction sites intact:
 
-    turbocharge — 1 annotated function, 0 findings
+    jitmax — 1 annotated function, 0 findings
       every annotated function is clean.
 
 **Direction B — fires where V8 has one map.** Five *aliases* of one identical
@@ -390,7 +392,7 @@ because key order is not part of a type. That is the definition of the
 
 ## TC-41 — an example's `.after.ts` is a rewrite, and its costly axis is never swept (2026-08-17, open — disclosed, not swept, 2026-08-19)
 
-`CLAUDE.md` says `examples/` holds "a `.after.ts` carrying the fix turbocharge
+`CLAUDE.md` says `examples/` holds "a `.after.ts` carrying the fix jitmax
 printed and nothing besides". The printed `delete-property` fix is one English
 sentence with two branches: "assign undefined where the key may stay present,
 **or build the object without it**". `examples/estoolkit-omit.after.ts` takes
@@ -475,10 +477,10 @@ page both carry the distinction.
 
 The sharpest defect in this round, because it defeats the exit code.
 
-    node bin/turbocharge.ts examples/remeda-merge-all.before.ts   -> exit 1, 1 finding
-    node bin/turbocharge.ts examples/remeda-merge-all.after.ts    -> exit 0, clean
+    node bin/jitmax.ts examples/remeda-merge-all.before.ts   -> exit 1, 1 finding
+    node bin/jitmax.ts examples/remeda-merge-all.after.ts    -> exit 0, clean
 
-The `.after.ts` is the fix turbocharge itself printed. `bench/example.jl`
+The `.after.ts` is the fix jitmax itself printed. `bench/example.jl`
 measures the caller's reads of the result it builds at ratio 0.106-0.123 across
 all twelve sweeps — the fixed object reads **8.15-9.47x SLOWER** than the one
 the defect built, because `Object.assign` in a loop leaves the object in
@@ -580,7 +582,7 @@ from an object (`bench/delete.js`, the middle property of a fixed shape), and
 the finding text says "puts its object in dictionary mode".
 
 ```ts
-/** @turbocharge */
+/** @jitmax */
 export function d(xs: number[], i: number): number[] { delete xs[i]; return xs; }
 ```
 
@@ -617,7 +619,7 @@ The rule pairs adjacent calls whose names are in a set (`map`, `filter`,
 `concat`, `slice`, …) and deliberately does not consult the receiver's type.
 
 ```ts
-/** @turbocharge */
+/** @jitmax */
 export function s(str: string): string { return str.concat("x").slice(1); }
 ```
 
@@ -642,7 +644,7 @@ silence.
 ```ts
 type P = { a: number };
 function pick(a: P, b: P): P { return a; }   // allocates nothing, ever
-/** @turbocharge */
+/** @jitmax */
 export function loop(xs: P[]): P {
   let x = xs[0];
   for (const y of xs) x = pick(x, y);
@@ -717,13 +719,13 @@ check" — and stop attaching a cost to it, which is what it honestly is; or
 if (configPath && inputs.length === 0) { … }
 ```
 
-README's own instruction is `turbocharge src`, which passes an input path, so
+README's own instruction is `jitmax src`, which passes an input path, so
 the documented form never reads the config. It compiles under built-in
 ES2022/NodeNext options instead. Path aliases, JSX mode, `types`, `strict` and
 ambient declarations can all resolve differently from the project's real build —
 and every type-based rule and every call edge depends on that resolution.
 
-README claimed turbocharge "sees the same code and types your build sees".
+README claimed jitmax "sees the same code and types your build sees".
 **That sentence is corrected as of this entry**, because it was false.
 
 The fix is small and unambiguous: read the config's `options` whenever one is
@@ -734,11 +736,11 @@ change on a released tool.
 ## TC-31 — a call through a parameter is neither followed nor reported (2026-08-17, open)
 
 ```ts
-/** @turbocharge */
+/** @jitmax */
 export function hot(cb: (x: number) => number): number { return cb(1); }
 ```
 
-    turbocharge — 1 annotated function, 0 findings
+    jitmax — 1 annotated function, 0 findings
       every annotated function is clean.
 
 `cb` has no body anywhere in the program. The walk resolves it to a parameter
@@ -770,7 +772,7 @@ constructors: the walk has a third way of stopping silently.
 > with or endorsed by Google."* README names V8 eighteen times today with no
 > attribution line at all.
 
-`demo/meme/` builds the loop on the page at krons.fiu.wtf/pub/turbocharge/ from
+`demo/meme/` builds the loop on the page at krons.fiu.wtf/pub/jitmax/ from
 `v8.dev/_img/v8-outline.svg` — Google's V8 logo, recoloured to the PH3 palette.
 `demo/meme/recolour.py` rewrites fill and stroke attributes only; every
 coordinate is upstream's, because a redrawn mark reads as a cheap imitation and
@@ -1377,7 +1379,7 @@ Proposals, none of them shipped:
 A change to the printed contract, so: **owner signs off before anything ships.**
 
 Reproduce: `node examples/annotate.js tmp/lib-zod/packages/zod/src/v4/core` then
-`node bin/turbocharge.ts tmp/lib-zod/packages/zod/src/v4/core`.
+`node bin/jitmax.ts tmp/lib-zod/packages/zod/src/v4/core`.
 
 ## TC-18 — allocating-select fires on advancing a cursor, which its benchmark never measured (2026-08-15, open, proposal)
 
@@ -1423,7 +1425,7 @@ are in `pkgs/core/src/{differenceInBusinessDays,eachMinuteOfInterval,eachQuarter
 ## ✅ FIXED 2026-08-15 — TC-17 — a truncated walk printed "not a clean run" and exited 0
 
 TC-7 taught the *report* to refuse the word "clean" when a walk hit the cap. It
-never reached the exit code. `bin/turbocharge.ts` sets it from
+never reached the exit code. `bin/jitmax.ts` sets it from
 `findings.length > 0` alone, so a run that prints
 
     no findings, but 1 walk truncated: this is not a clean run.
@@ -1446,11 +1448,11 @@ are a change to what a CI gate means, so: **owner signs off before anything
 ships**.
 
 Reproduce: a call chain deeper than `MAX_BODIES` (200) with no finding in it —
-`node bin/turbocharge.ts <dir>; echo $?` prints the truncation warning and `0`.
+`node bin/jitmax.ts <dir>; echo $?` prints the truncation warning and `0`.
 
 **Fixed 2026-08-15, signed off: a truncated walk exits `1`.** No fourth code —
-`1` already means "turbocharge has something to report", and a run that proves
-nothing about part of a call tree is something to report. `bin/turbocharge.ts`
+`1` already means "jitmax has something to report", and a run that proves
+nothing about part of a call tree is something to report. `bin/jitmax.ts`
 now sets the code from `findings.length > 0 || mark.truncated`. The repro is
 checked in as `test/fixtures/deep/chain.ts` — 211 links against a cap of 200,
 no finding anywhere in it — and a test runs the binary over it and asserts the
@@ -2095,7 +2097,7 @@ cost it quotes, 3.6-10.6x, was measured on a kernel that does
 The project's own demo fixture proves the gap:
 
 ```ts
-/** @turbocharge */
+/** @jitmax */
 export function fiveShapes(rows: (A | B | C | D | E)[]): number {
   return rows.length;
 }

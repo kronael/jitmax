@@ -414,7 +414,7 @@ test('a TOML config disables a rule by name and by defect code', () => {
   );
 });
 
-// The same place the promise is made: `@turbocharge -key` disables a rule for
+// The same place the promise is made: `@jitmax -key` disables a rule for
 // that function and everything its walk reaches, and nowhere else.
 
 test('an annotation disable by rule name silences its own function and leaves its unmodified twin alone', () => {
@@ -499,7 +499,7 @@ test('every published number is what its own data file says', () => {
 test('a truncated walk exits 1: not clean, even with no findings', () => {
   const run = spawnSync(
     process.execPath,
-    [path.join(root, 'bin', 'turbocharge.ts'), path.join(root, 'test', 'fixtures', 'deep')],
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'deep')],
     { cwd: root, encoding: 'utf8' }
   );
   assert.match(run.stdout, /WALK TRUNCATED/);

@@ -6,7 +6,7 @@
 //
 // THE FINDING. zod was cloned shallow, annotated by the rule in
 // examples/annotate.js — every function not nested in another function whose
-// body contains a loop or an array-iteration call — and turbocharge was run
+// body contains a loop or an array-iteration call — and jitmax was run
 // over `packages/zod/src/v4/core`. 78 functions, 96 findings, 8 of them
 // `chained-allocation`. This is one:
 //
@@ -32,7 +32,7 @@
 
 export type EnumValue = string | number; // | bigint | boolean | symbol;
 
-/** @turbocharge */
+/** @jitmax */
 export function cleanEnum(obj: Record<string, EnumValue>): EnumValue[] {
   return Object.entries(obj)
     .filter(([k, _]) => {

@@ -34,7 +34,7 @@ function parseValue(raw: string, path: string, lineNo: number): TomlValue {
   throw new Error(`${path}:${lineNo}: cannot read value: ${raw}`);
 }
 
-// Not a general TOML implementation — turbocharge.toml only ever needs one
+// Not a general TOML implementation — jitmax.toml only ever needs one
 // level of [table] headers and key = value pairs, so that is all this reads.
 // A real TOML file with arrays, inline tables or multi-line strings will fail
 // loudly here rather than being silently misread.

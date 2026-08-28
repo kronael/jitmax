@@ -6,7 +6,7 @@ import type * as TS from 'typescript';
 
 export type Ts = typeof import('typescript');
 
-// Prefer the TypeScript the project already has, so turbocharge sees the same
+// Prefer the TypeScript the project already has, so jitmax sees the same
 // parse and the same types the project's own build sees.
 export function load(cwd: string): Ts {
   for (const from of [path.join(cwd, 'index.js'), import.meta.url]) {
@@ -15,13 +15,13 @@ export function load(cwd: string): Ts {
     } catch {}
   }
   throw new Error(
-    'turbocharge needs the "typescript" package. Install it in this project:\n' +
+    'jitmax needs the "typescript" package. Install it in this project:\n' +
       '  npm install --save-dev typescript'
   );
 }
 
 // A Program gives us the type checker. Without a tsconfig we still build one,
-// over whatever sources the caller named, with checking relaxed: turbocharge
+// over whatever sources the caller named, with checking relaxed: jitmax
 // reports its own findings, never the project's type errors.
 export function program(ts: Ts, cwd: string, inputs: string[]): TS.Program {
   const configPath = ts.findConfigFile(cwd, ts.sys.fileExists, 'tsconfig.json');

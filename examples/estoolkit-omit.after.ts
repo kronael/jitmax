@@ -1,6 +1,6 @@
 // es-toolkit 1.50.0 — https://github.com/toss/es-toolkit — MIT
 // Copyright (c) 2024 Viva Republica, Inc
-// examples/estoolkit-omit.before.ts with turbocharge's fix applied, and nothing
+// examples/estoolkit-omit.before.ts with jitmax's fix applied, and nothing
 // else.
 //
 // The finding offers two fixes and only one of them is available here. "Assign
@@ -14,7 +14,7 @@
 //
 // The membership test is a linear scan over `keys`, not a Set, on purpose. A
 // Set would take the loop from O(n·k) to O(n+k), and that is an improvement
-// turbocharge did not ask for; with the two keys a caller actually passes it
+// jitmax did not ask for; with the two keys a caller actually passes it
 // would also be invisible. The rule of this comparison is that the after half
 // contains the fix and nothing besides.
 //
@@ -34,7 +34,7 @@
 // too, so the fix stops fixing the read somewhere between 12 keys and 48. The
 // rule still cannot see the width — it says it instead.
 
-/** @turbocharge */
+/** @jitmax */
 export function omit<T extends Record<string, any>, K extends keyof T>(obj: T, keys: readonly K[]): Omit<T, K> {
   const result: Record<string, any> = {};
 

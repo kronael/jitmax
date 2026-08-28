@@ -4,7 +4,7 @@
 //
 // THE FINDING. es-toolkit was cloned shallow, annotated by the rule in
 // examples/annotate.js — every function not nested in another function whose
-// body contains a loop or an array-iteration call — and turbocharge was run
+// body contains a loop or an array-iteration call — and jitmax was run
 // over the result. 286 functions, 288 findings, 267 of them `closed-world` at a
 // builtin. Twelve were this one, in twelve different functions; `omit` is the
 // one a caller reaches for by name:
@@ -34,7 +34,7 @@
 //
 // The after half is examples/estoolkit-omit.after.ts.
 
-/** @turbocharge */
+/** @jitmax */
 export function omit<T extends Record<string, any>, K extends keyof T>(obj: T, keys: readonly K[]): Omit<T, K> {
   const result = { ...obj };
 

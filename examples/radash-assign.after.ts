@@ -1,6 +1,6 @@
 // radash 12.1.1 — https://github.com/rayepps/radash — MIT
 // Copyright (c) 2022 Ray Epps
-// examples/radash-assign.before.ts with turbocharge's fix applied, and nothing
+// examples/radash-assign.before.ts with jitmax's fix applied, and nothing
 // else. `diff` the two files: the reduce body stops returning a fresh object
 // built from a copy of `acc` and assigns the key on `acc` instead, which is
 // what the finding's `fix:` line asks for word for word.
@@ -30,7 +30,7 @@ const isObject = (value: any): value is object => {
   return !!value && value.constructor === Object
 }
 
-/** @turbocharge */
+/** @jitmax */
 export const assign = <X extends Record<string | symbol | number, any>>(
   initial: X,
   override: X

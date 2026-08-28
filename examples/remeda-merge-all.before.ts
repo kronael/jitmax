@@ -6,7 +6,7 @@
 //
 // THE FINDING. remeda was cloned shallow, annotated by the rule in
 // examples/annotate.js — every function not nested in another function whose
-// body contains a loop or an array-iteration call — and turbocharge was run
+// body contains a loop or an array-iteration call — and jitmax was run
 // over the result. 79 functions, 47 findings, 44 of them `closed-world` at a
 // builtin. This is one of the other three:
 //
@@ -35,7 +35,7 @@
 // The after half is examples/remeda-merge-all.after.ts and the diff is one
 // line.
 
-/** @turbocharge */
+/** @jitmax */
 export function mergeAll(objects: readonly object[]): object {
   let out = {};
 

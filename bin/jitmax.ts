@@ -12,20 +12,20 @@ try {
   const ts = load(cwd);
   // Every argument is positional. There are no flags, so an argument that
   // LOOKS like one was a mistake — and this line used to drop it silently, so
-  // `turbocharge --config=cfg.toml src` scanned src with the config never
+  // `jitmax --config=cfg.toml src` scanned src with the config never
   // loaded and exited 0. A configuration that was never read is the same
   // silent lie `loadConfig` and `resolveDisabled` throw on everywhere else.
   const argv = process.argv.slice(2);
   const flag = argv.find((a) => a.startsWith('-'));
   if (flag !== undefined) {
     throw new Error(
-      `${flag}: turbocharge takes no options. Usage: turbocharge [config.toml] [path…]`
+      `${flag}: jitmax takes no options. Usage: jitmax [config.toml] [path…]`
     );
   }
   const args = argv;
 
-  // `turbocharge turbocharge.toml src` — the config is the first positional,
-  // named by its .toml suffix, and optional: `turbocharge src` still works,
+  // `jitmax jitmax.toml src` — the config is the first positional,
+  // named by its .toml suffix, and optional: `jitmax src` still works,
   // and behaves exactly as it did before configuration existed.
   const configPath = args[0]?.endsWith('.toml') ? args[0] : undefined;
   const inputs = configPath ? args.slice(1) : args;
@@ -68,10 +68,10 @@ try {
   process.stdout.write(out + '\n');
   // A truncated walk exits 1 as a finding does. It is not a clean run — part of
   // the call tree was never checked, so silence from it is unproven — and `1`
-  // already means "turbocharge has something to report". A fourth code would be
+  // already means "jitmax has something to report". A fourth code would be
   // a new contract for every gate that reads this one (BUGS TC-17).
   process.exitCode = results.some((r) => r.findings.length > 0 || r.mark.truncated) ? 1 : 0;
 } catch (err) {
-  process.stderr.write(`turbocharge: ${(err as Error).message}\n`);
+  process.stderr.write(`jitmax: ${(err as Error).message}\n`);
   process.exitCode = 2;
 }

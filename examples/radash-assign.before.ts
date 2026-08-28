@@ -2,7 +2,7 @@
 // Copyright (c) 2022 Ray Epps
 // Vendored verbatim from src/object.ts and src/typed.ts at commit 4cab190.
 //
-// THE FINDING. `node bin/turbocharge.ts tmp/demo-real/src` over a radash
+// THE FINDING. `node bin/jitmax.ts tmp/demo-real/src` over a radash
 // checkout with its collection functions annotated, printed unprompted:
 //
 //     tmp/demo-real/src/object.ts:274  assign()
@@ -35,7 +35,7 @@ const isObject = (value: any): value is object => {
   return !!value && value.constructor === Object
 }
 
-/** @turbocharge */
+/** @jitmax */
 export const assign = <X extends Record<string | symbol | number, any>>(
   initial: X,
   override: X

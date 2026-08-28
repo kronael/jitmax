@@ -21,7 +21,7 @@ export function render(
 ): string {
   const out: string[] = [];
   const total = results.reduce((n, r) => n + r.findings.length, 0);
-  out.push(`turbocharge — ${plural(results.length, 'annotated function')}, ${plural(total, 'finding')}`);
+  out.push(`jitmax — ${plural(results.length, 'annotated function')}, ${plural(total, 'finding')}`);
   // Suppression is never silent: a run that looks clean because rules were
   // switched off says so here, every time, not only when it would otherwise
   // read as clean. BUGS TC-7 is the same class of lie in a different place.

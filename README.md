@@ -1,11 +1,11 @@
-# turbocharge
+# jitmax
 
-Mark a TypeScript function with `/** @turbocharge */`. turbocharge reports the
+Mark a TypeScript function with `/** @jitmax */`. jitmax reports the
 lines in it, and in every callee whose source it can read, that match patterns
 measured to push V8 off its fast path. Each finding carries the measurement
 behind it and the fix.
 
-![turbocharge finding one line in a function radash ships](demo/demo.gif)
+![jitmax finding one line in a function radash ships](demo/demo.gif)
 
 ## Use it
 
@@ -13,32 +13,32 @@ Get it. There is no build step and it is not on npm, so clone it and run it
 where it lands:
 
 ```sh
-git clone <repo-url> turbocharge
-cd turbocharge && npm install
+git clone <repo-url> jitmax
+cd jitmax && npm install
 ```
 
 Mark the function you need fast:
 
 ```ts
-/** @turbocharge */
+/** @jitmax */
 export function total(rows: Row[]): number { … }
 ```
 
 Point it at your sources:
 
 ```sh
-node /path/to/turbocharge/bin/turbocharge.ts src
+node /path/to/jitmax/bin/jitmax.ts src
 ```
 
 It exits 0 when every annotated function is clean, 1 when it has findings **or
 when the walk was truncated**, and 2 when the tool itself failed. A gate reads
 the exit code, so a run that could not see everything is never a pass.
 
-To get the `turbocharge` command on your PATH instead, install it from git into
+To get the `jitmax` command on your PATH instead, install it from git into
 the project you want to check:
 
 ```sh
-npm install <repo-url>          # then: npx turbocharge src
+npm install <repo-url>          # then: npx jitmax src
 ```
 
 Either way it loads *your* TypeScript, not a bundled copy.
@@ -46,12 +46,12 @@ Either way it loads *your* TypeScript, not a bundled copy.
 ## Configure it
 
 Two optional layers turn a rule off. Neither is required — with no config and
-no overrides, turbocharge behaves exactly as above.
+no overrides, jitmax behaves exactly as above.
 
 **A TOML config**, the first CLI positional, named by its `.toml` suffix:
 
 ```sh
-turbocharge turbocharge.toml src
+jitmax jitmax.toml src
 ```
 
 ```toml
@@ -63,10 +63,10 @@ turbocharge turbocharge.toml src
 **A per-function override**, in the same comment as the promise:
 
 ```ts
-/** @turbocharge -megamorphic-elements */
+/** @jitmax -megamorphic-elements */
 export function total(rows: Row[]): number { … }
 
-/** @turbocharge -TC-8 -TC-9 */
+/** @jitmax -TC-8 -TC-9 */
 export function other(rows: Row[]): number { … }
 ```
 
@@ -85,7 +85,7 @@ clean because rules were switched off says so.
 ## What you get
 
 ```
-turbocharge — 44 annotated functions, 16 findings
+jitmax — 44 annotated functions, 16 findings
 
   demo/lib.ts:153  viaCallee()
     delete-property
@@ -104,7 +104,7 @@ prints `bound` instead of `measured` — `closed-world` is the one that does.
 Four things, and the second is the point:
 
 - **the line**, `demo/lib.ts:148` — which is inside `dropInner`, a function
-  nobody annotated. `viaCallee` has the annotation; turbocharge followed the
+  nobody annotated. `viaCallee` has the annotation; jitmax followed the
   call and reported where the cost actually is.
 - **the measurement**, so you can judge whether it is worth your time, and
   re-run it yourself with `make bench-*`.
@@ -118,7 +118,7 @@ Four things, and the second is the point:
   branches (`BUGS.md` TC-31). Read the coverage line as "the calls it could
   name", not "everything it could not see".
 
-Exit codes: `0` clean, `1` turbocharge has something to report, `2` the tool
+Exit codes: `0` clean, `1` jitmax has something to report, `2` the tool
 itself failed. A path that does not exist is a `2`, never a clean run — and a
 walk that hit its limit is a `1` with no findings in it, because a run that
 proves nothing about part of your call tree is not a clean run either.
@@ -126,10 +126,10 @@ proves nothing about part of your call tree is not a clean run either.
 ## Requirements
 
 Node `>=22.18`, which strips types itself, so there is no build step.
-TypeScript `>=5.0.0` as a peer dependency — turbocharge loads *your* copy, so it
+TypeScript `>=5.0.0` as a peer dependency — jitmax loads *your* copy, so it
 parses with the same compiler your build does. It does **not** yet read your
 `tsconfig.json` when you pass it a path: the config is loaded only for a bare
-`turbocharge` with no arguments, and the documented `turbocharge src` form
+`jitmax` with no arguments, and the documented `jitmax src` form
 compiles under built-in ES2022/NodeNext options instead. Path aliases, JSX mode
 and ambient types can therefore resolve differently from your build
 (`BUGS.md` TC-32).
@@ -142,8 +142,8 @@ that list, measured.
 
 *Where the idea came from:* Numba's `@njit` marks one Python function and pulls
 in its whole call tree. It compiles that tree or stops with a line and a reason.
-turbocharge borrows the annotation and the call-tree walk. The jobs differ:
-CPython does not JIT, so Numba must compile; V8 does, so turbocharge only tells
+jitmax borrows the annotation and the call-tree walk. The jobs differ:
+CPython does not JIT, so Numba must compile; V8 does, so jitmax only tells
 you where your code blocks it.
 
 ## The rules
@@ -349,7 +349,7 @@ three numbers are printed anyway — `make bench-tc11`, `BUGS.md` TC-11.
 ## What the fix is worth on somebody else's code
 
 Every number above is a microbenchmark, and a microbenchmark cannot say what a
-program gets. So: take a function a library ships, apply the fix turbocharge
+program gets. So: take a function a library ships, apply the fix jitmax
 printed on it and nothing else, and time the whole call the way a caller makes
 it. The pairs are in `examples/` — `diff` a `.before.ts` against its `.after.ts`
 and the fix is the entire change. `make example` prints the findings, then runs

@@ -283,7 +283,7 @@ export const BENCHMARKS = {
     ],
   },
 
-  // Does doing what turbocharge says make a real program faster? The ratio is
+  // Does doing what jitmax says make a real program faster? The ratio is
   // before/after, so a cell above 1.0 is the shipped function costing that much
   // more than the fixed one — the orientation every rule benchmark here uses,
   // where the number is what the pattern costs. A cell that shows nothing is

@@ -540,7 +540,7 @@ const accumulatingSpread: Rule = (ts, checker, body, add) => {
   const FIX: Record<Form, string> = {
     array: `push onto NAME instead of rebuilding it — the finished array reads the same either way, ${N['spread.array.reads']}`,
     // Not an instruction. Assigning the key on NAME is faster to BUILD and
-    // slower to READ, both measured, and turbocharge reports the mutating form
+    // slower to READ, both measured, and jitmax reports the mutating form
     // as clean — so a reader who takes the instruction and re-runs the tool
     // gets a green run on an 8x read regression (BUGS TC-38). The exit code
     // cannot say that, so the text does.

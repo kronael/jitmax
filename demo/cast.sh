@@ -40,7 +40,7 @@ hold
 note "now check it. this is a function radash ships, vendored verbatim."
 # The exit code is read in the SAME command, because type_run sleeps before it
 # evals: a separate `echo $?` would report that sleep and not the checker.
-type_run "node bin/turbocharge.ts examples/radash-assign.before.ts; echo \"exit \$?\""
+type_run "node bin/jitmax.ts examples/radash-assign.before.ts; echo \"exit \$?\""
 
 # The finding is fifteen lines of dense text and it is why anyone watches this.
 # Two holds, so it can be read once here and once under the closing note.

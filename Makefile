@@ -7,7 +7,7 @@ lint:
 	npx tsc --noEmit
 
 check:
-	node bin/turbocharge.ts demo
+	node bin/jitmax.ts demo
 
 # Every V8 citation in README.md against the pinned checkout. Exits
 # non-zero when v8src/ is missing rather than passing quietly.
@@ -70,13 +70,13 @@ bench-all:
 tiers:
 	node bench/tiers.js all
 
-# The end-to-end examples: four real library functions, the finding turbocharge
+# The end-to-end examples: four real library functions, the finding jitmax
 # printed on each, and what applying that fix is worth to a caller. The check
 # comes first because the findings are the reason the benchmark exists; exit 1
 # there means findings, which is the expected outcome, and exit 2 means the tool
 # failed, which is not.
 example:
-	node bin/turbocharge.ts examples; test $$? -le 1
+	node bin/jitmax.ts examples; test $$? -le 1
 	node bench/run.js example
 
 # The terminal demo. The recording is REAL — asciinema drives demo/cast.sh,
@@ -94,7 +94,7 @@ DEMO_SIZE = --cols 120 --rows 27
 DEMO_THEME = 0a0a0a,f0fff0,0a0a0a,cc2936,cc2936,ff6b6b,888888,cc2936,888888,888888,\
 555555,ff6b6b,cc2936,ff6b6b,888888,ff6b6b,888888,f0fff0
 
-tmp/demo.cast: demo/cast.sh bin/turbocharge.ts lib/rules.ts examples/radash-assign.before.ts
+tmp/demo.cast: demo/cast.sh bin/jitmax.ts lib/rules.ts examples/radash-assign.before.ts
 	mkdir -p tmp
 	COLUMNS=120 LINES=27 DEMO_TYPE=1 asciinema rec $@ --overwrite $(DEMO_SIZE) -c 'bash demo/cast.sh'
 
@@ -130,25 +130,25 @@ demo/meme/rig.html: demo/meme/rig.template.html demo/meme/recolour.py tmp/v8-out
 
 # Depends on demo/demo.mp4: act two IS that recording, so a change to what the
 # checker prints re-cuts the film rather than leaving it quoting an old run.
-demo/meme/turbo.mp4: demo/meme/rig.html demo/meme/fine.png demo/meme/capture.js \
+demo/meme/jitmax.mp4: demo/meme/rig.html demo/meme/fine.png demo/meme/capture.js \
                      demo/meme/compose.sh demo/demo.mp4
 	bash demo/meme/compose.sh
 
-meme: demo/meme/turbo.mp4
+meme: demo/meme/jitmax.mp4
 
 # `lib/numbers.ts` is generated too but is tracked and imported, so it is not a
 # clean target — deleting it breaks the build until `make numbers` runs.
 # `tmp/probe.cjs` used to be listed here and no target has ever written it: a
 # hand-run scratch file clean had no business deleting.
 clean:
-	rm -f demo/meme/rig.html demo/meme/fine.png demo/meme/turbo.mp4 demo/meme/turbo.gif demo/meme/turbo-card.png
+	rm -f demo/meme/rig.html demo/meme/fine.png demo/meme/jitmax.mp4 demo/meme/jitmax.gif demo/meme/jitmax-card.png
 
 # site/index.html is the page's ONE source. Editing the copy under the webroot
 # instead leaves two versions of the same page and no way to tell which is
 # current — which happened, and is why this comment is here.
 publish: demo meme
 	cp site/index.html $(WEB)/index.html
-	cp demo/meme/turbo.mp4 demo/meme/turbo.gif demo/meme/turbo-card.png $(WEB)/
+	cp demo/meme/jitmax.mp4 demo/meme/jitmax.gif demo/meme/jitmax-card.png $(WEB)/
 
-WEB = /srv/data/arizuko_krons/web/pub/turbocharge
+WEB = /srv/data/arizuko_krons/web/pub/jitmax
 space := $(subst ,, )

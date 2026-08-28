@@ -39,19 +39,19 @@ ffmpeg -y -loglevel error \
     [2]fps=$FPS,format=yuv420p[c]; \
     [a][b][c]concat=n=3:v=1:a=0[v]" \
   -map "[v]" -movflags faststart -pix_fmt yuv420p -crf 20 \
-  demo/meme/turbo.mp4
+  demo/meme/jitmax.mp4
 
 # The gif is only the fallback for a browser that will not autoplay video, so
 # it is sized for someone on a phone who is about to be served it by accident:
 # 480px at 8fps. At 600px and 10fps the same 37 seconds came to 2.7MB.
-ffmpeg -y -loglevel error -i demo/meme/turbo.mp4 \
+ffmpeg -y -loglevel error -i demo/meme/jitmax.mp4 \
   -vf "fps=8,scale=480:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=48[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" \
-  demo/meme/turbo.gif
+  demo/meme/jitmax.gif
 
 # The social card is a frame of act three, not a separate design: whatever the
 # film ends on is what the link preview shows.
-cp "tmp/meme-a3/$(printf '%04d' $((A3_FRAMES - 12))).png" demo/meme/turbo-card.png
+cp "tmp/meme-a3/$(printf '%04d' $((A3_FRAMES - 12))).png" demo/meme/jitmax-card.png
 
-printf 'turbo.mp4 %s  turbo.gif %s\n' \
-  "$(ffprobe -v error -show_entries format=duration -of csv=p=0 demo/meme/turbo.mp4)" \
-  "$(du -h demo/meme/turbo.gif | cut -f1)"
+printf 'jitmax.mp4 %s  jitmax.gif %s\n' \
+  "$(ffprobe -v error -show_entries format=duration -of csv=p=0 demo/meme/jitmax.mp4)" \
+  "$(du -h demo/meme/jitmax.gif | cut -f1)"

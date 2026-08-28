@@ -1,6 +1,6 @@
 // remeda 2.0.0 — https://github.com/remeda/remeda — MIT
 // Copyright (c) 2018 remeda
-// examples/remeda-merge-all.before.ts with turbocharge's fix applied, and
+// examples/remeda-merge-all.before.ts with jitmax's fix applied, and
 // nothing else.
 //
 // The finding's fix is "assign the key on out instead of rebuilding it".
@@ -28,7 +28,7 @@
 // nothing about the read it left behind — until this pair. The rule's object
 // form now prints that clause, and cites this measurement in it (BUGS TC-16).
 
-/** @turbocharge */
+/** @jitmax */
 export function mergeAll(objects: readonly object[]): object {
   let out = {};
 

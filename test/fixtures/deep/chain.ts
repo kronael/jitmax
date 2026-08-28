@@ -6,7 +6,7 @@
 // Every link is the same one line and there are more of them than the cap, so
 // what makes this walk truncated is its length and not an off-by-one.
 
-/** @turbocharge */
+/** @jitmax */
 export function f0(): number { return f1(); }
 export function f1(): number { return f2(); }
 export function f2(): number { return f3(); }

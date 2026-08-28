@@ -1,6 +1,6 @@
 // zod 4.4.3 — https://github.com/colinhacks/zod — MIT
 // Copyright (c) 2020 Colin McDonnell
-// examples/zod-clean-enum.before.ts with turbocharge's fix applied, and nothing
+// examples/zod-clean-enum.before.ts with jitmax's fix applied, and nothing
 // else. `diff` the two files: the `.filter().map()` pair becomes one loop that
 // tests and pushes, which is what the finding's `fix:` line asks for — "do the
 // stages in one pass, or one loop".
@@ -21,7 +21,7 @@
 
 export type EnumValue = string | number; // | bigint | boolean | symbol;
 
-/** @turbocharge */
+/** @jitmax */
 export function cleanEnum(obj: Record<string, EnumValue>): EnumValue[] {
   const out: EnumValue[] = [];
   for (const el of Object.entries(obj)) {

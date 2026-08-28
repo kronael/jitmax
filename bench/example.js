@@ -2,7 +2,7 @@
 // real library, in one of two states:
 //
 //   <example>/before   the function exactly as the library ships it
-//   <example>/after    the same function with the fix turbocharge printed on it
+//   <example>/after    the same function with the fix jitmax printed on it
 //                      and nothing else
 //
 // Both states are timed through the same caller — the batch of inputs, the

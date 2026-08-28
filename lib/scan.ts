@@ -44,8 +44,8 @@ export interface Mark extends Site {
   // MAX_BODIES — not merely when it ended there. A partial walk that reports no
   // findings is not a clean function, and saying "clean" there would be a lie.
   truncated: boolean;
-  // Raw `-key` tokens from the `@turbocharge` tag's own comment, e.g.
-  // `@turbocharge -boxed-elements -TC-15`. Unresolved: rules.ts's
+  // Raw `-key` tokens from the `@jitmax` tag's own comment, e.g.
+  // `@jitmax -boxed-elements -TC-15`. Unresolved: rules.ts's
   // resolveDisabled() turns these into rule names and validates them.
   disabled: string[];
 }
@@ -85,7 +85,7 @@ function findMarks(ts: Ts, program: TS.Program): Mark[] {
     if (sf.isDeclarationFile || sf.fileName.includes('node_modules')) continue;
     const visit = (node: TS.Node): void => {
       if (isFunctionLike(ts, node)) {
-        const tags = ts.getJSDocTags(node).filter((t) => t.tagName.escapedText === 'turbocharge');
+        const tags = ts.getJSDocTags(node).filter((t) => t.tagName.escapedText === 'jitmax');
         if (tags.length > 0) {
           marks.push({
             ...at(sf, node),
@@ -106,7 +106,7 @@ function findMarks(ts: Ts, program: TS.Program): Mark[] {
   return marks;
 }
 
-// `-key` tokens in the promise's own tag: `@turbocharge -boxed-elements -TC-15`
+// `-key` tokens in the promise's own tag: `@jitmax -boxed-elements -TC-15`
 // disables those rules for this function and everything its walk reaches.
 // Unrecognized text that is not a `-key` token is prose, not a directive, and
 // stays out of the list.

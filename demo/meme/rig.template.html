@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>turbocharge — loop rig</title>
+<title>jitmax — loop rig</title>
 <style>
   /* PH3 palette, copied from /pub/krons/ph3/index.html — plus one deliberate
      addition: --volt, the charge. PH3 has no colour that means "on", and a
-     piece called turbocharge with no charge in it read as a grey smudge. Volt
+     piece called jitmax with no charge in it read as a grey smudge. Volt
      is the mint of --white-p pushed to saturation, so it reads as white-p lit
      rather than a second brand. */
   :root {
@@ -173,7 +173,7 @@
     d="M676 -20 L612 96 L668 112 L598 232"/></svg>
   <div id="flash"></div>
   <div id="caption"></div>
-  <div id="wordmark">turbocharge</div>
+  <div id="wordmark">jitmax</div>
 </div>
 
 <script>
@@ -329,7 +329,7 @@ const BEATS = [
   // Act three: the mark takes the hit and comes back.
   { at: 0.455, to: 0.590, text: '<span class="num red">{elem.reads} slower.</span><br><span class="sub">on the line you just read.</span>' },
   { at: 0.690, to: 0.975, lockup: true, text:
-      '<span class="name">turbocharge</span><br>' +
+      '<span class="name">jitmax</span><br>' +
       '<span class="sub">finds the line. <span class="volt">Measured: {elem.reads}.</span></span>' +
       '<span class="src">five property sets, reads only, L1 through RAM &mdash; bench/shape-sets.jl</span>' },
 ];
@@ -455,7 +455,7 @@ window.renderFrame = function (t) {
   el('caption').style.transform = `translateY(${(7 * (1 - op)).toFixed(2)}px)`;
 
   // The wordmark lights volt as the charge lands, then yields: the lockup IS
-  // the name, and two turbocharges on one frame is one too many.
+  // the name, and two jitmax wordmarks on one frame is one too many.
   el('wordmark').style.color = mix(S.muted, S.volt, charge);
   // ...and it is not in act one at all: the panel is scaled to fill the frame
   // now, so a wordmark under it either collides or forces the shot smaller.

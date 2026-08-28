@@ -1,6 +1,6 @@
 The files in this directory named *.before.ts are vendored verbatim from four
 MIT-licensed libraries, and the *.after.ts files are those same functions with
-turbocharge's printed fix applied. They are derivative works of the originals
+jitmax's printed fix applied. They are derivative works of the originals
 and stay under their upstream MIT licence, not under the GPL-2.0-only licence
 that covers the rest of this repository. MIT permits that; the GPL does not
 relicense what it links to.

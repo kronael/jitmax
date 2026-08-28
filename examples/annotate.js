@@ -1,6 +1,6 @@
 // Annotate a checkout the way a user would, by a stated rule rather than by
 // taste: every function that is not nested inside another function, and whose
-// body contains a loop or an array-iteration call, gets `/** @turbocharge */`.
+// body contains a loop or an array-iteration call, gets `/** @jitmax */`.
 // No function is picked to make a rule fire and none is picked to keep one
 // quiet.
 //
@@ -16,7 +16,7 @@
 //
 //   git clone --depth 1 https://github.com/toss/es-toolkit tmp/lib-estoolkit
 //   node examples/annotate.js tmp/lib-estoolkit/src
-//   node bin/turbocharge.ts tmp/lib-estoolkit/src
+//   node bin/jitmax.ts tmp/lib-estoolkit/src
 //
 // Rewrites the checkout in place. Prints how many functions it marked. The
 // comment is inserted inline, immediately before the declaration, so line
@@ -83,7 +83,7 @@ for (const f of files(root)) {
   if (TESTCALL.test(text)) continue;
   const sf = ts.createSourceFile(f, text, ts.ScriptTarget.ES2022, true);
   const inserts = [];
-  // Outermost functions only: once a function is marked, turbocharge walks its
+  // Outermost functions only: once a function is marked, jitmax walks its
   // whole call tree, so marking a function inside it would report the same body
   // twice. Descend past a marked one instead of into it.
   const outer = (n) => {
@@ -115,7 +115,7 @@ for (const f of files(root)) {
   // corrupted files then parsed as 32 marks instead of 100.
   let out = text;
   for (const pos of unique.sort((a, b) => b - a)) {
-    out = out.slice(0, pos) + '/** @turbocharge */ ' + out.slice(pos);
+    out = out.slice(0, pos) + '/** @jitmax */ ' + out.slice(pos);
   }
   fs.writeFileSync(f, out);
   marked += unique.length;
