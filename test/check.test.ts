@@ -41,6 +41,7 @@ test('a function is checked only where it is annotated', () => {
       'addAll',
       'addField',
       'aliasedShapes',
+      'allRows',
       'appendOnce',
       'areaOfFive',
       'areaOfFour',
@@ -75,6 +76,7 @@ test('a function is checked only where it is annotated', () => {
       'sortedStages',
       'splitJoin',
       'taggedShapes',
+      'topTen',
       'total',
       'totalArea',
       'trimTail',
@@ -288,6 +290,18 @@ test('the same chain on Object.keys stays silent', () => {
 // sort sorts in place and returns the same array reference, so map().sort()
 // allocates exactly what map() alone allocates — and that is the baseline.
 // Measured at 1.04-1.05x, both intervals spanning 1.
+// TC-54. n is written in the chain as an integer literal, so this is the one
+// place a rule can read its own `silent` clause off the source rather than
+// guess. Ten elements is three orders of magnitude under the smallest cell
+// bench/chained.jl carries.
+test('a chain a literal slice bounds below the measured n stays silent', () => {
+  assert.deepStrictEqual(rules('topTen'), []);
+});
+
+test('the same chain with nothing bounding it still fires', () => {
+  assert.deepStrictEqual(rules('allRows'), ['chained-allocation']);
+});
+
 test('a chain ending in sort stays silent', () => {
   assert.deepStrictEqual(rules('sortedStages'), []);
 });
@@ -515,6 +529,20 @@ test('a truncated walk exits 1: not clean, even with no findings', () => {
   assert.match(run.stdout, /WALK TRUNCATED/);
   assert.match(run.stdout, /0 errors/);
   assert.strictEqual(run.status, 1);
+});
+
+// A call into Node's own API is counted, never listed. 157 of the 157 notes in
+// a run over 67 real files were this, each one advising the reader to inline
+// `path.join` (BUGS TC-55).
+test('a call into the platform is counted, not listed', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'platform')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /1 call into the platform/);
+  assert.ok(!run.stdout.includes('closed-world'), 'the platform call was listed as a finding');
+  assert.strictEqual(run.status, 0);
 });
 
 // Severity is the exit-code contract, so it is tested through the binary too.

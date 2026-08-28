@@ -55,6 +55,11 @@ export function render(
   }
 
   const partial = results.filter((r) => r.mark.truncated);
+  // One line for the whole run, not one note per call site. See Mark.platform.
+  const platform = results.reduce((n, r) => n + r.mark.platform, 0);
+  if (platform > 0) {
+    out.push(`  ${plural(platform, 'call')} into the platform, not listed: the body is native`);
+  }
 
   for (const { mark, findings } of results) {
     if (findings.length === 0 && !mark.truncated) continue;

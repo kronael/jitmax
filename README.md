@@ -2,8 +2,10 @@
 
 Mark a TypeScript function with `/** @jitmax */`. jitmax reports the
 lines in it, and in every callee whose source it can read, that match patterns
-measured to push V8 off its fast path. Each finding carries the measurement
-behind it and the fix.
+measured to push V8 off its fast path. Each finding carries the fix and names
+the sweep that priced the rule. The cost itself is in this file, not beside the
+finding: a ratio is a property of the input, and the annotation says the
+function is hot, not how large its data is.
 
 ![jitmax finding one line in a function radash ships](demo/demo.gif)
 
@@ -85,29 +87,33 @@ clean because rules were switched off says so.
 ## What you get
 
 ```
-jitmax — 44 annotated functions, 16 findings
+jitmax — 46 annotated functions, 15 errors, 1 warning
 
-  demo/lib.ts:153  viaCallee()
-    delete-property
-      demo/lib.ts:148
+  demo/lib.ts:164  viaCallee()
+    error  delete-property
+      demo/lib.ts:159
       delete o[k] puts its object in dictionary mode
-      measured 12.3-13.6x per property load once the object is in dictionary mode … [bench/delete.jl]
       fix: assign undefined where the key may stay present, or build the object without it —
       the rebuild helps at 12 keys and not at 48, where filling it key by key normalizes it too
+      measured in bench/delete.jl
       known defect: TC-9 — rules fire outside the conditions their own evidence establishes
 ```
 
-The `measured` line is cut here; the real one carries every cell the rule cites.
-A rule whose benchmark prices the mechanism rather than the thing it fires on
-prints `bound` instead of `measured` — `closed-world` is the one that does.
+`error` or `warn`, and only an error fails the run. A rule warns when no
+benchmark measures the program it fires on; `closed-world` is the only one, and
+it was 97.0% of every finding across the 22-codebase survey below, so before
+this it decided nearly every exit code on evidence this project does not have.
 
 Four things, and the second is the point:
 
 - **the line**, `demo/lib.ts:148` — which is inside `dropInner`, a function
   nobody annotated. `viaCallee` has the annotation; jitmax followed the
   call and reported where the cost actually is.
-- **the measurement**, so you can judge whether it is worth your time, and
-  re-run it yourself with `make bench-*`.
+- **the sweep that priced the rule**, named, so you can read the cost in this
+  file and re-run it yourself with `make bench-*`. No ratio is printed beside
+  the finding, because the tool cannot see the size of what will run through
+  that line and the ratio depends on it: accumulating spread measured 149-166x
+  at n=1000 and 1766-1889x at n=10000, the same rule on the same machine.
 - **the fix**, concretely, not "consider optimising" — and where the fix itself
   stops paying, wherever applying it to somebody else's function found a limit.
 - **what it could not check** — a call that resolves to a declaration with no
@@ -118,8 +124,8 @@ Four things, and the second is the point:
   branches (`BUGS.md` TC-31). Read the coverage line as "the calls it could
   name", not "everything it could not see".
 
-Exit codes: `0` clean, `1` jitmax has something to report, `2` the tool
-itself failed. A path that does not exist is a `2`, never a clean run — and a
+Exit codes: `0` clean or warnings only, `1` jitmax has an error to report, `2`
+the tool itself failed. A path that does not exist is a `2`, never a clean run — and a
 walk that hit its limit is a `1` with no findings in it, because a run that
 proves nothing about part of your call tree is not a clean run either.
 
@@ -168,15 +174,15 @@ false for both (`BUGS.md` TC-39).
 | `accumulating-spread` | `[...acc, v]`, `{ ...acc, k: v }`, `acc.concat(v)` or `Object.assign({}, acc, …)` in a loop — quadratic | no loop re-runs the copy; `Object.assign(acc, …)`, which mutates; strings, which V8 appends to instead of copying |
 | `chained-allocation` | `.map().filter()` or `Object.entries(o).map()` allocates between stages | one stage; large n; `Object.keys(o).map()`, `.sort()`, `.split().map().join()` |
 | `allocating-select` | `x = Lib.min(x, y)` in a loop returns a new object every pass | the same loop on numbers |
-| `delete-property` | `delete` demotes an object to dictionary mode | assigning `undefined` instead, which costs 1.00-1.06x |
+| `delete-property` | `delete` demotes an object to dictionary mode — 12.3-13.6x per property load after it | assigning `undefined` instead, which costs 1.00-1.06x |
 | `closed-world` | calls to code with no readable body | a callee small enough to inline costs nothing |
 
 **Every rule includes the benchmark that earned it, and the case where the same
 benchmark found nothing.** `closed-world` measures the mechanism a call boundary
 controls: a callee V8 refuses to inline costs 4.64-4.95x in a hot loop at
 n=1000. That is a bound on what one unchecked call can cost, not a claim about
-any particular one — and the report prints the word `bound` there rather than
-`measured`, because the rule fires on a callee with no readable body and the
+any particular one — and it is why `closed-world` warns rather than erring and
+never fails a run: the rule fires on a callee with no readable body and the
 sweep measures a readable one padded past the inlining budget (`BUGS.md`
 TC-33). That range used to be 4.42-4.79x, one sweep per size,
 and then 3.21-4.95x. Re-measured three times over, the n=1000 cell replicates
@@ -297,6 +303,7 @@ published number is no longer what its rows say.
 | `2.55-2.61x` | `bench/chained.jl` — the same at n=10000 |
 | `2.23-2.97` | `bench/chained.jl` — every interval measured for that cell |
 | `22` | `bench/chained.jl` — the 0.3 sweep, which is every row the dispatch-table kernel wrote — 2 of 24 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table, splitjoin|packed|excl|1000|dispatch-table |
+| `1000` | `bench/chained.jl` — the smallest n any construction-counted cell in this sweep was measured at — 1 of 12 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table |
 | `0.95-1.10x` | `bench/chained.jl` — reading the finished array back, all six chained forms, both sizes — 1 of 12 cells withdrawn as unreplicable (rule 13): splitjoin|packed|excl|1000|dispatch-table |
 | `1.44-1.52x` | `bench/chained.jl` — map then filter with construction counted at n=100000, where bandwidth dominates |
 | `0.84-1.00x` | `bench/chained.jl` — Object.keys(o).map(f) against the for-in walk that fuses it, construction counted |
@@ -534,7 +541,7 @@ so that the absence would mean something:
 | Codebase | annotated | findings | what fired besides `closed-world` |
 |---|---|---|---|
 | svelte (`packages/svelte/src`) | 504 | 8412 | 91 `chained-allocation`, 34 `allocating-select`, 23 `delete-property`, 13 `accumulating-spread` |
-| vue (`packages/*/src`) | 409 | 6666 | 46 `megamorphic-elements`, 32 each `delete-property` and `chained-allocation`, 14 each `allocating-select` and `accumulating-spread`, 11 `megamorphic-dispatch` |
+| vue (`packages/*/src`) | 409 | 6628 | 32 each `delete-property` and `chained-allocation`, 14 each `allocating-select` and `accumulating-spread`, 11 `megamorphic-dispatch`, 8 `megamorphic-elements` |
 | typebox | 199 | 201 | **119 `accumulating-spread`**, 31 `delete-property` |
 | mobx | 49 | 114 | 6 `delete-property` |
 | valibot | 87 | 232 | 9 `chained-allocation`, 1 `delete-property` |
@@ -542,16 +549,23 @@ so that the absence would mean something:
 | immer | 10 | 42 | 4 `delete-property` |
 | ts-pattern | 9 | 47 | nothing |
 
-**Vue is the first codebase to fire six of the seven rules.** A framework is
-not a pipeline, and both megamorphic rules find shapes in it that no utility
-library has.
+**Vue is the only codebase that fires all seven rules.** A framework is not a
+pipeline, and both megamorphic rules find shapes in it that no utility library
+has.
+
+**And the survey is what closed TC-8.** Vue reported 46 `megamorphic-elements`
+before the rule was made to check for a read off an element, and 8 after. Of 46
+findings on a real framework, 38 were functions that never touched a property of
+the thing being reported — `rows.length` and nothing else. Across all 22
+codebases the rule now fires 13 times. A defect that reads as a caveat in a
+tracker reads differently at 83% of a rule's output.
 
 **TypeBox spends 119 of its 199 annotated functions on accumulating spread** —
 60% of everything the tool says about it is one pattern. `FromObject` in
 `value/create/from_object.ts` is six lines and is the whole rule:
 `required.reduce((result, key) => ({ ...result, [key]: … }), {})`.
 
-**`allocating-select` has now fired 77 times across 2953 annotated functions,
+**`allocating-select` has now fired 71 times across 2945 annotated functions,
 and not once on the shape it measures.** Every finding is a value being
 *advanced* or *wrapped* — `date = addMinutes(date, step)`, `initial =
 b.call('$.proxy', initial)`, `spread = getSpreadType(…)` — where the value
@@ -571,7 +585,7 @@ is which is worth more than four more tables.
 | `accumulating-spread` | radash `assign`, remeda `mergeAll` — **3.22-4.65x**, and a read cost the fix line now carries |
 | `delete-property` | es-toolkit `omit` — **1.62-3.32x**, and a width past which it stops |
 | `chained-allocation` | zod `cleanEnum` — **rejects at both sizes**, published above |
-| `allocating-select` | **no instance of the measured shape in 2953 functions.** Its six findings are all `x = advance(x, step)` — `date = addMinutes(date, step)` in four date-fns functions, `sink = lazy(sink)` in es-toolkit's `pipe`. The benchmark measured a *choice* between two values where the incumbent almost always wins, and the fix, "compare first and assign only when x really changes", saves an allocation exactly on the passes that change nothing. A cursor changes on every pass. `BUGS.md` TC-18 |
+| `allocating-select` | **no instance of the measured shape in 2945 functions.** Its six findings are all `x = advance(x, step)` — `date = addMinutes(date, step)` in four date-fns functions, `sink = lazy(sink)` in es-toolkit's `pipe`. The benchmark measured a *choice* between two values where the incumbent almost always wins, and the fix, "compare first and assign only when x really changes", saves an allocation exactly on the passes that change nothing. A cursor changes on every pass. `BUGS.md` TC-18 |
 | `megamorphic-elements` | **structurally impossible.** The rule fires on a *parameter*, so its fix — "get the element type to four shapes or fewer, or give it one construction path" — is always a change to whoever built the array, never to the function that was flagged. No before/after pair of the flagged function can carry it. `BUGS.md` TC-19 |
 | `megamorphic-dispatch` | **nothing to demonstrate.** Zero findings in 850 functions |
 | `closed-world` | makes no speed claim; it reports what was not checked |

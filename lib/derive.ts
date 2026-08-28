@@ -81,7 +81,7 @@ interface Citation {
   // and `cispan` render a single row identically — they needed deleting, and a
   // citation that still wants ONE number out of three sweeps is a citation
   // picking the flattering one.
-  agg: 'range' | 'points' | 'cispan' | 'count';
+  agg: 'range' | 'points' | 'cispan' | 'count' | 'minn';
   // Decimal places. The default scales with magnitude; an override is here
   // where the published string does not.
   dp?: number;
@@ -494,6 +494,12 @@ export const CITATIONS: Record<string, Citation> = {
     pick: (r) => r.kernel === 'dispatch-table',
     agg: 'count',
   },
+  'chained.n.min': {
+    file: 'chained.jl',
+    cells: 'the smallest n any construction-counted cell in this sweep was measured at',
+    pick: (r) => r.mode === 'incl',
+    agg: 'minn',
+  },
   'chained.silent.reads': {
     file: 'chained.jl',
     cells: 'reading the finished array back, all six chained forms, both sizes',
@@ -814,6 +820,11 @@ function render(key: string, c: Citation, matched: Row[], withdrawn: string[]): 
     const hi = Math.max(...live.map((r) => r.hi!));
     return `${fmt(Math.min(...live.map((r) => r.lo!)), hi)}-${fmt(hi, hi)}`;
   }
+  // The smallest working set the citation's cells were measured at. A rule that
+  // can see a literal bound on its own n needs to know where its evidence
+  // starts, and typing that integer here would be the hand-typed constant this
+  // project forbids everywhere else (BUGS TC-54).
+  if (c.agg === 'minn') return String(Math.min(...live.map((r) => r.n)));
   const ratios = live.map((r) => r.ratio!).sort((a, b) => a - b);
   const top = ratios[ratios.length - 1]!;
   if (c.agg === 'points') return ratios.map((v) => `${fmt(v, top)}x`).join(' and ');

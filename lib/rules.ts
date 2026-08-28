@@ -760,6 +760,37 @@ const stageText = (name: string): string =>
 // and discards. Fusing the stages into one pass allocates once. The cost is
 // allocation, which is why it shows up with construction counted and washes out
 // at large n, where memory bandwidth dominates instead.
+// The largest array a `.slice()` in the chain can hand on, when both of its
+// arguments are integer literals. `xs.slice(0, 10)` is ten elements whatever
+// `xs` is, and the intermediate array the rule wants removed is ten elements
+// too. Undefined when nothing in the chain bounds it — the ordinary case, and
+// the one TC-9 is about.
+function literalBound(ts: Ts, node: TS.Node): number | undefined {
+  const int = (a: TS.Node | undefined): number | undefined =>
+    a && ts.isNumericLiteral(a) ? Number(a.text) : undefined;
+  let best: number | undefined;
+  for (let n: TS.Node = node; ts.isCallExpression(n); n = n.expression.expression) {
+    if (!ts.isPropertyAccessExpression(n.expression)) break;
+    if (n.expression.name.text === 'slice') {
+      const [from, to] = [int(n.arguments[0]), int(n.arguments[1])];
+      // `slice(0, 10)` bounds to 10, `slice(-10)` to 10. `slice(10)` bounds
+      // nothing: it drops a prefix of an array of unknown length.
+      const bound = from !== undefined && from < 0 ? -from
+        : from !== undefined && to !== undefined ? Math.max(0, to - from)
+        : undefined;
+      if (bound !== undefined) best = best === undefined ? bound : Math.min(best, bound);
+    }
+  }
+  return best;
+}
+
+// Below the smallest n this rule's own sweep covers, it says nothing. TC-9 says
+// a rule cannot know n; here n is written in the chain as an integer literal
+// argument to a stage the rule already matched, and the rule walked over it.
+// `bench/chained.jl` starts at this size, so under it the rule is quoting a
+// sweep that never went there (BUGS TC-54).
+const CHAINED_MIN_N = Number(N['chained.n.min']);
+
 const chainedAllocation: Rule = (ts, checker, body, add) => {
   const stage = (node: TS.Node): string | undefined => {
     if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) {
@@ -793,7 +824,8 @@ const chainedAllocation: Rule = (ts, checker, body, add) => {
       // for the same reason and against the same measurement: on a string,
       // `concat` is faster than the rewrite this rule would ask for.
       const onArray = isArray(checker, checker.getTypeAtLocation(node.expression.expression));
-      if (inner && !consumed && onArray) {
+      const bound = literalBound(ts, node);
+      if (inner && !consumed && onArray && !(bound !== undefined && bound < CHAINED_MIN_N)) {
         add({
           ...at(body.sf, node),
           rule: 'chained-allocation',

@@ -40,6 +40,13 @@ export interface Mark extends Site {
   // over the whole call tree.
   reached: Body[];
   escapes: Call[];
+  // Calls into the platform — Node's own API, typed by `@types/node`. They are
+  // counted and not listed: the body is native, so it will never be readable
+  // and "inline what you need from `path.join`" is advice nobody can take. A
+  // run over 67 files printed 157 such notes and no action (BUGS TC-55). An
+  // unresolved callee in somebody's package is still listed, because that one
+  // is a body a reader can go and look at.
+  platform: number;
   // True when the walk refused a callee because `reached` was full at
   // MAX_BODIES — not merely when it ended there. A partial walk that reports no
   // findings is not a clean function, and saying "clean" there would be a lie.
@@ -94,6 +101,7 @@ function findMarks(ts: Ts, program: TS.Program): Mark[] {
             sf,
             reached: [],
             escapes: [],
+            platform: 0,
             truncated: false,
             disabled: disabledKeys(ts, tags),
           });
@@ -164,7 +172,7 @@ function reach(
   program: TS.Program,
   checker: TS.TypeChecker,
   root: Mark
-): { reached: Body[]; escapes: Call[]; truncated: boolean } {
+): { reached: Body[]; escapes: Call[]; platform: number; truncated: boolean } {
   // Where the promise really stops: a callee that exists only as a type. A
   // typed dependency resolves to its .d.ts, so we have its signature and not
   // one line of its body. The platform's own lib.*.d.ts is excluded — those
@@ -173,10 +181,16 @@ function reach(
     const sf = d.getSourceFile();
     return Boolean(sf) && sf.isDeclarationFile && !program.isSourceFileDefaultLibrary(sf);
   };
+  // `lib.*.d.ts` is already excluded above. `@types/node` is the other half of
+  // the same platform: native code that no `npm install` and no rewrite makes
+  // readable (BUGS TC-55).
+  const isPlatform = (d: TS.Node): boolean =>
+    d.getSourceFile()?.fileName.includes('/@types/node/') === true;
 
   const reached: Body[] = [{ node: root.node, sf: root.sf, name: root.name }];
   const seen = new Set<TS.Node>([root.node]);
   const escapes: Call[] = [];
+  let platform = 0;
   const reported = new Set<string>();
   let truncated = false;
 
@@ -223,7 +237,8 @@ function reach(
           const key = `${site.file}:${site.line}:${site.column}`;
           if (unchecked && !reported.has(key)) {
             reported.add(key);
-            escapes.push({ ...site, text });
+            if (decls.some(isPlatform)) platform++;
+            else escapes.push({ ...site, text });
           }
         }
       }
@@ -231,16 +246,17 @@ function reach(
     };
     ts.forEachChild(body.node, visit);
   }
-  return { reached, escapes, truncated };
+  return { reached, escapes, platform, truncated };
 }
 
 export function scan(ts: Ts, program: TS.Program): { checker: TS.TypeChecker; marks: Mark[] } {
   const checker = program.getTypeChecker();
   const marks = findMarks(ts, program);
   for (const mark of marks) {
-    const { reached, escapes, truncated } = reach(ts, program, checker, mark);
+    const { reached, escapes, platform, truncated } = reach(ts, program, checker, mark);
     mark.reached = reached;
     mark.escapes = escapes;
+    mark.platform = platform;
     mark.truncated = truncated;
   }
   return { checker, marks };

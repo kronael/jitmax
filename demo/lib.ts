@@ -420,3 +420,17 @@ export function cheapest(pts: Pt[]): Pt {
   for (const y of pts) x = cheaperOf(x, y);
   return x;
 }
+
+/** A chain whose own literal `.slice(0, 10)` bounds it to ten elements: silent.
+ * `bench/chained.jl` starts at n=1000, so below that the rule would be quoting
+ * a sweep that never went there (BUGS TC-54). */
+/** @jitmax */
+export function topTen(rows: number[]): string[] {
+  return rows.slice(0, 10).map((r) => `row ${r}`);
+}
+
+/** The same chain with nothing bounding it: the rule fires, as it always has. */
+/** @jitmax */
+export function allRows(rows: number[]): string[] {
+  return rows.slice(1).map((r) => `row ${r}`);
+}

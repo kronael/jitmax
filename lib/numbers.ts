@@ -93,6 +93,8 @@ export const N = {
   'chained.entries.n10000.ci': '2.23-2.97',
   // chained.jl: the 0.3 sweep, which is every row the dispatch-table kernel wrote — 2 of 24 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table, splitjoin|packed|excl|1000|dispatch-table
   'chained.cells': '22',
+  // chained.jl: the smallest n any construction-counted cell in this sweep was measured at — 1 of 12 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table
+  'chained.n.min': '1000',
   // chained.jl: reading the finished array back, all six chained forms, both sizes — 1 of 12 cells withdrawn as unreplicable (rule 13): splitjoin|packed|excl|1000|dispatch-table
   'chained.silent.reads': '0.95-1.10x',
   // chained.jl: map then filter with construction counted at n=100000, where bandwidth dominates
