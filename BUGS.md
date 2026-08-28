@@ -1005,6 +1005,14 @@ ratios they sit next to:
 **Proposal:** derive the counts, or assert that no `EVIDENCE` string contains a
 bare integer that is not part of an `n=` size.
 
+**Last bullet FIXED 2026-08-28.** `delete.rows.sizes` is a citation with a
+`sizes` aggregation over the cells that still replicate; it renders `n=16384`,
+which is one of the two the sentence used to claim. The general assertion is NOT
+shipped: by the time a test sees an `EVIDENCE` string the derived values are
+already interpolated into it, so "typed" and "derived" are indistinguishable
+there, and a test that flagged every bare integer would flag every derived one
+too. Deriving each count as it is found is the shape that works.
+
 ## TC-47 — every published `select` number rests on rows whose recorded load is false (2026-08-19, open)
 
 All 18 `runner: "r2"` rows in `bench/select.jl` carry no top-level `load1`. They
