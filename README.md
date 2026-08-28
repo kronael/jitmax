@@ -127,7 +127,7 @@ jitmax — 46 annotated functions, 15 errors, 1 warning
 
 `error` or `warn`, and only an error fails the run. A rule warns when no
 benchmark measures the program it fires on; `closed-world` is the only one, and
-it was 96.9% of every finding across the 22-codebase survey below, so before
+it was 98.8% of every finding across the 22-codebase survey below, so before
 this it decided nearly every exit code on evidence this project does not have.
 
 Four things, and the second is the point:
@@ -488,44 +488,52 @@ printed:
   between the microbenchmark and the function is the finding either way.
 
 **The whole survey, so the four examples are not four picks out of a hat.**
-Twelve libraries, 850 annotated functions, 1556 findings. No library produced
-nothing. Re-measured 2026-08-28 after TC-8, TC-54 and TC-55: every row moved,
-and 107 of the findings that left were calls into Node's own API, which are now
-counted for the run rather than listed one by one.
+Twelve libraries, 850 annotated functions, 1500 findings — **54 of them errors,
+at 54 distinct source lines.** No library produced nothing.
+
+Re-measured 2026-08-28, and the counting changed with it. A finding is now one
+per SITE: a line reached from 28 annotated functions used to be 28 findings, so
+every count in this section used to be the call-graph fan-in rather than the
+work (`BUGS.md` TC-62). Calls into the platform are counted for the run and
+never listed (TC-55), and every call the walk cannot follow is now reported
+rather than falling through both branches and vanishing (TC-45).
 
 | Library | annotated | findings | what fired |
 |---|---|---|---|
-| es-toolkit 1.50.0 | 286 | 183 | 166 `closed-world`, 10 `delete-property`, 4 `accumulating-spread`, 3 `chained-allocation` (and 101 platform calls) |
-| ramda 0.32.0 | 100 | 126 | 125 `closed-world`, 1 `delete-property` (`_dissoc`) |
-| immutable 5.1.9 | 89 | 274 | 269 `closed-world`, 3 `chained-allocation`, 2 `delete-property` |
-| remeda 2.0.0 | 79 | 43 | 40 `closed-world`, 2 `delete-property`, 1 `accumulating-spread` |
-| zod 4.4.3 (`v4/core`) | 78 | 94 | 54 `delete-property`, 22 `closed-world`, 10 `megamorphic-elements`, 8 `chained-allocation` |
-| just 1.22.4 | 61 | 67 | 65 `closed-world`, 1 `delete-property`, 1 `chained-allocation` |
-| luxon 3.7.2 | 52 | 265 | 247 `closed-world`, 15 `delete-property`, 3 `chained-allocation` |
-| decimal.js 10.6.0 | 36 | 282 | 282 `closed-world` |
-| date-fns 4.4.0 (`core`) | 28 | 32 | 29 `closed-world`, 1 each `delete-property`, `chained-allocation`, `accumulating-spread` |
-| dinero.js 2.0.2 | 20 | 102 | 100 `closed-world`, 1 `chained-allocation`, 1 `accumulating-spread` |
-| big.js 7.0.1 | 13 | 87 | 87 `closed-world` |
-| radash 12.1.1 | 8 | 1 | 1 `accumulating-spread` |
+| es-toolkit 1.50.0 | 286 | 192 | 180 `closed-world`, 7 `delete-property`, 3 `chained-allocation`, 2 `accumulating-spread` |
+| ramda 0.32.0 | 100 | 199 | 198 `closed-world`, 1 `delete-property` (`_dissoc`) |
+| immutable 5.1.9 | 89 | 270 | 267 `closed-world`, 2 `chained-allocation`, 1 `delete-property` |
+| remeda 2.0.0 | 79 | 81 | 78 `closed-world`, 2 `delete-property`, 1 `accumulating-spread` |
+| zod 4.4.3 (`v4/core`) | 78 | 123 | 102 `closed-world`, 15 `delete-property`, 5 `chained-allocation`, 1 `megamorphic-elements` |
+| just 1.22.4 | 61 | 76 | 74 `closed-world`, 1 `delete-property`, 1 `chained-allocation` |
+| luxon 3.7.2 | 52 | 105 | 99 `closed-world`, 3 each `delete-property` and `chained-allocation` |
+| decimal.js 10.6.0 | 36 | 220 | 220 `closed-world` |
+| date-fns 4.4.0 (`core`) | 28 | 24 | 21 `closed-world`, 1 each `delete-property`, `chained-allocation`, `accumulating-spread` |
+| dinero.js 2.0.2 | 20 | 145 | 143 `closed-world`, 1 `chained-allocation`, 1 `accumulating-spread` |
+| big.js 7.0.1 | 13 | 53 | 53 `closed-world` |
+| radash 12.1.1 | 8 | 12 | 11 `closed-world`, 1 `accumulating-spread` |
 
 Three things in that table are about the tool rather than the libraries.
 
-**`closed-world` is 1432 of the 1556 findings** — 92% — nearly all of them a
-typed dependency the walk cannot read into. Node's own API used to be in this
-number and is not any more: those 107 calls are counted for the run and never
-listed, because "inline what you need from `path.join`" is advice nobody can
-take (`BUGS.md` TC-55). What is left is the honest shape of the rule on real
-code, and `BUGS.md` TC-10.
+**`closed-world` is 1446 of the 1500 findings** — 96% — and it warns rather
+than erring, so none of it fails a run. Three different things live under that
+one rule and the report now says which: a typed dependency the walk cannot read
+into, a callee reached through an interface whose body IS in the checkout, and
+a missing `npm install`. Node's own API is no longer among them at all — those
+calls are counted for the run and never listed, because "inline what you need
+from `path.join`" is advice nobody can take (`BUGS.md` TC-55, TC-69, TC-51).
+The 54 errors under it are what a reader is actually asked to act on.
 
 **`megamorphic-dispatch` never fired once** in these 850 annotated functions.
 The sharpest cliff this project measured, 12.9-22.7x, is not a shape utility
 libraries have. It does appear in the two applications below.
 
-**`megamorphic-elements` fired ten times, and all ten are one function** —
-zod's `prefixIssues`, whose `issues` parameter unions twelve issue types and
-which loads and mutates `.path` on every element. Nine of the ten are that same
-site reported from nine different annotated roots that reach it. One function
-in 850 is what the flagship rule is worth across twelve libraries.
+**`megamorphic-elements` fires at exactly one site in 850 functions** — zod's
+`prefixIssues`, whose `issues` parameter unions twelve issue types and which
+reads `.path` off every element through an `as any`. It used to print as ten
+findings, which was the same line reported from ten annotated roots that reach
+it; one site is what the flagship rule is worth across twelve libraries, and the
+ten was the fan-in flattering it.
 
 ### Two applications, and the rules twelve libraries could not reach
 
@@ -535,15 +543,15 @@ were run exactly the same way — cloned shallow, annotated by
 
 | Program | annotated | findings | what fired |
 |---|---|---|---|
-| TypeScript 5.9.3 (`src/compiler`) | 465 | 767 | 677 `closed-world`, 40 `chained-allocation`, 23 `allocating-select`, 12 `accumulating-spread`, 10 `delete-property`, 5 `megamorphic-elements` |
-| typescript-eslint 8.67.0 | 311 | 4044 | 4019 `closed-world`, 22 `chained-allocation`, 2 `delete-property`, 1 `megamorphic-dispatch` |
+| TypeScript 5.9.3 (`src/compiler`) | 465 | 6454 | 6430 `closed-world`, 12 `allocating-select`, 5 `megamorphic-elements`, 4 `chained-allocation`, 2 `accumulating-spread`, 1 `delete-property` |
+| typescript-eslint 8.67.0 | 311 | 2893 | 2882 `closed-world`, 8 `chained-allocation`, 2 `delete-property`, 1 `megamorphic-dispatch` |
 
-Read 4044 as a defect in this tool before reading it as anything about that
-codebase. Neither checkout had `node_modules` installed, so every call into a
+Read those `closed-world` totals as a defect in this tool before reading them
+as anything about either codebase. Neither checkout had `node_modules` installed, so every call into a
 missing package is an unresolvable callee, reported once per annotated caller
-that reaches it — 99.4% of that row. `BUGS.md` TC-51. The two rows are kept out
+that reaches it. `BUGS.md` TC-51. The two rows are kept out
 of the table above for the same reason: mixed in they would move
-`closed-world`'s share from 92% to 97% and teach a reader nothing.
+`closed-world`'s share from 96% to 99% and teach a reader nothing.
 
 Under the flood are the two rules twelve libraries never exercised.
 
@@ -553,8 +561,8 @@ write.** `packages/eslint-plugin/src/rules/no-misused-promises.ts:543` calls
 sets — a TypeScript declaration name is not one node type. Six is past the four
 maps V8 caches for the site.
 
-**`megamorphic-elements` fired five times in the compiler**, against ten times
-in all twelve libraries, and its widest instance is `checker.ts:44260`:
+**`megamorphic-elements` fires at five sites in the compiler**, against one in
+all twelve libraries, and its widest instance is `checker.ts:44260`:
 `checkUnusedIdentifiers` walks a `PotentiallyUnusedIdentifier[]` and reads
 `node.kind` off every element, where that union is 20 distinct property sets at
 one load site. TC-2's caveat still applies — a union member is not a V8 map —
@@ -575,40 +583,46 @@ so that the absence would mean something:
 
 | Codebase | annotated | findings | what fired besides `closed-world` |
 |---|---|---|---|
-| svelte (`packages/svelte/src`) | 504 | 8301 | 91 `chained-allocation`, 34 `allocating-select`, 23 `delete-property`, 13 `accumulating-spread` |
-| vue (`packages/*/src`) | 409 | 6451 | 32 each `delete-property` and `chained-allocation`, 14 each `allocating-select` and `accumulating-spread`, 11 `megamorphic-dispatch`, 8 `megamorphic-elements` |
-| typebox | 199 | 201 | **119 `accumulating-spread`**, 31 `delete-property` |
-| mobx | 49 | 114 | 6 `delete-property` |
-| valibot | 87 | 232 | 9 `chained-allocation`, 1 `delete-property` |
-| rxjs | 60 | 297 | nothing |
-| immer | 10 | 42 | 4 `delete-property` |
-| ts-pattern | 9 | 47 | nothing |
+| svelte (`packages/svelte/src`) | 504 | 2813 | 16 `allocating-select`, 13 `delete-property`, 12 `chained-allocation`, 2 `accumulating-spread` |
+| vue (`packages/*/src`) | 409 | 2340 | 13 `delete-property`, 6 `chained-allocation`, 4 `accumulating-spread`, 2 `megamorphic-elements`, 1 each `allocating-select` and `megamorphic-dispatch` |
+| typebox | 199 | 57 | **29 `accumulating-spread`**, 3 `delete-property` |
+| mobx | 49 | 132 | 2 `delete-property` |
+| valibot | 87 | 176 | 9 `chained-allocation`, 1 `delete-property` |
+| rxjs | 60 | 241 | nothing |
+| immer | 10 | 54 | 2 `delete-property` |
+| ts-pattern | 9 | 23 | nothing |
 
 **Vue is the only codebase that fires all seven rules.** A framework is not a
 pipeline, and both megamorphic rules find shapes in it that no utility library
 has.
 
 **And the survey is what closed TC-8.** Vue reported 46 `megamorphic-elements`
-before the rule was made to check for a read off an element, and 8 after. Of 46
-findings on a real framework, 38 were functions that never touched a property of
-the thing being reported — `rows.length` and nothing else. A defect that reads
-as a caveat in a tracker reads differently at 83% of a rule's output.
+before the rule was made to check for a read off an element. Of 46 findings on a
+real framework, every one was a function that never read a property off the
+thing being reported — `rows.length` and nothing else. A defect that reads as a
+caveat in a tracker reads differently at the whole of a rule's output on a real
+codebase.
 
 The same survey caught the fix overshooting. zod's `prefixIssues` writes
 `(iss as any).path.unshift(path)`, and reading the receiver's type off the cast
 returned `any`, so the one true instance of this rule in twelve libraries went
-silent with the 38. A cast is a claim about the type checker, not about the
-object; V8 loads from the object's map either way. With the receiver unwrapped,
-zod is back to 10, vue stays at 8, and the rule fires 23 times across 22
-codebases.
+silent with the false ones. A cast is a claim about the type checker, not about
+the object; V8 loads from the object's map either way.
 
-**TypeBox spends 119 of its 199 annotated functions on accumulating spread** —
-60% of everything the tool says about it is one pattern. `FromObject` in
+**What the rule is worth, counted per site: eight lines in 2953 annotated
+functions** — five in the TypeScript compiler, two in vue, one in zod. That is
+the flagship rule's whole footprint on 22 real codebases, and it is the number
+this README leads with. `BUGS.md` TC-64 reaches the same place from 30 other
+corpora and a different annotation rule.
+
+**TypeBox has 29 distinct accumulating-spread sites, more than every other
+codebase here put together.** It used to print as 119, which was those sites
+counted once per annotated function reaching them. `FromObject` in
 `value/create/from_object.ts` is six lines and is the whole rule:
 `required.reduce((result, key) => ({ ...result, [key]: … }), {})`.
 
-**`allocating-select` has now fired 71 times across 2953 annotated functions,
-and not once on the shape it measures.** Every finding is a value being
+**`allocating-select` fires at 29 distinct sites across 2953 annotated
+functions, and not once on the shape it measures.** Every finding is a value being
 *advanced* or *wrapped* — `date = addMinutes(date, step)`, `initial =
 b.call('$.proxy', initial)`, `spread = getSpreadType(…)` — where the value
 changes on every pass and "compare first" saves nothing. The benchmark measured

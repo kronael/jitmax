@@ -172,7 +172,7 @@ export function total(rows: Row[]): number { … }</code></pre>
     <tr>
       <td><code>x = Lib.min(x, y)</code> in a loop</td>
       <td>a fresh object every pass, even when nothing changed</td>
-      <td>2.56&ndash;2.87x. <strong>It has fired 71 times across 2953 real
+      <td>2.56&ndash;2.87x. <strong>It fires at 29 distinct sites across 2953 real
           functions in 22 codebases, and not once on that shape.</strong> Every
           finding is a value being advanced or wrapped &mdash; it changes on
           every pass, so &ldquo;compare first&rdquo; saves nothing. At that
@@ -185,12 +185,14 @@ export function total(rows: Row[]): number { … }</code></pre>
           cannot tell whether yours is</td>
       <td>4.64&ndash;4.95x for a callee past V8's inlining budget. The rule makes
           no claim about your callee &mdash; it warns rather than erring, and
-          never fails a run. It is <strong>21371 of the 22052 findings</strong>
-          across 22 codebases &mdash; 96.9%, nearly all of them a package that
-          was not installed. Node's own API is no longer among them: 650 calls
-          into the platform are counted for the run and never listed, because
-          nobody can inline <code>path.join</code>. Read it as coverage, not as
-          cost.</td>
+          never fails a run. It is <strong>16478 of the 16683 findings</strong>
+          across 22 codebases &mdash; 98.8%. Three different things live under
+          it and the report now says which: a package that was not installed, a
+          callee reached through an interface whose body IS in the checkout, and
+          a typed dependency. Node&rsquo;s own API is not among them at all
+          &mdash; 54,687 calls into the platform are counted for the run and
+          never listed, because nobody can inline <code>path.join</code>. Read
+          it as coverage, not as cost.</td>
     </tr>
   </tbody>
 </table>
@@ -263,14 +265,23 @@ export function total(rows: Row[]): number { … }</code></pre>
     The flagship rule used to report a megamorphic load from a parameter&rsquo;s
     type without checking that anything read a property off it: on vue that was
     46 findings, and 38 of them were functions touching nothing but
-    <code>rows.length</code>. It now requires the read, and fires 23 times
-    across 22 codebases. The same survey caught that fix overshooting &mdash;
+    <code>rows.length</code>. It now requires the read, and fires at
+    <strong>eight distinct lines</strong> in 2,953 annotated functions across 22
+    codebases &mdash; five in the TypeScript compiler, two in vue, one in zod. The same survey caught that fix overshooting &mdash;
     reading the receiver&rsquo;s type off <code>(iss as any).path</code>
     returned <code>any</code>, which silenced zod&rsquo;s ten real findings
     along with the 38 &mdash; so the cast is unwrapped and they are back. The
     chaining rule stays silent when a <code>.slice(0,&nbsp;10)</code> in the
     chain bounds it three orders of magnitude below the smallest size its sweep
     covers, with the threshold read off the sweep rather than typed in.
+  </li>
+  <li>
+    A finding is counted <strong>once per line, not once per caller</strong>.
+    A line reached from 28 annotated functions used to be 28 findings, so the
+    headline reported the call-graph fan-in rather than the work. The TypeScript
+    compiler went from 90 errors to 24. The fan-in is still printed, on the
+    finding, because a line reached by 28 callers is a better fix than one
+    reached by one.
   </li>
   <li>
     A finding carries <strong>no cost</strong>. It names the rule, the fix and
