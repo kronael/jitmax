@@ -142,6 +142,47 @@ Still open from this entry: the `suggest` mode for the writing consumer, and
 `min_self_pct` remains a constant nobody has measured — it is printed on every
 run and the TOML owns it, which is the disclosure and not the fix.
 
+## TC-69 — closed-world cannot see through an interface-typed callee, so it is loudest on the best-abstracted code (2026-08-28, open)
+
+`@noble/curves`, 26 files: **2,113 warnings against 2 errors**. The top callees:
+
+    235  Fp.mul
+    132  Fp.add
+    113  Fp2.mul
+    105  pow2
+     85  Fp2.add
+     73  mod
+
+None of these is a builtin and none is a missing dependency. They are the
+library's OWN functions, in the same checkout, with bodies the walk could read.
+They are unresolvable because they are reached through a property of an
+interface-typed value — `Fp` is a field object whose operations are declared
+members — so the symbol resolves to a signature and not to an implementation.
+
+This is a third distinct cause behind one rule: TC-51 is a missing
+`npm install`, TC-55 is a native builtin, and this is ordinary interface
+dispatch. The consequence is the worst of the three, because the pattern it
+punishes is good design. A hot library that abstracts its field arithmetic
+behind an interface gets 2,113 notes; one that inlines everything into
+free functions gets none. The tool is loudest exactly where the code is best
+organised, which inverts what a user expects from it.
+
+It also compounds TC-62: 2,113 warnings come from 244 distinct callees, so each
+is repeated about nine times.
+
+**Proposal:** before reporting an unresolved callee, try the declaration. When
+the callee's symbol has a declared type whose implementations are visible in the
+program — one concrete class, or one object literal assigned to that interface —
+follow it and keep walking. When more than one implementation exists, that is a
+dispatch site with real map variety and belongs to `megamorphic-dispatch`
+(TC-61), not to `closed-world`. Report `closed-world` only for what remains:
+a callee with no reachable implementation at all.
+
+That splits one flooding rule into two answers that are each actionable, and it
+reuses the shape-counting `megamorphic-dispatch` already does.
+
+Found 2026-08-28 in the TC-64 survey.
+
 ## TC-68 — two more measured mechanisms with no rule (2026-08-28, open)
 
 Probed alongside TC-66 and TC-67, recorded so they are not re-discovered.
@@ -229,35 +270,109 @@ does not pay, and the textbook patterns really are where the cost is.
 
 Raised 2026-08-28, from a prevalence scan over the TC-64 corpora.
 
-## TC-64 — the expanded survey: eleven corpora (2026-08-28, open, data)
+## TC-64 — the survey: 30 corpora, 11,198 annotated functions (2026-08-28, open, data)
 
-Extends TC-61. Same method — every `export function` and class method annotated
-mechanically, which overstates hotness and is stated here rather than hidden.
+Every `export function` and class method annotated mechanically, which overstates
+hotness and is stated here rather than hidden. 30 corpora: the TypeScript
+compiler, Vue 3, `ajv`, `zod`, `valibot`, `typebox`, `es-toolkit`, `remeda`,
+`rxjs`, `mobx`, `immer`, `immutable`, `ts-pattern`, `@noble/curves`,
+`@noble/hashes`, `entities`, `image-q`, `node-vibrant`, `sourcemap-codec`,
+`trace-mapping`, `agent-twitter-client`, `@anthropic-ai/sdk`, four `openclaw`
+trees, and others.
 
-    corpus                    files  annotated  errors  warnings
-    zod                         274        586      26       839
-    ajv                         106        257      63      1078
-    entities (parse5)             9         13       0         6
-    agent-twitter-client         35        128     118       729
-    @anthropic-ai/sdk           138        333       9       764
-    eventsource-parser            5          4       0         0
-    eventsource                   4          6       0         0
-    openclaw/src/infra          214        654     139      1316
-    openclaw/src/gateway        208        393     247      8869
-    openclaw/src/config         135        272      81      1203
-    openclaw/src/auto-reply     156        317      90      4736
+    TOTAL      annotated 11,198    errors 1,044    warnings 78,346
+               distinct error sites 331
 
-**What the shape says.** The four libraries with tight, well-written hot code —
-`entities`, `eventsource-parser`, `eventsource`, and `@noble/hashes` from TC-56
-— produced 0, 0, 0 and 0 errors. Every large error count is application code:
-one gateway, one scraper, one schema compiler. That is the right direction for a
-tool of this kind, and it is the first evidence for it beyond a single package.
+    corpus              annot   err     warn   sites
+    tsc                  2190    49    36775       5
+    openclaw/gateway      390   247     8869      54
+    vue                   940    81     7246      30
+    typebox              1304    62     6415      32
+    openclaw/auto-reply   317    90     4736      23
+    tsestree              131    42     2518       4
+    noble-curves          235     2     2113       2
+    openclaw/infra        645   139     1316      63
+    openclaw/config       266    81     1203      34
+    es-toolkit           1415    15     1158      11
+    ajv                   257    63     1078      19
+    zod                   586    26      839      17
+    anthropic-sdk         310     9      764       7
+    mobx                  223     2      751       1
+    agent-twitter-client  128   118      729      12
+    valibot               724    10      694      10
+    rxjs                  101     0      321       0
+    immer                  37     2      257       2
+    remeda                631     3      181       3
+    ts-pattern             39     0      134       0
+    immutable             117     3      111       2
+    image-q               114     0       90       0
+    node-vibrant           42     0       28       0
+    trace-mapping          23     0       14       0
+    entities               13     0        6       0
+    eventsource-parser      1     0        0       0
+    eventsource             3     0        0       0
+    sourcemap-codec        16     0        0       0
 
-**The warning column is the problem.** 20,740 warnings against 890 errors across
-the eleven. `openclaw/src/gateway` alone emits 8,869. Every one is
-`closed-world` (TC-55) and the count is inflated per caller (TC-62). Those two
-fixes together are worth more to a first-time user than any new rule on the
-queue.
+**Findings by rule, over all 30:**
+
+    chained-allocation     496
+    delete-property        393
+    accumulating-spread    120
+    megamorphic-dispatch    22
+    allocating-select       13
+    megamorphic-elements     0
+
+**`megamorphic-elements` fired zero times in 11,198 annotated functions.** That
+is the flagship rule, the one the README leads with, and 30 real codebases —
+including the TypeScript compiler and Vue — produced not one finding. TC-50's
+clause about the unique rules is answered for this rule, and the answer is bad.
+
+**2026-08-28, reconciling this against the 22-codebase survey, which fires 23
+times.** Both numbers are right and they measure different things. Two causes,
+each checked rather than argued:
+
+1. **This survey annotates `export function` and class methods; vue's instances
+   are module-private.** Vue's two distinct sites are
+   `compiler-core/src/transforms/vSlot.ts:399` `hasForwardedSlots(children:
+   TemplateChildNode[])` and `compiler-core/src/parser.ts:837`
+   `condenseWhitespace(nodes: TemplateChildNode[])`. Both loop over the array
+   and read `.type` off the element; `TemplateChildNode` reaches those lines as
+   8 distinct property sets against a budget of 4. Neither is exported —
+   `grep -c 'export .*<name>'` is 0 for both — so this survey never annotated
+   them. `examples/annotate.js` annotates by shape (not nested, contains a loop
+   or an array-iteration call) and does.
+2. **zod's ten were restored after this survey ran.** `prefixIssues` IS
+   exported, and it went silent between 0cf1005 and df8aafb because the receiver
+   type was read off `(iss as any)` and came back `any`. Re-running it now gives
+   10.
+
+So the honest statement is narrower than the heading and worse in a different
+way: the flagship rule finds nothing in 11,198 **exported** functions, and what
+it does find in 22 codebases is 23 findings at a handful of distinct sites, all
+of them either module-private helpers or reached through a cast. That is still a
+thin result for the rule the README leads with, and TC-50's clause still stands
+— but "zero" is a property of the annotation rule, not of the corpora, and the
+entry should not be quoted as the latter.
+
+Worth doing before this decides anything: re-run these 30 corpora with
+`examples/annotate.js` instead, so the two surveys differ in corpus and not in
+method.
+`megamorphic-dispatch` is the counter-example, with 22 real findings (TC-61),
+and `allocating-select` has 13. TC-60 shows the elements rule under-fires by
+construction, and this is the size of it.
+
+**The warning-to-error ratio is 75 to 1.** 78,346 `closed-world` warnings against
+1,044 errors. The TypeScript compiler alone emits 36,775. Nobody triages that.
+
+**And 1,044 findings come from 331 distinct sites** — 3.2x inflation from TC-62,
+worst on `tsc`, where 49 findings sit on 5 lines.
+
+**Nine corpora produced zero errors, and eight of the nine are tight hot code:**
+`rxjs`, `ts-pattern`, `image-q`, `node-vibrant`, `trace-mapping`, `entities`,
+`sourcemap-codec`, `eventsource-parser`, plus `@noble/hashes` in TC-56. Pixel
+loops, VLQ codecs, character tokenizers, HAMT tries. The tool is quiet on
+well-written hot code, which is the precision result this queue most needed and
+the strongest thing in this entry.
 
 Raised 2026-08-28.
 
