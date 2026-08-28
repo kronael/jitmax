@@ -142,7 +142,7 @@ Still open from this entry: the `suggest` mode for the writing consumer, and
 `min_self_pct` remains a constant nobody has measured — it is printed on every
 run and the TOML owns it, which is the disclosure and not the fix.
 
-## TC-69 — closed-world cannot see through an interface-typed callee, so it is loudest on the best-abstracted code (2026-08-28, open)
+## TC-69 — closed-world cannot see through an interface-typed callee, so it is loudest on the best-abstracted code (2026-08-28, partly fixed 2026-08-28 — named, not followed)
 
 `@noble/curves`, 26 files: **2,113 warnings against 2 errors**. The top callees:
 
@@ -182,6 +182,25 @@ That splits one flooding rule into two answers that are each actionable, and it
 reuses the shape-counting `megamorphic-dispatch` already does.
 
 Found 2026-08-28 in the TC-64 survey.
+
+**Partly fixed 2026-08-28 in 100f22f: the cause is named, the implementation is
+not followed.** An escape whose callee resolves to an interface member declared
+in this program's own source now says so, and its fix line no longer tells the
+author to inline the abstraction — it says to check the implementations or
+narrow the value at the call. The three causes are now distinguishable in the
+output: platform (counted, TC-55), missing dependency (TC-51), interface
+dispatch (this).
+
+Following the implementation when exactly one is visible is NOT shipped. It
+needs a program-wide index of what is assigned to each interface, it is wrong
+whenever a second implementation exists in a file the walk did not reach, and
+getting it wrong means the walk silently claims coverage it does not have —
+which is worse than the flood. It stays a proposal.
+
+What did land beside it is TC-45's half: the escape test used to require the
+callee to be types-only or unresolvable, so an interface member fell through
+both branches and was never reported at all. The tool was silent about it, not
+loud. It is now reported, which widens the output and is the honest direction.
 
 ## TC-68 — two more measured mechanisms with no rule (2026-08-28, open)
 
@@ -361,6 +380,26 @@ method.
 and `allocating-select` has 13. TC-60 shows the elements rule under-fires by
 construction, and this is the size of it.
 
+**Why it is zero, checked rather than assumed.** The rule's trigger is an array
+whose ELEMENT TYPE is a union of five or more object types. Scanning `zod`,
+`ajv` and others for that shape: 26 five-member union aliases exist in `zod`,
+and **not one of them appears in array position**. Across the corpora scanned,
+the count of `(A | B | C | D | E)[]` is zero.
+
+So the rule is not misfiring and it is not broken in the ordinary sense — the
+syntactic shape it waits for is not how people write TypeScript. Real
+five-shape load sites arrive as a class hierarchy (`ajv`'s twelve `Node`
+subclasses, which `megamorphic-dispatch` DOES catch), as a typed-array family
+(TC-60, which the property-set model hides), or as one interface built five
+different ways (TC-67, measured at 7.3x and invisible to every current rule).
+None of the three is a declared union of object types in an array.
+
+**That is the case for retiring the trigger rather than tuning it.** The three
+shapes above are where five maps actually reach a load site, and each has its
+own entry. Verified 2026-08-28 against the current binary, after the element-read
+and cast fixes: `vue`, `typebox`, `ajv`, `zod`, `tsestree` and `immutable`
+re-run unchanged, still zero.
+
 **The warning-to-error ratio is 75 to 1.** 78,346 `closed-world` warnings against
 1,044 errors. The TypeScript compiler alone emits 36,775. Nobody triages that.
 
@@ -376,7 +415,7 @@ the strongest thing in this entry.
 
 Raised 2026-08-28.
 
-## TC-63 — delete-property fires on process.env, which is not a JS object with a map (2026-08-28, open)
+## TC-63 — delete-property fires on process.env, which is not a JS object with a map (2026-08-28, FIXED 2026-08-28)
 
 `openclaw/src/gateway` produced 18 findings of this form:
 
@@ -407,9 +446,17 @@ V8.
 classification helper serves both rules, which is a reason to build it once
 rather than twice.
 
+**FIXED 2026-08-28 in 0b8b784.** A `delete` whose target's type is declared in
+`@types/node` or in `lib.dom.*` is not reported. NOT any `lib.*.d.ts`: `Record`,
+`Object` and `Array` are declared in `lib.es5.d.ts` and describe ordinary
+objects with real maps, and the first attempt at this test silenced
+`delete o[k]` on a `Record<string, number>` — the exact program
+`bench/delete.jl` measured. That regression is why the fixture
+`clearToken` sits beside `drop` in `demo/lib.ts` rather than replacing it.
+
 Found 2026-08-28 in the TC-64 survey.
 
-## TC-62 — findings are counted per reaching caller, not per site (2026-08-28, open)
+## TC-62 — findings are counted per reaching caller, not per site (2026-08-28, FIXED 2026-08-28)
 
 The headline count, and the exit code behind it, overstate the work by the
 call-graph fan-in. Running over `agent-twitter-client` (see the survey in
@@ -427,6 +474,15 @@ TC-51 noticed this for `closed-world` — "once per annotated function that
 reaches it" — and read it as that rule's problem. It is not: it is how every
 finding is counted, and `closed-world` only made it visible first because it
 fires most.
+
+**FIXED 2026-08-28 in 0b8b784 and 100f22f, as proposed.** Findings are
+deduplicated by (rule, file, line, column) before counting and before rendering,
+kept under the first annotated function that reaches them, and the fan-in is
+printed on the finding — `…/parser.ts:837 — reached by 4 annotated functions` —
+because a line reached by 28 callers is a better fix than one reached by one.
+The repeats are counted in one line rather than dropped silently. The TypeScript
+compiler went from 90 errors and 677 warnings to 24 and 77, with 666 repeats
+collapsed.
 
 A reader sees 118 problems and there are 12. That is the number the tool leads
 with, so it is the number that decides whether anyone keeps running it.
