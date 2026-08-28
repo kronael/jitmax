@@ -46,6 +46,7 @@ test('a function is checked only where it is annotated', () => {
       'areaOfFive',
       'areaOfFour',
       'cheapest',
+      'clearToken',
       'collect',
       'collectByAssign',
       'collectByConcat',
@@ -248,6 +249,15 @@ test('the same copy inside a forEach callback fires', () => {
 // element makes the backing store holey instead — a different representation,
 // and the printed fix boxes the array, which is the effect that withdrew
 // `boxed-elements` (BUGS TC-36).
+// TC-63. `delete process.env.X` deletes nothing V8 owns, so bench/delete.jl's
+// per-property-load cost prices something that cannot happen at that site. The
+// test is the type's declaration file — `@types/node` and the DOM, never the
+// language libs, because `Record` is declared in lib.es5.d.ts and is an
+// ordinary object with a real map.
+test('delete on a host object stays silent: there is no map to demote', () => {
+  assert.deepStrictEqual(rules('clearToken'), []);
+});
+
 test('delete on an array element stays silent: a different mechanism', () => {
   assert.deepStrictEqual(rules('dropElement'), []);
 });
@@ -591,6 +601,20 @@ test('a profile matching no function in the program is exit 2, never a clean run
   fs.unlinkSync(prof);
   assert.match(run.stderr, /stale against these sources/);
   assert.strictEqual(run.status, 2);
+});
+
+// TC-62. One line reached from three annotated functions is one finding. The
+// count used to be the call-graph fan-in: agent-twitter-client reported 118
+// errors over 12 distinct lines, and the TypeScript compiler 49 over 5.
+test('one line reached from three functions is one finding, not three', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'fanin')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /3 annotated functions, 1 error/);
+  assert.match(run.stdout, /2 repeats of a line already listed/);
+  assert.strictEqual(run.status, 1);
 });
 
 // A call into Node's own API is counted, never listed. 157 of the 157 notes in

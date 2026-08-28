@@ -43,7 +43,26 @@ export function render(
   subject = 'annotated function'
 ): string {
   const out: string[] = [];
-  const all = results.flatMap((r) => r.findings);
+  // One finding per SITE. The same line reached from 28 annotated functions was
+  // 28 findings, so the headline counted the call-graph fan-in rather than the
+  // work: agent-twitter-client reported 118 errors over 12 distinct lines, and
+  // tsc 49 over 5. TC-51 read this as `closed-world`'s problem; it is how every
+  // finding was counted, and that rule only made it visible first because it
+  // fires most (BUGS TC-62). The finding is kept under the first annotated
+  // function that reaches it, and how many others do is printed.
+  const seen = new Map<string, number>();
+  const key = (f: Finding): string => `${f.rule}|${f.file}|${f.line}|${f.column}`;
+  const perSite = results.map(({ mark, findings }) => ({
+    mark,
+    findings: findings.filter((f) => {
+      const k = key(f);
+      const n = seen.get(k) ?? 0;
+      seen.set(k, n + 1);
+      return n === 0;
+    }),
+  }));
+  const alsoReached = [...seen.values()].reduce((n, c) => n + (c - 1), 0);
+  const all = perSite.flatMap((r) => r.findings);
   const warnings = all.filter((f) => severity(f) === 'warn').length;
   const total = all.length - warnings;
   out.push(
@@ -57,14 +76,20 @@ export function render(
     out.push(`  ${plural(suppression.count, 'finding')} suppressed (${suppression.keys.join(', ')})`);
   }
 
-  const partial = results.filter((r) => r.mark.truncated);
+  if (alsoReached > 0) {
+    out.push(
+      `  ${plural(alsoReached, 'repeat')} of a line already listed, not counted again`
+    );
+  }
+
+  const partial = perSite.filter((r) => r.mark.truncated);
   // One line for the whole run, not one note per call site. See Mark.platform.
   const platform = results.reduce((n, r) => n + r.mark.platform, 0);
   if (platform > 0) {
     out.push(`  ${plural(platform, 'call')} into the platform, not listed: the body is native`);
   }
 
-  for (const { mark, findings } of results) {
+  for (const { mark, findings } of perSite) {
     if (findings.length === 0 && !mark.truncated) continue;
     out.push(
       '',

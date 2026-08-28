@@ -445,3 +445,13 @@ export function topTen(rows: number[]): string[] {
 export function allRows(rows: number[]): string[] {
   return rows.slice(1).map((r) => `row ${r}`);
 }
+
+/** `delete` on a host object: silent. Node implements `process.env` with a
+ * named-property interceptor — the delete is a C++ callback reaching
+ * `unsetenv`, and the object has no hidden class to demote. The mechanism the
+ * finding names does not exist here, which is a different defect from quoting
+ * the wrong size for one that does (BUGS TC-63). */
+/** @jitmax */
+export function clearToken(): void {
+  delete process.env.JITMAX_TOKEN;
+}

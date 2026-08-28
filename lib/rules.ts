@@ -879,8 +879,36 @@ const deleteProperty: Rule = (ts, checker, body, add) => {
     (ts.isElementAccessExpression(node) || ts.isPropertyAccessExpression(node)) &&
     isArray(checker, checker.getTypeAtLocation(node.expression));
 
+  // `delete process.env.X` deletes nothing V8 owns. Node implements
+  // `process.env` with a named-property interceptor: the get, set and delete
+  // are C++ callbacks reaching `getenv` and `unsetenv`, and the object has no
+  // hidden class to demote. Same for `globalThis`, a DOM node, and anything
+  // behind a Proxy — a JS-level delete does not transition a JS map on any of
+  // them. This is not TC-9's "the number is the wrong size": the mechanism the
+  // finding names does not exist at the site (BUGS TC-63).
+  //
+  // The test is the type's own declaration file, which is the same
+  // platform-versus-application question `closed-world` asks in scan.ts.
+  const onHostObject = (node: TS.Expression): boolean => {
+    if (!ts.isElementAccessExpression(node) && !ts.isPropertyAccessExpression(node)) return false;
+    const sym = checker.getTypeAtLocation(node.expression).getSymbol();
+    return (sym?.declarations ?? []).some((d) => {
+      const file = d.getSourceFile()?.fileName ?? '';
+      // `@types/node` and the DOM, and NOT the language libs. `Record`,
+      // `Object` and `Array` are declared in lib.es5.d.ts and describe ordinary
+      // JS objects with real maps; testing for any lib.*.d.ts silenced
+      // `delete o[k]` on a `Record<string, number>`, which is the case the
+      // benchmark measured.
+      return file.includes('/@types/node/') || file.includes('lib.dom.');
+    });
+  };
+
   walk(ts, body.node, (node) => {
-    if (ts.isDeleteExpression(node) && !onArray(node.expression)) {
+    if (
+      ts.isDeleteExpression(node) &&
+      !onArray(node.expression) &&
+      !onHostObject(node.expression)
+    ) {
       add({
         ...at(body.sf, node),
         rule: 'delete-property',
