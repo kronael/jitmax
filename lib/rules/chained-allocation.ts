@@ -1,0 +1,147 @@
+import type * as TS from 'typescript';
+import type { Ts } from '../ts.ts';
+import { at } from '../scan.ts';
+import { N } from '../numbers.ts';
+import { cells, isArray, walk, type Evidence, type Rule } from './shared.ts';
+
+const evidence: Evidence = {
+  // The 0.2 sweep read this cell at 7.64x and that number is not quoted here.
+  // It was measured under the single cold calibration probe TC-5 rejected,
+  // and its rows are in bench/chained-oldcal.jl as history, not as evidence.
+  cost:
+    `map then filter ${N['chained.mapfilter']} with construction counted ` +
+    `(CI ${N['chained.mapfilter.ci']}) — this rule headlined ` +
+    `${N['chained.mapfilter.withdrawn']} until rule 13 was enforced where the numbers are ` +
+    'made, and those three are one cell measured three times with no value common to all ' +
+    `three, so the cell is withdrawn and ${N['chained.mapfilter']} is the size that ` +
+    'replicates (TC-37); Object.entries(o).map(f) ' +
+    `${N['chained.entries.n1000']} at n=1000 (CI ${N['chained.entries.n1000.ci']}) and ` +
+    `${N['chained.entries.n10000']} at n=10000 (CI ${N['chained.entries.n10000.ci']}), ` +
+    'where the waste is a two-element array per key on top of the array itself — every ' +
+    'stage allocates a whole array that the next stage immediately discards',
+  source: `bench/chained.jl, ${cells(N['chained.cells'])} in the 0.3 sweep, 20 pairs each`,
+  silent:
+    `reading the finished array costs nothing (${N['chained.silent.reads']} across all ` +
+    `six forms), and at n=100000 map-then-filter falls to ${N['chained.silent.big']}, ` +
+    'where memory bandwidth dominates the allocation; Object.keys(o).map(f) is FASTER ' +
+    `than the for-in loop that fuses it (${N['chained.silent.keys']}), so keys stays out ` +
+    'and the rule would be wrong to ask for that rewrite; .sort() and .reverse() sort in ' +
+    'place and hand back the same array, so xs.map(f).sort() allocates no more than ' +
+    `xs.map(f) does and measured ${N['chained.silent.sort']} with every interval ` +
+    `(${N['chained.silent.sort.ci']}) spanning 1; and the split chain ` +
+    `s.split(sep).map(f).join(sep) measured ${N['chained.silent.split']} against two ` +
+    'different fusions, which is at the 1.10x a broad warning needs rather than clear of ' +
+    'it — the rule stays out and the margin is one hundredth',
+  severity: 'error',
+  defects: ['TC-9'],
+};
+
+const CHAINABLE = new Set(['map', 'filter', 'flatMap', 'concat', 'slice', 'flat']);
+
+// A chain can also START at a call rather than at a value, and the one that was
+// measured is Object.entries: it allocates the array AND a two-element array
+// per key, all of it read once by the next stage. It is a call on the Object
+// namespace, not a method on the chain's value, so the property-access matching
+// below cannot see it without being told.
+//
+// Object.keys and Object.values are deliberately absent. keys was measured, and
+// the chain BEAT the for-in loop that fuses it away — 0.94x and 0.95x — so the
+// rewrite this rule asks for is a pessimization there. values was never
+// measured. `sort`, `reverse` and `reduce` are absent for their own reasons,
+// recorded in EVIDENCE.
+const OBJECT_SOURCE = new Set(['entries']);
+
+const stageText = (name: string): string =>
+  name.startsWith('Object.') ? `${name}()` : `.${name}()`;
+
+// Each stage of a chain allocates a whole array that the next stage reads once
+// and discards. Fusing the stages into one pass allocates once. The cost is
+// allocation, which is why it shows up with construction counted and washes out
+// at large n, where memory bandwidth dominates instead.
+// The largest array a `.slice()` in the chain can hand on, when both of its
+// arguments are integer literals. `xs.slice(0, 10)` is ten elements whatever
+// `xs` is, and the intermediate array the rule wants removed is ten elements
+// too. Undefined when nothing in the chain bounds it — the ordinary case, and
+// the one TC-9 is about.
+function literalBound(ts: Ts, node: TS.Node): number | undefined {
+  const int = (a: TS.Node | undefined): number | undefined =>
+    a && ts.isNumericLiteral(a) ? Number(a.text) : undefined;
+  let best: number | undefined;
+  for (let n: TS.Node = node; ts.isCallExpression(n); n = n.expression.expression) {
+    if (!ts.isPropertyAccessExpression(n.expression)) break;
+    if (n.expression.name.text === 'slice') {
+      const [from, to] = [int(n.arguments[0]), int(n.arguments[1])];
+      // `slice(0, 10)` and `slice(-10, -5)` both bound to `to - from`, because
+      // two indices of the same sign are the same distance apart either way.
+      // `slice(-10)` bounds to 10. `slice(10)` and `slice(2, -3)` bound
+      // nothing: both depend on a length the tool cannot see.
+      const sameSign = from !== undefined && to !== undefined && from < 0 === to < 0;
+      const bound = sameSign ? Math.max(0, to! - from!)
+        : from !== undefined && from < 0 && to === undefined ? -from
+        : undefined;
+      if (bound !== undefined) best = best === undefined ? bound : Math.min(best, bound);
+    }
+  }
+  return best;
+}
+
+// Below the smallest n this rule's own sweep covers, it says nothing. TC-9 says
+// a rule cannot know n; here n is written in the chain as an integer literal
+// argument to a stage the rule already matched, and the rule walked over it.
+// `bench/chained.jl` starts at this size, so under it the rule is quoting a
+// sweep that never went there (BUGS TC-54).
+const CHAINED_MIN_N = Number(N['chained.n.min']);
+
+const detect: Rule = (ts, checker, body, add) => {
+  const stage = (node: TS.Node): string | undefined => {
+    if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) {
+      return undefined;
+    }
+    const callee = node.expression;
+    const name = callee.name.text;
+    // Object.entries(o) is a namespace call. Reaching it through the same
+    // helper is what keeps a three-stage chain one finding: the consumed check
+    // below asks this function what the neighbouring calls are.
+    if (ts.isIdentifier(callee.expression) && callee.expression.text === 'Object') {
+      return OBJECT_SOURCE.has(name) ? `Object.${name}` : undefined;
+    }
+    return CHAINABLE.has(name) ? name : undefined;
+  };
+
+  walk(ts, body.node, (node) => {
+    const outer = stage(node);
+    if (outer && ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      const inner = stage(node.expression.expression);
+      // A three-stage chain is one finding, not two: report only where the
+      // chain ends, which is the call nothing further consumes.
+      const consumed =
+        node.parent &&
+        ts.isPropertyAccessExpression(node.parent) &&
+        Boolean(stage(node.parent.parent));
+      // The receiver has to BE an array. The rule paired call names and never
+      // read the type, so `str.concat("x").slice(1)` — a string, no array
+      // allocated anywhere in it — was reported as allocating one between the
+      // stages (BUGS TC-35). `accumulating-spread` reads the receiver's type
+      // for the same reason and against the same measurement: on a string,
+      // `concat` is faster than the rewrite this rule would ask for.
+      const onArray = isArray(checker, checker.getTypeAtLocation(node.expression.expression));
+      const bound = literalBound(ts, node);
+      if (inner && !consumed && onArray && !(bound !== undefined && bound < CHAINED_MIN_N)) {
+        add({
+          ...at(body.sf, node),
+          rule: 'chained-allocation',
+          message:
+            `${stageText(inner)} then ${stageText(outer)} allocates a whole array ` +
+            'between the stages',
+          fix: 'do the stages in one pass, or one loop',
+        });
+      }
+    }
+  });
+};
+
+export const chainedAllocation = {
+  name: 'chained-allocation',
+  evidence,
+  detect,
+};

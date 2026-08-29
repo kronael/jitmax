@@ -1,0 +1,122 @@
+import type * as TS from 'typescript';
+import { at, isFunctionLike } from '../scan.ts';
+import { N } from '../numbers.ts';
+import {
+  cells,
+  elementType,
+  members,
+  reassignedInLoop,
+  walkLoops,
+  type Evidence,
+  type Rule,
+} from './shared.ts';
+
+const evidence: Evidence = {
+  cost:
+    `${N['select.heap']} when the chosen value is stored somewhere that outlives the loop ` +
+    `(CI ${N['select.heap.ci10k']} at n=10000, ${N['select.heap.ci100k']} at n=100000)`,
+  source: `bench/select.jl, ${cells(N['select.cells'])}, 20 pairs each`,
+  silent:
+    `on numbers the effect is small and changes sign with the working set — ` +
+    `${N['select.silent.number']} across both sizes, intervals ` +
+    `${N['select.silent.number.ci']}, above 1 at n=10000 and below it at n=100000 — ` +
+    'because Math.min allocates nothing and what is left is the loop, not the rule. ' +
+    'This clause said "no effect at all, both intervals spanning 1" until the cells were ' +
+    'run three times each (BUGS TC-23); the rule still stays out, but on a smaller ' +
+    'margin than it claimed',
+  unreported:
+    'escape analysis does not rescue the boxed form: kept in a local, where the compiler ' +
+    `can see it, the same loop still costs ${N['select.silent.local']} — below the cell ` +
+    'this rule fires on, and well above nothing. This clause said "the rule stays out of ' +
+    'it", and the rule does not: nothing in it asks where the target lives, so a purely ' +
+    `local accumulator is reported with the ${N['select.heap']} measured for a value that ` +
+    'escapes. The cost is real either way and the printed figure is the wrong one of the ' +
+    'two (BUGS TC-44)',
+  severity: 'error',
+  defects: [],
+};
+
+// Choosing between two boxed values with a call that returns a new one
+// allocates on every pass, including every pass that chooses the value the
+// target already held — which, for anything ordered, is nearly all of them. The
+// predicate form compares and stores only on a real change.
+//
+// The target has to appear among the arguments. That is what makes the call a
+// choice rather than arithmetic: `x = x.plus(1)` also allocates, but the value
+// genuinely changed, and an immutable type has no cheaper way to say so.
+const detect: Rule = (ts, checker, body, add) => {
+  const allocates = (call: TS.CallExpression): boolean => {
+    const t = checker.getTypeAtLocation(call);
+    // A primitive result is not an allocation. This is the whole reason
+    // Math.min stays silent: it returns a number, and TurboFan lowers it to a
+    // machine instruction. An array result belongs to the other rules.
+    if (elementType(ts, checker, t)) return false;
+    return members(t).every((x) => Boolean(x.flags & ts.TypeFlags.Object));
+  };
+
+  // A return TYPE is not an allocation site. `pick(a, b) { return a }` returns
+  // an object and allocates on no pass at all, and this rule asserted one on
+  // every pass (BUGS TC-34). The benchmark measured `Box.min`, whose body runs
+  // `new Box(...)`. So read the body the program already has, and require
+  // something in it that builds an object. Where there is no body the rule
+  // stays out: an unreadable callee is `closed-world`'s finding, not this one's.
+  const builds = (call: TS.CallExpression): boolean => {
+    const decl = checker.getResolvedSignature(call)?.declaration;
+    if (!decl || !('body' in decl)) return false;
+    const fnBody = (decl as { body?: TS.Node }).body;
+    if (!fnBody) return false;
+    // Two limits on where the allocation may sit, both of them cases the rule
+    // fired on: it must be inside a `return`, because a scratch array the
+    // callee keeps to itself is not the value the loop stores; and the walk
+    // stops at a nested function, because an object literal inside a callback
+    // the callee never invokes is not an allocation this call makes.
+    let found = false;
+    const visit = (n: TS.Node, returning: boolean): void => {
+      if (found) return;
+      if (n !== fnBody && isFunctionLike(ts, n)) return;
+      const inReturn = returning || ts.isReturnStatement(n);
+      if (
+        inReturn &&
+        (ts.isNewExpression(n) ||
+          ts.isObjectLiteralExpression(n) ||
+          ts.isArrayLiteralExpression(n))
+      ) {
+        found = true;
+        return;
+      }
+      ts.forEachChild(n, (c) => visit(c, inReturn));
+    };
+    // A concise arrow body IS the returned expression — there is no
+    // ReturnStatement to find, so `(a, b) => (a.lt(b) ? a : new Money(b.v))`
+    // allocated on every pass and this rule stayed silent on it.
+    visit(fnBody, !ts.isBlock(fnBody));
+    return found;
+  };
+
+  walkLoops(ts, checker, body.node, (node, inLoop) => {
+    if (reassignedInLoop(ts, node, inLoop) && ts.isCallExpression(node.right)) {
+      const target = node.left.getText(body.sf);
+      const call = node.right;
+      if (
+        call.arguments.some((a) => a.getText(body.sf) === target) &&
+        allocates(call) &&
+        builds(call)
+      ) {
+        add({
+          ...at(body.sf, node),
+          rule: 'allocating-select',
+          message:
+            `${target} is replaced by ${call.expression.getText(body.sf)}(...), which returns a new ` +
+            'object every pass, including the passes that choose the value it already held',
+          fix: `compare first and assign only when ${target} really changes`,
+        });
+      }
+    }
+  });
+};
+
+export const allocatingSelect = {
+  name: 'allocating-select',
+  evidence,
+  detect,
+};
