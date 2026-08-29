@@ -666,6 +666,24 @@ test('a run whose only finding is a warning exits 0', () => {
   assert.strictEqual(run.status, 0);
 });
 
+// TC-70. A derived count reaching prose that assumes it is plural: the numeral
+// is right and the word beside it was hand-written. Any sweep rule 13 withdraws
+// down to one cell reaches the same sentence, so this is checked rather than
+// corrected once.
+test('a cell count agrees with the noun beside it', () => {
+  for (const [name, e] of Object.entries(EVIDENCE)) {
+    for (const text of [e.cost, e.source, e.silent, e.unreported ?? '']) {
+      // The lookbehind matters, and both halves of it were found by this test
+      // failing on its own first two runs: "the L2 cell there" is a cache level
+      // and "the n=100000 cell" is a working set. Neither is a count of cells.
+      for (const m of text.matchAll(/(?<![\w.=])(\d+) (cells?)\b/g)) {
+        const want = m[1] === '1' ? 'cell' : 'cells';
+        assert.strictEqual(m[2], want, `${name}: "${m[0]}" should read "${m[1]} ${want}"`);
+      }
+    }
+  }
+});
+
 // Every rule states a severity, and only a rule with no benchmark of the
 // program it fires on may warn. A rule added without one would default to
 // `warn` in the reporter and gate nothing, silently — which is the same lie a

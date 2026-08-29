@@ -64,6 +64,12 @@ export interface Finding extends Site {
 // that no longer existed while every other number in the repo moved with its
 // data (BUGS TC-23, TC-26, TC-27, TC-28). Write the sentences here; never write
 // a figure here.
+// A derived count reaching prose that assumes it is plural. `inline.cells` is
+// 1, and the sentence read "bench/inline.jl, 1 cells" — the numeral is right
+// and the word beside it was hand-written and fixed. Any sweep rule 13 withdraws
+// down to one cell reaches the same sentence (BUGS TC-70).
+const cells = (n: string): string => `${n} cell${n === '1' ? '' : 's'}`;
+
 export const EVIDENCE: Record<string, Evidence> = {
   'megamorphic-elements': {
     cost:
@@ -73,7 +79,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       `replicate and is withdrawn; ${N['elem.constr.l3']} at RAM size, where bandwidth ` +
       'dominates and the fifth shape costs nothing',
     source:
-      `bench/shape-sets.jl, ${N['elem.cells']} cells, 20 pairs each. This rule quoted ` +
+      `bench/shape-sets.jl, ${cells(N['elem.cells'])}, 20 pairs each. This rule quoted ` +
       'bench/shapes-calibrated.jl until 2026-08-19, and that sweep varies key ORDER — five ' +
       'builders over one key set, five V8 maps, and exactly ONE TypeScript type. It priced a ' +
       'program this rule is silent on (BUGS TC-42). bench/shape-sets.js sweeps the same cells ' +
@@ -102,7 +108,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       `${N['disp.constr.l3.four']} at two to four shapes, each of those cells replicated ` +
       'three times',
     source:
-      `bench/dispatch.jl, ${N['disp.cells']} cells, 20 pairs each, every cell measured ` +
+      `bench/dispatch.jl, ${cells(N['disp.cells'])}, 20 pairs each, every cell measured ` +
       'three whole times. Read the kernel before the number, for the same reason ' +
       'megamorphic-elements had to (TC-42): every family in that sweep varies key ORDER, ' +
       'the call TARGET, or where the function is held — all of them over ONE property set. ' +
@@ -163,7 +169,7 @@ export const EVIDENCE: Record<string, Evidence> = {
     cost:
       `${N['select.heap']} when the chosen value is stored somewhere that outlives the loop ` +
       `(CI ${N['select.heap.ci10k']} at n=10000, ${N['select.heap.ci100k']} at n=100000)`,
-    source: `bench/select.jl, ${N['select.cells']} cells, 20 pairs each`,
+    source: `bench/select.jl, ${cells(N['select.cells'])}, 20 pairs each`,
     silent:
       `on numbers the effect is small and changes sign with the working set — ` +
       `${N['select.silent.number']} across both sizes, intervals ` +
@@ -198,7 +204,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       `${N['chained.entries.n10000']} at n=10000 (CI ${N['chained.entries.n10000.ci']}), ` +
       'where the waste is a two-element array per key on top of the array itself — every ' +
       'stage allocates a whole array that the next stage immediately discards',
-    source: `bench/chained.jl, ${N['chained.cells']} cells in the 0.3 sweep, 20 pairs each`,
+    source: `bench/chained.jl, ${cells(N['chained.cells'])} in the 0.3 sweep, 20 pairs each`,
     silent:
       `reading the finished array costs nothing (${N['chained.silent.reads']} across all ` +
       `six forms), and at n=100000 map-then-filter falls to ${N['chained.silent.big']}, ` +
@@ -222,7 +228,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       'no value common to all three, so rule 13 withdraws it and this range no longer ' +
       'reaches down into it (TC-37)',
     source:
-      `bench/inline.jl, ${N['inline.cells']} cells, 20 pairs each; the inlining decision ` +
+      `bench/inline.jl, ${cells(N['inline.cells'])}, 20 pairs each; the inlining decision ` +
       'itself confirmed with --trace-turbo-inlining, which reports the padded callee as ' +
       '"cannot consider"',
     severity: 'warn',
@@ -245,7 +251,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       `${N['delete.rows.constr']} at n=256, where the delete is paid on every object built, ` +
       `and ${N['delete.single.constr']} for the single object`,
     source:
-      `bench/delete.jl, ${N['delete.cells']} cells, 20 pairs each, every cell replicated ` +
+      `bench/delete.jl, ${cells(N['delete.cells'])}, 20 pairs each, every cell replicated ` +
       'three times; three cells disagree across sweeps and one is void, and all four are in ' +
       'the file',
     silent:

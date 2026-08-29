@@ -142,7 +142,7 @@ Still open from this entry: the `suggest` mode for the writing consumer, and
 `min_self_pct` remains a constant nobody has measured — it is printed on every
 run and the TOML owns it, which is the disclosure and not the fix.
 
-## TC-70 — a derived count is interpolated into prose that assumes it is plural (2026-08-28, open)
+## TC-70 — a derived count is interpolated into prose that assumes it is plural (2026-08-28, FIXED 2026-08-29)
 
 `closed-world`'s source string renders "bench/inline.jl, 1 cells, 20 pairs
 each". The numeral is derived, correctly — `N['inline.cells']` is 1 because that
@@ -157,8 +157,12 @@ these strings.
 count never precedes a bare noun. `lib/report.ts` already has a `plural()`;
 `lib/rules.ts` would need it too, which is one import and no new mechanism.
 
-Found 2026-08-28 while reading the strings for TC-48. Recorded and not fixed,
-per the triage protocol.
+**FIXED 2026-08-29.** A `cells()` helper in `lib/rules.ts` agrees the noun with
+the derived numeral, and a test walks every `EVIDENCE` string for `N cell(s)`
+and fails when the two disagree — so the next sweep rule 13 withdraws down to
+one cell cannot reintroduce it.
+
+Found 2026-08-28 while reading the strings for TC-48.
 
 ## TC-69 — closed-world cannot see through an interface-typed callee, so it is loudest on the best-abstracted code (2026-08-28, partly fixed 2026-08-28 — named, not followed)
 
@@ -198,6 +202,90 @@ a callee with no reachable implementation at all.
 
 That splits one flooding rule into two answers that are each actionable, and it
 reuses the shape-counting `megamorphic-dispatch` already does.
+
+**2026-08-29 — the three causes want three different answers, and only one of
+them is a rule change.**
+
+**1. A native builtin: report nothing. The reason is not that it is fast.**
+`path.join` being quick is the wrong justification — `Array.prototype.sort`, the
+regex methods and `JSON.parse` are real cost centres and they are builtins too.
+The reason is narrower and it holds for all of them: a builtin's body is C++ or
+Torque, so it CANNOT contain any pattern these rules match, and the advice
+"inline what you need from `path.join`" is not actionable by anyone. A note that
+can neither fire a rule nor be acted on is not a note. If the project ever wants
+"an expensive builtin in a hot loop", that is a different rule with its own
+benchmark, and it would name the specific builtins it measured.
+
+**2. An unresolved import: keep it, but say it once.** This is the honest half
+of the rule. The walk really is incomplete, over code that really could contain
+findings, and the cause is a missing `npm install` rather than anything in the
+source. TC-51 already has the shape: one line per RUN, not one per site, exiting
+non-zero with `DEPENDENCIES MISSING`.
+
+**3. Interface dispatch: this is the one to solve, and solving it produces
+findings rather than removing them.** At an interface-typed callee, enumerate
+every type assignable to that interface in the program and count distinct
+property sets — the counting `megamorphic-dispatch` already implements:
+
+- **one implementation** — follow it and keep walking. Not an escape at all, and
+  the rules then run over a body they currently never see.
+- **two to four** — polymorphic, inside V8's four-map budget. A note at most.
+- **five or more** — this IS a megamorphic dispatch site. Emit a
+  `megamorphic-dispatch` finding, with the benchmark that rule already carries.
+
+**The name of the rule is the assumption it needs.** This is sound only for a
+closed program. A library that exports the interface can be implemented by a
+consumer no checkout here contains, so the count is a LOWER bound and the tool
+must print which assumption it made rather than pretend the enumeration is
+complete. Two further limits, both already this queue's oldest lesson: TypeScript
+is structurally typed, so assignability has to be tested against every object
+literal and class rather than read off `implements` clauses; and implementations
+are still not maps, so two structurally identical classes with different
+prototypes are two maps and this counting under-counts them exactly as TC-60
+under-counts typed arrays.
+
+**2026-08-29 — correction to 3, from the owner: count what REACHES the site, not
+what could fit the interface.** Enumerating every type assignable to an
+interface is the wrong question and it over-counts badly, because TypeScript is
+structural: dozens of shapes in a checkout satisfy a two-method interface while
+never going anywhere near this call. The right question is a dataflow one — walk
+the call graph and count the shapes that ACTUALLY arrive at this receiver.
+
+From the call site, walk back: the receiver is a parameter, so look at every
+call site of the enclosing function; each argument is a local, a field or
+another parameter, so follow it to an allocation — an object literal, a `new`,
+a factory return. Propagate to a fixpoint. What lands is the set of allocation
+sites that can reach this receiver, and their distinct property sets are the
+count. This is ordinary 0-CFA, it is well understood, and the AST plus the
+checker have everything it needs.
+
+**It is more precise in the direction that matters.** In `@noble/curves` the
+`Fp` reaching each site is built at ONE place. Flow analysis resolves to one
+implementation, the walk continues into it, and 2,113 warnings become zero
+warnings plus a deeper walk. Structural enumeration would have found every
+shape with a `mul` and declared the site megamorphic — a false finding where
+this gives a true silence.
+
+**And the annotation makes it bounded.** The analysis is rooted at the
+annotated function, not whole-program: the only receivers that matter are the
+ones inside that tree. That is the difference between a research-scale points-to
+analysis and something a checker can run per invocation.
+
+**The honest boundary moves but does not disappear.** A value with no visible
+allocation — from `JSON.parse`, a network response, a callback a consumer
+registers — has no site to count. One such source makes the count a lower bound,
+and the tool must say the receiver has an unknown origin rather than report a
+number it cannot stand behind. That is the same statement `closed-world` exists
+to make, now made about a value instead of about a call.
+
+**One mechanism, two rules.** Counting the allocation sites that reach a load
+site IS the analysis TC-67 needs for split-construction — there the question is
+whether the literals reaching one property access disagree on keys or order.
+Build it once and both rules follow. That makes this the single highest-leverage
+piece of machinery on the queue.
+
+Doing 1 and 2 removes almost all of the 78,346 warnings in TC-64. Doing 3 turns
+what is left into either silence or the tool's best-evidenced rule.
 
 Found 2026-08-28 in the TC-64 survey.
 
