@@ -1,9 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { CITATIONS, derive, markdown, overGate, unreplicable, withoutBlock } from '../lib/derive.ts';
+import { deriveBuiltins, loweredCases } from '../lib/derive-builtins.ts';
+import { BUILTINS } from '../lib/builtins.ts';
 import { N } from '../lib/numbers.ts';
 import { load, program } from '../lib/ts.ts';
 import { scan, type Mark } from '../lib/scan.ts';
@@ -724,6 +727,95 @@ test('a call into the platform is counted, not listed', () => {
   assert.strictEqual(run.status, 0);
 });
 
+// The same platform, with no `@types/node` anywhere — the state of a real
+// checkout whose node_modules is absent. `path.join` then resolves to no
+// symbol at all, and the walk reads the import's own specifier instead: a
+// `node:*` or `builtinModules` name is the platform no matter what is
+// installed. The fixture is copied OUT of this repository first, because in
+// here @types/node resolves and the resolved branch (the test above) fires
+// instead. A genuinely opaque application callee in the same file must STAY a
+// finding — silencing it too would be silencing the rule (BUGS TC-55, TC-69
+// cause 1).
+test('a platform call with no @types/node is still the platform, and opaque code still fires', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jitmax-builtins-'));
+  try {
+    fs.copyFileSync(
+      path.join(root, 'test', 'fixtures', 'builtins', 'entry.ts'),
+      path.join(dir, 'entry.ts')
+    );
+    const run = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), '.'], {
+      cwd: dir,
+      encoding: 'utf8',
+    });
+    assert.match(run.stdout, /0 errors, 1 warning/);
+    assert.match(run.stdout, /2 calls into the platform, not listed/);
+    assert.strictEqual(
+      (run.stdout.match(/warn {2}closed-world/g) ?? []).length,
+      1,
+      `one finding for the opaque callee and none for the platform:\n${run.stdout}`
+    );
+    assert.match(run.stdout, /calls opaque/);
+    assert.ok(!run.stdout.includes('path.join'), 'path.join was still reported');
+    assert.ok(!run.stdout.includes('readFileSync'), 'readFileSync was still reported');
+    // Math.max is not a platform CALL: TurboFan lowers it, so no call boundary
+    // exists at the site — a version-specific claim, so the line names the V8
+    // the list was derived from (BUGS TC-70).
+    assert.match(run.stdout, /1 call lowered to inline code, not listed/);
+    assert.ok(
+      run.stdout.includes(`V8 ${BUILTINS.version} @ ${BUILTINS.revision.slice(0, 10)}`),
+      `the lowered line names the pin:\n${run.stdout}`
+    );
+    assert.notStrictEqual(run.status, 2, run.stderr);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// The lowered-builtin list itself. Derived, never hand-written (BUGS TC-70):
+// lowering describes the CALL BOUNDARY, not the work — Array.prototype.sort is
+// lowered and still O(n log n) — so the only claim the list may carry is
+// membership, and these are the members TC-70 checked against the pinned tree.
+test('the lowered list carries the known-lowered names and none of the known-not-lowered', () => {
+  for (const name of ['ArrayPrototypeSort', 'MathMax', 'RegExpPrototypeTest']) {
+    assert.ok(BUILTINS.lowered.includes(name), `${name} is lowered at the pin and must be listed`);
+  }
+  for (const name of ['JsonParse', 'ObjectKeys', 'RegExpPrototypeExec']) {
+    assert.ok(!BUILTINS.lowered.includes(name), `${name} is not lowered at the pin`);
+  }
+  // The static spellings scan.ts matches by text, and the two TC-70 names most
+  // worth pinning: Math.max is in, JSON.parse can never be.
+  assert.ok(BUILTINS.statics.includes('Math.max'));
+  assert.ok(!BUILTINS.statics.includes('JSON.parse'));
+  // Every static spelling is the spelling of a LOWERED builtin: the mapping
+  // selects from the derived list and can never add to it.
+  assert.ok(BUILTINS.statics.length <= BUILTINS.lowered.length);
+});
+
+// The drift assertion: the committed artifact against what the pinned V8
+// source yields today. `make build` regenerates; this test only compares, so a
+// stale artifact fails here rather than being silently refreshed. Without the
+// gitignored v8src/ checkout the comparison cannot look, and it says so as a
+// skip instead of passing quietly — `make v8-check` documents the clone.
+test('the committed lowered list is what the pinned V8 source yields', (t) => {
+  if (!fs.existsSync(path.join(root, 'v8src'))) {
+    t.skip('v8src/ is missing, so the list cannot be re-derived — see CLAUDE.md for the clone');
+    return;
+  }
+  assert.deepStrictEqual(
+    deriveBuiltins(root),
+    BUILTINS,
+    'lib/builtins.ts is stale against v8src — run `make build` and commit the result'
+  );
+});
+
+// The extraction refuses to derive from nothing: a reducer file with no
+// `case Builtin::k…` labels means the file no longer looks like itself, and an
+// empty list recorded as a result would silence every closed-world finding on
+// the strength of a parse failure.
+test('the derivation fails loudly on a source it cannot read a list from', () => {
+  assert.throws(() => loweredCases('// nothing resembling a case label'), /no longer looks like/);
+});
+
 // Severity is the exit-code contract, so it is tested through the binary too.
 // `closed-world` fires on a callee with no readable body and no sweep measures
 // that program, so it warns rather than erring — and a warning must not fail a
@@ -873,6 +965,76 @@ test('every vendored example is covered by the MIT notice, and the notice covers
 // Every ratio on the page must BE a value in the derived table — not merely
 // look like one. A sweep that moves therefore breaks the build instead of
 // leaving the page quoting a measurement that no longer exists.
+// README narrates history, so the page's rule — every ratio must BE a derived
+// value — would fail on honest sentences: a superseded range quoted AS
+// superseded, a withdrawn rule's cost, the three sweeps of a cell rule 13
+// refuses. The register below is the shape that works. Every ratio in README
+// prose is either derived or listed here with the reason it is not, so a NEW
+// typed ratio fails the build while history stays sayable (BUGS TC-73).
+const HISTORICAL: Record<string, string> = {
+  // Superseded ranges, quoted as superseded.
+  '4.42-4.79x': 'closed-world before three replications, quoted as what it used to read',
+  '3.21-4.95x': 'closed-world before rule 13 withdrew its n=100000 cell',
+  '6.48-7.51x': 'map-then-filter before rule 13 was enforced in lib/derive.ts',
+  '1.00-1.15x': 'the omit read cells as they rejected before re-measurement',
+  // Rules this project withdrew. Their costs are real and ship nothing.
+  '1.39-1.66x': 'boxed-elements: a genuinely boxed array, the rule was withdrawn anyway',
+  '1.58-1.69x': 'boxed-elements, the build half of the same withdrawn rule',
+  '0.96-1.08x': 'the declared-type case boxed-elements fired on, which measured nothing',
+  '1.21-1.34x': 'the post-construction property add, refuted and shipping no rule',
+  '0x': 'the delete-on-a-singleton refutation this project published and then overturned',
+  '6.17-6.34x': 'the 16-keyed-store dictionary effect: measured, no rule, BUGS TC-12',
+  // The three sweeps of a cell rule 13 refuses, printed as the refutation.
+  '1.64x': 'one of three disagreeing sweeps, quoted to show they disagree',
+  '0.91x': 'one of three disagreeing sweeps, quoted to show they disagree',
+  '0.89x': 'one of three disagreeing sweeps, quoted to show they disagree',
+  '17.34x': 'one of three disagreeing sweeps of the omit read cell',
+  '19.34x': 'one of three disagreeing sweeps of the omit read cell',
+  '20.10x': 'one of three disagreeing sweeps of the omit read cell',
+  '20.29x': 'one of the three fresh sweeps that do agree',
+  '18.09x': 'one of the three fresh sweeps that do agree',
+  '19.88x': 'one of the three fresh sweeps that do agree',
+  '0.98-1.03x': 'the cleanEnum read cells, rejecting at a 256-member enum',
+  '1.11x': 'one of three sweeps of a read cell that agrees on no effect',
+  '1.01x': 'one of three sweeps of a read cell that agrees on no effect',
+  // bench/example.jl, quoted in prose and not yet behind a citation. These are
+  // the ones that SHOULD be derived, and BUGS TC-73 says so.
+  '18.78-20.87x': 'bench/example.jl, omit reads at 12 keys — not yet a citation',
+  '0.97-1.04x': 'bench/example.jl, omit reads at 48 keys — not yet a citation',
+  '1.57-2.06x': 'bench/example.jl, where the before half is faster — not yet a citation',
+  '1.10-1.12x': 'bench/example.jl, cleanEnum at 16 — not yet a citation',
+  '1.03-1.10x': 'bench/example.jl, cleanEnum at 256 — not yet a citation',
+  // Ordinary prose, not a measurement of anything.
+  '2x': "the calibration tolerance: a cell missing 120ms by more than this throws",
+  '8x': 'a ratio of two published ratios, said in words',
+  '200x': 'a round figure in a sentence about what a microbenchmark is not',
+  '5x': 'an anecdote about what %GetOptimizationStatus reported during a slowdown',
+};
+
+test('every ratio in README prose is derived, or registered as history', () => {
+  const prose = withoutBlock(fs.readFileSync(path.join(root, 'README.md'), 'utf8'))
+    .replace(/[\u2013\u2014]/g, '-');
+  const RATIO = /\b\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?x\b/g;
+  const values = new Set<string>(Object.values(N));
+  for (const v of Object.values(N)) for (const m of v.matchAll(RATIO)) values.add(m[0]);
+
+  const quoted = [...new Set([...prose.matchAll(RATIO)].map((m) => m[0]))];
+  assert.ok(quoted.length > 0, 'README quotes no ratios — the regex has stopped matching');
+
+  const unexplained = quoted.filter((q) => !values.has(q) && !(q in HISTORICAL));
+  assert.deepStrictEqual(
+    unexplained,
+    [],
+    `README prose quotes ${unexplained.join(', ')}, which is neither a derived number nor ` +
+      'registered as history. Derive it, or add it to HISTORICAL with the reason it cannot be.'
+  );
+
+  // The register may not outlive what it explains: an entry that becomes a
+  // derived value, or stops appearing, is a line nobody will notice is stale.
+  const dead = Object.keys(HISTORICAL).filter((h) => !quoted.includes(h) || values.has(h));
+  assert.deepStrictEqual(dead, [], `HISTORICAL still lists ${dead.join(', ')}, which README no longer needs it for`);
+});
+
 test('every ratio on the published page is a derived number', () => {
   const page = fs.readFileSync(path.join(root, 'site', 'index.html'), 'utf8')
     .replace(/&ndash;|&mdash;|[–—]/g, '-');
