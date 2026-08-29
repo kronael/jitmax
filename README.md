@@ -372,11 +372,15 @@ published number is no longer what its rows say.
 | `0.96-1.12` | `bench/delete.jl` — every interval measured for that cell |
 | `0.98x and 1.05x and 1.18x` | `bench/delete.jl` — the three construction-counted sweeps at n=16384 — withdrawn under rule 13, quoted as the refutation it is |
 | `3.22-4.65x` | `bench/example.jl` — radash assign — the whole call, both sizes, three sweeps each |
+| `1.57-2.06x` | `bench/example.jl` — radash assign — the caller's reads of the result, both sizes, what each cell's three sweeps agree on |
 | `1.62-3.32x` | `bench/example.jl` — es-toolkit omit — the whole call, 12 and 48 keys |
+| `n=12 and n=48` | `bench/example.jl` — the key counts es-toolkit omit was swept at, which delete-property quotes in its fix |
 | `11.2-11.6x` | `bench/example.jl` — es-toolkit omit — the caller's reads of the result at 12 keys |
-| `0.99-1.05x` | `bench/example.jl` — the same at 48 keys, where the fix stops fixing the read |
-| `1.03-1.20x` | `bench/example.jl` — zod cleanEnum — the whole call, both sizes |
+| `0.97-1.04x` | `bench/example.jl` — the same at 48 keys, where the fix stops fixing the read — what its three sweeps agree on |
+| `1.10-1.12x` | `bench/example.jl` — zod cleanEnum — the whole call at a 16-member enum, what its three sweeps agree on |
+| `1.03-1.10x` | `bench/example.jl` — the same at 256 members — rejected under rule 6 (the broad-warning bar), quoted as the refutation it is |
 | `1.36-1.38x` | `bench/example.jl` — remeda mergeAll — building the result at n=8 |
+| `18.78-20.87x` | `bench/example.jl` — the same at n=64 — the triple that disagreed, re-swept, and what these three agree on |
 | `0.11-0.12x` | `bench/example.jl` — remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps |
 
 <!-- /generated -->
@@ -658,7 +662,7 @@ is which is worth more than four more tables.
 |---|---|
 | `accumulating-spread` | radash `assign`, remeda `mergeAll` — **3.22-4.65x**, and a read cost the fix line now carries |
 | `delete-property` | es-toolkit `omit` — **1.62-3.32x**, and a width past which it stops |
-| `chained-allocation` | zod `cleanEnum` — **rejects at both sizes**, published above |
+| `chained-allocation` | zod `cleanEnum` — **1.10-1.12x** at 16 members clears the broad-warning bar; **rejected under rule 6 at 256** (1.03-1.10x — lower bound under 1.05x, point estimate under 1.10x), published above |
 | `allocating-select` | **no instance of the measured shape in 2953 functions.** Its six findings are all `x = advance(x, step)` — `date = addMinutes(date, step)` in four date-fns functions, `sink = lazy(sink)` in es-toolkit's `pipe`. The benchmark measured a *choice* between two values where the incumbent almost always wins, and the fix, "compare first and assign only when x really changes", saves an allocation exactly on the passes that change nothing. A cursor changes on every pass. `BUGS.md` TC-18 |
 | `megamorphic-elements` | **structurally impossible.** The rule fires on a *parameter*, so its fix — "get the element type to four shapes or fewer, or give it one construction path" — is always a change to whoever built the array, never to the function that was flagged. No before/after pair of the flagged function can carry it. `BUGS.md` TC-19 |
 | `megamorphic-dispatch` | **nothing to demonstrate.** Zero findings in 850 functions |

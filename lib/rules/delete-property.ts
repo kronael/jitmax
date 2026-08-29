@@ -1,5 +1,6 @@
 import type * as TS from 'typescript';
-import { at } from '../scan.ts';
+import type { Ts } from '../ts.ts';
+import { at, targetsOf, type Mark } from '../scan.ts';
 import { N } from '../numbers.ts';
 import { cells, isArray, walk, type Evidence, type Rule } from './shared.ts';
 
@@ -31,6 +32,169 @@ const evidence: Evidence = {
   defects: ['TC-9'],
 };
 
+// "Assign undefined" is correct about V8 — `{b: undefined}` shares the map of
+// `{b: 1}` — and not always correct about the program: an absent key and a key
+// holding undefined differ to spread (which copies it), to `in`, and to
+// Object.keys and its for-in twin.
+//
+// NOT to JSON.stringify, which TC-79 listed and which omits BOTH:
+// `JSON.stringify({x:1}) === JSON.stringify({x:1, k: undefined})` is true. It
+// was an arm here, so the tool withdrew a safe rewrite and asserted a false
+// fact about JavaScript at the same time. TC-79's list is wrong on that member
+// and the entry is amended rather than implemented as written. Immich's
+// `removeUndefinedKeys` exists to OMIT keys from a database SET clause, and
+// the printed rewrite would have written NULL to columns meant to be left
+// alone (BUGS TC-79). The tree is already walked, so this checks: it follows
+// the deleted object through aliases, arguments and returns across every body
+// the mark reaches, and looks for the four observers. Order-insensitive on
+// purpose — proving an observer runs only before the delete is control flow
+// this walk does not do, so a hit anywhere drops the rewrite, which errs
+// toward the fix that is always sound.
+interface Observed {
+  op: string;
+  line: number;
+}
+
+interface ObjectUses {
+  // Undirected alias edges: an argument and its parameter, both ends of a
+  // `const y = x`, a returned local and the variable the call fills. The
+  // object is one object however it is named, which is why the edges have no
+  // direction.
+  edges: Map<TS.Symbol, Set<TS.Symbol>>;
+  observed: Map<TS.Symbol, Observed>;
+}
+
+// The symbol a value expression is known by: the identifier's, or the
+// property's for `this.cache` — the same symbol every other reference to that
+// name resolves to, which is what lets one object be tracked across bodies.
+function symAt(ts: Ts, checker: TS.TypeChecker, e: TS.Expression): TS.Symbol | undefined {
+  let n = e;
+  while (
+    ts.isParenthesizedExpression(n) ||
+    ts.isAsExpression(n) ||
+    ts.isNonNullExpression(n) ||
+    ts.isTypeAssertionExpression(n)
+  ) {
+    n = n.expression;
+  }
+  if (ts.isIdentifier(n) || ts.isPropertyAccessExpression(n)) {
+    return checker.getSymbolAtLocation(ts.isIdentifier(n) ? n : n.name);
+  }
+  return undefined;
+}
+
+const usesCache = new WeakMap<Mark, ObjectUses>();
+
+function objectUses(ts: Ts, checker: TS.TypeChecker, mark: Mark): ObjectUses {
+  const have = usesCache.get(mark);
+  if (have) return have;
+  const edges = new Map<TS.Symbol, Set<TS.Symbol>>();
+  const observed = new Map<TS.Symbol, Observed>();
+  const edge = (a: TS.Symbol | undefined, b: TS.Symbol | undefined): void => {
+    if (!a || !b || a === b) return;
+    (edges.get(a) ?? edges.set(a, new Set()).get(a)!).add(b);
+    (edges.get(b) ?? edges.set(b, new Set()).get(b)!).add(a);
+  };
+  const see = (sym: TS.Symbol | undefined, op: string, node: TS.Node, sf: TS.SourceFile): void => {
+    if (!sym || observed.has(sym)) return;
+    observed.set(sym, { op, line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1 });
+  };
+  const bodies = new Set(mark.reached.map((b) => b.node));
+  const returnsOf = new Map<TS.Node, Set<TS.Symbol>>();
+  const links: Array<{ call: TS.CallExpression; decl: TS.Node }> = [];
+
+  for (const body of mark.reached) {
+    const sf = body.sf;
+    const visit = (node: TS.Node): void => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        edge(checker.getSymbolAtLocation(node.name), symAt(ts, checker, node.initializer));
+      } else if (ts.isBinaryExpression(node)) {
+        if (node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+          edge(symAt(ts, checker, node.left), symAt(ts, checker, node.right));
+        } else if (node.operatorToken.kind === ts.SyntaxKind.InKeyword) {
+          see(symAt(ts, checker, node.right), '`in`', node, sf);
+        }
+      } else if (ts.isForInStatement(node)) {
+        see(symAt(ts, checker, node.expression), 'for-in', node, sf);
+      } else if (ts.isSpreadElement(node) || ts.isSpreadAssignment(node)) {
+        see(symAt(ts, checker, node.expression), 'a spread', node, sf);
+      } else if (ts.isCallExpression(node)) {
+        const callee = node.expression;
+        if (ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression)) {
+          const ns = callee.expression.text;
+          const m = callee.name.text;
+          const op = ns === 'Object' && m === 'keys' ? 'Object.keys' : undefined;
+          if (op !== undefined && node.arguments[0]) {
+            see(symAt(ts, checker, node.arguments[0]), op, node, sf);
+          }
+        }
+        for (const decl of targetsOf(ts, checker, node.expression)) {
+          const target = bodies.has(decl) ? decl : undefined;
+          if (!target || !ts.isFunctionLike(target)) continue;
+          links.push({ call: node, decl: target });
+          target.parameters.forEach((p, i) => {
+            const arg = node.arguments[i];
+            if (arg && ts.isIdentifier(p.name)) {
+              edge(checker.getSymbolAtLocation(p.name), symAt(ts, checker, arg));
+            }
+          });
+        }
+      } else if (ts.isReturnStatement(node) && node.expression) {
+        let fn: TS.Node | undefined = node.parent;
+        while (fn && !ts.isFunctionLike(fn)) fn = fn.parent;
+        const sym = fn && symAt(ts, checker, node.expression);
+        if (fn && sym) (returnsOf.get(fn) ?? returnsOf.set(fn, new Set()).get(fn)!).add(sym);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(body.node);
+  }
+
+  // A returned alias flows into whatever holds the call's value.
+  for (const { call, decl } of links) {
+    const returned = returnsOf.get(decl);
+    if (!returned) continue;
+    const p = call.parent;
+    const holder =
+      p && ts.isVariableDeclaration(p) && ts.isIdentifier(p.name)
+        ? checker.getSymbolAtLocation(p.name)
+        : p && ts.isBinaryExpression(p) && p.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        ? symAt(ts, checker, p.left)
+        : undefined;
+    for (const r of returned) edge(holder, r);
+  }
+
+  const uses = { edges, observed };
+  usesCache.set(mark, uses);
+  return uses;
+}
+
+// The first observer reachable from the deleted object, or undefined when the
+// walk finds none — in which case the rewrite stands, with its precondition.
+function distinguisher(
+  ts: Ts,
+  checker: TS.TypeChecker,
+  mark: Mark,
+  target: TS.Expression
+): Observed | undefined {
+  const seed = symAt(ts, checker, target);
+  if (!seed) return undefined;
+  const { edges, observed } = objectUses(ts, checker, mark);
+  const queue = [seed];
+  const seen = new Set(queue);
+  for (let i = 0; i < queue.length; i++) {
+    const hit = observed.get(queue[i]!);
+    if (hit) return hit;
+    for (const next of edges.get(queue[i]!) ?? []) {
+      if (!seen.has(next)) {
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  return undefined;
+}
+
 // delete is the one operation that moves an object to dictionary mode and does
 // not move back.
 //
@@ -40,7 +204,7 @@ const evidence: Evidence = {
 // one — `%HasFastProperties` is false on BOTH sides there, because a wide
 // object filled key by key normalizes exactly as `delete` does. The rule cannot
 // see the width, so the fix line states it instead of pretending it away.
-const detect: Rule = (ts, checker, body, add) => {
+const detect: Rule = (ts, checker, body, add, mark) => {
   // Deleting an array ELEMENT does not put the array in dictionary mode. It
   // makes the elements backing store holey — PACKED_DOUBLE to HOLEY_DOUBLE, a
   // different representation in a different part of V8, and a cost nobody
@@ -84,13 +248,37 @@ const detect: Rule = (ts, checker, body, add) => {
       !onArray(node.expression) &&
       !onHostObject(node.expression)
     ) {
+      // The rewrite half of the fix is conditional on the program, and the
+      // tree is checked rather than caveated (BUGS TC-79): where the deleted
+      // object reaches a spread, `in` or Object.keys in the
+      // annotated tree, a key holding undefined is not an absent key and the
+      // rewrite is dropped. Where it reaches none, the rewrite stands and
+      // states its precondition — the tree is not the whole program, and the
+      // object may still escape to a reader the walk cannot see.
+      const object = (ts.isPropertyAccessExpression(node.expression) ||
+        ts.isElementAccessExpression(node.expression))
+        ? node.expression.expression
+        : node.expression;
+      const seen = distinguisher(ts, checker, mark, object);
+      // The two key counts come from the rows es-toolkit omit was swept at, not
+      // from this string: they were the last user-facing integers in this rule
+      // typed by hand, and the test asserted the sentence still said 12 and 48
+      // rather than that the data still did (the re-aimed BUGS TC-48).
+      const rebuild =
+        `build the object without the key — the rebuild helps at the smaller of ${N['ex.omit.sizes']} and not at the larger, ` +
+        'where filling it key by key normalizes it too';
       add({
         ...at(body.sf, node),
         rule: 'delete-property',
         message: `delete ${node.expression.getText(body.sf)} puts its object in dictionary mode`,
-        fix:
-          'assign undefined where the key may stay present, or build the object without it — ' +
-          'the rebuild helps at 12 keys and not at 48, where filling it key by key normalizes it too',
+        fix: seen
+          ? `${seen.op} reads ${object.getText(body.sf)} at line ${seen.line} and tells an ` +
+            `absent key from one holding undefined, so assigning undefined is not a rewrite ` +
+            `here; ${rebuild}`
+          : 'assign undefined where the key may stay present — equivalent only while nothing ' +
+            'downstream tells an absent key from one holding undefined (spread copies it, ' +
+            '`in` and Object.keys see it; JSON.stringify does not, it omits both) — or ' +
+            rebuild,
       });
     }
   });

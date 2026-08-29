@@ -74,6 +74,14 @@ interface Citation {
   //        matching sweep. Rule 13 is that one sweep cannot see what varies
   //        between two, so a replicated cell has no single interval to quote and
   //        quoting one of the three would be picking the flattering one.
+  // shared rule 13's AGREEMENT: the interval every sweep of a cell contains,
+  //        [max(lo), min(hi)], spanned across cells where the citation reads
+  //        more than one. `cispan` is the UNION of those same intervals — where
+  //        ANY sweep landed — so the two are different claims about identical
+  //        rows, and README printed both for one cell with nothing comparing
+  //        them (BUGS TC-73). A sentence about what three sweeps AGREE on wants
+  //        this one; `range`, the spread of the three point estimates, is a
+  //        third answer again.
   // count  how many distinct cells (variant, baseline, mode, n) matched
   //
   // `point` and `ci` were the singular forms of `range` and `cispan`, and every
@@ -82,12 +90,28 @@ interface Citation {
   // and `cispan` render a single row identically — they needed deleting, and a
   // citation that still wants ONE number out of three sweeps is a citation
   // picking the flattering one.
-  agg: 'range' | 'points' | 'cispan' | 'count' | 'minn' | 'sizes';
+  agg: 'range' | 'points' | 'cispan' | 'shared' | 'count' | 'minn' | 'sizes';
   // Decimal places. The default scales with magnitude; an override is here
   // where the published string does not.
   dp?: number;
   // Quoted verbatim in README as well as in EVIDENCE.
   readme?: boolean;
+  // What this citation's cells claim, which is the bar rule 6 holds them to —
+  // stated on every citation, never inferred, so a new one cannot skip the
+  // question (BUGS TC-84):
+  //   'rule'     evidence a rule ships on. The agreed interval's lower bound
+  //              must clear 1.00x, which also rejects every interval that
+  //              spans 1.0.
+  //   'broad'    a broad warning's evidence — additionally a point estimate at
+  //              or above 1.10x and a lower bound above 1.05x. Only
+  //              `chained-allocation` claims this today: its own EVIDENCE
+  //              holds its silent clause to the broad-warning bar, and no
+  //              other rule's says which kind it is.
+  //   'nothing'  a silent clause's refutation, a below-threshold contrast, an
+  //              interval or count quoted as provenance, history. Rule 6 ships
+  //              a refutation as a result and gates none of these; rule 13
+  //              still does.
+  claims: 'rule' | 'broad' | 'nothing';
   // This citation is ABOUT a superseded sweep and must keep reading it even
   // after its file is re-measured — `spread.array.n10000.earlier` exists to
   // show what the replication withdrew. A citation that is merely waiting for
@@ -100,6 +124,12 @@ interface Citation {
   // reason a stale exception list fails the test suite: the withdrawal has to
   // stop being claimed the moment it stops being true.
   unreplicable?: true;
+  // This citation is ABOUT a cell rule 6 rejects, and quotes its number as the
+  // refutation it is — the same shape as `unreplicable` above, for the other
+  // gate. `claims` still names the bar the cell is judged against; this flag
+  // says the citation publishes the failure rather than the pass. One that
+  // sets it and finds its cell now clears the bar fails loudly.
+  rejected?: true;
 }
 
 // Rows the current runner wrote. CLAUDE.md: a superseded sweep is history,
@@ -109,7 +139,7 @@ interface Citation {
 // together. `bench/run.ts` owns this string; it is repeated rather than
 // imported because that file is an ESM script with a `process.exit` in it.
 const RUNNER = 'r2';
-const current = (r: Row): boolean => r.runner === RUNNER;
+export const current = (r: Row): boolean => r.runner === RUNNER;
 
 // The sweeps that have been re-measured under it, whole. A file moves in here
 // when every cell `bench/sweeps.ts` declares for it has three sweeps under the
@@ -155,6 +185,7 @@ export const CITATIONS: Record<string, Citation> = {
   // shapes a declared type can express and this rule counts. The key-order
   // sweep stays on disk and stays quoted, as the contrast it is.
   'elem.reads': {
+    claims: 'rule',
     file: 'shape-sets.jl',
     cells: 'five distinct property sets, reads only, L1 through RAM',
     pick: (r) => r.mode === 'excl' && r.shapes === 5,
@@ -163,24 +194,28 @@ export const CITATIONS: Record<string, Citation> = {
     readme: true,
   },
   'elem.constr.l1l2': {
+    claims: 'rule',
     file: 'shape-sets.jl',
     cells: 'construction counted, five property sets, L1 and L2',
     pick: (r) => r.mode === 'incl' && r.shapes === 5 && (r.size === 'L1' || r.size === 'L2'),
     agg: 'range',
   },
   'elem.constr.l3': {
+    claims: 'rule',
     file: 'shape-sets.jl',
     cells: 'construction counted at RAM size, five property sets',
     pick: (r) => r.mode === 'incl' && r.shapes === 5 && r.size === 'L3',
     agg: 'range',
   },
   'elem.cells': {
+    claims: 'nothing',
     file: 'shape-sets.jl',
     cells: 'the whole sweep',
     pick: () => true,
     agg: 'count',
   },
   'elem.silent.24': {
+    claims: 'nothing',
     file: 'shape-sets.jl',
     cells: 'two to four property sets, reads only, every size — where the rule stays quiet',
     pick: (r) => r.mode === 'excl' && (r.shapes ?? 0) <= 4,
@@ -191,6 +226,7 @@ export const CITATIONS: Record<string, Citation> = {
   // can express. It is what the rule CANNOT see, and it costs the same order as
   // what it can.
   'elem.keyorder.reads': {
+    claims: 'nothing',
     file: 'shapes-calibrated.jl',
     cells: 'five key orders of ONE key set, reads only, L1 through RAM',
     pick: (r) => r.mode === 'excl' && r.shapes === 5,
@@ -200,6 +236,7 @@ export const CITATIONS: Record<string, Citation> = {
 
   // megamorphic-dispatch
   'disp.proto.reads': {
+    claims: 'rule',
     file: 'dispatch.jl',
     cells: 'a method on a prototype, five and six shapes, reads only',
     // `fresh(r)` sat in this pick and in the two construction ones, to keep the
@@ -213,12 +250,14 @@ export const CITATIONS: Record<string, Citation> = {
     readme: true,
   },
   'disp.proto.four': {
+    claims: 'nothing',
     file: 'dispatch.jl',
     cells: 'a method on a prototype, four shapes, reads only at L1',
     pick: (r) => r.family === 'cls' && r.mode === 'excl' && r.size === 'L1' && r.k === 4,
     agg: 'range',
   },
   'disp.proto.five': {
+    claims: 'rule',
     file: 'dispatch.jl',
     cells: 'a method on a prototype, five shapes, reads only at L1',
     pick: (r) => r.family === 'cls' && r.mode === 'excl' && r.size === 'L1' && r.k === 5,
@@ -227,6 +266,7 @@ export const CITATIONS: Record<string, Citation> = {
     dp: 2,
   },
   'disp.shared.reads': {
+    claims: 'rule',
     file: 'dispatch.jl',
     cells: 'one shared function held as an own property, five and six shapes, reads only',
     pick: (r) => r.family === 'shr' && r.mode === 'excl' && (r.k ?? 0) >= 5,
@@ -234,6 +274,7 @@ export const CITATIONS: Record<string, Citation> = {
     dp: 1,
   },
   'disp.constr.l1l2': {
+    claims: 'rule',
     file: 'dispatch.jl',
     cells: 'five shapes with construction counted, prototype and own-property, L1 and L2',
     pick: (r) =>
@@ -245,24 +286,28 @@ export const CITATIONS: Record<string, Citation> = {
     dp: 1,
   },
   'disp.constr.l3.five': {
+    claims: 'rule',
     file: 'dispatch.jl',
     cells: 'a method on a prototype at RAM size, five and six shapes',
     pick: (r) => r.family === 'cls' && r.mode === 'incl' && r.size === 'L3' && (r.k ?? 0) >= 5,
     agg: 'range',
   },
   'disp.constr.l3.four': {
+    claims: 'nothing',
     file: 'dispatch.jl',
     cells: 'the same cells at two to four shapes',
     pick: (r) => r.family === 'cls' && r.mode === 'incl' && r.size === 'L3' && (r.k ?? 0) <= 4,
     agg: 'range',
   },
   'disp.cells': {
+    claims: 'nothing',
     file: 'dispatch.jl',
     cells: 'the whole sweep',
     pick: () => true,
     agg: 'count',
   },
   'disp.silent.proto4': {
+    claims: 'nothing',
     file: 'dispatch.jl',
     cells: 'four shapes on a prototype method, reads only, every size — where the rule is quiet',
     pick: (r) => r.family === 'cls' && r.mode === 'excl' && r.k === 4,
@@ -270,12 +315,14 @@ export const CITATIONS: Record<string, Citation> = {
     readme: true,
   },
   'disp.silent.shared4': {
+    claims: 'nothing',
     file: 'dispatch.jl',
     cells: 'four shapes on one shared own-property function, reads only, every size',
     pick: (r) => r.family === 'shr' && r.mode === 'excl' && r.k === 4,
     agg: 'range',
   },
   'disp.silent.own': {
+    claims: 'nothing',
     file: 'dispatch.jl',
     cells: 'every shape carrying its OWN function, reads only, two to six targets, every size',
     pick: (r) => r.family === 'lit' && r.mode === 'excl',
@@ -288,18 +335,21 @@ export const CITATIONS: Record<string, Citation> = {
 
   // accumulating-spread
   'spread.array.n1000': {
+    claims: 'rule',
     file: 'spread.jl',
     cells: 'array spread against push at n=1000, construction counted, both sweeps',
     pick: (r) => r.variant === 'spread' && r.mode === 'incl' && r.n === 1000,
     agg: 'range',
   },
   'spread.array.n10000': {
+    claims: 'rule',
     file: 'spread.jl',
     cells: 'the same at n=10000, the three replications',
     pick: (r) => r.variant === 'spread' && r.mode === 'incl' && r.n === 10000 && replicated(r),
     agg: 'range',
   },
   'spread.array.n10000.earlier': {
+    claims: 'nothing',
     file: 'spread.jl',
     cells: 'the two sweeps of that cell that predate the replication',
     pick: (r) => r.variant === 'spread' && r.mode === 'incl' && r.n === 10000 && !replicated(r),
@@ -307,12 +357,14 @@ export const CITATIONS: Record<string, Citation> = {
     history: true,
   },
   'spread.concat': {
+    claims: 'rule',
     file: 'spread.jl',
     cells: 'acc.concat(v) against push at n=1000, construction counted',
     pick: (r) => r.variant === 'concat' && r.mode === 'incl' && r.n === 1000,
     agg: 'range',
   },
   'spread.concat.ci': {
+    claims: 'nothing',
     file: 'spread.jl',
     cells: 'every interval measured for that cell',
     pick: (r) => r.variant === 'concat' && r.mode === 'incl' && r.n === 1000,
@@ -322,18 +374,21 @@ export const CITATIONS: Record<string, Citation> = {
   // caller (BUGS TC-16). An array pushed to reads like an array spread into; an
   // object filled key by key does not.
   'spread.array.reads': {
+    claims: 'nothing',
     file: 'spread.jl',
     cells: 'the finished array read back, spread against push, both sizes and both sweeps',
     pick: (r) => r.variant === 'spread' && r.mode === 'excl',
     agg: 'range',
   },
   'spread.object.reads': {
+    claims: 'nothing',
     file: 'spread-object.jl',
     cells: 'the finished object read back, spread against keyed assignment, n=500',
     pick: (r) => r.variant === 'spread' && r.mode === 'excl' && r.n === 500,
     agg: 'range',
   },
   'spread.object': {
+    claims: 'rule',
     file: 'spread-object.jl',
     cells: 'object spread against keyed assignment at n=500, the three replications',
     pick: (r) => r.variant === 'spread' && r.mode === 'incl' && r.n === 500 && replicated(r),
@@ -341,6 +396,7 @@ export const CITATIONS: Record<string, Citation> = {
     readme: true,
   },
   'spread.assign': {
+    claims: 'rule',
     file: 'spread-object.jl',
     cells: 'Object.assign({}, acc, …) at n=500, the three replications',
     pick: (r) => r.variant === 'assign-copy' && r.mode === 'incl' && r.n === 500 && replicated(r),
@@ -350,24 +406,28 @@ export const CITATIONS: Record<string, Citation> = {
   // live in two files, so the citation reads both rather than the clause
   // quoting two numbers where it makes one point.
   'spread.silent.reads': {
+    claims: 'nothing',
     file: ['spread.jl', 'spread-object.jl'],
     cells: 'all four accumulating forms with construction excluded, every size',
     pick: (r) => r.mode === 'excl',
     agg: 'range',
   },
   'spread.silent.strings.build': {
+    claims: 'nothing',
     file: 'strings.jl',
     cells: 's = s + x, s += x and s = s.concat(x) against a push-and-join, building only',
     pick: (r) => r.mode === 'build',
     agg: 'range',
   },
   'spread.silent.strings.incl': {
+    claims: 'nothing',
     file: 'strings.jl',
     cells: 'the same three with the read back counted',
     pick: (r) => r.mode === 'incl',
     agg: 'range',
   },
   'spread.silent.strings.incl.ci': {
+    claims: 'nothing',
     file: 'strings.jl',
     cells: 'every interval measured for those nine cells',
     pick: (r) => r.mode === 'incl',
@@ -376,42 +436,49 @@ export const CITATIONS: Record<string, Citation> = {
 
   // allocating-select
   'select.heap': {
+    claims: 'rule',
     file: 'select.jl',
     cells: 'the chosen value stored where it outlives the loop, both sizes',
     pick: (r) => r.mode === 'heap',
     agg: 'range',
   },
   'select.heap.ci10k': {
+    claims: 'nothing',
     file: 'select.jl',
     cells: 'the intervals at n=10000, across the first sweep and the three replications',
     pick: (r) => r.mode === 'heap' && r.n === 10000,
     agg: 'cispan',
   },
   'select.heap.ci100k': {
+    claims: 'nothing',
     file: 'select.jl',
     cells: 'the intervals at n=100000, across the first sweep and the three replications',
     pick: (r) => r.mode === 'heap' && r.n === 100000,
     agg: 'cispan',
   },
   'select.cells': {
+    claims: 'nothing',
     file: 'select.jl',
     cells: 'the whole sweep',
     pick: () => true,
     agg: 'count',
   },
   'select.silent.number': {
+    claims: 'nothing',
     file: 'select.jl',
     cells: 'the same loop on numbers, both sizes — where the rule stays quiet',
     pick: (r) => r.mode === 'number',
     agg: 'range',
   },
   'select.silent.number.ci': {
+    claims: 'nothing',
     file: 'select.jl',
     cells: 'every interval measured on numbers',
     pick: (r) => r.mode === 'number',
     agg: 'cispan',
   },
   'select.silent.local': {
+    claims: 'nothing',
     file: 'select.jl',
     cells: 'the boxed form kept in a local, where escape analysis could see it, both sizes',
     pick: (r) => r.mode === 'local',
@@ -424,6 +491,7 @@ export const CITATIONS: Record<string, Citation> = {
   // that cell's three sweeps read 7.51 / 6.58 / 6.48 with no common value —
   // rule 13 withdraws it, and what the rule may claim is what is left (TC-37).
   'chained.mapfilter': {
+    claims: 'broad',
     file: 'chained.jl',
     cells: 'xs.map(f).filter(g) against one fused pass, construction counted, both sizes',
     pick: (r) =>
@@ -434,6 +502,7 @@ export const CITATIONS: Record<string, Citation> = {
     agg: 'range',
   },
   'chained.mapfilter.withdrawn': {
+    claims: 'nothing',
     file: 'chained.jl',
     cells: 'the three sweeps of the n=1000 cell this rule used to headline',
     pick: (r) =>
@@ -446,6 +515,7 @@ export const CITATIONS: Record<string, Citation> = {
     unreplicable: true,
   },
   'chained.mapfilter.ci': {
+    claims: 'nothing',
     file: 'chained.jl',
     cells: 'every interval measured for the cells that replicate',
     pick: (r) =>
@@ -456,6 +526,7 @@ export const CITATIONS: Record<string, Citation> = {
     agg: 'cispan',
   },
   'chained.entries.n1000': {
+    claims: 'broad',
     file: 'chained.jl',
     cells: 'Object.entries(o).map(f) against a for-in walk at n=1000, construction counted',
     pick: (r) =>
@@ -463,6 +534,7 @@ export const CITATIONS: Record<string, Citation> = {
     agg: 'range',
   },
   'chained.entries.n1000.ci': {
+    claims: 'nothing',
     file: 'chained.jl',
     cells: 'every interval measured for that cell',
     pick: (r) =>
@@ -470,6 +542,7 @@ export const CITATIONS: Record<string, Citation> = {
     agg: 'cispan',
   },
   'chained.entries.n10000': {
+    claims: 'broad',
     file: 'chained.jl',
     cells: 'the same at n=10000',
     pick: (r) =>
@@ -480,6 +553,7 @@ export const CITATIONS: Record<string, Citation> = {
     agg: 'range',
   },
   'chained.entries.n10000.ci': {
+    claims: 'nothing',
     file: 'chained.jl',
     cells: 'every interval measured for that cell',
     pick: (r) =>
@@ -490,48 +564,56 @@ export const CITATIONS: Record<string, Citation> = {
     agg: 'cispan',
   },
   'chained.cells': {
+    claims: 'nothing',
     file: 'chained.jl',
     cells: 'the 0.3 sweep, which is every row the dispatch-table kernel wrote',
     pick: (r) => r.kernel === 'dispatch-table',
     agg: 'count',
   },
   'chained.n.min': {
+    claims: 'nothing',
     file: 'chained.jl',
     cells: 'the smallest n any construction-counted cell in this sweep was measured at',
     pick: (r) => r.mode === 'incl',
     agg: 'minn',
   },
   'chained.silent.reads': {
+    claims: 'nothing',
     file: 'chained.jl',
     cells: 'reading the finished array back, all six chained forms, both sizes',
     pick: (r) => r.mode === 'excl',
     agg: 'range',
   },
   'chained.silent.big': {
+    claims: 'nothing',
     file: 'chained.jl',
     cells: 'map then filter with construction counted at n=100000, where bandwidth dominates',
     pick: (r) => r.variant === 'chained' && r.mode === 'incl' && r.n === 100000,
     agg: 'range',
   },
   'chained.silent.keys': {
+    claims: 'nothing',
     file: 'chained.jl',
     cells: 'Object.keys(o).map(f) against the for-in walk that fuses it, construction counted',
     pick: (r) => r.variant === 'keysmap' && r.mode === 'incl',
     agg: 'range',
   },
   'chained.silent.sort': {
+    claims: 'nothing',
     file: 'chained.jl',
     cells: 'xs.map(f).sort() against the same map, construction counted — .sort() is in place',
     pick: (r) => r.variant === 'chainedsort' && r.mode === 'incl',
     agg: 'range',
   },
   'chained.silent.sort.ci': {
+    claims: 'nothing',
     file: 'chained.jl',
     cells: 'every interval measured for those cells',
     pick: (r) => r.variant === 'chainedsort' && r.mode === 'incl',
     agg: 'cispan',
   },
   'chained.silent.split': {
+    claims: 'nothing',
     file: 'chained.jl',
     cells: 's.split(sep).map(f).join(sep) against two different fusions, construction counted',
     pick: (r) => r.variant === 'splitjoin' && r.mode === 'incl',
@@ -540,6 +622,7 @@ export const CITATIONS: Record<string, Citation> = {
 
   // closed-world
   'inline.reads': {
+    claims: 'rule',
     file: 'inline.jl',
     cells: 'a callee past the inlining budget against the same callee under it',
     pick: () => true,
@@ -549,6 +632,7 @@ export const CITATIONS: Record<string, Citation> = {
   // `inline.ci100k` stood here and quoted the interval at n=100000. Rule 13
   // withdraws that cell, so what is published about it is the disagreement.
   'inline.withdrawn.100k': {
+    claims: 'nothing',
     file: 'inline.jl',
     cells: 'the three sweeps at n=100000',
     pick: (r) => r.n === 100000,
@@ -556,12 +640,14 @@ export const CITATIONS: Record<string, Citation> = {
     unreplicable: true,
   },
   'inline.ci1000': {
+    claims: 'nothing',
     file: 'inline.jl',
     cells: 'the interval at n=1000',
     pick: (r) => r.n === 1000,
     agg: 'cispan',
   },
   'inline.cells': {
+    claims: 'nothing',
     file: 'inline.jl',
     cells: 'the whole sweep',
     pick: () => true,
@@ -570,6 +656,7 @@ export const CITATIONS: Record<string, Citation> = {
 
   // delete-property
   'delete.rows': {
+    claims: 'rule',
     file: 'delete.jl',
     cells: 'one delete per object, reads only, at n=16384 and n=262144',
     pick: (r) =>
@@ -582,6 +669,7 @@ export const CITATIONS: Record<string, Citation> = {
     readme: true,
   },
   'delete.rows.sizes': {
+    claims: 'nothing',
     file: 'delete.jl',
     cells: 'the sizes the cells behind delete.rows still replicate at',
     pick: (r) =>
@@ -592,6 +680,7 @@ export const CITATIONS: Record<string, Citation> = {
     agg: 'sizes',
   },
   'delete.vs.undefined': {
+    claims: 'rule',
     file: 'delete.jl',
     cells: 'the same delete against assigning undefined instead, n=16384',
     pick: (r) =>
@@ -600,6 +689,7 @@ export const CITATIONS: Record<string, Citation> = {
     dp: 1,
   },
   'delete.single': {
+    claims: 'rule',
     file: 'delete.jl',
     cells: 'one object with one delete, reads only, every size and every sweep',
     pick: (r) => r.variant === 'shdel' && r.mode === 'excl',
@@ -608,6 +698,7 @@ export const CITATIONS: Record<string, Citation> = {
     readme: true,
   },
   'delete.rows.constr': {
+    claims: 'rule',
     file: 'delete.jl',
     cells: 'one delete per object with construction counted, n=256',
     pick: (r) =>
@@ -616,6 +707,7 @@ export const CITATIONS: Record<string, Citation> = {
     dp: 1,
   },
   'delete.single.constr': {
+    claims: 'rule',
     file: 'delete.jl',
     cells: 'the single object with construction counted, every size',
     pick: (r) => r.variant === 'shdel' && r.mode === 'incl',
@@ -623,18 +715,21 @@ export const CITATIONS: Record<string, Citation> = {
     dp: 1,
   },
   'delete.cells': {
+    claims: 'nothing',
     file: 'delete.jl',
     cells: 'the whole sweep',
     pick: () => true,
     agg: 'count',
   },
   'delete.silent.undef.reads': {
+    claims: 'nothing',
     file: 'delete.jl',
     cells: 'assigning undefined instead of deleting, reads only — the fix, not the defect',
     pick: (r) => r.variant === 'rowundef' && r.mode === 'excl',
     agg: 'range',
   },
   'delete.silent.undef.reads.ci': {
+    claims: 'nothing',
     file: 'delete.jl',
     cells: 'every interval measured for that cell',
     pick: (r) => r.variant === 'rowundef' && r.mode === 'excl',
@@ -644,6 +739,7 @@ export const CITATIONS: Record<string, Citation> = {
   // of the same clause. Its one cell does not replicate; the clause quotes the
   // three sweeps instead of a range they do not agree on.
   'delete.silent.undef.build.withdrawn': {
+    claims: 'nothing',
     file: 'delete.jl',
     cells: 'the three construction-counted sweeps at n=16384',
     pick: (r) => r.variant === 'rowundef' && r.mode === 'incl',
@@ -659,42 +755,97 @@ export const CITATIONS: Record<string, Citation> = {
   // these is far below the microbenchmark ratio the rule cites, which is the
   // most useful thing in the file and the reason the page prints both.
   'ex.assign.whole': {
+    claims: 'rule',
     file: 'example.jl',
     cells: 'radash assign — the whole call, both sizes, three sweeps each',
     pick: (r) => r.example === 'radash-assign' && r.mode === 'incl',
     agg: 'range',
   },
+  'ex.assign.reads': {
+    claims: 'rule',
+    file: 'example.jl',
+    cells: "radash assign — the caller's reads of the result, both sizes, what each cell's three sweeps agree on",
+    pick: (r) => r.example === 'radash-assign' && r.mode === 'excl',
+    agg: 'shared',
+  },
   'ex.omit.whole': {
+    claims: 'rule',
     file: 'example.jl',
     cells: 'es-toolkit omit — the whole call, 12 and 48 keys',
     pick: (r) => r.example === 'estoolkit-omit' && r.mode === 'incl',
     agg: 'range',
   },
+  // The two sizes `delete-property`'s printed FIX names — the only user-facing
+  // numbers in that rule that were typed by hand rather than read from the
+  // rows, which is the re-aimed TC-48. The test asserted the sentence still
+  // said 12 and 48, never that the data still did.
+  'ex.omit.sizes': {
+    claims: 'nothing',
+    file: 'example.jl',
+    cells: 'the key counts es-toolkit omit was swept at, which delete-property quotes in its fix',
+    pick: (r) => r.example === 'estoolkit-omit' && r.mode === 'excl',
+    agg: 'sizes',
+  },
   'ex.omit.reads12': {
+    claims: 'rule',
     file: 'example.jl',
     cells: "es-toolkit omit — the caller's reads of the result at 12 keys",
     pick: (r) => r.example === 'estoolkit-omit' && r.mode === 'excl' && r.n === 12,
     agg: 'range',
   },
   'ex.omit.reads48': {
+    claims: 'nothing',
     file: 'example.jl',
-    cells: 'the same at 48 keys, where the fix stops fixing the read',
+    cells: 'the same at 48 keys, where the fix stops fixing the read — what its three sweeps agree on',
     pick: (r) => r.example === 'estoolkit-omit' && r.mode === 'excl' && r.n === 48,
-    agg: 'range',
+    // The sentence quoting this says the interval spans 1.0, which is rule 13's
+    // agreement — not the `range` of the three point estimates it used to
+    // render. README carried both, 0.99-1.05x in the table and 0.97-1.04x in
+    // the prose, for one cell, and nothing compared them.
+    agg: 'shared',
   },
-  'ex.cleanenum.whole': {
+  // One key per size. The paragraph about this example gives a figure for each,
+  // and the range over both that stood here (1.03-1.20x) was a third number for
+  // the same rows that no sentence made.
+  'ex.cleanenum.whole16': {
+    claims: 'broad',
     file: 'example.jl',
-    cells: 'zod cleanEnum — the whole call, both sizes',
-    pick: (r) => r.example === 'zod-clean-enum' && r.mode === 'incl',
-    agg: 'range',
+    cells: 'zod cleanEnum — the whole call at a 16-member enum, what its three sweeps agree on',
+    pick: (r) => r.example === 'zod-clean-enum' && r.mode === 'incl' && r.n === 16,
+    agg: 'shared',
+  },
+  'ex.cleanenum.whole256': {
+    claims: 'broad',
+    file: 'example.jl',
+    // The transfer TC-83 is about: the cell replicates and clears 1.0, and
+    // still does not clear the bar a broad warning needs — the agreed lower
+    // bound is under 1.05x and the point estimate under 1.10x. The number is
+    // published as that verdict, not as evidence.
+    rejected: true,
+    cells: 'the same at 256 members',
+    pick: (r) => r.example === 'zod-clean-enum' && r.mode === 'incl' && r.n === 256,
+    agg: 'shared',
   },
   'ex.mergeall.build': {
+    claims: 'rule',
     file: 'example.jl',
     cells: 'remeda mergeAll — building the result at n=8',
     pick: (r) => r.example === 'remeda-merge-all' && r.mode === 'incl' && r.n === 8,
     agg: 'range',
   },
+  'ex.mergeall.build64': {
+    claims: 'rule',
+    file: 'example.jl',
+    cells: 'the same at n=64 — the triple that disagreed, re-swept, and what these three agree on',
+    pick: (r) => r.example === 'remeda-merge-all' && r.mode === 'incl' && r.n === 64,
+    agg: 'shared',
+    // Two places, not the one the magnitude gives. The end-to-end tables print
+    // every sweep and every agreement at two, and 18.8-20.9x here would be the
+    // same interval spelled two ways nine lines apart.
+    dp: 2,
+  },
   'ex.mergeall.reads': {
+    claims: 'nothing',
     file: 'example.jl',
     cells: "remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps",
     pick: (r) => r.example === 'remeda-merge-all' && r.mode === 'excl',
@@ -726,13 +877,44 @@ const cellKey = (r: Row): string =>
 // pair of replications is still three sweeps of that cell under one protocol.
 // Reading the marker instead of the count let 46 dispatch cells past this gate.
 //
-// `mode` is 'gate' for a published number, 'about' for a citation that quotes a
-// withdrawal, and 'off' for a citation reading a superseded sweep — rule 13 is
-// about the current protocol's rows, and the sweeps kept as history are kept
-// BECAUSE they disagree.
+// The mode is 'gate' for a published number, 'about' for a citation that
+// quotes a withdrawal, and 'off' for a citation reading a superseded sweep —
+// the protocol is about the current protocol's rows, and the sweeps kept as
+// history are kept BECAUSE they disagree.
 type Mode = 'gate' | 'about' | 'off';
 
-function replicating(matched: Row[], mode: Mode = 'gate'): { live: Row[]; withdrawn: string[] } {
+// Rule 6's REJ verdict on one interval — the predicate bench/run.ts prints per
+// sweep while a human watches, applied here to what a cell's sweeps agree on.
+// One definition; the README end-to-end tables print the word REJECTED from
+// this one (BUGS TC-84).
+export const spans1 = (a: { lo: number; hi: number }): boolean => a.lo <= 1 && a.hi >= 1;
+
+// Rule 6, enforced where the number is made, beside rule 13 below (BUGS
+// TC-84). The bar is what the citation `claims`: nothing is shipped as the
+// refutation or provenance it is; a rule's evidence needs the agreed
+// interval's lower bound above 1.00x; a broad warning's additionally needs a
+// point estimate at or above 1.10x and a lower bound above 1.05x. The point
+// estimate of a replicated cell is the mean of its sweeps' ratios — each
+// sweep's ratio is already a ratio of means (rule 5), and three sweeps have no
+// single interval to speak for them (TC-73), but they do have one centre.
+function clears(claims: Citation['claims'], cell: Row[]): boolean {
+  if (claims === 'nothing') return true;
+  const a = agreement(cell);
+  if (!a || a.lo <= 1) return false;
+  if (claims === 'rule') return true;
+  const measured = cell.filter((r) => !r.void && r.ratio !== undefined);
+  const point = measured.reduce((sum, r) => sum + r.ratio!, 0) / measured.length;
+  return a.lo > 1.05 && point >= 1.1;
+}
+
+// The one gate every published number passes through: rule 13 first, rule 6 on
+// what survives it. Called with no citation it is the pure rule-13 register
+// query `unreplicable()` runs per file.
+function replicating(
+  matched: Row[],
+  c?: Citation
+): { live: Row[]; withdrawn: string[]; rejected: string[] } {
+  const mode: Mode = c?.history ? 'off' : c?.unreplicable ? 'about' : 'gate';
   const cells = new Map<string, Row[]>();
   for (const r of matched) {
     const k = cellKey(r);
@@ -742,12 +924,47 @@ function replicating(matched: Row[], mode: Mode = 'gate'): { live: Row[]; withdr
   }
   const live: Row[] = [];
   const withdrawn: string[] = [];
+  const rejected: string[] = [];
   for (const [key, cell] of cells) {
-    const fails = mode !== 'off' && cell.length >= 2 && !replicates(cell);
-    if (fails === (mode === 'about')) live.push(...cell);
-    else if (fails) withdrawn.push(key);
+    if (mode === 'off') {
+      live.push(...cell);
+      continue;
+    }
+    // Rule 13, base case included: `replicates()` asks for three whole sweeps,
+    // and fewer is not a smaller agreement, it is the absence of the test. The
+    // guard here used to be `cell.length >= 2`, so a cell measured ONCE
+    // published unchallenged into the same bucket as a replicated one (BUGS
+    // TC-84). The count is printed with the withdrawal so a reader can tell
+    // "never replicated" from "replicated and refuted".
+    if (!replicates(cell)) {
+      if (mode === 'about') live.push(...cell);
+      else
+        withdrawn.push(
+          cell.length < 3 ? `${key} (${cell.length} sweep${cell.length === 1 ? '' : 's'})` : key
+        );
+      continue;
+    }
+    if (mode === 'about') continue; // render() fails loudly when nothing is left
+    // Rule 6, on the agreement rule 13 just established.
+    const clear = clears(c?.claims ?? 'nothing', cell);
+    if (c?.rejected) {
+      if (!clear) live.push(...cell); // quoting the rejection; a pass falls to render()
+    } else if (clear) live.push(...cell);
+    else rejected.push(key);
   }
-  return { live, withdrawn: withdrawn.sort() };
+  return { live, withdrawn: withdrawn.sort(), rejected: rejected.sort() };
+}
+
+// Rule 13's agreement itself: the values EVERY sweep of the cell contains.
+// Whether that interval is empty is `replicates()` in bench/driver.ts and stays
+// there — one definition, two callers — so this asks it rather than comparing
+// the ends a second time, and returns null where there is nothing to publish.
+export function agreement(cell: Row[]): { lo: number; hi: number } | null {
+  if (!replicates(cell)) return null;
+  return {
+    lo: Math.max(...cell.map((r) => r.lo!)),
+    hi: Math.min(...cell.map((r) => r.hi!)),
+  };
 }
 
 // Every cell in one sweep file whose three sweeps refute each other, whether or
@@ -804,7 +1021,13 @@ export function rows(root: string, file: string): Row[] {
 // published strings carry, which is the precision the harness can defend.
 const places = (v: number): number => (v < 10 ? 2 : v < 100 ? 1 : 0);
 
-function render(key: string, c: Citation, matched: Row[], withdrawn: string[]): string {
+function render(
+  key: string,
+  c: Citation,
+  matched: Row[],
+  withdrawn: string[],
+  rejected: string[]
+): string {
   const live = matched.filter((r) => !r.void && r.ratio !== undefined);
   if (c.agg === 'count') {
     // How many distinct CELLS, not how many rows: a cell measured three times is
@@ -821,23 +1044,59 @@ function render(key: string, c: Citation, matched: Row[], withdrawn: string[]): 
     return String(cells.size);
   }
   if (live.length === 0) {
-    // Two different failures, and a reader has to be able to tell them apart:
-    // a citation whose cells were renamed matches nothing, and a citation whose
-    // every cell refutes itself has data and may not publish it.
+    // Four different failures, and a reader has to be able to tell them apart:
+    // a citation whose cells were renamed matches nothing; one whose every
+    // cell refutes itself has data and may not publish it; one whose every
+    // cell fails the bar its claim needs has lost its evidence; and one that
+    // quotes a failure that stopped failing is claiming a verdict the data no
+    // longer gives.
     throw new Error(
       c.unreplicable
         ? `${key}: this citation quotes a withdrawal, and its cell now replicates — ` +
           'the withdrawal has stopped being true and the sentence quoting it must go'
-        : withdrawn.length > 0
-          ? `${key}: every cell is unreplicable under rule 13 (${withdrawn.join(', ')}) — ` +
-            'this number cannot be published; withdraw the claim or re-measure'
-          : `${key}: no rows match — the citation is stale`
+        : c.rejected
+          ? `${key}: this citation quotes a rule-6 rejection, and its cell now clears the ` +
+            `bar a ${c.claims === 'broad' ? 'broad warning' : 'rule'} needs — the rejection ` +
+            'has stopped being true and the sentence quoting it must go'
+          : rejected.length > 0
+            ? `${key}: every cell is rejected under rule 6 (${rejected.join(', ')}) — ` +
+              `this number cannot ship as a ${c.claims === 'broad' ? 'broad warning' : 'rule'}'s ` +
+              'evidence; withdraw the claim or re-measure'
+            : withdrawn.length > 0
+              ? `${key}: every cell is unreplicable under rule 13 (${withdrawn.join(', ')}) — ` +
+                'this number cannot be published; withdraw the claim or re-measure'
+              : `${key}: no rows match — the citation is stale`
     );
   }
   const fmt = (v: number, ref: number): string => v.toFixed(c.dp ?? places(ref));
   if (c.agg === 'cispan') {
     const hi = Math.max(...live.map((r) => r.hi!));
     return `${fmt(Math.min(...live.map((r) => r.lo!)), hi)}-${fmt(hi, hi)}`;
+  }
+  if (c.agg === 'shared') {
+    // Per cell, then spanned across cells the way `range` spans their ratios —
+    // a citation over two sizes publishes where both agreements lie.
+    const cells = new Map<string, Row[]>();
+    for (const r of live) {
+      const at = cells.get(cellKey(r));
+      if (at) at.push(r);
+      else cells.set(cellKey(r), [r]);
+    }
+    const spans = [...cells].map(([k, cell]) => {
+      // The gate above withdraws a cell whose sweeps disagree, but it lets a
+      // cell measured ONCE through — rule 13 has nothing to say about one
+      // sweep — and one sweep has no agreement to publish either.
+      const a = agreement(cell);
+      if (!a)
+        throw new Error(
+          `${key}: ${k} has no rule-13 agreement — it was swept fewer than three times`
+        );
+      return a;
+    });
+    const hi = Math.max(...spans.map((s) => s.hi));
+    const lo = fmt(Math.min(...spans.map((s) => s.lo)), hi);
+    const top = fmt(hi, hi);
+    return lo === top ? `${lo}x` : `${lo}-${top}x`;
   }
   // The smallest working set the citation's cells were measured at. A rule that
   // can see a literal bound on its own n needs to know where its evidence
@@ -867,6 +1126,9 @@ export interface Derived {
   // range over four cells and a range over six cells are different claims and
   // the string alone cannot say which it is.
   withdrawn: string[];
+  // The cells rule 6 rejected — replicated, agreed, and still short of the bar
+  // the citation claims. Published in the provenance for the same reason.
+  rejected: string[];
   cells: number;
 }
 
@@ -887,11 +1149,11 @@ export function deriveDetail(root: string): Record<string, Derived> {
     // measured under different rules, and the file gives no sign of it.
     const want = !readsHistory(c);
     const matched = all.filter((r) => current(r) === want && c.pick(r));
-    const mode: Mode = c.history ? 'off' : c.unreplicable ? 'about' : 'gate';
-    const { live, withdrawn } = replicating(matched, mode);
+    const { live, withdrawn, rejected } = replicating(matched, c);
     out[key] = {
-      value: render(key, c, live, withdrawn),
+      value: render(key, c, live, withdrawn, rejected),
       withdrawn,
+      rejected,
       cells: new Set(matched.map(cellKey)).size,
     };
   }
@@ -921,10 +1183,20 @@ const HEADER = `// GENERATED by \`make numbers\` from the .jl sweeps. Do not edi
 const provenance = (c: Citation, d: Derived): string =>
   `${c.cells}` +
   (c.unreplicable ? ' — withdrawn under rule 13, quoted as the refutation it is' : '') +
+  (c.rejected
+    ? ` — rejected under rule 6 (${
+        c.claims === 'broad' ? 'the broad-warning bar' : "the rule's bar"
+      }), quoted as the refutation it is`
+    : '') +
   (readsHistory(c) ? ` — the older sweep, not re-measured under ${RUNNER}` : '') +
   (d.withdrawn.length > 0
     ? ` — ${d.withdrawn.length} of ${d.cells} cells withdrawn as unreplicable (rule 13): ` +
       d.withdrawn.join(', ')
+    : '') +
+  (d.rejected.length > 0
+    ? ` — ${d.rejected.length} of ${d.cells} cells rejected under rule 6 (${
+        c.claims === 'broad' ? 'the broad-warning bar' : "the rule's bar"
+      }): ` + d.rejected.join(', ')
     : '');
 
 export function generate(root: string): string {

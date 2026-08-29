@@ -307,10 +307,33 @@ test('delete on an array element stays silent: a different mechanism', () => {
 });
 
 // The other half of TC-16, and the only place the width is stated: "build the
-// object without the property" was measured working at 12 keys and not at 48.
-test('the delete fix says where the rebuild stops paying', () => {
+// object without the property" was measured working at the smaller of the two
+// key counts es-toolkit omit was swept at and not at the larger.
+//
+// Asserted against the DATA, not against the sentence. This test used to match
+// the literal `12 keys and not at 48`, so the two integers could stop being
+// what example.jl holds and nothing would fail — the re-aimed TC-48. It now
+// reads the derived pair and requires the fix to quote it.
+test('the delete fix says where the rebuild stops paying, in the swept sizes', () => {
   const f = rawFindings('drop').find((x) => x.rule === 'delete-property');
-  assert.match(f?.fix ?? '', /12 keys and not at 48/);
+  const sizes = N['ex.omit.sizes'];
+  assert.match(sizes, /^n=\d+ and n=\d+$/, `ex.omit.sizes reads "${sizes}"`);
+  assert.ok(
+    (f?.fix ?? '').includes(sizes),
+    `the fix does not quote the swept sizes (${sizes}): ${f?.fix}`
+  );
+  const swept = [
+    ...new Set(
+      rows(root, 'example.jl')
+        .filter((r) => r.example === 'estoolkit-omit' && r.mode === 'excl')
+        .map((r) => r.n)
+    ),
+  ].sort((a, b) => a - b);
+  assert.deepStrictEqual(
+    sizes,
+    `n=${swept[0]} and n=${swept[1]}`,
+    'the derived pair is not the pair the rows were swept at'
+  );
 });
 
 // A chain on a string allocates no array at all, and the rule matched the
