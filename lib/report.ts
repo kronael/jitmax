@@ -24,6 +24,14 @@ const wrap = (text: string, indent: string, width = 88): string[] => {
   return lines;
 };
 
+export interface Blind {
+  // Modules the program could not resolve. Every type from one reads as `any`,
+  // so every type-based rule is quiet on the files that import it — and quiet
+  // is what this tool prints as clean. Named here so a run says what it could
+  // not see (BUGS TC-51).
+  unresolved: string[];
+}
+
 export interface Suppression {
   // Findings a config or an annotation removed before they reached this
   // report. Zero is the common case and prints nothing.
@@ -38,6 +46,7 @@ export function render(
   cwd: string,
   results: Array<{ mark: Mark; findings: Finding[] }>,
   suppression: Suppression = { count: 0, keys: [] },
+  blind: Blind = { unresolved: [] },
   // What the functions in this run are. An annotation is the author asserting
   // hotness; a profile is a measurement of it. The report says which.
   subject = 'annotated function'
@@ -86,6 +95,18 @@ export function render(
   if (alsoReached > 0) {
     out.push(
       `  ${plural(alsoReached, 'repeat')} of a line already listed, not counted again`
+    );
+  }
+
+  // Before the findings, because it changes what the findings are worth: a rule
+  // that reads a type from an unresolved module read `any` and said nothing.
+  if (blind.unresolved.length > 0) {
+    out.push(
+      `  ${plural(blind.unresolved.length, 'module')} could not be resolved, so the types`,
+      '  they declare read as `any` and every type-based rule is blind on the files',
+      `  that import them: ${blind.unresolved.slice(0, 8).join(', ')}` +
+        (blind.unresolved.length > 8 ? `, and ${blind.unresolved.length - 8} more` : ''),
+      '  npm install, then run again. This is not a clean run.'
     );
   }
 
@@ -145,8 +166,10 @@ export function render(
 
   out.push(
     '',
-    total === 0 && warnings === 0 && partial.length === 0
+    total === 0 && warnings === 0 && partial.length === 0 && blind.unresolved.length === 0
       ? `  every ${subject} is clean.`
+      : total === 0 && blind.unresolved.length > 0
+      ? '  no findings, but the types above were unreadable: this is not a clean run.'
       : total === 0 && partial.length > 0
       ? `  no findings, but ${plural(partial.length, 'walk')} truncated: this is not a clean run.`
       : total === 0

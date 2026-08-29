@@ -1101,7 +1101,7 @@ is a published null and no rule, exactly as in TC-53.
 
 Raised 2026-08-28, from a run over nine hand-written hot functions.
 
-## TC-51 — closed-world drowns a real checkout that has no node_modules (2026-08-21, open)
+## TC-51 — closed-world drowns a real checkout that has no node_modules (2026-08-21, cause named 2026-08-29)
 
 `node bin/jitmax.ts` on a typescript-eslint checkout reported 4140
 findings. 4115 of them — 99.4% — are `closed-world` naming an import the
@@ -1123,6 +1123,24 @@ call's symbol is unresolved AND its module specifier resolves to nothing on
 disk, report it once per FILE as an unresolved-dependency note outside the
 findings list, and exit 1 with `DEPENDENCIES MISSING` — the same
 say-what-you-cannot-see contract the walk already keeps for truncation.
+
+**2026-08-29 — the cause is now named, loudly, and the run is no longer clean.**
+The deeper defect underneath this entry was that a checkout with no
+`node_modules` does not merely flood: every type imported from a missing package
+reads as `any`, so `objectShapes` counts nothing, `isArray` answers false, and
+every type-based rule goes quiet on those files. A file importing `Row` from an
+uninstalled package and doing `s += r.x + r.y` printed `every annotated function
+is clean` and exited **0** — the clean-run-that-checked-nothing this project
+throws on in five other places.
+
+`scan()` now returns the module specifiers the program could not resolve, the
+report names them, and the run exits 1 and is never called clean. On
+typescript-eslint it names all 20 uninstalled packages. Asked of the checker
+(an unresolved specifier has no symbol) rather than of `getSemanticDiagnostics`:
+8ms over 230 files against seconds.
+
+The flood itself is unchanged and still open — but a reader now sees the reason
+above it rather than inferring it from the volume.
 
 Found by: running the tool on typescript-eslint, 2026-08-21.
 

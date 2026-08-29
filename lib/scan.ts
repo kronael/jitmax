@@ -367,11 +367,37 @@ function reach(
   return { reached, escapes, platform, truncated };
 }
 
+// Modules the program could not resolve, named. Every type imported from one
+// reads as `any`, so `objectShapes` counts nothing, `isArray` answers false, and
+// every type-based rule goes quiet — on a file the tool then calls clean. That
+// is the "clean run that checked nothing" this project throws on in five other
+// places, and it was the one shape left (BUGS TC-51, and the CTO review's S1).
+//
+// Asked of the checker rather than of `getSemanticDiagnostics`: an unresolved
+// specifier has no symbol, which costs 8ms over 230 files where the diagnostics
+// cost seconds.
+function unresolvedModules(ts: Ts, checker: TS.TypeChecker, files: Set<string>,
+  program: TS.Program): string[] {
+  const out = new Set<string>();
+  for (const name of files) {
+    const sf = program.getSourceFile(name);
+    if (!sf) continue;
+    for (const st of sf.statements) {
+      const spec =
+        ts.isImportDeclaration(st) || ts.isExportDeclaration(st) ? st.moduleSpecifier : undefined;
+      if (spec && ts.isStringLiteral(spec) && !checker.getSymbolAtLocation(spec)) {
+        out.add(spec.text);
+      }
+    }
+  }
+  return [...out].sort();
+}
+
 export function scan(
   ts: Ts,
   program: TS.Program,
   given?: Mark[]
-): { checker: TS.TypeChecker; marks: Mark[] } {
+): { checker: TS.TypeChecker; marks: Mark[]; unresolved: string[] } {
   const checker = program.getTypeChecker();
   const marks = given ?? findMarks(ts, program);
   for (const mark of marks) {
@@ -381,5 +407,12 @@ export function scan(
     mark.platform = platform;
     mark.truncated = truncated;
   }
-  return { checker, marks };
+  // Only the files the walk actually read. A module nothing annotated imports
+  // cannot have blinded a rule.
+  const files = new Set<string>();
+  for (const mark of marks) {
+    files.add(mark.file);
+    for (const body of mark.reached) files.add(body.sf.fileName);
+  }
+  return { checker, marks, unresolved: unresolvedModules(ts, checker, files, program) };
 }

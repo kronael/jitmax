@@ -84,7 +84,7 @@ try {
           'matched no function here'
         : '');
   }
-  const { checker, marks } = scan(ts, p, given);
+  const { checker, marks, unresolved } = scan(ts, p, given);
 
   const allKeys = new Set(configDisabled);
   for (const mark of marks) for (const key of mark.disabled) allKeys.add(key);
@@ -108,6 +108,7 @@ try {
     cwd,
     results,
     { count: suppressedSites.size, keys: [...allKeys].sort() },
+    { unresolved },
     fromProfile === undefined ? 'annotated function' : 'hot function'
   );
   process.stdout.write(out + '\n');
@@ -124,11 +125,14 @@ try {
   // run on evidence this project does not have. It is still printed, still
   // counted in the header, and the report says in words that warnings do not
   // fail the run, so the text and the exit code agree.
-  process.exitCode = results.some(
-    (r) => r.findings.some((f) => severity(f) === 'error') || r.mark.truncated
-  )
-    ? 1
-    : 0;
+  // An unresolved module exits 1 for the same reason a truncated walk does: the
+  // rules were blind on those files and silence from them proves nothing. The
+  // text says so too, so the two still agree (BUGS TC-51).
+  process.exitCode =
+    unresolved.length > 0 ||
+    results.some((r) => r.findings.some((f) => severity(f) === 'error') || r.mark.truncated)
+      ? 1
+      : 0;
 } catch (err) {
   process.stderr.write(`jitmax: ${(err as Error).message}\n`);
   process.exitCode = 2;

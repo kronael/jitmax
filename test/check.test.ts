@@ -656,6 +656,23 @@ test('one suppressed line reached from three functions is one suppression', () =
   assert.strictEqual(run.status, 0);
 });
 
+// A module the program cannot resolve makes every type from it `any`, so every
+// type-based rule goes quiet — and quiet is what this tool prints as clean. It
+// exited 0 on a file it could not read the types of, which is the one shape of
+// TC-7 and TC-17 left standing (BUGS TC-51).
+test('an unresolved module is named, and the run is never clean', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'unresolved')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /1 module could not be resolved/);
+  assert.match(run.stdout, /no-such-package-anywhere/);
+  assert.match(run.stdout, /this is not a clean run/);
+  assert.ok(!run.stdout.includes('every annotated function is clean'));
+  assert.strictEqual(run.status, 1);
+});
+
 // TC-62. One line reached from three annotated functions is one finding. The
 // count used to be the call-graph fan-in: agent-twitter-client reported 118
 // errors over 12 distinct lines, and the TypeScript compiler 49 over 5.
