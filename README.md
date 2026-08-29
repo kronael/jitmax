@@ -32,9 +32,11 @@ Point it at your sources:
 node /path/to/jitmax/bin/jitmax.ts src
 ```
 
-It exits 0 when every annotated function is clean, 1 when it has findings **or
-when the walk was truncated**, and 2 when the tool itself failed. A gate reads
-the exit code, so a run that could not see everything is never a pass.
+It exits 0 when every annotated function is clean, 1 when it has an error to
+report **or when it could not see everything** — a truncated walk, a module it
+could not resolve, or a hot frame from a profile that matched no function here —
+and 2 when the tool itself failed. A gate reads the exit code, so a run that
+could not see everything is never a pass. Warnings alone do not fail a run.
 
 **Installing it as a dependency does not work, and that is a defect, not a
 policy.** `bin/jitmax.ts` is TypeScript run directly by Node, and Node refuses
@@ -149,10 +151,14 @@ Four things, and the second is the point:
   branches (`BUGS.md` TC-31). Read the coverage line as "the calls it could
   name", not "everything it could not see".
 
-Exit codes: `0` clean or warnings only, `1` jitmax has an error to report, `2`
-the tool itself failed. A path that does not exist is a `2`, never a clean run — and a
-walk that hit its limit is a `1` with no findings in it, because a run that
-proves nothing about part of your call tree is not a clean run either.
+Exit codes: `0` clean or warnings only, `1` jitmax has an error to report OR
+could not see everything, `2` the tool itself failed. A path that does not exist
+is a `2`, never a clean run. Three things are a `1` with no error in them,
+because a run that proves nothing about part of your call tree is not a clean
+run either: a walk that hit its limit, a module that would not resolve (every
+type it declares reads as `any`, so every type-based rule went quiet on the
+files importing it), and a hot frame in a profile that matched no function in
+these sources.
 
 ## Requirements
 
@@ -169,6 +175,7 @@ make build    # numbers + builtins: regenerate lib/numbers.ts and
 `make` never runs `build`: regenerating right before the drift assertions would
 compare fresh output against fresh output, and a stale committed artifact could
 never fail again.
+
 TypeScript `>=5.0.0` as a peer dependency — jitmax loads *your* copy, so it
 parses with the same compiler your build does. It does **not** yet read your
 `tsconfig.json` when you pass it a path: the config is loaded only for a bare
@@ -770,8 +777,8 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
   It counts distinct property-name sets, which no rename can change. `BUGS.md`
   TC-2 and TC-42.
 - The same rule's benchmark used to measure a program the rule is silent on.
-  `bench/shapes.js` varies key ORDER — five builders, one key set, five V8 maps,
-  and exactly one TypeScript type. `bench/shape-sets.js` varies the key SET, at
+  `bench/shapes.ts` varies key ORDER — five builders, one key set, five V8 maps,
+  and exactly one TypeScript type. `bench/shape-sets.ts` varies the key SET, at
   the same three sizes and in both modes, and that is where 3.4-11.3x comes
   from. The key-order sweep is still on disk and still quoted, in the rule's
   `unreported` clause: it costs 4.4-11.5x and nothing static can find it.
