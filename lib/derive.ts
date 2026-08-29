@@ -29,7 +29,7 @@ import path from 'node:path';
 // Protocol rule 13's test, imported rather than re-stated. It has one
 // definition, in the file that runs the sweeps, and the gate below is the
 // second caller it should always have had (BUGS TC-37).
-import { replicates } from '../bench/driver.js';
+import { replicates } from '../bench/driver.ts';
 
 export interface Row {
   runner?: string;
@@ -56,7 +56,8 @@ export interface Row {
   // whichever pair a row has.
   load1?: number;
   runnable?: number;
-  env?: { maxLoad?: number; maxRunnable?: number };
+  // Eighteen select rows record their reading INSIDE env rather than beside it.
+  env?: { maxLoad?: number; maxRunnable?: number; load1?: number };
 }
 
 interface Citation {
@@ -105,13 +106,13 @@ interface Citation {
 // never a source for a published number — so a citation reads this protocol's
 // rows unless it says otherwise, and one whose cells have not been re-measured
 // fails loudly at `no rows match` rather than quietly averaging two protocols
-// together. `bench/run.js` owns this string; it is repeated rather than
+// together. `bench/run.ts` owns this string; it is repeated rather than
 // imported because that file is an ESM script with a `process.exit` in it.
 const RUNNER = 'r2';
 const current = (r: Row): boolean => r.runner === RUNNER;
 
 // The sweeps that have been re-measured under it, whole. A file moves in here
-// when every cell `bench/sweeps.js` declares for it has three sweeps under the
+// when every cell `bench/sweeps.ts` declares for it has three sweeps under the
 // current runner — not when the first cell lands, because a range derived from
 // the four cells that finished is a range that silently changed what it is
 // about. Until then its citations read the older rows and say so.
@@ -712,7 +713,7 @@ const cellKey = (r: Row): string =>
     .join('|');
 
 // Rule 13, enforced where the number is made. `replicates()` used to be called
-// only by `bench/run.js`, to print the word DISAGREES to a terminal while a
+// only by `bench/run.ts`, to print the word DISAGREES to a terminal while a
 // sweep ran, so a cell whose three sweeps refute each other was withdrawn only
 // when a human happened to re-read the rows at 3am — and twelve were not
 // re-read (BUGS TC-37). A citation now aggregates the cells that replicate and
@@ -774,15 +775,23 @@ export function unreplicable(root: string, file: string): string[] {
 // visible and frozen: the register in test/check.test.ts fails on a count this
 // one does not explain — a new row written over its (now meaningful) gate —
 // and on a count that shrinks, which appended rows never do.
-export function overGate(root: string, file: string): number {
+// `judged` is returned beside `over` because a file with nothing to judge
+// reported ZERO over its gate, which reads as compliant and means the opposite:
+// all 60 rows of arrays.jl carry no gate field at all, and all 18 judgeable
+// rows of select.jl record their reading under `env.load1` rather than beside
+// it, so both registered a clean 0 while answering no question (TC-24, TC-47).
+export function overGate(root: string, file: string): { over: number; judged: number } {
   let over = 0;
+  let judged = 0;
   for (const r of rows(root, file)) {
     const meaningful = r.env?.maxRunnable !== undefined;
     const limit = meaningful ? r.env?.maxRunnable : r.env?.maxLoad;
-    const seen = meaningful ? r.runnable : r.load1;
-    if (limit !== undefined && seen !== undefined && seen > limit) over++;
+    const seen = meaningful ? r.runnable : r.load1 ?? r.env?.load1;
+    if (limit === undefined || seen === undefined) continue;
+    judged++;
+    if (seen > limit) over++;
   }
-  return over;
+  return { over, judged };
 }
 
 export function rows(root: string, file: string): Row[] {

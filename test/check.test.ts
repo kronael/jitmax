@@ -1261,44 +1261,63 @@ test('no published cell is withdrawn except the ones on record', () => {
 // row is written — and THAT pair is meaningful, so a new row over it lands
 // here as a count the register does not explain, and stays until someone
 // either re-measures the cell or registers it as a decision.
-const OVER_GATE: Record<string, number> = {
-  'addprop.jl': 2,
-  'arrays.jl': 0,
-  'chained.jl': 58,
-  'delete.jl': 46,
-  'dispatch.jl': 205,
-  'example.jl': 45,
-  'inline.jl': 4,
-  'select.jl': 0,
-  'shape-sets.jl': 57,
-  'shapes-calibrated.jl': 64,
-  'spread.jl': 21,
-  'spread-object.jl': 23,
-  'strings.jl': 67,
+// [over the gate, judgeable at all]. The second number is here because the
+// first one alone lies: `arrays.jl` registered a clean 0 over its gate and not
+// one of its 60 rows carries a gate field to be judged against, and `select.jl`
+// registered 0 while its 18 judgeable rows were unreadable to the query, which
+// recorded their load under `env.load1` rather than beside it (TC-24, TC-47).
+// A file whose judged count is 0 has answered no question; it has not passed.
+const OVER_GATE: Record<string, [number, number]> = {
+  'addprop.jl': [2, 2],
+  'arrays.jl': [0, 0],
+  'chained.jl': [58, 72],
+  'delete.jl': [46, 48],
+  'dispatch.jl': [205, 240],
+  'example.jl': [45, 48],
+  'inline.jl': [4, 6],
+  'select.jl': [0, 18],
+  'shape-sets.jl': [57, 72],
+  'shapes-calibrated.jl': [64, 72],
+  'spread.jl': [21, 24],
+  'spread-object.jl': [23, 24],
+  'strings.jl': [67, 81],
 };
 
 test('no published row is over its own gate except the ones on record', () => {
   for (const file of SWEPT) {
-    const known = OVER_GATE[file] ?? 0;
-    const found = overGate(root, file);
-    assert.ok(
-      found <= known,
-      `${file}: ${found - known} new row(s) written over their own recorded gate — ` +
-        're-measure the cell, or register the count here as a decision'
+    const [knownOver, knownJudged] = OVER_GATE[file] ?? [0, 0];
+    const { over, judged } = overGate(root, file);
+    assert.strictEqual(
+      over,
+      knownOver,
+      `${file}: the register says ${knownOver} over-gate rows and the file holds ${over} — ` +
+        'a new row was written over its own gate, or the .jl was rewritten'
     );
-    assert.ok(
-      found >= known,
-      `${file}: the register says ${known} over-gate rows and the file holds ${found} — ` +
-        'appended rows never disappear, so the .jl was rewritten'
+    assert.strictEqual(
+      judged,
+      knownJudged,
+      `${file}: the register says ${knownJudged} judgeable rows and the file holds ${judged} — ` +
+        'a row lost or gained the pair its gate is read from'
     );
   }
+});
+
+// The file that registered a clean zero while carrying nothing to judge. Named
+// here so it cannot quietly become a compliant-looking file again.
+test('a file with no judgeable row is on record as unjudgeable, not as clean', () => {
+  const unjudgeable = SWEPT.filter((f) => overGate(root, f).judged === 0);
+  assert.deepStrictEqual(
+    unjudgeable,
+    ['arrays.jl'],
+    'a sweep gained or lost the ability to answer its own load gate'
+  );
 });
 
 // README tells a reader the corpus number; this register IS the corpus number.
 // Typing it into prose is the one way it can drift out of the rows, so the
 // prose is read back and compared against the sum.
 test('README quotes the over-gate register, not a number beside it', () => {
-  const total = Object.values(OVER_GATE).reduce((a, b) => a + b, 0);
+  const total = Object.values(OVER_GATE).reduce((a, [over]) => a + over, 0);
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
   assert.ok(
     readme.includes(`${total} published rows were measured under a load gate`),
