@@ -1,20 +1,23 @@
+import { builtinModules } from 'node:module';
 import type * as TS from 'typescript';
 import type { Ts } from './ts.ts';
 import type { HotFrame } from './profile.ts';
+import { BUILTINS } from './builtins.ts';
 
-// Calls that TurboFan lowers to inline machine code. Reaching one of these is
-// not a hole in the promise. Anything not listed here is user code, and the
-// promise stops at its edge until it is annotated too.
-const PRIMITIVES = new Set([
-  'Math.abs', 'Math.acos', 'Math.asin', 'Math.atan', 'Math.atan2', 'Math.cbrt',
-  'Math.ceil', 'Math.clz32', 'Math.cos', 'Math.cosh', 'Math.exp', 'Math.expm1',
-  'Math.floor', 'Math.fround', 'Math.hypot', 'Math.imul', 'Math.log',
-  'Math.log10', 'Math.log1p', 'Math.log2', 'Math.max', 'Math.min', 'Math.pow',
-  'Math.round', 'Math.sign', 'Math.sin', 'Math.sinh', 'Math.sqrt', 'Math.tan',
-  'Math.tanh', 'Math.trunc',
-  'Number.isFinite', 'Number.isInteger', 'Number.isNaN', 'Number.isSafeInteger',
-  'Array.isArray',
-]);
+// Calls that TurboFan lowers to inline machine code: there is no call boundary
+// at these sites at all, so reaching one is not a hole in the promise. The set
+// is derived from the pinned V8's js-call-reducer.cc by `make builtins`, never
+// written by hand — a hand-written list here was this project's own copy of
+// the mistake TC-50 charges the incumbents with (BUGS TC-70). These sites are
+// counted on `Mark.lowered` so the report can say the claim's V8 version.
+const PRIMITIVES = new Set<string>(BUILTINS.statics);
+
+// Node's own module names. `node:*` and the bare names in
+// `module.builtinModules` are reserved by Node's resolver, so a specifier of
+// this shape is the platform no matter what is or is not installed.
+const NODE_BUILTINS = new Set(builtinModules);
+const isNodeSpecifier = (spec: string): boolean =>
+  spec.startsWith('node:') || NODE_BUILTINS.has(spec);
 
 export interface Site {
   file: string;
@@ -56,6 +59,12 @@ export interface Mark extends Site {
   // unresolved callee in somebody's package is still listed, because that one
   // is a body a reader can go and look at.
   platform: number;
+  // Calls to builtins TurboFan lowers to inline code — no call boundary exists
+  // at these sites, which is a stronger statement than `platform`'s "the body
+  // is native" and a version-specific one: the set is derived from the pinned
+  // V8, so the report names that pin whenever this count is not zero
+  // (BUGS TC-70).
+  lowered: number;
   // True when the walk refused a callee because `reached` was full at
   // MAX_BODIES — not merely when it ended there. A partial walk that reports no
   // findings is not a clean function, and saying "clean" there would be a lie.
@@ -206,13 +215,27 @@ function disabledKeys(ts: Ts, tags: TS.JSDocTag[]): string[] {
   for (const tag of tags) {
     const text = ts.getTextOfJSDocComment(tag.comment) ?? '';
     for (const token of text.split(/\s+/)) {
-      if (token.startsWith('-') && token.length > 1) keys.push(token.slice(1));
+      // A key, not any token starting with a dash. `-` had to be followed by a
+      // NAME: `/** @jitmax -- benchmarked 2026-01 */` produced the key `-`,
+      // which resolveDisabled rejects, so a comment in the tag crashed the tool
+      // with exit 2. Prose in the tag is prose.
+      if (/^-[A-Za-z][\w-]*$/.test(token)) keys.push(token.slice(1));
     }
   }
   return keys;
 }
 
-function targetsOf(ts: Ts, checker: TS.TypeChecker, callee: TS.Expression): TS.Node[] {
+// `seen` bounds the recursion, not the loop below it. `export const g: any = h`
+// beside `export const h: any = g` walked g to h to g forever and the tool died
+// with "Maximum call stack size exceeded", exit 2, on legal source.
+function targetsOf(
+  ts: Ts,
+  checker: TS.TypeChecker,
+  callee: TS.Expression,
+  seen: Set<TS.Node> = new Set()
+): TS.Node[] {
+  if (seen.has(callee)) return [];
+  seen.add(callee);
   let sym = checker.getSymbolAtLocation(callee);
   if (sym && sym.flags & ts.SymbolFlags.Alias) {
     try {
@@ -229,7 +252,7 @@ function targetsOf(ts: Ts, checker: TS.TypeChecker, callee: TS.Expression): TS.N
     if (!d || !ts.isVariableDeclaration(d) || !d.initializer) continue;
     const init = d.initializer;
     if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) decls.push(init);
-    else if (ts.isIdentifier(init)) decls.push(...targetsOf(ts, checker, init));
+    else if (ts.isIdentifier(init)) decls.push(...targetsOf(ts, checker, init, seen));
   }
   return decls;
 }

@@ -142,6 +142,26 @@ Still open from this entry: the `suggest` mode for the writing consumer, and
 `min_self_pct` remains a constant nobody has measured — it is printed on every
 run and the TOML owns it, which is the disclosure and not the fix.
 
+## TC-71 — two exit-2 crashes on legal source (2026-08-29, FIXED 2026-08-29)
+
+Both found by a commissioned CTO review and both reproduced here before they
+were written down. Exit 2 means "the tool failed", and it was reached by two
+programs that are nothing of the kind.
+
+**`targetsOf` had no visited set.** `export const g: any = h` beside
+`export const h: any = g` walked g to h to g until the stack ran out —
+`jitmax: Maximum call stack size exceeded`. The neighbouring `i < 8` cap bounds
+the LOOP and never bounded the recursion, which is the kind of guard that reads
+like protection and is not.
+
+**Any token starting with a dash became a disable key.** `/** @jitmax --
+benchmarked 2026-01 */` produced the key `-`, `resolveDisabled` correctly
+refused it, and a note written inside the annotation killed the run. A key now
+has to be a dash followed by a NAME; prose in the tag is prose.
+
+Fixed 2026-08-29, with a fixture and a binary-level test for each, because the
+exit code is what a gate reads.
+
 ## TC-70 — a derived count is interpolated into prose that assumes it is plural (2026-08-28, FIXED 2026-08-29)
 
 `closed-world`'s source string renders "bench/inline.jl, 1 cells, 20 pairs

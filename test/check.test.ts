@@ -656,6 +656,29 @@ test('one suppressed line reached from three functions is one suppression', () =
   assert.strictEqual(run.status, 0);
 });
 
+// Two legal-source crashes, both exit 2 — "the tool failed" — on programs that
+// are nothing of the kind. Tested through the binary because the exit code is
+// what a gate reads.
+test('mutually recursive consts do not overflow the stack', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'cycle')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.ok(!run.stderr.includes('Maximum call stack'), run.stderr);
+  assert.notStrictEqual(run.status, 2);
+});
+
+test('prose in the annotation is prose, not a disable key', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'tagprose')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.ok(!run.stderr.includes('unknown rule or defect code'), run.stderr);
+  assert.strictEqual(run.status, 0);
+});
+
 // A module the program cannot resolve makes every type from it `any`, so every
 // type-based rule goes quiet — and quiet is what this tool prints as clean. It
 // exited 0 on a file it could not read the types of, which is the one shape of
