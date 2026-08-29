@@ -704,6 +704,50 @@ test('min_self_pct without a profile to apply it to is an error, not a no-op', (
   assert.strictEqual(run.status, 2);
 });
 
+// An implicit constructor is not an empty one: it runs the base constructor and
+// every field initializer. Reading a class with no constructor member as
+// nothing to follow let a `delete` in a base class pass as a clean run — the
+// shape TC-10's fix did not anticipate.
+test('a base constructor and a field initializer are walked, not assumed empty', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'inherit')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /fromBase\(\)/);
+  assert.match(run.stdout, /error {2}delete-property/);
+  assert.match(run.stdout, /fromField\(\)/);
+  assert.match(run.stdout, /error {2}chained-allocation/);
+  assert.strictEqual(run.status, 1);
+});
+
+// A concise arrow body IS the returned expression, so there is no
+// ReturnStatement to find and the allocation went uncounted — silence on
+// exactly the shape bench/select.jl measured.
+test('an allocation in a concise arrow body is still an allocation', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'concise')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /error {2}allocating-select/);
+  assert.strictEqual(run.status, 1);
+});
+
+// `map` on a Result runs its callback at most once. Matching the method NAME
+// alone made it a loop, so `accumulating-spread` claimed quadratic copying on a
+// body nothing re-runs — its own silent clause. TC-35 was this defect in
+// `chained-allocation`.
+test('a run-once callback on a non-array is not a loop', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'notarray')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.ok(!run.stdout.includes('accumulating-spread'), 'a run-once callback read as a loop');
+  assert.strictEqual(run.status, 0);
+});
+
 // The suppression line is counted per site too. Counting it per mark made one
 // disabled line reached from three annotated functions read as "3 findings
 // suppressed" — the fan-in TC-62 removed from every count above it, left behind

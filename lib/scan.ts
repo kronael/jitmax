@@ -38,7 +38,10 @@ export interface Call extends Site {
 }
 
 export interface Body {
-  node: TS.SignatureDeclaration;
+  // Any node the walk can descend into, not only a signature: a class field
+  // initializer runs in the implicit constructor and is a body like any other,
+  // and it is a PropertyDeclaration.
+  node: TS.Node;
   sf: TS.SourceFile;
   name: string;
 }
@@ -84,12 +87,17 @@ export interface Mark extends Site {
 // graph that fans out faster than it repeats.
 const MAX_BODIES = 200;
 
-function isFunctionLike(ts: Ts, n: TS.Node): n is TS.SignatureDeclaration {
+// A function boundary: what the walk follows into, and what the rules must not
+// walk across. One definition, because rules.ts kept a second copy that differed
+// from this one in two node kinds.
+export function isFunctionLike(ts: Ts, n: TS.Node): n is TS.SignatureDeclaration {
   return (
     ts.isFunctionDeclaration(n) ||
     ts.isFunctionExpression(n) ||
     ts.isArrowFunction(n) ||
     ts.isMethodDeclaration(n) ||
+    ts.isGetAccessor(n) ||
+    ts.isSetAccessor(n) ||
     // A constructor is a body like any other, and allocation is what
     // constructors do — which is the rule `allocating-select` is about
     // (BUGS TC-10).
@@ -99,8 +107,9 @@ function isFunctionLike(ts: Ts, n: TS.Node): n is TS.SignatureDeclaration {
 
 // Arrow functions and function expressions carry no name of their own; the
 // name a reader recognises sits on the declaration that holds them.
-function nameOf(ts: Ts, node: TS.SignatureDeclaration): string {
-  if (node.name && ts.isIdentifier(node.name)) return node.name.text;
+function nameOf(ts: Ts, node: TS.Node): string {
+  const name = (node as TS.NamedDeclaration).name;
+  if (name && ts.isIdentifier(name)) return name.text;
   const p = node.parent;
   if (p && (ts.isVariableDeclaration(p) || ts.isPropertyAssignment(p)) && ts.isIdentifier(p.name)) {
     return p.name.text;
@@ -129,6 +138,7 @@ function findMarks(ts: Ts, program: TS.Program): Mark[] {
             reached: [],
             escapes: [],
             platform: 0,
+            lowered: 0,
             truncated: false,
             disabled: disabledKeys(ts, tags),
           });
@@ -198,6 +208,7 @@ export function marksFromProfile(
       reached: [],
       escapes: [],
       platform: 0,
+      lowered: 0,
       truncated: false,
       disabled: [],
       from: `${frame.pct.toFixed(1)}% of samples, ${source}`,
@@ -278,20 +289,43 @@ function reach(
   program: TS.Program,
   checker: TS.TypeChecker,
   root: Mark
-): { reached: Body[]; escapes: Call[]; platform: number; truncated: boolean } {
-  // Where the promise really stops: a callee that exists only as a type. A
-  // typed dependency resolves to its .d.ts, so we have its signature and not
-  // one line of its body. The platform's own lib.*.d.ts is excluded — those
-  // are the builtins V8 implements, not somebody's unchecked code.
-  const unreadable = (d: TS.Node): boolean => {
-    const sf = d.getSourceFile();
-    return Boolean(sf) && sf.isDeclarationFile && !program.isSourceFileDefaultLibrary(sf);
-  };
-  // `lib.*.d.ts` is already excluded above. `@types/node` is the other half of
-  // the same platform: native code that no `npm install` and no rewrite makes
-  // readable (BUGS TC-55).
+): { reached: Body[]; escapes: Call[]; platform: number; lowered: number; truncated: boolean } {
+  // `@types/node` is the platform: native code that no `npm install` and no
+  // rewrite makes readable (BUGS TC-55).
   const isPlatform = (d: TS.Node): boolean =>
     d.getSourceFile()?.fileName.includes('/@types/node/') === true;
+  // The same platform callee when `@types/node` is NOT installed: `path.join`
+  // then resolves to nothing at all, and the two tests above see an ordinary
+  // opaque callee — which is how a checkout with no node_modules got a
+  // closed-world note per fs call (BUGS TC-55, TC-69 cause 1). The import's
+  // own specifier still says where the call goes, and a Node specifier is the
+  // platform no matter what is installed, so it is read off the declaration
+  // the callee's leftmost name binds to.
+  const fromNodeImport = (expr: TS.Expression): boolean => {
+    let base: TS.Expression = expr;
+    while (ts.isPropertyAccessExpression(base) || ts.isElementAccessExpression(base)) {
+      base = base.expression;
+    }
+    if (!ts.isIdentifier(base)) return false;
+    for (const d of checker.getSymbolAtLocation(base)?.getDeclarations() ?? []) {
+      if (ts.isImportClause(d) || ts.isNamespaceImport(d) || ts.isImportSpecifier(d)) {
+        let up: TS.Node = d;
+        while (!ts.isImportDeclaration(up) && up.parent) up = up.parent;
+        if (
+          ts.isImportDeclaration(up) &&
+          ts.isStringLiteral(up.moduleSpecifier) &&
+          isNodeSpecifier(up.moduleSpecifier.text)
+        ) {
+          return true;
+        }
+      }
+      if (ts.isImportEqualsDeclaration(d) && ts.isExternalModuleReference(d.moduleReference)) {
+        const spec = d.moduleReference.expression;
+        if (ts.isStringLiteral(spec) && isNodeSpecifier(spec.text)) return true;
+      }
+    }
+    return false;
+  };
   // An interface member written here, not in a dependency's `.d.ts`.
   const isOwnInterfaceMember = (d: TS.Node): boolean =>
     (ts.isMethodSignature(d) || ts.isPropertySignature(d)) &&
@@ -301,6 +335,7 @@ function reach(
   const seen = new Set<TS.Node>([root.node]);
   const escapes: Call[] = [];
   let platform = 0;
+  let lowered = 0;
   const reported = new Set<string>();
   let truncated = false;
 
@@ -322,7 +357,17 @@ function reach(
       // not, which is the failure the rule exists to prevent (BUGS TC-10).
       if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
         const text = node.expression.getText(body.sf);
-        if (!PRIMITIVES.has(text)) {
+        if (PRIMITIVES.has(text)) {
+          // No call boundary here at all — see PRIMITIVES. Counted, once per
+          // site, so the report can say what was stepped over and under which
+          // V8 the stepping-over is true (BUGS TC-70).
+          const site = at(body.sf, node);
+          const key = `${site.file}:${site.line}:${site.column}`;
+          if (!reported.has(key)) {
+            reported.add(key);
+            lowered++;
+          }
+        } else {
           // An immediately-invoked function has no symbol to resolve, but its
           // body is right there. Follow it rather than reporting it as code we
           // cannot read.
@@ -333,21 +378,46 @@ function reach(
               ? [callee as TS.Node]
               : targetsOf(ts, checker, node.expression);
           // `new Foo()` resolves to the CLASS, and what runs is its
-          // constructor. A class we can read that declares none runs a default
-          // constructor with no body: nothing to follow and nothing to report,
-          // so it is neither an escape nor a body.
+          // constructor. A class that declares none does NOT run nothing: the
+          // implicit constructor runs every field initializer, and `extends`
+          // makes it run the base class's constructor. Reading it as empty let
+          // a `delete` in a base constructor pass as a clean run — the shape
+          // TC-10's fix did not anticipate.
           let emptyCtor = false;
           const decls: TS.Node[] = [];
-          for (const d of raw) {
+          // Field initializers run whether or not a constructor is declared,
+          // and they are not callees, so they are walked as bodies directly
+          // rather than going through `followable`, which wants a signature.
+          const inits: TS.Node[] = [];
+          const classBodies = (d: TS.Node, depth: number): void => {
             if (!ts.isClassDeclaration(d) && !ts.isClassExpression(d)) {
               decls.push(d);
-              continue;
+              return;
+            }
+            for (const m of d.members) {
+              if (ts.isPropertyDeclaration(m) && m.initializer) inits.push(m);
             }
             const ctor = d.members.find((m) => ts.isConstructorDeclaration(m) && m.body);
-            if (ctor) decls.push(ctor);
-            else if (d.getSourceFile()?.isDeclarationFile === false) emptyCtor = true;
-          }
-          const next = decls.filter((d) => followable(ts, d));
+            if (ctor) {
+              decls.push(ctor);
+              return;
+            }
+            let base = false;
+            for (const h of depth < 8 ? d.heritageClauses ?? [] : []) {
+              if (h.token !== ts.SyntaxKind.ExtendsKeyword) continue;
+              for (const t of h.types) {
+                for (const b of targetsOf(ts, checker, t.expression)) {
+                  base = true;
+                  classBodies(b, depth + 1);
+                }
+              }
+            }
+            if (!base && inits.length === 0 && d.getSourceFile()?.isDeclarationFile === false) {
+              emptyCtor = true;
+            }
+          };
+          for (const d of raw) classBodies(d, 0);
+          const next = [...decls.filter((d) => followable(ts, d)), ...inits];
           for (const d of next) {
             if (seen.has(d)) continue;
             if (reached.length >= MAX_BODIES) {
@@ -369,15 +439,18 @@ function reach(
           const key = `${site.file}:${site.line}:${site.column}`;
           if (unchecked && !reported.has(key)) {
             reported.add(key);
-            // The platform is `@types/node` and V8's own builtins, and neither
-            // will ever have a readable body. Everything else is somebody's
-            // code and is named.
+            // The platform is `@types/node` and V8's own builtins — resolved
+            // into their .d.ts when the types are installed, recognised by the
+            // import's Node specifier when they are not — and neither will
+            // ever have a readable body. Everything else is somebody's code
+            // and is named.
             const native =
               decls.some(isPlatform) ||
               decls.some((d) => {
                 const sf = d.getSourceFile();
                 return Boolean(sf) && program.isSourceFileDefaultLibrary(sf);
-              });
+              }) ||
+              fromNodeImport(node.expression);
             if (native) platform++;
             else escapes.push({ ...site, text, viaInterface: decls.some(isOwnInterfaceMember) });
           }
@@ -387,7 +460,7 @@ function reach(
     };
     ts.forEachChild(body.node, visit);
   }
-  return { reached, escapes, platform, truncated };
+  return { reached, escapes, platform, lowered, truncated };
 }
 
 // Modules the program could not resolve, named. Every type imported from one
@@ -408,7 +481,16 @@ function unresolvedModules(ts: Ts, checker: TS.TypeChecker, files: Set<string>,
     for (const st of sf.statements) {
       const spec =
         ts.isImportDeclaration(st) || ts.isExportDeclaration(st) ? st.moduleSpecifier : undefined;
-      if (spec && ts.isStringLiteral(spec) && !checker.getSymbolAtLocation(spec)) {
+      // A Node specifier is the platform whether or not `@types/node` is
+      // installed, and the platform is never the blindness this reports: its
+      // bodies are native and no rule was going to read them. Only a module
+      // that should have resolved and did not can have silenced a rule.
+      if (
+        spec &&
+        ts.isStringLiteral(spec) &&
+        !isNodeSpecifier(spec.text) &&
+        !checker.getSymbolAtLocation(spec)
+      ) {
         out.add(spec.text);
       }
     }
@@ -424,10 +506,11 @@ export function scan(
   const checker = program.getTypeChecker();
   const marks = given ?? findMarks(ts, program);
   for (const mark of marks) {
-    const { reached, escapes, platform, truncated } = reach(ts, program, checker, mark);
+    const { reached, escapes, platform, lowered, truncated } = reach(ts, program, checker, mark);
     mark.reached = reached;
     mark.escapes = escapes;
     mark.platform = platform;
+    mark.lowered = lowered;
     mark.truncated = truncated;
   }
   // Only the files the walk actually read. A module nothing annotated imports

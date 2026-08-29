@@ -1,6 +1,6 @@
 import type * as TS from 'typescript';
 import type { Ts } from './ts.ts';
-import { at, type Body, type Mark, type Site } from './scan.ts';
+import { at, isFunctionLike, type Body, type Mark, type Site } from './scan.ts';
 import { N } from './numbers.ts';
 
 export interface Evidence {
@@ -41,7 +41,6 @@ export interface Evidence {
 export const DEFECT: Record<string, string> = {
   'TC-2': 'a TypeScript union member is not a V8 map',
   'TC-9': 'rules fire outside the conditions their own evidence establishes',
-  'TC-10': 'the walk follows calls but not constructors',
   'TC-13': 'a method in a field has no four-map budget',
   'TC-33': "closed-world's trigger and its benchmark measure different things",
 };
@@ -82,7 +81,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       `bench/shape-sets.jl, ${cells(N['elem.cells'])}, 20 pairs each. This rule quoted ` +
       'bench/shapes-calibrated.jl until 2026-08-19, and that sweep varies key ORDER — five ' +
       'builders over one key set, five V8 maps, and exactly ONE TypeScript type. It priced a ' +
-      'program this rule is silent on (BUGS TC-42). bench/shape-sets.js sweeps the same cells ' +
+      'program this rule is silent on (BUGS TC-42). bench/shape-sets.ts sweeps the same cells ' +
       'over five key SETS, which is the shape a declared type can express and this rule counts',
     silent:
       `two to four property sets cost ${N['elem.silent.24']} on reads — real at L1, nothing ` +
@@ -238,7 +237,7 @@ export const EVIDENCE: Record<string, Evidence> = {
       'benchmark are different programs: the rule fires on a callee with no readable body, ' +
       'and the sweep measures a readable one padded past the inlining budget, because a ' +
       'callee nobody can read is a callee nobody can size (TC-33)',
-    defects: ['TC-10', 'TC-33'],
+    defects: ['TC-33'],
   },
   'delete-property': {
     cost:
@@ -272,16 +271,6 @@ export const EVIDENCE: Record<string, Evidence> = {
 type Add = (f: Omit<Finding, 'evidence'>) => void;
 type Rule = (ts: Ts, checker: TS.TypeChecker, body: Body, add: Add) => void;
 
-// A function boundary, for walks that must not cross one.
-const isFunctionLike = (ts: Ts, n: TS.Node): boolean =>
-  ts.isFunctionDeclaration(n) ||
-  ts.isFunctionExpression(n) ||
-  ts.isArrowFunction(n) ||
-  ts.isMethodDeclaration(n) ||
-  ts.isGetAccessor(n) ||
-  ts.isSetAccessor(n) ||
-  ts.isConstructorDeclaration(n);
-
 const isLoop = (ts: Ts, n: TS.Node): boolean =>
   ts.isForStatement(n) ||
   ts.isForOfStatement(n) ||
@@ -306,20 +295,32 @@ function walk(ts: Ts, root: TS.Node, fn: (n: TS.Node) => void): void {
 // receiver is evaluated once, so a spread there is not re-run.
 const ITERATION = new Set(['forEach', 'map', 'flatMap', 'filter', 'some', 'every', 'find']);
 
-const iterationCallbacks = (ts: Ts, n: TS.Node): TS.Node[] =>
+// The RECEIVER has to be an array, not just the method name an array's. A
+// Result type's `map` runs its callback at most once, and matching the name
+// alone made that a loop — so `accumulating-spread` claimed quadratic copying
+// on a body nothing re-runs, which is its own silent clause. TC-35 was this
+// defect in `chained-allocation`; this is the same one in the helper TC-43's
+// fix introduced.
+const iterationCallbacks = (ts: Ts, checker: TS.TypeChecker, n: TS.Node): TS.Node[] =>
   ts.isCallExpression(n) &&
   ts.isPropertyAccessExpression(n.expression) &&
-  ITERATION.has(n.expression.name.text)
+  ITERATION.has(n.expression.name.text) &&
+  isArray(checker, checker.getTypeAtLocation(n.expression.expression))
     ? n.arguments.filter((a) => ts.isArrowFunction(a) || ts.isFunctionExpression(a))
     : [];
 
 // The same walk carrying whether a loop re-runs this node. Two rules price a
 // statement per pass, so the enclosing loop is half of what they match: the
 // same line outside one is a case their own benchmark rejected.
-function walkLoops(ts: Ts, root: TS.Node, fn: (n: TS.Node, inLoop: boolean) => void): void {
+function walkLoops(
+  ts: Ts,
+  checker: TS.TypeChecker,
+  root: TS.Node,
+  fn: (n: TS.Node, inLoop: boolean) => void
+): void {
   const visit = (node: TS.Node, inLoop: boolean): void => {
     fn(node, inLoop);
-    const bodies = new Set(iterationCallbacks(ts, node));
+    const bodies = new Set(iterationCallbacks(ts, checker, node));
     ts.forEachChild(node, (c) => visit(c, inLoop || isLoop(ts, node) || bodies.has(c)));
   };
   ts.forEachChild(root, (c) => visit(c, false));
@@ -388,7 +389,10 @@ function arrayParams(
   checker: TS.TypeChecker,
   body: Body
 ): Array<{ p: TS.ParameterDeclaration; type: TS.Type; element: TS.Type }> {
-  const out = [];
+  const out: Array<{ p: TS.ParameterDeclaration; type: TS.Type; element: TS.Type }> = [];
+  // A body is not always a signature — a class field initializer is a body too
+  // and has no parameter list.
+  if (!isFunctionLike(ts, body.node)) return out;
   for (const p of body.node.parameters) {
     const type = checker.getTypeAtLocation(p);
     const element = elementType(ts, checker, type);
@@ -691,7 +695,7 @@ const accumulatingSpread: Rule = (ts, checker, body, add) => {
     }
   };
 
-  walkLoops(ts, body.node, (node, inLoop) => {
+  walkLoops(ts, checker, body.node, (node, inLoop) => {
     if (
       reassignedInLoop(ts, node, inLoop) &&
       (ts.isIdentifier(node.left) || ts.isPropertyAccessExpression(node.left))
@@ -754,11 +758,14 @@ const allocatingSelect: Rule = (ts, checker, body, add) => {
       }
       ts.forEachChild(n, (c) => visit(c, inReturn));
     };
-    visit(fnBody, false);
+    // A concise arrow body IS the returned expression — there is no
+    // ReturnStatement to find, so `(a, b) => (a.lt(b) ? a : new Money(b.v))`
+    // allocated on every pass and this rule stayed silent on it.
+    visit(fnBody, !ts.isBlock(fnBody));
     return found;
   };
 
-  walkLoops(ts, body.node, (node, inLoop) => {
+  walkLoops(ts, checker, body.node, (node, inLoop) => {
     if (reassignedInLoop(ts, node, inLoop) && ts.isCallExpression(node.right)) {
       const target = node.left.getText(body.sf);
       const call = node.right;
