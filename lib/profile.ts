@@ -17,13 +17,16 @@ export interface HotFrame {
   pct: number;
 }
 
+// Every field optional below `id`: this is somebody else's JSON, and a node
+// without a callFrame crashed the tool with an unattributed TypeError that
+// exit 2 then printed with no file and no line.
 interface Node {
   id: number;
-  callFrame: {
-    functionName: string;
-    url: string;
-    lineNumber: number;
-    columnNumber: number;
+  callFrame?: {
+    functionName?: string;
+    url?: string;
+    lineNumber?: number;
+    columnNumber?: number;
   };
 }
 
@@ -34,8 +37,8 @@ export function hotFrames(profilePath: string, minSelfPct: number): HotFrame[] {
   let text: string;
   try {
     text = fs.readFileSync(profilePath, 'utf8');
-  } catch {
-    throw new Error(`no such file: ${profilePath}`);
+  } catch (e) {
+    throw new Error(`cannot read ${profilePath}: ${(e as NodeJS.ErrnoException).code ?? 'failed'}`);
   }
   let parsed: { nodes?: Node[]; samples?: number[]; timeDeltas?: number[] };
   try {
@@ -67,15 +70,16 @@ export function hotFrames(profilePath: string, minSelfPct: number): HotFrame[] {
     const node = byId.get(id);
     // A frame with no URL is the engine's own: (garbage collector), (program),
     // (idle). Real time, no source line, nothing this tool can report on.
-    if (!node || !node.callFrame.url.startsWith('file://')) continue;
+    const frame = node?.callFrame;
+    if (!frame?.url?.startsWith('file://')) continue;
     const pct = (time / total) * 100;
     if (pct < minSelfPct) continue;
     out.push({
-      file: fileURLToPath(node.callFrame.url),
+      file: fileURLToPath(frame.url),
       // cpuprofile positions are 0-based; every Site in this project is 1-based.
-      line: node.callFrame.lineNumber + 1,
-      column: node.callFrame.columnNumber + 1,
-      name: node.callFrame.functionName || '<anonymous>',
+      line: (frame.lineNumber ?? 0) + 1,
+      column: (frame.columnNumber ?? 0) + 1,
+      name: frame.functionName || '<anonymous>',
       pct,
     });
   }

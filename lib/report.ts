@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { BUILTINS } from './builtins.ts';
 import type { Mark } from './scan.ts';
 import { DEFECT, type Finding } from './rules.ts';
 
@@ -30,6 +31,11 @@ export interface Blind {
   // is what this tool prints as clean. Named here so a run says what it could
   // not see (BUGS TC-51).
   unresolved: string[];
+  // Hot frames from a profile that matched no function in this program, each
+  // already rendered as `name (file:line:col)`. Measured time this run could
+  // not look at, which is the unresolved-module problem with a different cause:
+  // a total miss threw and a partial miss printed `clean` over it (BUGS TC-77).
+  unmatched: string[];
 }
 
 export interface Suppression {
@@ -46,7 +52,7 @@ export function render(
   cwd: string,
   results: Array<{ mark: Mark; findings: Finding[] }>,
   suppression: Suppression = { count: 0, keys: [] },
-  blind: Blind = { unresolved: [] },
+  blind: Blind = { unresolved: [], unmatched: [] },
   // What the functions in this run are. An annotation is the author asserting
   // hotness; a profile is a measurement of it. The report says which.
   subject = 'annotated function'
@@ -101,12 +107,36 @@ export function render(
   // Before the findings, because it changes what the findings are worth: a rule
   // that reads a type from an unresolved module read `any` and said nothing.
   if (blind.unresolved.length > 0) {
+    // `npm install, then run again` named one of two causes and was the wrong
+    // one for the run that filed this: the imports were a tsconfig `paths`
+    // alias, and the user had to work that out unaided. A relative specifier
+    // that resolves to nothing is a file that is not on disk; a bare one is a
+    // package or an alias (BUGS TC-80).
+    const relative = blind.unresolved.some((m) => m.startsWith('.') || m.startsWith('/'));
+    const bare = blind.unresolved.some((m) => !m.startsWith('.') && !m.startsWith('/'));
     out.push(
       `  ${plural(blind.unresolved.length, 'module')} could not be resolved, so the types`,
       '  they declare read as `any` and every type-based rule is blind on the files',
       `  that import them: ${blind.unresolved.slice(0, 8).join(', ')}` +
-        (blind.unresolved.length > 8 ? `, and ${blind.unresolved.length - 8} more` : ''),
-      '  npm install, then run again. This is not a clean run.'
+        (blind.unresolved.length > 8 ? `, and ${blind.unresolved.length - 8} more` : '')
+    );
+    if (relative) out.push('  a relative specifier resolves to no file on disk: check the path.');
+    if (bare) {
+      out.push(
+        '  a bare specifier comes from node_modules or from a `paths` alias: check',
+        '  `npm install`, and check that this run read the tsconfig.json defining it.'
+      );
+    }
+    out.push('  This is not a clean run.');
+  }
+
+  if (blind.unmatched.length > 0) {
+    out.push(
+      `  ${plural(blind.unmatched.length, 'hot frame')} matched no function in this program,`,
+      '  so measured time was not checked — the sources are transformed, or the profile',
+      `  is stale: ${blind.unmatched.slice(0, 8).join(', ')}` +
+        (blind.unmatched.length > 8 ? `, and ${blind.unmatched.length - 8} more` : ''),
+      '  This is not a clean run.'
     );
   }
 
@@ -115,6 +145,16 @@ export function render(
   const platform = results.reduce((n, r) => n + r.mark.platform, 0);
   if (platform > 0) {
     out.push(`  ${plural(platform, 'call')} into the platform, not listed: the body is native`);
+  }
+  // Also once per run, and with the pin: "lowered" is a fact about one V8, and
+  // stating it without the version would be a version-specific claim in a
+  // general voice (BUGS TC-70). See Mark.lowered.
+  const lowered = results.reduce((n, r) => n + r.mark.lowered, 0);
+  if (lowered > 0) {
+    out.push(
+      `  ${plural(lowered, 'call')} lowered to inline code, not listed: no call ` +
+        `boundary exists there (V8 ${BUILTINS.version} @ ${BUILTINS.revision.slice(0, 10)})`
+    );
   }
 
   for (const { mark, findings } of perSite) {
@@ -164,14 +204,24 @@ export function render(
     }
   }
 
+  // `total` counts errors only, so both of the branches below printed "no
+  // findings" above a page of printed warnings.
+  const nothing = all.length === 0 ? 'no findings' : `no errors, ${plural(warnings, 'warning')}`;
+  const clean =
+    all.length === 0 &&
+    partial.length === 0 &&
+    blind.unresolved.length === 0 &&
+    blind.unmatched.length === 0;
   out.push(
     '',
-    total === 0 && warnings === 0 && partial.length === 0 && blind.unresolved.length === 0
+    clean
       ? `  every ${subject} is clean.`
       : total === 0 && blind.unresolved.length > 0
-      ? '  no findings, but the types above were unreadable: this is not a clean run.'
+      ? `  ${nothing}, but the types above were unreadable: this is not a clean run.`
+      : total === 0 && blind.unmatched.length > 0
+      ? `  ${nothing}, but the hot frames above matched nothing here: this is not a clean run.`
       : total === 0 && partial.length > 0
-      ? `  no findings, but ${plural(partial.length, 'walk')} truncated: this is not a clean run.`
+      ? `  ${nothing}, but ${plural(partial.length, 'walk')} truncated: this is not a clean run.`
       : total === 0
       ? `  no errors: ${plural(warnings, 'warning')}, and a warning prices no program\n` +
         '  this project measured, so it does not fail this run.'

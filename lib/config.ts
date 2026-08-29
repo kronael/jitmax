@@ -8,7 +8,10 @@ export interface Config {
   // [profile] min_self_pct — the share of sampled time a function must own
   // before profile mode calls it hot. A constant nobody has measured, so the
   // TOML owns it and every run prints the value it used (BUGS TC-57).
-  minSelfPct: number;
+  // `undefined` means the file set no value, which is not the same as setting
+  // the default: a `[profile]` table in a run with no profile configured
+  // nothing, and the caller has to be able to see that and say so.
+  minSelfPct?: number;
 }
 
 export const DEFAULT_MIN_SELF_PCT = 1;
@@ -73,8 +76,11 @@ export function loadConfig(configPath: string): Config {
   let text: string;
   try {
     text = fs.readFileSync(configPath, 'utf8');
-  } catch {
-    throw new Error(`no such file: ${configPath}`);
+  } catch (e) {
+    // The errno, because a directory and a permission error both read as "no
+    // such file" without it — the same misdiagnosis TC-80 filed against the
+    // unresolved-module message.
+    throw new Error(`cannot read ${configPath}: ${(e as NodeJS.ErrnoException).code ?? 'failed'}`);
   }
   const tables = parseToml(text, configPath);
   // A misspelled table disabled nothing, silently — `[rulez]` read as a clean
@@ -103,11 +109,11 @@ export function loadConfig(configPath: string): Config {
       throw new Error(`${configPath}: [profile] has no key "${key}" — only min_self_pct`);
     }
   }
-  const pct = profile.min_self_pct ?? DEFAULT_MIN_SELF_PCT;
-  if (typeof pct !== 'number' || pct <= 0 || pct > 100) {
+  const pct = profile.min_self_pct;
+  if (pct !== undefined && (typeof pct !== 'number' || pct <= 0 || pct > 100)) {
     throw new Error(
       `${configPath}: [profile] min_self_pct must be a number in (0, 100], got ${JSON.stringify(pct)}`
     );
   }
-  return { disabled, minSelfPct: pct };
+  return { disabled, minSelfPct: pct as number | undefined };
 }

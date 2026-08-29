@@ -26,17 +26,33 @@ try {
   }
   const args = argv;
 
-  // `jitmax jitmax.toml src` — the config is the first positional,
-  // named by its .toml suffix, and optional: `jitmax src` still works,
-  // and behaves exactly as it did before configuration existed.
-  const configPath = args[0]?.endsWith('.toml') ? args[0] : undefined;
-  const rest = configPath ? args.slice(1) : args;
-  // The second suffix-named positional, for the same reason as the first: this
-  // binary rejects flags by design. A profile makes the tool measure hotness
-  // instead of taking the author's word for it (BUGS TC-57).
-  const profilePath = rest[0]?.endsWith('.cpuprofile') ? rest[0] : undefined;
-  const inputs = profilePath ? rest.slice(1) : rest;
+  // Positionals are named by their suffix, anywhere in the line, because this
+  // binary rejects flags by design: a .toml is the config, a .cpuprofile makes
+  // the tool measure hotness instead of taking the author's word for it (BUGS
+  // TC-57), and everything else is a path to scan. Matching by SLOT instead
+  // meant `jitmax src run.cpuprofile` read the profile as a source file, found
+  // no annotations in it, and printed `every annotated function is clean` —
+  // the silent lie this file's first comment says it stopped accepting.
+  const only = (suffix: string): string | undefined => {
+    const hits = args.filter((a) => a.endsWith(suffix));
+    if (hits.length > 1) {
+      throw new Error(`jitmax takes one ${suffix} argument, got ${hits.length}: ${hits.join(', ')}`);
+    }
+    return hits[0];
+  };
+  const configPath = only('.toml');
+  const profilePath = only('.cpuprofile');
+  const inputs = args.filter((a) => !a.endsWith('.toml') && !a.endsWith('.cpuprofile'));
   const config = configPath ? loadConfig(configPath) : undefined;
+  // A [profile] table with no profile to apply it to configured nothing, and
+  // said nothing about it — the same silence loadConfig() throws on for a
+  // misspelled table.
+  if (config?.minSelfPct !== undefined && profilePath === undefined) {
+    throw new Error(
+      `${configPath}: [profile] min_self_pct applies only to a run given a ` +
+        '.cpuprofile, and this run was given none'
+    );
+  }
   const configDisabled = config?.disabled ?? new Set<string>();
   // Validated up front so a typo fails loudly even when it never happens to
   // match a finding — an unknown key that disabled nothing would be the same
@@ -62,27 +78,24 @@ try {
   // about loops and fan-in: hotness is a property of the workload, which is the
   // sentence printed under every run of this tool.
   let fromProfile: string | undefined;
+  let unmatched: string[] = [];
   let given;
   if (profilePath !== undefined) {
     const minSelfPct = config?.minSelfPct ?? DEFAULT_MIN_SELF_PCT;
     const hot = hotFrames(profilePath, minSelfPct);
     const found = marksFromProfile(ts, p, hot, path.basename(profilePath));
-    // Zero matches means the profile is stale against the source it is being
-    // read next to. Reporting "clean" there would be a run that checked nothing.
-    if (found.marks.length === 0) {
-      throw new Error(
-        `${profilePath}: ${hot.length} frames at or above ${minSelfPct}% and none of them ` +
-          'matches a function in this program — the profile is stale against these sources'
-      );
-    }
+    // A frame that matched nothing is measured time this run could not look at,
+    // which is what `unresolved` already means for modules — so it goes through
+    // the same channel: named above the findings, and exit 1. It used to be two
+    // different failures on one axis. All of them missing threw exit 2 blaming
+    // a stale profile, a cause the tool never checked; three of four missing
+    // printed `clean` and exited 0 over 75% of the measured time, with the
+    // caveat below the verdict where nothing reads it (BUGS TC-77).
+    unmatched = found.unmatched.map((f) => `${f.name} (${path.relative(cwd, f.file)}:${f.line}:${f.column})`);
     given = found.marks;
     fromProfile =
       `  ${found.marks.length} hot function${found.marks.length === 1 ? '' : 's'} from ` +
-      `${path.basename(profilePath)} at or above ${minSelfPct}% self time` +
-      (found.unmatched.length > 0
-        ? `, and ${found.unmatched.length} hot frame${found.unmatched.length === 1 ? '' : 's'} ` +
-          'matched no function here'
-        : '');
+      `${path.basename(profilePath)} at or above ${minSelfPct}% self time`;
   }
   const { checker, marks, unresolved } = scan(ts, p, given);
 
@@ -108,7 +121,7 @@ try {
     cwd,
     results,
     { count: suppressedSites.size, keys: [...allKeys].sort() },
-    { unresolved },
+    { unresolved, unmatched },
     fromProfile === undefined ? 'annotated function' : 'hot function'
   );
   process.stdout.write(out + '\n');
@@ -127,9 +140,11 @@ try {
   // fail the run, so the text and the exit code agree.
   // An unresolved module exits 1 for the same reason a truncated walk does: the
   // rules were blind on those files and silence from them proves nothing. The
-  // text says so too, so the two still agree (BUGS TC-51).
+  // text says so too, so the two still agree (BUGS TC-51). An unmatched hot
+  // frame is that same blindness, measured (BUGS TC-77).
   process.exitCode =
     unresolved.length > 0 ||
+    unmatched.length > 0 ||
     results.some((r) => r.findings.some((f) => severity(f) === 'error') || r.mark.truncated)
       ? 1
       : 0;

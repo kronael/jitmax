@@ -23,17 +23,23 @@ export function load(cwd: string): Ts {
 // A Program gives us the type checker. Without a tsconfig we still build one,
 // over whatever sources the caller named, with checking relaxed: jitmax
 // reports its own findings, never the project's type errors.
+//
+// The project's tsconfig.json decides the OPTIONS every time it exists. A path
+// argument chooses the file LIST and nothing else. Before this, naming a path
+// skipped the tsconfig entirely and fell back to hardcoded NodeNext, which
+// knows nothing of `paths` or `bundler` — so `jitmax src` reported every
+// aliased import as unresolved and exited 1 where bare `jitmax` exited 0. The
+// documented invocation was the degraded one (BUGS TC-76).
 export function program(ts: Ts, cwd: string, inputs: string[]): TS.Program {
   const configPath = ts.findConfigFile(cwd, ts.sys.fileExists, 'tsconfig.json');
-  if (configPath && inputs.length === 0) {
-    const read = ts.readConfigFile(configPath, ts.sys.readFile);
-    const parsed = ts.parseJsonConfigFileContent(
-      read.config ?? {},
-      ts.sys,
-      path.dirname(configPath)
-    );
-    return ts.createProgram(parsed.fileNames, parsed.options);
-  }
+  const parsed = configPath
+    ? ts.parseJsonConfigFileContent(
+        ts.readConfigFile(configPath, ts.sys.readFile).config ?? {},
+        ts.sys,
+        path.dirname(configPath)
+      )
+    : undefined;
+  if (parsed && inputs.length === 0) return ts.createProgram(parsed.fileNames, parsed.options);
 
   const files: string[] = [];
   for (const root of inputs.length ? inputs : [cwd]) {
@@ -49,14 +55,16 @@ export function program(ts: Ts, cwd: string, inputs: string[]): TS.Program {
     }
   }
   if (files.length === 0) throw new Error(`no source files found in: ${inputs.join(', ')}`);
-  return ts.createProgram(
-    files.filter((f) => !f.includes('node_modules')),
-    {
-      allowJs: true,
-      target: ts.ScriptTarget.ES2022,
-      module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext,
-      noEmit: true,
-    }
-  );
+  // allowJs and noEmit are this tool's, not the project's: it reads .js as
+  // readily as .ts and never writes. Everything else — `paths`, the resolution
+  // mode, the lib set — comes from the project so the walk resolves what the
+  // project's own build resolves.
+  return ts.createProgram(files.filter((f) => !f.includes('node_modules')), {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.NodeNext,
+    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    ...parsed?.options,
+    allowJs: true,
+    noEmit: true,
+  });
 }

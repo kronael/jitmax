@@ -276,7 +276,7 @@ test('the same copy inside a forEach callback fires', () => {
   assert.deepStrictEqual(rules('collectInForEach'), ['accumulating-spread']);
 });
 
-// bench/delete.js deletes a NAMED property from an object. Deleting an array
+// bench/delete.ts deletes a NAMED property from an object. Deleting an array
 // element makes the backing store holey instead — a different representation,
 // and the printed fix boxes the array, which is the effect that withdrew
 // `boxed-elements` (BUGS TC-36).
@@ -630,10 +630,13 @@ test('a profile marks the function it measured as hot, and not the other one', (
   assert.strictEqual(run.status, 1);
 });
 
-// A profile that matches nothing is a profile taken against different source.
-// Reporting "clean" there would be a run that checked nothing, which is the
-// lie TC-7 and TC-17 are both about.
-test('a profile matching no function in the program is exit 2, never a clean run', () => {
+// A hot frame that matched no function is measured time the run could not
+// look at — the same blindness `unresolved` names for modules, so it takes the
+// same channel: printed above the findings, and exit 1. It used to be two
+// different failures on one axis: all of them missing threw exit 2 blaming a
+// stale profile, a cause the tool never checked, and a partial miss printed
+// `clean` and exited 0 over the measured time it had dropped (BUGS TC-77).
+test('a profile matching no function in the program names the frames, and exits 1', () => {
   const dir = path.join(root, 'test', 'fixtures', 'profile');
   const prof = writeProfile(path.join(root, 'tmp', `test-stale-${process.pid}.cpuprofile`), [{ line: 900, column: 1 }]);
   const run = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), prof, dir], {
@@ -641,7 +644,63 @@ test('a profile matching no function in the program is exit 2, never a clean run
     encoding: 'utf8',
   });
   fs.unlinkSync(prof);
-  assert.match(run.stderr, /stale against these sources/);
+  assert.match(run.stdout, /1 hot frame matched no function in this program/);
+  assert.match(run.stdout, /work\.ts:900:1/);
+  assert.match(run.stdout, /this is not a clean run/);
+  assert.strictEqual(run.status, 1);
+});
+
+// The half that printed `clean`: one frame of two matched, so 0.5% of the
+// measured time was checked and 99.5% was not, and the run said every hot
+// function is clean and exited 0.
+test('a partly matching profile is not a clean run either', () => {
+  const dir = path.join(root, 'test', 'fixtures', 'profile');
+  const prof = writeProfile(path.join(root, 'tmp', `test-partial-${process.pid}.cpuprofile`), [
+    { line: 900, column: 1 },
+    { line: 4, column: 26 },
+  ]);
+  const run = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), prof, dir], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  fs.unlinkSync(prof);
+  assert.ok(!/every hot function is clean/.test(run.stdout), 'unchecked hot time read as clean');
+  assert.match(run.stdout, /1 hot frame matched no function in this program/);
+  assert.strictEqual(run.status, 1);
+});
+
+// Positionals are named by suffix, not by slot. With the profile second it was
+// read as a source file: no annotations in a .cpuprofile, so the run reported
+// `every annotated function is clean` and exited 0 over a profile it never
+// opened. Same for a config after a path — suppression silently off.
+test('a profile is found wherever it sits in the argument line', () => {
+  const dir = path.join(root, 'test', 'fixtures', 'profile');
+  const prof = writeProfile(path.join(root, 'tmp', `test-order-${process.pid}.cpuprofile`), [
+    { line: 8, column: 23 },
+  ]);
+  const run = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), dir, prof], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  fs.unlinkSync(prof);
+  assert.match(run.stdout, /1 hot function, 1 error/);
+  assert.strictEqual(run.status, 1);
+});
+
+// A [profile] table in a run with no profile configured nothing and said
+// nothing about it — the silence loadConfig() already throws on for a
+// misspelled table.
+test('min_self_pct without a profile to apply it to is an error, not a no-op', () => {
+  const cfg = path.join(root, 'tmp', `test-profcfg-${process.pid}.toml`);
+  fs.mkdirSync(path.dirname(cfg), { recursive: true });
+  fs.writeFileSync(cfg, '[profile]\nmin_self_pct = 50\n');
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), cfg, path.join(root, 'test', 'fixtures', 'profile')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  fs.unlinkSync(cfg);
+  assert.match(run.stderr, /applies only to a run given a \.cpuprofile/);
   assert.strictEqual(run.status, 2);
 });
 
@@ -1067,9 +1126,9 @@ test('every ratio on the published page is a derived number', () => {
 
 // Protocol rule 13 — three whole sweeps per published cell, and agreement is a
 // value common to all three intervals — had no code path to publication.
-// `replicates()` lives in bench/driver.js and was called from exactly two
-// places: bench/run.js, where it prints the word DISAGREES to a terminal while
-// a sweep runs, and bench/tc11-report.js. `lib/derive.ts` never called it and
+// `replicates()` lives in bench/driver.ts and was called from exactly two
+// places: bench/run.ts, where it prints the word DISAGREES to a terminal while
+// a sweep runs, and bench/tc11-report.ts. `lib/derive.ts` never called it and
 // neither did any test, so a cell that refuted itself was withdrawn only when a
 // human happened to re-read its rows. Twelve did not get re-read (BUGS TC-37).
 //
