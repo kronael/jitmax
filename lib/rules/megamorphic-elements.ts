@@ -3,11 +3,12 @@ import type { Ts } from '../ts.ts';
 import { at, type Body } from '../scan.ts';
 import { N } from '../numbers.ts';
 import {
-  MAX_CACHED_MAPS,
   arrayParams,
   cells,
+  MAX_CACHED_MAPS,
   members,
   objectShapes,
+  receiver,
   walk,
   type Evidence,
   type Rule,
@@ -87,28 +88,14 @@ function readsFromElement(
       n.parent.left === n
     );
   };
-  // `(iss as any).path` loads `path` off iss's map exactly as `iss.path` does —
-  // the cast is a claim about the type checker, not about the object. zod's
-  // `prefixIssues` is written that way and is the one true instance of this
-  // rule twelve libraries contain; reading the type off the cast instead of off
-  // the value silenced it.
-  const receiver = (e: TS.Expression): TS.Expression => {
-    let n = e;
-    while (
-      ts.isAsExpression(n) ||
-      ts.isParenthesizedExpression(n) ||
-      ts.isNonNullExpression(n) ||
-      ts.isTypeAssertionExpression(n)
-    ) {
-      n = n.expression;
-    }
-    return n;
-  };
   let found = false;
   walk(ts, body.node, (node) => {
     if (found) return;
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
-      if (!isStoreTarget(node) && isElement(checker.getTypeAtLocation(receiver(node.expression)))) {
+      if (
+        !isStoreTarget(node) &&
+        isElement(checker.getTypeAtLocation(receiver(ts, node.expression)))
+      ) {
         found = true;
       }
       return;

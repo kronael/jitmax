@@ -25,9 +25,10 @@ export interface Evidence {
   // word `bound` instead of `measured` beside a number (BUGS TC-33). The report
   // prints no number now, so that flag had no reader left. Severity is the
   // stronger form of the same distinction and it reaches the exit code, which
-  // is what a CI user actually feels. `closed-world` is the only `warn`: it
-  // fires on a callee with no readable body, and no sweep here measures that
-  // program.
+  // is what a CI user actually feels. Two rules are `warn`: `closed-world`,
+  // which fires on a callee with no readable body, and `megamorphic-dispatch`,
+  // whose own `source` says no sweep varies the key set at a call site. Neither
+  // has a benchmark that ran the program it fires on.
   severity: 'error' | 'warn';
   // BUGS.md issue numbers this rule is known to be wrong or unproven about.
   // Empty when the rule carries no open defect. This is the register a
@@ -127,6 +128,26 @@ export const reassignedInLoop = (ts: Ts, node: TS.Node, inLoop: boolean): node i
 
 // DEFAULT_MAX_POLYMORPHIC_MAP_COUNT, the constant README's V8 table cites. Both
 // megamorphic rules fire on the fifth map, from one threshold rather than two.
+// `(iss as any).path` loads `path` off iss's map exactly as `iss.path` does —
+// the cast is a claim about the type checker, not about the object. zod's
+// `prefixIssues` is written that way and is the one true instance of
+// megamorphic-elements that twelve libraries contain; reading the type off the
+// cast instead of off the value silenced it. `megamorphic-dispatch` reads the
+// same objects at a CALL site and never got this, so `(x as any).step()` was
+// invisible while `(r as any).kind` was reported — same object, same maps.
+export const receiver = (ts: Ts, e: TS.Expression): TS.Expression => {
+  let n = e;
+  while (
+    ts.isAsExpression(n) ||
+    ts.isParenthesizedExpression(n) ||
+    ts.isNonNullExpression(n) ||
+    ts.isTypeAssertionExpression(n)
+  ) {
+    n = n.expression;
+  }
+  return n;
+};
+
 export const MAX_CACHED_MAPS = 4;
 
 // The property names a member carries, sorted. V8 keys a map on the property

@@ -1068,16 +1068,37 @@ test('a cell count agrees with the noun beside it', () => {
 // program it fires on may warn. A rule added without one would default to
 // `warn` in the reporter and gate nothing, silently — which is the same lie a
 // missing key tells anywhere else in this project.
-test('every rule states a severity, and closed-world is the only warning', () => {
+//
+// The register is the two rules that SAY, in their own `source`, that no sweep
+// ran the program they fire on. `megamorphic-dispatch` joined it on its own
+// words: every family in bench/dispatch.jl varies key order, the call target or
+// where the function is held, all over one property set, and this rule counts
+// property SETS. It failed builds on that for as long as it shipped.
+const UNMEASURED_TRIGGER = ['megamorphic-dispatch', 'closed-world'];
+
+test('a rule warns exactly when no sweep ran the program it fires on', () => {
   for (const [name, e] of Object.entries(EVIDENCE)) {
     assert.ok(e.severity === 'error' || e.severity === 'warn', `${name} states no severity`);
   }
   assert.deepStrictEqual(
     Object.entries(EVIDENCE)
       .filter(([, e]) => e.severity === 'warn')
-      .map(([name]) => name),
-    ['closed-world']
+      .map(([name]) => name)
+      .sort(),
+    [...UNMEASURED_TRIGGER].sort()
   );
+  // Not just the list: a warning has to carry the defect code that says WHY it
+  // is one. TC-33 is the name of this gap — the rule fires on one program and
+  // its benchmark measured another — and a rule that drops it has either gained
+  // a sweep, and should be an error, or quietly stopped admitting the gap.
+  for (const name of UNMEASURED_TRIGGER) {
+    const e = EVIDENCE[name];
+    assert.ok(e, `${name} is registered as unmeasured but is not a rule`);
+    assert.ok(
+      e.defects?.includes('TC-33'),
+      `${name} warns, but no longer carries TC-33 to say why`
+    );
+  }
 });
 
 // The end-to-end examples. Each `.before.ts` is a function a library ships and

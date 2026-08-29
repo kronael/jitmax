@@ -18,7 +18,7 @@ export const DEFECT: Record<string, string> = {
   'TC-2': 'a TypeScript union member is not a V8 map',
   'TC-9': 'rules fire outside the conditions their own evidence establishes',
   'TC-13': 'a method in a field has no four-map budget',
-  'TC-33': "closed-world's trigger and its benchmark measure different things",
+  'TC-33': 'the rule fires on one program and its benchmark measured another',
 };
 
 // Every rule cites a measurement, and the measurement also says where the rule
@@ -57,7 +57,7 @@ export function check(ts: Ts, checker: TS.TypeChecker, mark: Mark): Finding[] {
   // Every rule over every body the annotation reaches. njit compiles the call
   // tree; we check the call tree.
   for (const body of mark.reached) {
-    for (const rule of RULES) rule(ts, checker, body, add);
+    for (const rule of RULES) rule(ts, checker, body, add, mark);
   }
   closedWorld.detect(mark, add);
   return findings;

@@ -2,10 +2,11 @@ import type * as TS from 'typescript';
 import { at } from '../scan.ts';
 import { N } from '../numbers.ts';
 import {
-  MAX_CACHED_MAPS,
   arrayParams,
   cells,
+  MAX_CACHED_MAPS,
   objectShapes,
+  receiver,
   walk,
   type Evidence,
   type Rule,
@@ -43,8 +44,16 @@ const evidence: Evidence = {
     'size of the one this rule exists to report, and the same sweep measured it. No ' +
     'declared type separates that form from a prototype method, so the rule misses it ' +
     'rather than guessing. This is a miss, not a refutation',
-  severity: 'error',
-  defects: ['TC-13'],
+  // `warn`, on this rule's own words. The contract in shared.ts is `error` when
+  // a benchmark measures the program the rule FIRES on; `source` above says
+  // every family in bench/dispatch.jl varies key order, the call target or where
+  // the function is held, all over ONE property set, that this rule counts
+  // property SETS and is therefore silent on all four, and that "no sweep here
+  // varies the key set at a CALL site yet". A rule that says that about itself
+  // and then fails a build charges a cost its evidence does not carry — which
+  // is what closed-world was made a warning for (BUGS TC-33).
+  severity: 'warn',
+  defects: ['TC-13', 'TC-33'],
 };
 
 // The same four maps govern a CALL site. `x.step()` where x is one of five
@@ -68,8 +77,8 @@ const detect: Rule = (ts, checker, body, add) => {
 
   walk(ts, body.node, (node) => {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-      const receiver = node.expression.expression;
-      const t = checker.getTypeAtLocation(receiver);
+      const recv = receiver(ts, node.expression.expression);
+      const t = checker.getTypeAtLocation(recv);
       const shapes = objectShapes(ts, checker, t);
       if (shapes > MAX_CACHED_MAPS && !claimed.has(t)) {
         add({
@@ -78,7 +87,7 @@ const detect: Rule = (ts, checker, body, add) => {
           // Counted the same way as megamorphic-elements, and for the same
           // reason: five names for one property set are one map (TC-42).
           message:
-            `${receiver.getText(body.sf)} reaches this call as ${shapes} distinct property ` +
+            `${recv.getText(body.sf)} reaches this call as ${shapes} distinct property ` +
             `sets and .${node.expression.name.text}() is called on it; V8 caches four maps ` +
             'per call site, so a fifth makes every call here a lookup',
           fix:
