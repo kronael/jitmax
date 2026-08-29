@@ -455,3 +455,23 @@ export function allRows(rows: number[]): string[] {
 export function clearToken(): void {
   delete process.env.JITMAX_TOKEN;
 }
+
+/** A constructor is a body like any other, and allocation is what constructors
+ * do. `new` is a NewExpression, not a CallExpression, so the walk used to step
+ * over it: the chain below was never checked and the closed-world report said
+ * the world was closed when it was not (BUGS TC-10). */
+class Built {
+  vals: number[];
+  constructor(rows: number[]) {
+    this.vals = rows.map((r) => r * 2).filter((r) => r > 3);
+  }
+}
+
+/** A class with no constructor of its own runs a default one with no body:
+ * nothing to follow and nothing to report. */
+class Bare {}
+
+/** @jitmax */
+export function viaConstructor(rows: number[]): number {
+  return new Built(rows).vals.length + (new Bare() ? 1 : 0);
+}

@@ -80,7 +80,11 @@ function isFunctionLike(ts: Ts, n: TS.Node): n is TS.SignatureDeclaration {
     ts.isFunctionDeclaration(n) ||
     ts.isFunctionExpression(n) ||
     ts.isArrowFunction(n) ||
-    ts.isMethodDeclaration(n)
+    ts.isMethodDeclaration(n) ||
+    // A constructor is a body like any other, and allocation is what
+    // constructors do — which is the rule `allocating-select` is about
+    // (BUGS TC-10).
+    ts.isConstructorDeclaration(n)
   );
 }
 
@@ -288,7 +292,12 @@ function reach(
     const body = reached[i];
     if (!body) continue;
     const visit = (node: TS.Node): void => {
-      if (ts.isCallExpression(node)) {
+      // `new Foo()` is a NewExpression, not a CallExpression. The walk visited
+      // only the second, so a constructor in your own source was never checked
+      // and a constructor from a typed dependency was never reported as an
+      // escape — the closed-world report said the world was closed when it was
+      // not, which is the failure the rule exists to prevent (BUGS TC-10).
+      if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
         const text = node.expression.getText(body.sf);
         if (!PRIMITIVES.has(text)) {
           // An immediately-invoked function has no symbol to resolve, but its
@@ -296,10 +305,25 @@ function reach(
           // cannot read.
           let callee: TS.Expression = node.expression;
           while (ts.isParenthesizedExpression(callee)) callee = callee.expression;
-          const decls =
+          const raw =
             ts.isArrowFunction(callee) || ts.isFunctionExpression(callee)
               ? [callee as TS.Node]
               : targetsOf(ts, checker, node.expression);
+          // `new Foo()` resolves to the CLASS, and what runs is its
+          // constructor. A class we can read that declares none runs a default
+          // constructor with no body: nothing to follow and nothing to report,
+          // so it is neither an escape nor a body.
+          let emptyCtor = false;
+          const decls: TS.Node[] = [];
+          for (const d of raw) {
+            if (!ts.isClassDeclaration(d) && !ts.isClassExpression(d)) {
+              decls.push(d);
+              continue;
+            }
+            const ctor = d.members.find((m) => ts.isConstructorDeclaration(m) && m.body);
+            if (ctor) decls.push(ctor);
+            else if (d.getSourceFile()?.isDeclarationFile === false) emptyCtor = true;
+          }
           const next = decls.filter((d) => followable(ts, d));
           for (const d of next) {
             if (seen.has(d)) continue;
@@ -317,7 +341,7 @@ function reach(
           // walk cannot bind to one implementation — fell through both branches
           // and vanished (BUGS TC-45, TC-31). A coverage report that silently
           // omits a case is the lie this rule exists to prevent.
-          const unchecked = next.length === 0;
+          const unchecked = next.length === 0 && !emptyCtor;
           const site = at(body.sf, node);
           const key = `${site.file}:${site.line}:${site.column}`;
           if (unchecked && !reported.has(key)) {

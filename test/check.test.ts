@@ -92,6 +92,7 @@ test('a function is checked only where it is annotated', () => {
       'usesHelper',
       'viaCallee',
       'viaCalleeQuiet',
+      'viaConstructor',
       'widen',
     ]
   );
@@ -664,6 +665,16 @@ test('a run whose only finding is a warning exits 0', () => {
   assert.match(run.stdout, /0 errors, 1 warning/);
   assert.match(run.stdout, /warn {2}closed-world/);
   assert.strictEqual(run.status, 0);
+});
+
+// TC-10. `new Foo()` is a NewExpression, so the walk stepped over it: a
+// constructor in your own source was never checked, and one from a typed
+// dependency was never reported as an escape — the closed-world report said the
+// world was closed when it was not, which is the failure that rule exists to
+// prevent. A class with no constructor of its own is neither: its default
+// constructor has no body to follow and nothing to report.
+test('the walk enters a constructor, and a class without one is not an escape', () => {
+  assert.deepStrictEqual(rules('viaConstructor'), ['chained-allocation']);
 });
 
 // TC-70. A derived count reaching prose that assumes it is plural: the numeral

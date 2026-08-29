@@ -164,6 +164,53 @@ one cell cannot reintroduce it.
 
 Found 2026-08-28 while reading the strings for TC-48.
 
+## TC-70 — the builtin list should be derived from V8, not written by hand (2026-08-29, open, proposal)
+
+Following TC-69's first cause. The owner's proposal is a list of acceptable and
+unacceptable builtins, so the tool can discern between them instead of silencing
+all of them. The list is a good idea and it must not be hand-written: a
+hand-written performance list is exactly what TC-50 charges oxlint and Biome
+with shipping.
+
+**It is already derivable from the checkout in this repository.**
+`v8src/src/compiler/js-call-reducer.cc` carries a `case Builtin::k…` for every
+builtin TurboFan lowers to inline code — **168 of them** in the pinned tree.
+`make v8-check` already re-reads quoted V8 lines against that checkout, so the
+same machinery can re-derive this list and fail when it drifts.
+
+**But read it for what it says.** Lowering describes the CALL BOUNDARY, not the
+work. Sampling the pinned tree:
+
+    LOWERED   Array.prototype.sort        MathMax   Array.prototype.push
+    LOWERED   RegExp.prototype.test
+    not       JSON.parse    JSON.stringify    Object.keys    Object.assign
+    not       String.prototype.split        RegExp.prototype.exec
+
+`Array.prototype.sort` is lowered and is still O(n log n) with a comparator
+call per comparison. So the list cannot be used as a fast-versus-slow
+classifier; doing that would be the folklore mistake in new clothes. It answers
+one question only: is there a real call into C++ or Torque at this site.
+
+**What it is good for, in order:**
+
+1. **Confirming TC-69's silence.** A lowered builtin has no call boundary to
+   report, which is a derived reason to stay quiet rather than an asserted one.
+2. **Seeding candidates for a new rule.** The not-lowered set is where a real
+   call happens on a hot path. Each candidate still needs its own benchmark
+   before it fires — the list narrows what to measure, it does not license a
+   finding.
+3. **One actionable pair falls out immediately.** `RegExp.prototype.test` is
+   lowered and `RegExp.prototype.exec` is not. A hot path that only needs a
+   boolean and calls `.exec()` is paying a call the same code with `.test()`
+   does not. That is a rewrite, not a judgement — worth a sweep in
+   `bench/builtins.jl` and, if it separates, a rule.
+
+**The trap to avoid:** the list changes between V8 versions. Deriving it pins it
+to the version in `v8src/`, and the tool must print which V8 it derived from,
+or it will make a version-specific claim in a general voice.
+
+Raised 2026-08-29.
+
 ## TC-69 — closed-world cannot see through an interface-typed callee, so it is loudest on the best-abstracted code (2026-08-28, partly fixed 2026-08-28 — named, not followed)
 
 `@noble/curves`, 26 files: **2,113 warnings against 2 errors**. The top callees:
@@ -2898,7 +2945,7 @@ sweep of its own — so this is recorded rather than applied.
 after it — that the bootstrap "cannot see that variance" — is the right one, and
 it is what the fix acted on.)*
 
-## TC-10 — the walk follows calls but not constructors (2026-08-13, open)
+## TC-10 — the walk follows calls but not constructors (2026-08-13, FIXED 2026-08-29)
 
 `reach()` in `lib/scan.ts` visits `ts.isCallExpression(node)` only. A
 `new Foo(...)` is a `NewExpression`, so the walk never enters the constructor
@@ -2914,9 +2961,18 @@ an allocation, and allocation is what constructors do.
 
 The fix is one predicate — accept `NewExpression` alongside `CallExpression`,
 since both carry `expression` and `arguments` — plus a demo function, a test,
-and a check that `usesDependency` does not double-report. Not applied: the
-closed-world report is a published contract and widening what it reports
-changes output for every existing user of the tool. Sign-off first.
+and a check that `usesDependency` does not double-report.
+
+**FIXED 2026-08-29**, with one thing the plan above did not anticipate.
+`new Foo()` resolves to the CLASS, not to a body, so the class is expanded to
+its constructor before the followable test. A class the walk can read that
+declares no constructor of its own runs a default one with no body: it is
+neither followed nor reported, and without that case every `new Plain()` in a
+program would have become a false escape. `isFunctionLike` accepts
+`ConstructorDeclaration` now, so `/** @jitmax */` on a constructor also works.
+
+`demo/lib.ts`'s `viaConstructor` covers both halves: the chain inside `Built`'s
+constructor is found, and `new Bare()` reports nothing.
 
 ## ✅ FIXED 2026-08-10 — TC-1 — the protocol and bench/run.js disagreed
 
