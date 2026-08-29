@@ -4,7 +4,20 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { CITATIONS, derive, markdown, overGate, unreplicable, withoutBlock } from '../lib/derive.ts';
+import {
+  CITATIONS,
+  agreement,
+  current,
+  derive,
+  deriveDetail,
+  markdown,
+  overGate,
+  rows,
+  type Row,
+  spans1,
+  unreplicable,
+  withoutBlock,
+} from '../lib/derive.ts';
 import { deriveBuiltins, loweredCases } from '../lib/derive-builtins.ts';
 import { BUILTINS } from '../lib/builtins.ts';
 import { N } from '../lib/numbers.ts';
@@ -748,6 +761,92 @@ test('a run-once callback on a non-array is not a loop', () => {
   assert.strictEqual(run.status, 0);
 });
 
+// Two coverage holes of one class (BUGS TC-84): a file the walk skipped
+// silently still counted as covered, and both ended in `0 annotated functions
+// … clean` at exit 0.
+
+// `.cjs` was missing from the extension list — `.cts` was in it — so a
+// CommonJS file's annotated function was never read. The fixture carries a
+// finding: seeing it proves the file was walked, not merely not-crashed-on.
+test('an annotated function in a .cjs file is checked, not skipped', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'cjs')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /error {2}accumulating-spread/);
+  assert.strictEqual(run.status, 1);
+});
+
+// The node_modules filter ran on the WHOLE path, after the emptiness guard, so
+// naming a dependency's directory — the use case scan.ts endorses — dropped
+// every file it had just collected and exited 0. The fixture lives in a temp
+// tree because node_modules/ is gitignored here.
+test('a named path into node_modules is scanned, and an emptied walk is loud', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jitmax-nm-'));
+  const dep = path.join(tmp, 'node_modules', 'dep');
+  fs.mkdirSync(dep, { recursive: true });
+  fs.writeFileSync(
+    path.join(dep, 'index.ts'),
+    '/** @jitmax */\nexport function gather(xs: number[]): number[] {\n' +
+      '  let acc: number[] = [];\n  for (const x of xs) acc = [...acc, x];\n  return acc;\n}\n'
+  );
+  const named = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), dep], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  assert.match(named.stdout, /error {2}accumulating-spread/);
+  assert.strictEqual(named.status, 1);
+
+  // The same tree by its parent: the walk finds only node_modules, the filter
+  // empties the list, and that is a refusal at exit 2 — never a clean run.
+  const emptied = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), tmp], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  assert.strictEqual(emptied.status, 2);
+  assert.match(emptied.stderr, /no source files found/);
+});
+
+// A bound only binds what comes AFTER it. A trailing `.slice(0, 10)` slices the
+// RESULT, and the stage before it still allocated one element per element of
+// the source — so the trailing form was silencing the allocation the rule
+// exists for. A literal-length source array bounds the chain for real; TC-54
+// named it beside `.slice` and only `.slice` shipped.
+test('a chain is bounded by what precedes a stage, not by what follows it', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'bounds')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /3 annotated functions, 1 error/);
+  assert.match(run.stdout, /sliceLast\(\)/);
+  assert.ok(!run.stdout.includes('sliceFirst'), 'a leading bound stopped binding');
+  assert.ok(!run.stdout.includes('literalSource'), 'a literal-length source is unbounded');
+  assert.strictEqual(run.status, 1);
+});
+
+// The accumulator of a reduce is re-run per element. `reduce` was missing from
+// the set of methods whose callback is a loop body, so the assigning form was
+// invisible; `reduceRight` was named nowhere; and the rule's own reduce handler
+// never got TC-90's receiver check, so a Result's `reduce` read as a loop.
+test('a reduce accumulator is a loop body, and only on an array', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'reduce')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /assigning\(\)/);
+  assert.match(run.stdout, /rightward\(\)/);
+  const onceAt = run.stdout.indexOf('runsOnce()');
+  assert.ok(onceAt > 0, 'the run-once function was not reported at all');
+  assert.ok(
+    !run.stdout.slice(onceAt).includes('accumulating-spread'),
+    'a run-once callback on a non-array read as a loop'
+  );
+  assert.strictEqual(run.status, 1);
+});
+
 // The suppression line is counted per site too. Counting it per mark made one
 // disabled line reached from three annotated functions read as "3 findings
 // suppressed" — the fan-in TC-62 removed from every count above it, left behind
@@ -1079,7 +1178,7 @@ const HISTORICAL: Record<string, string> = {
   '4.42-4.79x': 'closed-world before three replications, quoted as what it used to read',
   '3.21-4.95x': 'closed-world before rule 13 withdrew its n=100000 cell',
   '6.48-7.51x': 'map-then-filter before rule 13 was enforced in lib/derive.ts',
-  '1.00-1.15x': 'the omit read cells as they rejected before re-measurement',
+  '1.00-1.15x': 'zod cleanEnum reads at 16 as they rejected before re-measurement',
   // Rules this project withdrew. Their costs are real and ship nothing.
   '1.39-1.66x': 'boxed-elements: a genuinely boxed array, the rule was withdrawn anyway',
   '1.58-1.69x': 'boxed-elements, the build half of the same withdrawn rule',
@@ -1091,23 +1190,17 @@ const HISTORICAL: Record<string, string> = {
   '1.64x': 'one of three disagreeing sweeps, quoted to show they disagree',
   '0.91x': 'one of three disagreeing sweeps, quoted to show they disagree',
   '0.89x': 'one of three disagreeing sweeps, quoted to show they disagree',
-  '17.34x': 'one of three disagreeing sweeps of the omit read cell',
-  '19.34x': 'one of three disagreeing sweeps of the omit read cell',
-  '20.10x': 'one of three disagreeing sweeps of the omit read cell',
+  '17.34x': 'one of three disagreeing sweeps of remeda mergeAll at n=64, before it was re-swept',
+  '19.34x': 'one of three disagreeing sweeps of remeda mergeAll at n=64, before it was re-swept',
+  '20.10x': 'one of three disagreeing sweeps of remeda mergeAll at n=64, before it was re-swept',
   '20.29x': 'one of the three fresh sweeps that do agree',
   '18.09x': 'one of the three fresh sweeps that do agree',
   '19.88x': 'one of the three fresh sweeps that do agree',
   '0.98-1.03x': 'the cleanEnum read cells, rejecting at a 256-member enum',
-  '1.11x': 'one of three sweeps of a read cell that agrees on no effect',
-  '1.01x': 'one of three sweeps of a read cell that agrees on no effect',
-  // bench/example.jl, quoted in prose and not yet behind a citation. These are
-  // the ones that SHOULD be derived, and BUGS TC-73 says so.
-  '18.78-20.87x': 'bench/example.jl, omit reads at 12 keys — not yet a citation',
-  '0.97-1.04x': 'bench/example.jl, omit reads at 48 keys — not yet a citation',
-  '1.57-2.06x': 'bench/example.jl, where the before half is faster — not yet a citation',
-  '1.10-1.12x': 'bench/example.jl, cleanEnum at 16 — not yet a citation',
-  '1.03-1.10x': 'bench/example.jl, cleanEnum at 256 — not yet a citation',
+  '1.11x': 'one of three sweeps of zod cleanEnum reads at 16, the cell DISAGREE withdraws',
+  '1.01x': 'one of three sweeps of zod cleanEnum reads at 16, the cell DISAGREE withdraws',
   // Ordinary prose, not a measurement of anything.
+  '1.10x': "rule 6's broad-warning point-estimate bar, a protocol constant",
   '2x': "the calibration tolerance: a cell missing 120ms by more than this throws",
   '8x': 'a ratio of two published ratios, said in words',
   '200x': 'a round figure in a sentence about what a microbenchmark is not',
@@ -1136,6 +1229,103 @@ test('every ratio in README prose is derived, or registered as history', () => {
   // derived value, or stops appearing, is a line nobody will notice is stale.
   const dead = Object.keys(HISTORICAL).filter((h) => !quoted.includes(h) || values.has(h));
   assert.deepStrictEqual(dead, [], `HISTORICAL still lists ${dead.join(', ')}, which README no longer needs it for`);
+});
+
+// README's two end-to-end tables print every sweep of every example cell and
+// the interval each cell's three sweeps share. The register above cannot see
+// one of them: they are bare decimals with no trailing `x`, so `RATIO` never
+// matched one, HISTORICAL never had to explain one, and `make test` stayed
+// green whatever they said. All of them were right the day they were typed and
+// nothing would ever have said otherwise again. This reads them back out of
+// README and re-derives each from the rows.
+//
+// Read back rather than generated: the numbers are the half that drifts, and
+// the rest of a row is editorial — which finding fired, REJECTED, DISAGREES,
+// two sizes paired on one line — so generating them would move a page's layout
+// into lib/derive.ts and both tables into the one generated block, 120 lines
+// above the argument they belong to.
+//
+// README spells a library the way a reader says it and the sweep spells it the
+// way `examples/` names the fixture. Neither derives from the other, so the
+// pairing is written down; a wrong pairing fails below on every number in the
+// row.
+const EXAMPLE: Record<string, string> = {
+  'radash `assign`': 'radash-assign',
+  'remeda `mergeAll`': 'remeda-merge-all',
+  'es-toolkit `omit`': 'estoolkit-omit',
+  'zod `cleanEnum`': 'zod-clean-enum',
+};
+
+test('every number in the end-to-end tables is what bench/example.jl says', () => {
+  const readme = fs
+    .readFileSync(path.join(root, 'README.md'), 'utf8')
+    .replace(/[\u2013\u2014]/g, '-');
+
+  const cells = new Map<string, Row[]>();
+  for (const r of rows(root, 'example.jl').filter(current)) {
+    const key = `${r.example}|${r.mode}|${r.n}`;
+    const at = cells.get(key);
+    if (at) at.push(r);
+    else cells.set(key, [r]);
+  }
+  // In sweep order, because that is the order the table prints them in and a
+  // set of three numbers is not the same claim as three numbers in order.
+  const cell = (key: string): Row[] =>
+    (cells.get(key) ?? assert.fail(`bench/example.jl has no cell ${key}`))
+      .slice()
+      .sort((a, b) => a.replicate! - b.replicate!);
+
+  // Two places throughout both tables, whatever the magnitude — these are eight
+  // paired cells read against each other, not eight independent headlines.
+  const two = (v: number): string => v.toFixed(2);
+  const sweeps = (key: string): string => cell(key).map((r) => two(r.ratio!)).join(' / ');
+  const agreed = (key: string): string => {
+    const shared = agreement(cell(key));
+    if (!shared) return '**none - DISAGREES**';
+    const lo = two(shared.lo);
+    const hi = two(shared.hi);
+    // An agreement containing 1.0 is a cell where the fix is worth nothing, and
+    // the table says so rather than leaving a reader to test the ends. The
+    // verdict is rule 6's, imported from the funnel that enforces it — a second
+    // spelling of the predicate here is how it lived only in a terminal string
+    // for a year (BUGS TC-84).
+    const rejected = spans1(shared) ? ', REJECTED' : '';
+    return `**${lo === hi ? lo : `${lo}-${hi}`}${rejected}**`;
+  };
+
+  const printed = new Set<string>();
+  const tables = [
+    ['| Function, and the finding | n | three sweeps | agreement |', 'incl'],
+    ['| Function | n | three sweeps | agreement |', 'excl'],
+  ] as const;
+  for (const [header, mode] of tables) {
+    const at = readme.indexOf(header);
+    assert.notStrictEqual(at, -1, `README has lost the table headed ${header}`);
+    let read = 0;
+    for (const line of readme.slice(at).split('\n').slice(2)) {
+      if (!line.startsWith('|')) break;
+      read++;
+      const [name, ns, three, agree] = line.split('|').slice(1, -1).map((c) => c.trim());
+      // The finding the row is about follows the function name; the sweep is
+      // named by the function alone.
+      const lib = name!.split(' - ')[0]!.trim();
+      const example = EXAMPLE[lib] ?? assert.fail(`no sweep of example.jl is named ${lib}`);
+      // One row carries two sizes, joined by a middot in all three columns.
+      const keys = ns!.split('/').map((n) => `${example}|${mode}|${n.trim()}`);
+      for (const key of keys) printed.add(key);
+      assert.strictEqual(three, keys.map(sweeps).join(' \u00b7 '), `${lib} n=${ns}: three sweeps`);
+      assert.strictEqual(agree, keys.map(agreed).join(' \u00b7 '), `${lib} n=${ns}: agreement`);
+    }
+    assert.ok(read > 0, `the table headed ${header} has lost its rows`);
+  }
+
+  // Both directions, like every other register here: a cell that stops being
+  // printed is a measurement that left the page and said nothing.
+  assert.deepStrictEqual(
+    [...printed].sort(),
+    [...cells.keys()].sort(),
+    'the end-to-end tables and bench/example.jl no longer cover the same cells'
+  );
 });
 
 test('every ratio on the published page is a derived number', () => {
@@ -1214,9 +1404,11 @@ const DISAGREE = new Set([
   'shape-sets.jl 4|1|incl|16384|L2',
   'shape-sets.jl 5|1|incl|16384|L2',
   'shape-sets.jl 2|1|incl|262144|L3',
-  // Withdrawn for the other reason the gate withdraws a cell: it has two
-  // sweeps, and rule 13 asks for three. No citation reads this file.
-  'addprop.jl added|literal|build|256|dispatch-table',
+  // Withdrawn for the other reason the gate withdraws a cell: fewer sweeps
+  // than the three rule 13 asks for, and the gate prints the count so a reader
+  // can tell "never replicated" from "replicated and refuted". No citation
+  // reads this file.
+  'addprop.jl added|literal|build|256|dispatch-table (2 sweeps)',
 ]);
 
 // Every sweep a citation reads. A file is here whether or not it is in
@@ -1241,6 +1433,63 @@ test('no published cell is withdrawn except the ones on record', () => {
   const healed = [...DISAGREE].filter((c) => !found.has(c)).sort();
   assert.deepStrictEqual(fresh, [], `these cells are withdrawn and nothing said so: ${fresh.join(', ')}`);
   assert.deepStrictEqual(healed, [], `DISAGREE lists cells that now replicate — remove them: ${healed.join(', ')}`);
+});
+
+// Protocol rules 6 and 13, proven through the publication path itself, never
+// by calling the gate's internals. TC-84's defect was invariants living at
+// call sites — bench/run.ts printed REJ to a terminal while derive.ts
+// published the same cell — so this plants cells the protocol must refuse in a
+// copy of the real data and derives: a change that routes numbers around the
+// funnel makes the planted cells stop failing, and this test is what says so.
+test('a single-sweep cell and a rejected interval cannot publish as live', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jitmax-funnel-'));
+  fs.mkdirSync(path.join(tmp, 'bench'));
+  for (const f of fs.readdirSync(path.join(root, 'bench'))) {
+    if (f.endsWith('.jl')) fs.copyFileSync(path.join(root, 'bench', f), path.join(tmp, 'bench', f));
+  }
+  const plant = (file: string, planted: object[]): void =>
+    fs.appendFileSync(
+      path.join(tmp, 'bench', file),
+      planted.map((r) => `${JSON.stringify(r)}\n`).join('')
+    );
+
+  // Rule 13's base case: one sweep of a 99x cell under select.heap's pick. A
+  // cell measured once was the one count the old `length >= 2` guard let
+  // through unchallenged (BUGS TC-84).
+  const select = { runner: 'r2', variant: 'select', baseline: 'compare', mode: 'heap', protocol: 'replicated' };
+  plant('select.jl', [{ ...select, n: 555, replicate: 1, ratio: 99, lo: 98, hi: 100 }]);
+  // Rule 6 on a rule's evidence: three agreeing sweeps whose shared interval
+  // spans 1.0, however large the point estimates read.
+  plant(
+    'select.jl',
+    [1, 2, 3].map((i) => ({
+      ...select, n: 777, replicate: i, ratio: 1.4, lo: 0.9 + i / 100, hi: 1.1 + i / 100,
+    }))
+  );
+  // Rule 6's broad-warning bar: a cell that clears 1.0 — the rule bar — and
+  // still falls short of point >= 1.10x with the lower bound above 1.05x,
+  // planted under chained-allocation, the one rule that claims 'broad'.
+  plant(
+    'chained.jl',
+    [1, 2, 3].map((i) => ({
+      runner: 'r2', variant: 'chained', baseline: 'fused', mode: 'incl', kernel: 'dispatch-table',
+      protocol: 'replicated', n: 555, replicate: i, ratio: 1.06, lo: 1.01 + i / 1000, hi: 1.09,
+    }))
+  );
+
+  const d = deriveDetail(tmp);
+  assert.strictEqual(d['select.heap']!.value, N['select.heap'], 'a planted cell moved the published range');
+  assert.deepStrictEqual(d['select.heap']!.withdrawn, ['select|compare|heap|555 (1 sweep)']);
+  assert.deepStrictEqual(d['select.heap']!.rejected, ['select|compare|heap|777']);
+  assert.strictEqual(d['chained.mapfilter']!.value, N['chained.mapfilter'], 'a planted cell moved the published range');
+  assert.deepStrictEqual(d['chained.mapfilter']!.rejected, ['chained|fused|incl|555|dispatch-table']);
+
+  // The verdicts are output, not bookkeeping: the generated README block names
+  // every planted cell with the rule that refused it.
+  const block = markdown(tmp);
+  assert.match(block, /withdrawn as unreplicable \(rule 13\): select\|compare\|heap\|555 \(1 sweep\)/);
+  assert.match(block, /rejected under rule 6 \(the rule's bar\): select\|compare\|heap\|777/);
+  assert.match(block, /rejected under rule 6 \(the broad-warning bar\): chained\|fused\|incl\|555\|dispatch-table/);
 });
 
 // Protocol rule 9's load gate, in the same shape as rule 13's register above:

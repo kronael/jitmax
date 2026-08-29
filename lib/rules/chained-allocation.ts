@@ -67,7 +67,8 @@ function literalBound(ts: Ts, node: TS.Node): number | undefined {
   const int = (a: TS.Node | undefined): number | undefined =>
     a && ts.isNumericLiteral(a) ? Number(a.text) : undefined;
   let best: number | undefined;
-  for (let n: TS.Node = node; ts.isCallExpression(n); n = n.expression.expression) {
+  let n: TS.Node = node;
+  for (; ts.isCallExpression(n); n = n.expression.expression) {
     if (!ts.isPropertyAccessExpression(n.expression)) break;
     if (n.expression.name.text === 'slice') {
       const [from, to] = [int(n.arguments[0]), int(n.arguments[1])];
@@ -81,6 +82,14 @@ function literalBound(ts: Ts, node: TS.Node): number | undefined {
         : undefined;
       if (bound !== undefined) best = best === undefined ? bound : Math.min(best, bound);
     }
+  }
+  // The base of the chain bounds it too. `[1, 2, 3].map(f).filter(g)` allocates
+  // a three-element intermediate, and the rule failed the build over it. TC-54
+  // named a literal-length array beside `.slice`; only `.slice` was shipped. A
+  // spread element puts the length back out of reach.
+  if (ts.isArrayLiteralExpression(n) && !n.elements.some((e) => ts.isSpreadElement(e))) {
+    const len = n.elements.length;
+    best = best === undefined ? len : Math.min(best, len);
   }
   return best;
 }
@@ -125,7 +134,13 @@ const detect: Rule = (ts, checker, body, add) => {
       // for the same reason and against the same measurement: on a string,
       // `concat` is faster than the rewrite this rule would ask for.
       const onArray = isArray(checker, checker.getTypeAtLocation(node.expression.expression));
-      const bound = literalBound(ts, node);
+      // Read from the INNER stage, not from the whole chain: a bound only binds
+      // what comes after it. `xs.map(f).slice(0, 10)` slices the RESULT, and the
+      // `.map()` before it still allocated one element per element of `xs` —
+      // the allocation this rule exists for, which a trailing `.slice()` was
+      // silencing. `xs.slice(0, 10).map(f)` is the case TC-54 fixed, and the
+      // bound is real there because the slice runs first.
+      const bound = literalBound(ts, node.expression.expression);
       if (inner && !consumed && onArray && !(bound !== undefined && bound < CHAINED_MIN_N)) {
         add({
           ...at(body.sf, node),

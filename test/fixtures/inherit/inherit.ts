@@ -10,8 +10,13 @@ class Base {
 
 class Child extends Base {}
 
+// Not a literal array: `[1, 2, 3]` bounds the chain to three elements, below
+// the smallest n bench/chained.jl covers, and the rule is right to stay quiet
+// on it.
+declare const source: number[];
+
 class WithField {
-  rows = [1, 2, 3].map((r) => r * 2).filter((r) => r > 2);
+  rows = source.map((r) => r * 2).filter((r) => r > 2);
 }
 
 /** @jitmax */

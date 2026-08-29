@@ -1,6 +1,6 @@
 import type * as TS from 'typescript';
 import type { Ts } from '../ts.ts';
-import { isFunctionLike, type Body, type Site } from '../scan.ts';
+import { isFunctionLike, type Body, type Mark, type Site } from '../scan.ts';
 
 export interface Evidence {
   cost: string;
@@ -49,7 +49,11 @@ export interface Finding extends Site {
 export const cells = (n: string): string => `${n} cell${n === '1' ? '' : 's'}`;
 
 export type Add = (f: Omit<Finding, 'evidence'>) => void;
-export type Rule = (ts: Ts, checker: TS.TypeChecker, body: Body, add: Add) => void;
+// The mark is the whole annotated call tree. Most rules are about one body and
+// ignore it; `delete-property` reads it, because whether "assign undefined" is
+// a rewrite or a data corruption depends on what the REST of the tree does
+// with the deleted object (BUGS TC-79).
+export type Rule = (ts: Ts, checker: TS.TypeChecker, body: Body, add: Add, mark: Mark) => void;
 
 const isLoop = (ts: Ts, n: TS.Node): boolean =>
   ts.isForStatement(n) ||
@@ -73,7 +77,15 @@ export function walk(ts: Ts, root: TS.Node, fn: (n: TS.Node) => void): void {
 // with the accumulator in a closure instead of a parameter — went unreported
 // (BUGS TC-43). Only the callback ARGUMENTS count as the loop body: the
 // receiver is evaluated once, so a spread there is not re-run.
-const ITERATION = new Set(['forEach', 'map', 'flatMap', 'filter', 'some', 'every', 'find']);
+//
+// `reduce` and `reduceRight` are here as well as in accumulating-spread's own
+// handler, which sees only a callback that RETURNS the copy. The assigning form
+// — `(acc, x) => { acc = [...acc, x]; return acc }` — is an assignment inside a
+// re-run body, which is what this set is for, and it went unreported while
+// `reduce` was absent from it. `reduceRight` was named nowhere at all.
+const ITERATION = new Set([
+  'forEach', 'map', 'flatMap', 'filter', 'some', 'every', 'find', 'reduce', 'reduceRight',
+]);
 
 // The RECEIVER has to be an array, not just the method name an array's. A
 // Result type's `map` runs its callback at most once, and matching the name

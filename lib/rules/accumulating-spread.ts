@@ -151,7 +151,15 @@ const detect: Rule = (ts, checker, body, add) => {
   const reduceCallback = (node: TS.Node): void => {
     if (!ts.isCallExpression(node)) return;
     if (!ts.isPropertyAccessExpression(node.expression)) return;
-    if (node.expression.name.text !== 'reduce') return;
+    if (node.expression.name.text !== 'reduce' && node.expression.name.text !== 'reduceRight') {
+      return;
+    }
+    // The RECEIVER has to be an array, for the reason the shared iteration set
+    // says: a Result type's `reduce` runs its callback at most once, and a copy
+    // no loop re-runs is this rule's own silent clause. TC-90 put this check on
+    // the shared path and never reached this second copy of it, and the fixture
+    // only exercised `map`.
+    if (!isArray(checker, checker.getTypeAtLocation(node.expression.expression))) return;
     for (const arg of node.arguments) {
       if (!ts.isArrowFunction(arg) && !ts.isFunctionExpression(arg)) continue;
       const acc = arg.parameters[0];
