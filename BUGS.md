@@ -14,6 +14,128 @@ Review queue. Found during audits, fixed only when the owner asks.
 > it was written down. Nine of the technical findings were fixed the same day and
 > are recorded in the entries they belong to; these are the ones that are not.
 
+> **2026-08-29 — three read-only audits.** TC-83 through TC-88 come from three
+> commissioned audits run in parallel over one bucket each: the rule engine and
+> the walk, the CLI and the report, and the numbers pipeline. Every claim was
+> re-verified against the source here before it was written down, and every fix
+> below is held by a fixture or a register entry.
+
+## TC-88 — twenty of seventy-three citations are exact twins (2026-08-29, open, proposal)
+
+`lib/derive.ts` is 983 lines, 556 of them citation literals. Ten pairs differ
+only in `agg` — one rendering `range` and its twin `cispan` over byte-identical
+predicates (`spread.concat`/`.ci`, `chained.mapfilter`/`.ci`,
+`chained.entries.n1000`/`.ci`, `.n10000`/`.ci`, `chained.silent.sort`/`.ci`,
+`spread.silent.strings.incl`/`.ci`, `select.silent.number`/`.ci`,
+`delete.silent.undef.reads`/`.ci`, plus `inline.reads`/`inline.cells` and
+`delete.rows`/`delete.rows.sizes`).
+
+Letting one citation declare several aggregations (`agg: ['range','cispan']` →
+keys `k` and `k.ci`) removes about 70 lines and the class of defect where a
+twin's `pick` is edited and its partner is not. No other duplication in
+`derive.ts` is worth touching: `replicating`, `unreplicable`, `overGate` and
+`render` each have one caller-facing job and no second copy.
+
+## TC-87 — sixty-four published measurements no test can see (2026-08-29, open)
+
+`README.md`'s two end-to-end tables print all sixteen cells' three per-sweep
+ratios and their agreement intervals as bare decimals — `3.22 / 3.25 / 3.46`,
+`**3.13-3.38**` — with no trailing `x`. The `RATIO` regex in the drift test
+matches only numbers ending in `x`, so the HISTORICAL register never covered
+them and `make test` stayed green whatever they said.
+
+All sixty-four are correct against `bench/example.jl` today. A re-sweep could
+move every one of them with the suite still passing. This is the largest block
+of unguarded numbers on the page and it is the drift test's own blind spot.
+
+## TC-86 — a sweep with nothing to judge registered as a sweep that passed (2026-08-29, FIXED 2026-08-29)
+
+`overGate` returned a bare count of rows over their gate, so zero meant two
+things. All 60 rows of `arrays.jl` carry no gate field at all and it registered
+a clean `0`. All 18 judgeable rows of `select.jl` record their reading under
+`env.load1` rather than beside it, which the query never read, so it registered
+`0` while answering no question about them either.
+
+Fixed: `overGate` returns `{ over, judged }`, the register carries both, and a
+file whose judged count is zero is named as unjudgeable in a test of its own.
+Reading the env-nested value where it lives makes select.jl's 18 rows judgeable
+for the first time — all 18 are within their gate.
+
+This is TC-24 and TC-47's mechanism, found and closed. **The corpus finding
+they filed stands and is not fixed**: 592 of the 707 judgeable rows are over
+their gate, and 523 of 1230 published rows carry no gate to be judged against.
+That is a decision about the corpus, not a query over it (TC-46).
+
+## TC-85 — an implicit constructor is not an empty one (2026-08-29, FIXED 2026-08-29)
+
+The walk treated any own-source class with no constructor member as nothing to
+follow. An implicit constructor runs the base class's constructor and every
+field initializer, so `class Child extends Base {}` with a `delete` in `Base`'s
+constructor passed as a clean run, and a field initializer was never walked even
+where a constructor existed.
+
+This is the shape TC-10's fix did not anticipate; its comment — "runs a default
+one with no body" — was false for both.
+
+Fixed: base constructors are followed and field initializers are walked as
+bodies, which is why `Body.node` widens from a signature to a plain node.
+`test/fixtures/inherit` holds it. TC-10 also leaves `DEFECT`: a finding that
+still named "the walk follows calls but not constructors" as a known defect was
+stating something untrue.
+
+## TC-84 — two rules stayed silent, and one fired, on their own measured shapes (2026-08-29, FIXED 2026-08-29)
+
+`allocating-select` counted an allocation only under a `return` statement. A
+concise arrow body IS the returned expression and has no `ReturnStatement`, so
+`(a, b) => (a.lt(b) ? a : new Money(b.v))` allocated on every pass and the rule
+said nothing — silence on exactly the shape `bench/select.jl` measured, whenever
+the callee was an arrow. TC-34's fix introduced the hole; the only fixture used
+a block body.
+
+`accumulating-spread` matched the iteration method NAME with no receiver check.
+A Result type's `map` runs its callback at most once, so the rule claimed
+quadratic copying on a body nothing re-runs — which its own silent clause
+excludes. TC-35 was this defect in `chained-allocation`; this was the same one
+in the helper TC-43's fix added.
+
+Fixed, with `test/fixtures/concise` and `test/fixtures/notarray`. `unreadable`
+in `scan.ts` was dead and is deleted, along with `rules.ts`'s second copy of
+`isFunctionLike`, which differed from `scan.ts`'s in two node kinds.
+
+## TC-83 — a profile the run never opened, and a run that exited 0 over 75% of the measured time (2026-08-29, FIXED 2026-08-29)
+
+Six defects in the CLI, the report and the profile reader, each verified before
+it was touched.
+
+Positionals were matched by SLOT, so `jitmax src run.cpuprofile` read the
+profile as a source file, found no annotations in it, and printed `every
+annotated function is clean` at exit 0 — the silent lie this binary's own
+comment says it stopped accepting when it started rejecting flags. Same for a
+`.toml` after a path: suppression silently off.
+
+TC-77, both halves. Every hot frame missing threw exit 2 blaming a stale
+profile, a cause the tool never checked. Three of four missing printed `clean`
+and exited 0, with the caveat below the verdict. A frame that matched nothing is
+now the blindness `unresolved` already names for modules: printed above the
+findings with its name and position, and exit 1.
+
+TC-76. A path argument skipped `tsconfig.json` entirely for hardcoded NodeNext,
+which knows nothing of `paths` or `bundler`, so the documented invocation
+reported every aliased import as unresolved and exited 1 where bare `jitmax`
+exited 0. The tsconfig decides the options whenever it exists now; a path
+chooses the file list and nothing else.
+
+TC-80's second half: `npm install, then run again` named one of two causes and
+was the wrong one for the run that filed it. Also: the verdict printed `no
+findings` above a page of printed warnings, because `total` counts errors only;
+a `[profile]` table in a run with no profile configured nothing and said nothing
+about it; a read failure reported `no such file` for EISDIR and EACCES alike;
+and a profile node without a `callFrame` crashed with an unattributed
+TypeError, which exit 2 then printed with no file and no line.
+
+TC-80's documentation half is fixed too: the exit-code section named one of the
+three ways a run is blind, and now names all three.
+
 ## TC-50 — the two rules with evidence are already shipped, on no evidence (2026-08-19, open, owner decision)
 
 Not a defect. A commercial finding that changes what this project is for, and
@@ -141,6 +263,398 @@ every function declaration did not. The index now carries both positions.
 Still open from this entry: the `suggest` mode for the writing consumer, and
 `min_self_pct` remains a constant nobody has measured — it is printed on every
 run and the TOML owns it, which is the disclosure and not the fix.
+
+## TC-81 — the zero is a fact about the trigger, not about the code: zod hides a 13-way dispatch (2026-08-29, open)
+
+TC-64 recorded `megamorphic-elements` firing 0 times in 11,198 functions and
+argued the trigger shape does not occur. The owner pushed back: not even if you
+resolve the interfaces and walk the code? They are right, and the answer is a
+counterexample.
+
+**`zod` has a 13-implementation hierarchy and a polymorphic call site in a
+per-element loop.** `class ZodString|ZodNumber|ZodBigInt|ZodBoolean|ZodDate|
+ZodSymbol|… extends ZodType` — 13 subclasses. `v3/types.ts:3439`, inside
+`ZodArray`'s element loop:
+
+```ts
+return schema._parse(new ParseInputLazyPath(ctx, item, ctx.path, itemIndex));
+```
+
+A method call on a `ZodType`-typed receiver, once per element, with thirteen
+possible maps against a four-map budget. **`megamorphic-dispatch` fired zero
+times in zod.**
+
+**Counted across seven corpora**, bases or interfaces with five or more
+implementations: `ZodType` (13), `ajv`'s `Node` (7) and `BlockNode` (7), and
+`HTMLElement` (5) in vue. Only `ajv`'s is found today, and it is found because
+its call site names the receiver directly (TC-61). zod's is reached through a
+field, so the walk stops and reports `closed-world` instead.
+
+**This changes TC-64's conclusion.** "The pattern does not exist" was wrong;
+"the trigger cannot see the pattern" is right. Retiring the elements trigger
+still looks correct, but the reason is that the dispatch rule plus a dataflow
+walk (TC-69) subsumes it — not that real code has no five-map load sites.
+
+Found 2026-08-29, after the owner challenged the TC-64 zero.
+
+## TC-84 — two protocol rules that gate publication cannot fire in the case they were written for (2026-08-29, open)
+
+"Every published number is derived" is true. "Every published number is
+protocol-gated" is not. Verified in the source at HEAD.
+
+**Rule 13 — "withdrawn as unreplicable" — is blind to its own base case.**
+`lib/derive.ts:746`:
+
+```ts
+const fails = mode !== 'off' && cell.length >= 2 && !replicates(cell);
+```
+
+A cell measured ONCE can never be withdrawn. Zero sweeps fails loud; two or more
+is checked; **one publishes unchallenged**, into the same `live` bucket as a
+properly replicated three-sweep cell. The `SWEPT`/`DISAGREE` register is built
+from this same function and inherits the hole. No test anywhere asserts that a
+cell has three sweeps.
+
+**Rule 6 — "a cell whose 95% interval spans 1.0 is rejected" — has no code in
+the publication path at all.** The only `lo <= 1 && hi >= 1` in the repository
+is `bench/run.ts:139` and dead code at `bench/sweeps.ts:503`. Both build a
+terminal string a human watches scroll past during a sweep. Nothing in
+`lib/derive.ts` consults it.
+
+**This is the mechanism behind TC-83.** zod `cleanEnum` Sweep A has an agreed
+interval of 0.983-1.072, which rule 6 rejects — and rule 6 cannot reject
+anything, because it is a print statement. The two entries are one defect seen
+from two ends: TC-83 is the number that got through, TC-84 is the hole it came
+through.
+
+Reachable without malice: `--replicate 1`, or `make numbers` inside the window a
+resumed sweep leaves open — a window the resume machinery exists to create.
+
+**Two coverage holes in the same class**, both giving `0 annotated functions ...
+every annotated function is clean` and exit 0:
+
+- `lib/ts.ts:48` lists `['.ts', '.tsx', '.mts', '.cts', '.js', '.mjs']`. `.cts`
+  is in, **`.cjs` is not**, and neither is `.jsx`. Those files are skipped
+  silently.
+- Any path containing the substring `node_modules` drops every file, because the
+  length-0 guard runs before the filter. This silently kills the use case
+  `lib/scan.ts:262-266` explicitly endorses.
+
+**The reading that matters more than any single bug.** The invariants live at
+their call sites rather than in one value, so every new entry point
+re-litigates them and loses one: `unresolved` reached the exit code and
+`unmatched` did not; `.cts` got into the list and `.cjs` did not; rule 9 got a
+gate, a register and a per-row reading, while rules 6 and 13 got a terminal
+string and a gate that cannot see its base case. Two independent audits ran a
+day apart, converged on this class, and neither found what the other found.
+That is correctness maintained by attention rather than by construction, and it
+is the thing to fix — one enforcement point the publication path must pass
+through, not another guard.
+
+Found 2026-08-29 by the `red-eval` panel (`.ship/critique-red-20260829.md`),
+every claim re-verified here against the source.
+
+## TC-83 — zod cleanEnum was swept twice, the sweeps straddle 1.0, and README publishes only the passing one (2026-08-29, open)
+
+`chained-allocation` produces **496 of the 1,044 errors** in the TC-64 survey —
+47.5%, more than any other rule — and ships at severity `error`, the severity
+that fails a build. Its only end-to-end validation on a real library function is
+zod `cleanEnum` in `bench/example.jl`. That cell was measured twice at n=256,
+three replicates each, and the two sweeps do not agree.
+
+**Sweep A** — ratios 1.018 / 1.010 / 1.048, replicate intervals
+[0.970, 1.074], [0.971, 1.072], [0.983, 1.134]. **All three span 1.0.** Agreed
+interval **0.983-1.072**.
+
+**Sweep B** — ratios 1.032 / 1.060 / 1.079, replicate intervals
+[0.969, 1.104], [0.970, 1.154], [1.033, 1.127]. Agreed interval **1.033-1.104**.
+
+`README.md` publishes Sweep B and only Sweep B: "zod `cleanEnum` — 256 —
+1.03 / 1.06 / 1.08 — **1.03-1.10**". Sweep A appears nowhere in the prose.
+
+**Protocol rule 6, from this project's own CLAUDE.md:** *"A cell whose 95%
+interval spans 1.0 is rejected. A rule ships only when the lower bound clears
+1.00x; a broad warning needs a point estimate at or above 1.10x and a lower
+bound above 1.05x."*
+
+Applied to this cell:
+
+- **Sweep A is rejected outright** — its agreed interval spans 1.0.
+- **Sweep B fails too, on the second clause.** `chained-allocation` is a broad
+  warning. It needs a point estimate at or above 1.10x and a lower bound above
+  1.05x. Sweep B gives roughly 1.06 and 1.033. Neither bar is met.
+
+So the rule that produces nearly half of all errors has no end-to-end validation
+that satisfies the standard this repository wrote for itself, and the
+disagreement between its two sweeps is not disclosed where the number is
+published.
+
+**This is not a claim that the mechanism is wrong.** The mechanism sweep
+replicates: fused against chained measures 1.44-1.52x, and
+`Object.entries().map()` 3.67-3.76x. What fails is the TRANSFER to a real
+library function, which is exactly the question an adopter is asking.
+
+**Two things to do, and the first is not optional.** Publish Sweep A beside
+Sweep B — this project's own house style elsewhere is to say "three cells
+disagree across sweeps and one is void, and all four are in the file", and this
+cell does not get that treatment. Then decide the rule's severity against rule
+6 honestly: a broad warning that cannot clear 1.05 on the one real function it
+was tried on should not be the tool's most common `error`.
+
+Found 2026-08-29 by the `cto-eval` panel (`.ship/critique-cto-20260829.md`),
+verified here against the raw rows in `bench/example.jl`.
+
+## TC-82 — loud on well-abstracted code may be correct, and the tool cannot tell (2026-08-29, open)
+
+TC-69 argues that `closed-world` firing hardest on interface dispatch is a
+defect, because "the pattern it punishes is good design". The owner's
+counter-argument, and it is a real one: the best-abstracted code MIGHT be the
+slowest code, precisely because abstraction is dispatch. Warning there could be
+correct rather than noisy.
+
+**Both are true, of different codebases, and today the tool prints the same
+warning for both.**
+
+- `@noble/curves`: 2,113 warnings, top callee `Fp.mul` at 235. The `Fp` reaching
+  those sites is built in ONE place. One implementation, monomorphic, no cost.
+  The warnings are noise.
+- `zod`: `ZodType` has thirteen implementations reaching `_parse` in a loop
+  (TC-81). Megamorphic, real cost. The warning is a true finding wearing the
+  wrong label.
+
+The rule cannot distinguish them because it stops at the interface and counts
+nothing. So TC-69's framing needs this correction recorded beside it: the volume
+is not the defect. The defect is that a silence and a real megamorphic finding
+are currently rendered as the same sentence, and the reader cannot tell which
+they are holding.
+
+That is a stronger argument for the dataflow count than the noise-reduction one
+TC-69 leads with. Reducing 78,346 warnings is the visible win; separating
+`Fp.mul` from `ZodType._parse` is the one that makes the tool right.
+
+Raised 2026-08-29, from the owner's challenge.
+
+## TC-80 — a run with zero errors exits 1, contradicting the documented contract (2026-08-29, open)
+
+The README states the exit code is 0 for a clean run or warnings only. Every run
+in the third trial (TC-75) exited 1, including one reporting **0 errors and 40
+warnings**, because unresolved modules take an undocumented path: "modules could
+not be resolved ... this is not a clean run".
+
+The behaviour is defensible — a walk that could not see everything must not
+report success, which is this project's oldest and best rule (TC-7). The
+documentation is what is wrong: the exit-code section does not mention this path,
+and the user found the contract broken rather than qualified.
+
+**And the message misdiagnoses the cause.** It says `npm install, then run
+again`. In this repository the dependencies were fine; the imports use a
+`tsconfig.json` path alias. The user had to read `tsconfig.json` and grep the
+import style themselves to work out why. `npm install` is one cause of an
+unresolved module and the tool names it as if it were the only one.
+
+**Two fixes:** state the unresolved-modules path in the exit-code section, and
+make the message distinguish its causes — a specifier that resolves to nothing on
+disk is a missing install; a specifier that matches a `paths` entry in a
+`tsconfig.json` the run did not read is an alias, and should say so and name the
+file.
+
+Found 2026-08-29 in the TC-75 trial.
+
+## TC-79 — delete-property's fix is not behaviour-preserving, and two of three trials hit it (2026-08-29, open)
+
+`delete-property` prints one fix: "assign undefined where the key may stay
+present". `{b: undefined}` shares the map of `{b: 1}`, so the fix is correct
+about V8. It is not always correct about the program.
+
+**An absent key and a key holding `undefined` differ to a great deal of ordinary
+JavaScript.** `JSON.stringify` omits `undefined` values; the spread operator
+copies the key; `'k' in obj` and `Object.keys` see it; and every query builder
+and serialiser that treats absence as "do not touch this column" will now be told
+to write it.
+
+The third trial (TC-75) found exactly that. Immich's `removeUndefinedKeys`
+(`utils/database.ts:127`) exists to OMIT keys from a Kysely `SET` clause. The
+user's judgement: applying the printed fix "risks writing NULL to columns that
+should be left untouched". A second site in the same trial deletes `mediaTags`
+entries deliberately, so later lookups do not find a stale value, and the user
+could only call the fix safe after tracing every downstream read for `in` and
+`Object.keys` — which they did not finish. The `date-fns` trial did finish that
+trace, on `setDefaultOptions`, and only then applied the fix.
+
+So in two independent trials the fix required a manual semantic audit before it
+could be applied, and in one of them it was probably wrong.
+
+**Proposal:** the fix line must state the precondition, not just the rewrite —
+that assigning `undefined` is equivalent only where nothing downstream
+distinguishes an absent key from an undefined one, and naming the four ways
+something can: `JSON.stringify`, spread, `in`, `Object.keys`. Better, and cheap
+for a tool that already walks the tree: when the deleted object reaches any of
+those four in the annotated tree, say so at the finding, and drop "assign
+undefined" from the fix in that case. This is the `verdict: rewrite | judgement`
+distinction from TC-58 with a concrete first instance — the rewrite is only a
+rewrite when the tool has checked that much.
+
+Found 2026-08-29 in the TC-75 trial.
+
+## TC-78 — the real cost in a hot loop was per-call closure churn, and no rule sees it (2026-08-29, open, proposal)
+
+From the `dinero.js` trial (TC-75). The user had a concrete complaint — repeated
+`add()` is slow — and measured it: **271.6 ms for 300,000 `add()` calls against
+14.5 ms for `acc += 1`, about 19x**, with **13.6% of profile samples in GC**.
+
+**jitmax fired no rule on that path.** Zero errors. Seven `closed-world`
+warnings and nothing else. The two errors in the repository are on unrelated
+functions not reachable from `add`.
+
+Reading those seven lines by hand found the cause: `add()` calls
+`safeAdd(calculator)` fresh on every invocation, which builds `normalizeFn` and
+`addFn` from scratch, which build `maximumFn`, `convertScaleFn` and `equalFn` in
+turn; `haveSameCurrency` spreads its arguments and builds its own closures.
+Roughly **ten throwaway closures allocated per call**, plus an array spread and a
+`map`/`reduce`, none cached, although `calculator` is a fixed singleton.
+
+That is allocation churn, not a shape problem, and it is what the GC share
+measures. Every rule here prices a V8 fast-path exit; none prices allocating the
+same closures on every call of a hot function.
+
+**Why this entry matters more than its size suggests.** The user's verdict was
+that the tool "was just a map of where to look" — the `closed-world` list named
+the five right files, and a human did the rest. That is a real outcome and worth
+having, but it is not what the README promises.
+
+**Proposal:** measure it before writing any rule, per TC-53. A
+`bench/closures.jl` sweep pricing a factory called per iteration against a
+hoisted equivalent, at each working set, with the GC share recorded. If it
+separates, the trigger is narrow and syntactic: a call inside an annotated
+function to a local factory that returns a closure, where nothing in the
+arguments varies across calls. If it does not separate, publish the null.
+
+Found 2026-08-29 in the TC-75 trial.
+
+## TC-77 — profile mode hard-fails on any transformed source, with no diagnostic (2026-08-29, open)
+
+From the `dinero.js` trial (TC-75). The user took a real `--cpu-prof` of the
+workload that reproduces the complaint and fed it in, which is exactly the path
+TC-57 built. It exited 2:
+
+    10 frames at or above 1% and none of them matches a function in this
+    program — the profile is stale against these sources
+
+The profile was not stale. `add`, `haveSameCurrency` and `normalizeScale`
+visibly dominated self time. The cause is that this codebase needs
+`--experimental-transform-types` to run at all under Node — it contains a real
+`enum`, which strip-only mode rejects — and transforming shifts line numbers.
+The profiler reported `add` at line 11, which lands on a JSDoc comment.
+
+TC-57's design assumed type stripping preserves positions, and it does. It does
+not follow that every profile a user can produce was taken under stripping. Any
+build step, any transform, any bundler between source and running code breaks
+the match, and the failure mode is a hard exit 2 blaming the user's profile.
+
+**Two fixes, and the first is cheap.** Say what actually happened: report how
+many frames matched, name two or three that did not with their file and line,
+and say the likely cause is a transform between source and profile rather than
+staleness. A user cannot act on "stale" when the profile is fresh. Second, read
+a source map when one is present, which is what every other profile consumer
+does.
+
+The severity is that this is the one mode that answers "is this function hot in
+my real workload", the question the annotation otherwise asks the user to answer
+from intuition — and on the first real codebase it met, it failed closed.
+
+Found 2026-08-29 in the TC-75 trial.
+
+## TC-76 — the documented invocation is the degraded one (2026-08-29, open)
+
+`jitmax src` — the form the README leads with under "Use it" — does NOT read
+`tsconfig.json`. Bare `jitmax`, run from the project root, does. On a repository
+using `moduleResolution: bundler` with extensionless imports, the documented form
+produced `14 modules could not be resolved`, which blinds every type-based rule
+on every file that imports them; the bare form resolved cleanly.
+
+The difference is documented, in the Requirements section, and not where the
+usage example is. A first-time user follows the example, gets a degraded run,
+and has no signal that a better one exists — the report says modules failed to
+resolve, but not that a different invocation would fix it.
+
+**Proposal:** when a run started with an explicit path and modules fail to
+resolve, and a `tsconfig.json` exists at the root, say so in the unresolved-
+modules block: name the file and tell the reader to run without the path
+argument. The blindness is already detected and already reported; only the
+sentence that makes it actionable is missing.
+
+Found 2026-08-29 in the TC-75 trial.
+
+## TC-75 — first-contact trial: three users, README only, no other help (2026-08-29, open, data)
+
+Three engineers were given a codebase, the tool, and its README, and nothing
+else — no BUGS.md, no diary, no notes. They were told to make the code faster
+and to report what happened. Corpora: `date-fns` core, `dinero.js`, and one
+application backend. Both completed trials found the tool honest and neither
+would put it in CI as a gate.
+
+**What worked.** `date-fns` found a real defect and shipped a real fix:
+`setDefaultOptions/index.ts:68` deletes a property from the process-wide default
+options object that roughly fifteen hot functions read on every call — a rare
+write followed by permanent frequent reads, exactly the shape `delete-property`
+is for. The user verified the call graph themselves, changed it to assign
+`undefined`, and the finding cleared. Both users independently praised the
+honesty of the output: labelled ratios, named `known defect` lines, suppression
+that reports itself. One wrote that it is "honest about its own limits more than
+any perf tool I've read docs for".
+
+**Four problems in the first thirty minutes, from users with no context:**
+
+1. **The vendored corpora ship pre-annotated, and both users tripped on it.**
+   `tmp/lib-datefns` carries 27 `@jitmax` tags and `tmp/lib-dinero` carries 20,
+   left from this project's own survey. A user who copies one and marks the
+   function they care about gets a report about twenty functions they did not
+   choose, and has to `grep -rn @jitmax` to work out why. One called the run
+   "polluted". These are fixtures; ship them stripped, or say in the README that
+   they are annotated.
+2. **The README is not a quickstart.** Usage is complete within about thirty
+   lines; the remaining eight hundred are the evidence appendix. One user:
+   "useful for trust, bad for how do I run this". The material is the project's
+   best asset and it is in front of the instructions.
+3. **No way to scope a run to one function.** With a concrete question about one
+   function, a user had to hand-grep a 950-line report for its block.
+4. **Exit 1 conflates "found something" with "could not check everything".**
+   Documented, and still means a repository with unresolved imports can never
+   pass a naive gate whatever its code looks like.
+
+**Both verdicts, in their own shape:** keep it as a manual check per release;
+do not gate CI on it yet. The `date-fns` user's reason is the sharper one — two
+of their three errors needed a human to know the input size before deciding they
+mattered, and both ended as permanent suppression comments rather than code
+changes (TC-54). A gate that forces that trade on every bounded helper "will get
+spammed with permanent suppressions or silenced entirely inside a month".
+
+**One claim in the README does not match the source.** The rule-by-rule table
+says `allocating-select`'s findings are "`date = addMinutes(date, step)` in four
+date-fns functions". Grepping the vendored `date-fns` for that shape finds
+**two** — `eachMinuteOfInterval` and `eachQuarterOfInterval` — and only one of
+them is `addMinutes`. The count is small and the point the sentence makes still
+stands; a published number that does not reproduce does not, in a project whose
+whole claim is that its numbers reproduce.
+
+**Third trial, an application backend (Immich, 554 files), completed
+2026-08-29.** It never obtained a gate-able run at all. Immich's
+`tsconfig.json` maps `"src/*": ["./src/*"]` and **487 of its 554 files** import
+that way, so the walk stops at the first hop across almost the whole codebase
+(TC-32). The user proved it was resolution rather than logic by hand-editing one
+import to a relative path, after which the finding appeared cleanly — good
+diagnosis, and one the tool should not have required.
+
+Its four findings were all correct pattern matches on code that is not CPU-bound:
+an object built once and sent to Postgres, `mediaTags` from an `exiftool`
+subprocess, and a `.filter().map()` over a handful of faces per photo. The user's
+verdict — "correctly-detected patterns on code that is not CPU-bound where it
+matters ... jitmax cannot see that" — is the annotation problem from the other
+side. This user annotated honestly: `handleMetadataExtraction` IS the per-photo
+job. It is still dominated by I/O. Hotness in calls-per-second does not imply the
+CPU is where the time goes, and the annotation cannot express the difference.
+
+Raised 2026-08-29.
 
 ## TC-74 — the load gate samples once per cell, and a cell can finish on a busy machine (2026-08-29, open)
 
@@ -1161,7 +1675,19 @@ covers, and stay silent below it. This is the first case where a rule CAN
 implement its `silent` field cheaply and does not, which makes it the concrete
 half of TC-9 rather than another instance of it.
 
-**Sized 2026-08-28, and it is rare.** Of 99 distinct `chained-allocation` sites
+**2026-08-29 — common after all, once the bound is semantic rather than literal.**
+A first-contact trial on `date-fns` (TC-75) produced three errors, and the user
+dismissed TWO of them on size by counting call sites BY HAND:
+`formatDuration/index.ts:100`, where the accumulated array is the duration units
+and holds at most seven elements, and `parse/index.ts:499`, where the chain is
+bounded by distinct format tokens. Neither carries a literal in the chain, so the
+count below does not see them, and both ended as permanent suppression comments
+rather than code changes. The user's summary is the finding: "the tool gives you
+the shape, never the n". Widen this entry from `.slice(0, 10)` to any bound the
+author knows and the tool does not — the literal case is the only one a checker
+can decide, and that is worth saying rather than implying the rest are rare.
+
+**Sized 2026-08-28, and the LITERAL case is rare.** Of 99 distinct `chained-allocation` sites
 across the TC-64 corpora, **0** carry a literal bound within two lines of the
 chain. The `.slice(0, 10)` case that raised this entry is real but is one site
 in one file. Fix it because it is cheap and correct, not because it is common.
@@ -1319,6 +1845,14 @@ cell where it must stay quiet. Nothing enforces the first half.
 `Object.keys(EVIDENCE)`, plus at least one demo fixture per rule.
 
 ## TC-48 — hand-typed integers in EVIDENCE contradict the derived numbers beside them (2026-08-19, open)
+
+**Amended 2026-08-29 — refuted as filed, and re-aimed.** An audit checked every
+hand-typed numeral in `lib/rules.ts` EVIDENCE. None contradicts its neighbour:
+`"20 pairs each"`, at all seven sites, is true of every non-`void` row in all 13
+published files. The live exposure is elsewhere — `delete-property`'s
+user-facing fix string, "the rebuild helps at 12 keys and not at 48". Both
+integers are hand-typed, both name `estoolkit-omit` cells, and the test asserts
+only that the sentence still says 12 and 48, never that the data still says so.
 
 `make numbers` derives every ratio, and `make test` binds them. It binds no
 other numeral, so integers typed into the same sentences drift against the
@@ -1905,6 +2439,10 @@ positive.
 
 ## TC-33 — `closed-world`'s trigger and its benchmark measure different things (2026-08-17, open — the report says `bound` as of 2026-08-19)
 
+**Amended 2026-08-29.** The "report says `bound`" note is stale — that flag was
+replaced by `severity`. The core gap stands: the trigger and the benchmark
+measure different programs, which is why this is the project's only `warn`.
+
 The most load-bearing entry here, because this rule is **1539 of the 1672
 findings** in the twelve-library survey — 92% of everything the tool has ever
 said about real code.
@@ -1966,6 +2504,10 @@ applied only because it changes what every rule sees, which is a behaviour
 change on a released tool.
 
 ## TC-31 — a call through a parameter is neither followed nor reported (2026-08-17, open)
+
+**Amended 2026-08-29 — fixed by TC-45's change, and this entry was stale.** The
+program in this entry IS reported now: the parameter declaration falls into
+`unchecked` and lands in `escapes`, and a test asserts the interface twin.
 
 ```ts
 /** @jitmax */
