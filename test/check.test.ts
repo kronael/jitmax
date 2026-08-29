@@ -77,6 +77,7 @@ test('a function is checked only where it is annotated', () => {
       'drop',
       'dropElement',
       'dropQuiet',
+      'dropThenSpread',
       'entriesMap',
       'fiveShapes',
       'fiveShapesCast',
@@ -96,6 +97,10 @@ test('a function is checked only where it is annotated', () => {
       'nearest',
       'oneStage',
       'optionalField',
+      'runAll',
+      'runParsed',
+      'runTrio',
+      'scrub',
       'sliceUnknown',
       'sortedStages',
       'splitJoin',
@@ -111,6 +116,7 @@ test('a function is checked only where it is annotated', () => {
       'viaCallee',
       'viaCalleeQuiet',
       'viaConstructor',
+      'viaOneImpl',
       'widen',
     ]
   );
@@ -201,6 +207,65 @@ test('a call the walk cannot follow is reported, not silently dropped', () => {
 // twice.
 test('an array of a five-way union with method calls reports once', () => {
   assert.deepStrictEqual(shapeRules('totalArea'), ['megamorphic-elements']);
+});
+
+// TC-69, the owner's correction: count what REACHES the receiver by dataflow,
+// not what could structurally fit the interface. The four verdicts below are
+// the four the count can reach, each through the public path.
+
+// One visible implementation and nothing unknown is not an escape at all. The
+// accumulating-spread inside the implementation proves the body was walked;
+// the absence of closed-world proves the site was not reported.
+test('an interface call with one visible implementation is followed, not reported', () => {
+  assert.deepStrictEqual(rules('viaOneImpl'), ['accumulating-spread']);
+});
+
+// Five classes behind ONE non-union interface: the type-based dispatch rule
+// sees nothing at the call, and the receiver's origins carry the count
+// (TC-81 — zod's thirteen-way `_parse` rendered as the same sentence as a
+// monomorphic site). "at least", because classes are counted by identity
+// (TC-60) and the enumeration sees only this program.
+test('five implementations reaching a receiver are a megamorphic-dispatch finding', () => {
+  assert.deepStrictEqual(rules('runAll'), ['megamorphic-dispatch']);
+  const f = rawFindings('runAll').find((x) => x.rule === 'megamorphic-dispatch');
+  assert.match(f?.message ?? '', /at least 5 implementations/);
+  assert.match(f?.message ?? '', /OpA, OpB, OpC, OpD, OpE/);
+  assert.match(f?.fix ?? '', /lower bound/);
+});
+
+// Inside V8's four-map budget: a note at most, never an error — and it names
+// the implementations rather than saying "cannot tell which".
+test('two to four implementations are a note, never an error', () => {
+  assert.deepStrictEqual(rules('runTrio'), ['closed-world']);
+  const f = rawFindings('runTrio').find((x) => x.rule === 'closed-world');
+  assert.match(f?.message ?? '', /3 implementations reach this receiver/);
+  assert.match(f?.message ?? '', /four-map budget/);
+});
+
+// A value from JSON.parse has no construction site to count. One such source
+// makes any count a lower bound, and the tool says the origin is unknown
+// rather than printing a number it cannot stand behind — the closed-world
+// statement, made about a value instead of a call (TC-82).
+test('a receiver with no construction site to count says unknown origin, not a number', () => {
+  assert.deepStrictEqual(rules('runParsed'), ['closed-world']);
+  const f = rawFindings('runParsed').find((x) => x.rule === 'closed-world');
+  assert.match(f?.message ?? '', /unknown origin/);
+  assert.match(f?.message ?? '', /JSON\.parse/);
+});
+
+// The follow claims coverage, so the report states the assumption it rests on
+// once per run, beside the count of what was followed.
+test('a followed interface call is counted, with the closed-program assumption stated', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), 'demo'],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(
+    run.stdout,
+    /1 interface call resolved to the one implementation this program builds/
+  );
+  assert.match(run.stdout, /sound only for a closed program/);
 });
 
 // bench/arrays.jl withdrew boxed-elements. The array a `(number | string)[]`
@@ -334,6 +399,36 @@ test('the delete fix says where the rebuild stops paying, in the swept sizes', (
     `n=${swept[0]} and n=${swept[1]}`,
     'the derived pair is not the pair the rows were swept at'
   );
+});
+
+// TC-79: "assign undefined" is correct about V8 and not always correct about
+// the program. The tree is checked rather than caveated — where the deleted
+// object reaches an observer that tells an absent key from one holding
+// undefined, the rewrite is dropped and the observer is named at the finding.
+
+// Object.keys in the same body — the Immich shape: `removeUndefinedKeys`
+// exists to OMIT keys, and the printed rewrite would have written NULL to
+// columns meant to be left alone.
+test('a delete whose object reaches Object.keys loses the assign-undefined rewrite', () => {
+  const f = rawFindings('scrub').find((x) => x.rule === 'delete-property');
+  assert.match(f?.fix ?? '', /Object\.keys reads o at line \d+/);
+  assert.doesNotMatch(f?.fix ?? '', /assign undefined/);
+});
+
+// The delete in a callee and the spread in its caller are the same object, so
+// the check crosses bodies the way the walk does.
+test('the observer check crosses bodies: a spread in the caller reaches a delete in the callee', () => {
+  const f = rawFindings('dropThenSpread').find((x) => x.rule === 'delete-property');
+  assert.match(f?.fix ?? '', /a spread reads o at line \d+/);
+  assert.doesNotMatch(f?.fix ?? '', /assign undefined/);
+});
+
+// Where no observer is reachable the rewrite stands — and states its
+// precondition, because the annotated tree is not the whole program.
+test('a delete no observer reaches keeps the rewrite, with its precondition stated', () => {
+  const f = rawFindings('drop').find((x) => x.rule === 'delete-property');
+  assert.match(f?.fix ?? '', /assign undefined where the key may stay present/);
+  assert.match(f?.fix ?? '', /spread copies it, `in` and Object\.keys see it/);
 });
 
 // A chain on a string allocates no array at all, and the rule matched the
@@ -1423,6 +1518,18 @@ const DISAGREE = new Set([
   'inline.jl large|small|excl|100000',                   // closed-world's old floor
   'delete.jl rowundef|rowbase|incl|16384|dispatch-table',
   // Withdrawn, and the surviving cells carry the claim.
+  // The two `arguments` cells are the sweep disagreeing with itself at the top
+  // and bottom of its size range, which is what a null looks like when the
+  // effect it is measuring is not there: seven cells replicate and every one of
+  // them contains 1.00.
+  'arguments.jl argesc|restesc|excl|16384',
+  'arguments.jl arglen|restlen|excl|262144',
+  // Holey reads at the largest size. The other five holey cells replicate, and
+  // the whole-array half is where the answer is anyway.
+  'sparse.jl holey|packed|excl|262144',
+  // Dictionary elements at the largest size, whose three sweeps span 14.0 to
+  // 15.8. The other five dict cells replicate, from 21x to 60x.
+  'sparse.jl dict|packed|incl|262144',
   'chained.jl splitjoin|packed|excl|1000|dispatch-table',
   'delete.jl rowdel|rowbase|excl|262144|dispatch-table',
   'delete.jl rowdel|rowbase|incl|16384|dispatch-table',
@@ -1465,6 +1572,7 @@ const SWEPT = [
   'chained.jl', 'inline.jl', 'select.jl', 'delete.jl', 'spread.jl',
   'spread-object.jl', 'strings.jl', 'shapes-calibrated.jl', 'example.jl',
   'dispatch.jl', 'addprop.jl', 'arrays.jl', 'shape-sets.jl',
+  'arguments.jl', 'sparse.jl',
 ];
 
 test('no published cell is withdrawn except the ones on record', () => {
@@ -1574,6 +1682,11 @@ const OVER_GATE: Record<string, [number, number]> = {
   'spread.jl': [21, 24],
   'spread-object.jl': [23, 24],
   'strings.jl': [67, 81],
+  // Swept under the gate that actually governs, so every row is judgeable. The
+  // nine over-gate sparse rows are cells whose load rose DURING the timed
+  // region (TC-74); each was re-measured, and resume discounts them (TC-91).
+  'arguments.jl': [0, 27],
+  'sparse.jl': [9, 45],
 };
 
 test('no published row is over its own gate except the ones on record', () => {

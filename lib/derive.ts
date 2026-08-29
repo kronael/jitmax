@@ -161,6 +161,11 @@ const REMEASURED = new Set([
   'strings.jl',
   'dispatch.jl',
   'shape-sets.jl',
+  // Both swept for the first time under this protocol, so every one of their
+  // rows is current: `arguments.jl` 9 cells and `sparse.jl` 12, each with three
+  // in-gate runs.
+  'arguments.jl',
+  'sparse.jl',
 ]);
 
 const files = (c: Citation): string[] => (Array.isArray(c.file) ? c.file : [c.file]);
@@ -779,6 +784,66 @@ export const CITATIONS: Record<string, Citation> = {
   // numbers in that rule that were typed by hand rather than read from the
   // rows, which is the re-aimed TC-48. The test asserted the sentence still
   // said 12 and 48, never that the data still did.
+  // `arguments` against rest parameters, the folk advice this project set out
+  // to price and could not. Nine cells, three sweeps each: seven replicate and
+  // every one of them contains 1.00, and two agree on nothing at all. The
+  // sweep is published as the refutation it is (BUGS TC-53).
+  'args.null': {
+    claims: 'nothing',
+    file: 'arguments.jl',
+    cells: 'the `arguments` object against a rest parameter, escaping, indexed and length-only',
+    pick: (r) => r.baseline?.startsWith('rest') === true,
+    agg: 'cispan',
+    readme: true,
+  },
+  'args.cells': {
+    claims: 'nothing',
+    file: 'arguments.jl',
+    cells: 'the cells behind args.null',
+    pick: (r) => r.baseline?.startsWith('rest') === true,
+    agg: 'count',
+  },
+  // Dictionary-mode ELEMENTS, which no rule reports and which is the largest
+  // ratio in this project by an order of magnitude. Reads only, and reads with
+  // the build counted, because the two answer different questions and the
+  // holey pair below shows why that matters (BUGS TC-52).
+  'sparse.dict.reads': {
+    claims: 'rule',
+    file: 'sparse.jl',
+    cells: 'dictionary elements against a packed array, reads only',
+    pick: (r) => r.variant === 'dict' && r.mode === 'excl',
+    agg: 'range',
+    dp: 1,
+    readme: true,
+  },
+  'sparse.dict.whole': {
+    claims: 'rule',
+    file: 'sparse.jl',
+    cells: 'the same with construction counted',
+    pick: (r) => r.variant === 'dict' && r.mode === 'incl',
+    agg: 'range',
+    dp: 1,
+    readme: true,
+  },
+  // And the half that refutes the folklore beside it: a holey array reads a
+  // little slower and is FASTER once you count building it, so "holey arrays
+  // are slow" is not the sparse transition worth a rule.
+  'sparse.holey.reads': {
+    claims: 'nothing',
+    file: 'sparse.jl',
+    cells: 'a holey array against a packed one, reads only',
+    pick: (r) => r.variant === 'holey' && r.mode === 'excl',
+    agg: 'range',
+    readme: true,
+  },
+  'sparse.holey.whole': {
+    claims: 'nothing',
+    file: 'sparse.jl',
+    cells: 'the same with construction counted, where the holey array wins',
+    pick: (r) => r.variant === 'holey' && r.mode === 'incl',
+    agg: 'range',
+    readme: true,
+  },
   'ex.omit.sizes': {
     claims: 'nothing',
     file: 'example.jl',

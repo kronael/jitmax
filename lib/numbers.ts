@@ -141,6 +141,18 @@ export const N = {
   'ex.assign.reads': '1.57-2.06x',
   // example.jl: es-toolkit omit — the whole call, 12 and 48 keys
   'ex.omit.whole': '1.62-3.32x',
+  // arguments.jl: the `arguments` object against a rest parameter, escaping, indexed and length-only — 2 of 9 cells withdrawn as unreplicable (rule 13): argesc|restesc|excl|16384, arglen|restlen|excl|262144
+  'args.null': '0.78-1.31',
+  // arguments.jl: the cells behind args.null — 2 of 9 cells withdrawn as unreplicable (rule 13): argesc|restesc|excl|16384, arglen|restlen|excl|262144
+  'args.cells': '7',
+  // sparse.jl: dictionary elements against a packed array, reads only
+  'sparse.dict.reads': '24.3-65.5x',
+  // sparse.jl: the same with construction counted — 1 of 3 cells withdrawn as unreplicable (rule 13): dict|packed|incl|262144
+  'sparse.dict.whole': '20.4-40.1x',
+  // sparse.jl: a holey array against a packed one, reads only — 1 of 3 cells withdrawn as unreplicable (rule 13): holey|packed|excl|262144
+  'sparse.holey.reads': '1.32-1.47x',
+  // sparse.jl: the same with construction counted, where the holey array wins
+  'sparse.holey.whole': '0.28-0.68x',
   // example.jl: the key counts es-toolkit omit was swept at, which delete-property quotes in its fix
   'ex.omit.sizes': 'n=12 and n=48',
   // example.jl: es-toolkit omit — the caller's reads of the result at 12 keys

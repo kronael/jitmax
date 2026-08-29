@@ -374,6 +374,12 @@ published number is no longer what its rows say.
 | `3.22-4.65x` | `bench/example.jl` — radash assign — the whole call, both sizes, three sweeps each |
 | `1.57-2.06x` | `bench/example.jl` — radash assign — the caller's reads of the result, both sizes, what each cell's three sweeps agree on |
 | `1.62-3.32x` | `bench/example.jl` — es-toolkit omit — the whole call, 12 and 48 keys |
+| `0.78-1.31` | `bench/arguments.jl` — the `arguments` object against a rest parameter, escaping, indexed and length-only — 2 of 9 cells withdrawn as unreplicable (rule 13): argesc|restesc|excl|16384, arglen|restlen|excl|262144 |
+| `7` | `bench/arguments.jl` — the cells behind args.null — 2 of 9 cells withdrawn as unreplicable (rule 13): argesc|restesc|excl|16384, arglen|restlen|excl|262144 |
+| `24.3-65.5x` | `bench/sparse.jl` — dictionary elements against a packed array, reads only |
+| `20.4-40.1x` | `bench/sparse.jl` — the same with construction counted — 1 of 3 cells withdrawn as unreplicable (rule 13): dict|packed|incl|262144 |
+| `1.32-1.47x` | `bench/sparse.jl` — a holey array against a packed one, reads only — 1 of 3 cells withdrawn as unreplicable (rule 13): holey|packed|excl|262144 |
+| `0.28-0.68x` | `bench/sparse.jl` — the same with construction counted, where the holey array wins |
 | `n=12 and n=48` | `bench/example.jl` — the key counts es-toolkit omit was swept at, which delete-property quotes in its fix |
 | `11.2-11.6x` | `bench/example.jl` — es-toolkit omit — the caller's reads of the result at 12 keys |
 | `0.97-1.04x` | `bench/example.jl` — the same at 48 keys, where the fix stops fixing the read — what its three sweeps agree on |
@@ -404,6 +410,32 @@ work measured 1.64x, 0.91x and 0.89x, and no two of those can both be true. So a
 cell behind a published number is run three times over, and the three answers are
 published next to each other. Where they disagree, the cell is dropped and the
 three numbers are printed anyway — `make bench-tc11`, `BUGS.md` TC-11.
+
+### Two sweeps that produced no rule
+
+Not every measurement earns a rule, and these two are in the file because they
+did not.
+
+**`arguments` against a rest parameter: nothing.** The advice to avoid the
+`arguments` object is old, widely repeated, and this project could not price it.
+Nine cells — escaping, indexed, and length-only, at 256, 16384 and 262144 — three
+sweeps each. Seven replicate and every one of those intervals contains 1.00
+(`args.null`, spanning 0.78-1.31 across them); the other two agree on nothing at
+all and are withdrawn, which is what a sweep does when the effect it is looking
+for is not there. No rule reports `arguments`, and `bench/arguments.jl` is why.
+`BUGS.md` TC-53.
+
+**Dictionary-mode ELEMENTS, which no rule reports, is the largest ratio here.**
+An array V8 has moved to dictionary elements reads 24.3-65.5x slower
+than a packed one, and 20.4-40.1x slower with construction counted —
+an order of magnitude past anything else in this file. It has no rule because
+nothing static separates an array that went sparse from one that did not.
+
+**And the folklore beside it is refuted.** A holey array — the transition people
+actually warn about — reads only 1.32-1.47x slower, and is FASTER than
+packed once you count building it: 0.28-0.68x. So "holey arrays are
+slow" is not the sparse transition worth a rule, and the one that is cannot be
+detected. `BUGS.md` TC-52.
 
 ## What the fix is worth on somebody else's code
 
@@ -727,7 +759,7 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
   but they are printed as refutations, not folded into a range. This bullet said
   the opposite until 2026-08-29, and had contradicted the paragraph above it
   since rule 13 was enforced. `BUGS.md` TC-21, TC-37.
-- **592 published rows were measured under a load gate that could not see a
+- **601 published rows were measured under a load gate that could not see a
   tenant.** Protocol rule 9 refuses to start a cell while the machine is busy.
   Until 2026-08-21 the gate read the one-minute load average, and on a two-core
   machine that average was mostly the sweep's own children — one pinned child at
