@@ -58,7 +58,7 @@ The `members(element).includes(t)` arm is what does it; `t === element` keeps
 every union-typed receiver including the zod cast the rule exists for. TC-8's
 FIXED status is refuted in part.
 
-## TC-93 — closed-world fires inside its own silent clause on every finding (2026-08-29, open)
+## TC-93 — closed-world fires inside its own silent clause on every finding (2026-08-29, split SHIPPED 2026-08-29; the clause gap stands)
 
 The clause says a small callee is inlined and the boundary costs nothing. The
 trigger is "no readable body", which is orthogonal to size. A `.d.ts` declaring
@@ -71,7 +71,18 @@ no such test exists and none can be written: the tool cannot see the body whose
 size decides the question. This is TC-33 stated in the project's own strongest
 terms, and it is why the rule is a `warn`.
 
-**Proposal, and the only cheap signal gain available:** give interface dispatch
+**SHIPPED 2026-08-29 — the split.** Interface dispatch is `interface-dispatch`,
+its own rule with its own evidence, and `closed-world` keeps only the honest
+cause: a callee with no body anywhere in the checkout. `[rules] closed-world =
+false` no longer switches off the cause that is honest about not being able to
+look, and the two counts are separable in a survey for the first time.
+
+**NOT fixed, and not fixable: the silent-clause gap itself.** Both rules still
+fire where their sweep says the boundary costs nothing, because neither can see
+the body whose size decides it. That is why both are `warn` and both carry
+TC-33. A test asserting they stay quiet cannot be written.
+
+**Original proposal, for the record:** give interface dispatch
 its own rule name. `[rules] closed-world = false` kills all three causes at
 once, including the honest "no body anywhere in this program" one, and
 interface dispatch was 96.7% of every finding in the 22-codebase survey. The
@@ -364,7 +375,20 @@ Still open from this entry: the `suggest` mode for the writing consumer, and
 `min_self_pct` remains a constant nobody has measured — it is printed on every
 run and the TOML owns it, which is the disclosure and not the fix.
 
-## TC-81 — the zero is a fact about the trigger, not about the code: zod hides a 13-way dispatch (2026-08-29, open)
+## TC-81 — the zero is a fact about the trigger, not about the code: zod hides a 13-way dispatch (2026-08-29, SURFACED 2026-08-29 by TC-69's dataflow)
+
+**Surfaced 2026-08-29.** With TC-69's receiver walk, zod's `_parse` loops are
+`megamorphic-dispatch` findings: `this` in `_parseSync` reaches the call as at
+least 36 implementations built by zod's own source (every `new Zod*` under
+`ZodType`), and the per-element sites (`ZodArray`, `ZodTuple`, `ZodRecord`)
+carry the same count through `this._def.type` and its siblings — 12 sites in
+the corpus where there were none. The count says "at least", not 13: it is a
+different, wider question than the hierarchy count this entry made by hand
+(consumer instances and subclasses stay invisible), and the abstract `_parse`
+reached through a field is exactly the shape the signature-only test filed
+under "no body" (scan.ts's `isDispatchDecl` now includes bodyless own-source
+class members). What TC-64's retirement argument needed — the dispatch rule
+plus a dataflow walk subsumes the elements trigger — now exists in the tool.
 
 TC-64 recorded `megamorphic-elements` firing 0 times in 11,198 functions and
 argued the trigger shape does not occur. The owner pushed back: not even if you
@@ -522,7 +546,21 @@ was tried on should not be the tool's most common `error`.
 Found 2026-08-29 by the `cto-eval` panel (`.ship/critique-cto-20260829.md`),
 verified here against the raw rows in `bench/example.jl`.
 
-## TC-82 — loud on well-abstracted code may be correct, and the tool cannot tell (2026-08-29, open)
+## TC-82 — loud on well-abstracted code may be correct, and the tool cannot tell (2026-08-29, FIXED 2026-08-29 by TC-69's dataflow — with stated limits)
+
+**Fixed 2026-08-29 — the two cases render as different sentences now.** A
+receiver the walk traces to one visible implementation is followed in silence;
+zod's thirteen-way `_parse` is a `megamorphic-dispatch` finding saying "at
+least N". What the analysis still cannot see, stated rather than papered over:
+key order (literals dedup by sorted names, so five orders of one key set read
+as one — the TC-42 direction, under-counting); consumer code (every count is a
+lower bound in a library, and the fix line says so); a function both called
+in-program and registered as a callback counts only its visible calls; cycles
+are cut and marked, so a cyclic flow never claims a complete count and is
+never followed; `.call`/`.apply`/`.bind` and computed member names are not
+modeled. On the flattened survey corpora the unresolved relative imports (TC-51)
+cap what the walk can reach across files — noble's remaining `Fp.mul` flood is
+unresolved-import blindness there, not dispatch.
 
 TC-69 argues that `closed-world` firing hardest on interface dispatch is a
 defect, because "the pattern it punishes is good design". The owner's
@@ -1000,7 +1038,27 @@ in the reducer is a scheduled failure, not a surprise. NOT done, deliberately:
 builtin call yet, and a rule there would be the folklore mistake in new
 clothes — and the exec-versus-test sweep in point 3 has not been run.
 
-## TC-69 — closed-world cannot see through an interface-typed callee, so it is loudest on the best-abstracted code (2026-08-28, partly fixed 2026-08-28 — named, not followed)
+## TC-69 — closed-world cannot see through an interface-typed callee, so it is loudest on the best-abstracted code (2026-08-28, cause 3 SHIPPED 2026-08-29 — counted by dataflow, followed when one)
+
+**Shipped 2026-08-29, per the owner's correction below.** `lib/flow.ts` is the
+0-CFA receiver walk: from the call site back through locals, fields, parameters
+(via every visible call site of the enclosing function), `this` (via every
+visible construction of the class and its subclasses), array elements and
+factory returns, to allocation sites, memoized to a fixpoint. Classes count by
+IDENTITY and literals by allocation-site shape, so the count under-counts maps
+and never over-counts them (TC-60 respected by construction); a source the walk
+cannot see — JSON.parse, a caller outside the program, a cycle the walk had to
+cut — makes the count a lower bound and the finding says so. The four verdicts:
+one visible implementation and nothing unknown is followed, not reported (zod:
+32 sites, noble: 117, tsc: 36 — the rules now run over those bodies); two to
+four is a note naming the implementations, inside the four-map budget; five or
+more is a `megamorphic-dispatch` finding saying "at least N" (zod: 12 sites,
+`ZodType._parse` among them — TC-81's counterexample surfaces); an unknown
+origin is named instead of numbered. The report states the closed-program
+assumption once per run, on the followed count. Severity untouched:
+megamorphic-dispatch had just become `warn` on its own evidence, and these
+findings inherit that. What the analysis cannot see is recorded at TC-82's
+amendment.
 
 `@noble/curves`, 26 files: **2,113 warnings against 2 errors**. The top callees:
 

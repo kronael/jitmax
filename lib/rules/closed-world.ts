@@ -23,28 +23,26 @@ const evidence: Evidence = {
   defects: ['TC-33'],
 };
 
-// The closed-world rule, and the only one that is about the mark rather than a
-// body: the walk already followed every callee whose source we have, so what is
-// left is a dependency we cannot read. That is where the promise stops.
+// The closed-world rule: a callee whose body is nowhere in this checkout. The
+// walk already followed every callee whose source we have, so what is left is a
+// dependency we cannot read, and that is where the promise stops.
+//
+// A call through an INTERFACE is not this. Its body IS here; the walk just
+// cannot decide which one runs, and telling the author to inline it would be
+// telling them to undo the abstraction. That was 96.7% of every finding across
+// the 22-codebase survey under this same name, so `[rules] closed-world = false`
+// — the obvious way to quiet it — also switched off the one cause that is honest
+// about not being able to look. It has its own name now (BUGS TC-93).
 function detect(mark: Mark, add: Add): void {
   for (const c of mark.escapes) {
+    if (c.viaInterface || c.dispatch) continue;
     add({
       file: c.file,
       line: c.line,
       column: c.column,
       rule: 'closed-world',
-      // Three causes, and only two of them are "we have no body". An interface
-      // member's body is in this checkout; the walk cannot tell which
-      // implementation reaches the site, and telling the author to inline it
-      // would be telling them to undo the abstraction (BUGS TC-69).
-      message: c.viaInterface
-        ? `calls ${c.text} through an interface, so the walk cannot tell which ` +
-          'implementation runs here; the promise stops here'
-        : `calls ${c.text}, which we have no body for; the promise stops here`,
-      fix: c.viaInterface
-        ? `check the implementations of ${c.text} yourself, or narrow the value to one of ` +
-          'them at this call — do not inline the abstraction away on this rule\'s account'
-        : `inline what you need from ${c.text}, or accept that this call is unchecked`,
+      message: `calls ${c.text}, which we have no body for; the promise stops here`,
+      fix: `inline what you need from ${c.text}, or accept that this call is unchecked`,
     });
   }
 }

@@ -8,6 +8,7 @@ import { accumulatingSpread } from './accumulating-spread.ts';
 import { allocatingSelect } from './allocating-select.ts';
 import { chainedAllocation } from './chained-allocation.ts';
 import { closedWorld } from './closed-world.ts';
+import { interfaceDispatch } from './interface-dispatch.ts';
 import { deleteProperty } from './delete-property.ts';
 
 export type { Evidence, Finding } from './shared.ts';
@@ -19,6 +20,7 @@ export const DEFECT: Record<string, string> = {
   'TC-9': 'rules fire outside the conditions their own evidence establishes',
   'TC-13': 'a method in a field has no four-map budget',
   'TC-33': 'the rule fires on one program and its benchmark measured another',
+  'TC-82': 'loud on well-abstracted code, and the tool cannot tell whether it is right',
 };
 
 // Every rule cites a measurement, and the measurement also says where the rule
@@ -39,6 +41,7 @@ export const EVIDENCE: Record<string, Evidence> = {
   [allocatingSelect.name]: allocatingSelect.evidence,
   [chainedAllocation.name]: chainedAllocation.evidence,
   [closedWorld.name]: closedWorld.evidence,
+  [interfaceDispatch.name]: interfaceDispatch.evidence,
   [deleteProperty.name]: deleteProperty.evidence,
 };
 
@@ -60,6 +63,7 @@ export function check(ts: Ts, checker: TS.TypeChecker, mark: Mark): Finding[] {
     for (const rule of RULES) rule(ts, checker, body, add, mark);
   }
   closedWorld.detect(mark, add);
+  interfaceDispatch.detect(mark, add);
   return findings;
 }
 

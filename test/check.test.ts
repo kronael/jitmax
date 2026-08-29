@@ -38,10 +38,11 @@ function rulesByFunction(dir: string): Map<string, string[]> {
 const found = rulesByFunction('demo');
 const rules = (name: string): string[] => found.get(name) ?? assert.fail(`no mark ${name}`);
 // The dispatch fixtures are object TYPES with method signatures, so the walk
-// cannot follow `x.area()` into a body and `closed-world` reports it — which is
+// cannot follow `x.area()` into a body and `interface-dispatch` reports it — which is
 // correct and is what TC-45 asked for. These tests are about the dispatch rule,
 // so they ask about the dispatch rule.
-const shapeRules = (name: string): string[] => rules(name).filter((r) => r !== 'closed-world');
+const shapeRules = (name: string): string[] =>
+  rules(name).filter((r) => r !== 'closed-world' && r !== 'interface-dispatch');
 
 // A second scan that keeps the marks themselves, for the config and
 // annotation-override tests below: they need `mark.disabled` and the raw,
@@ -197,7 +198,7 @@ test('five object types with no method call stay silent', () => {
 // prevent. `area()` is a method signature with no body anywhere in the program.
 test('a call the walk cannot follow is reported, not silently dropped', () => {
   assert.ok(
-    rules('areaOfFour').includes('closed-world'),
+    rules('areaOfFour').includes('interface-dispatch'),
     'a call through an object-type method signature vanished from the coverage report'
   );
 });
@@ -215,7 +216,7 @@ test('an array of a five-way union with method calls reports once', () => {
 
 // One visible implementation and nothing unknown is not an escape at all. The
 // accumulating-spread inside the implementation proves the body was walked;
-// the absence of closed-world proves the site was not reported.
+// the absence of interface-dispatch proves the site was not reported.
 test('an interface call with one visible implementation is followed, not reported', () => {
   assert.deepStrictEqual(rules('viaOneImpl'), ['accumulating-spread']);
 });
@@ -236,19 +237,19 @@ test('five implementations reaching a receiver are a megamorphic-dispatch findin
 // Inside V8's four-map budget: a note at most, never an error — and it names
 // the implementations rather than saying "cannot tell which".
 test('two to four implementations are a note, never an error', () => {
-  assert.deepStrictEqual(rules('runTrio'), ['closed-world']);
-  const f = rawFindings('runTrio').find((x) => x.rule === 'closed-world');
+  assert.deepStrictEqual(rules('runTrio'), ['interface-dispatch']);
+  const f = rawFindings('runTrio').find((x) => x.rule === 'interface-dispatch');
   assert.match(f?.message ?? '', /3 implementations reach this receiver/);
   assert.match(f?.message ?? '', /four-map budget/);
 });
 
 // A value from JSON.parse has no construction site to count. One such source
 // makes any count a lower bound, and the tool says the origin is unknown
-// rather than printing a number it cannot stand behind — the closed-world
+// rather than printing a number it cannot stand behind — the interface-dispatch
 // statement, made about a value instead of a call (TC-82).
 test('a receiver with no construction site to count says unknown origin, not a number', () => {
-  assert.deepStrictEqual(rules('runParsed'), ['closed-world']);
-  const f = rawFindings('runParsed').find((x) => x.rule === 'closed-world');
+  assert.deepStrictEqual(rules('runParsed'), ['interface-dispatch']);
+  const f = rawFindings('runParsed').find((x) => x.rule === 'interface-dispatch');
   assert.match(f?.message ?? '', /unknown origin/);
   assert.match(f?.message ?? '', /JSON\.parse/);
 });
@@ -1210,7 +1211,7 @@ test('a cell count agrees with the noun beside it', () => {
 // words: every family in bench/dispatch.jl varies key order, the call target or
 // where the function is held, all over one property set, and this rule counts
 // property SETS. It failed builds on that for as long as it shipped.
-const UNMEASURED_TRIGGER = ['megamorphic-dispatch', 'closed-world'];
+const UNMEASURED_TRIGGER = ['megamorphic-dispatch', 'closed-world', 'interface-dispatch'];
 
 test('a rule warns exactly when no sweep ran the program it fires on', () => {
   for (const [name, e] of Object.entries(EVIDENCE)) {

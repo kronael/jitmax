@@ -127,9 +127,10 @@ jitmax — 46 annotated functions, 15 errors, 1 warning
 ```
 
 `error` or `warn`, and only an error fails the run. A rule warns when no
-benchmark measures the program it fires on; `closed-world` is the only one, and
-it was 98.8% of every finding across the 22-codebase survey below, so before
-this it decided nearly every exit code on evidence this project does not have.
+benchmark measures the program it fires on. Three do: `closed-world`,
+`interface-dispatch` and `megamorphic-dispatch`. Together they were 98.8% of
+every finding across the 22-codebase survey below, so before this they decided
+nearly every exit code on evidence this project does not have.
 
 Four things, and the second is the point:
 
@@ -219,7 +220,15 @@ false for both (`BUGS.md` TC-39).
 | `chained-allocation` | `.map().filter()` or `Object.entries(o).map()` allocates between stages | one stage; large n; `Object.keys(o).map()`, `.sort()`, `.split().map().join()` |
 | `allocating-select` | `x = Lib.min(x, y)` in a loop returns a new object every pass | the same loop on numbers |
 | `delete-property` | `delete` demotes an object to dictionary mode — 12.3-13.6x per property load after it | assigning `undefined` instead, which costs 1.00-1.06x |
-| `closed-world` | calls to code with no readable body | a callee small enough to inline costs nothing |
+| `closed-world` | calls to code with no readable body anywhere in the checkout | a callee small enough to inline costs nothing |
+| `interface-dispatch` | a call through an interface, whose body IS here but cannot be picked | one implementation reaching the receiver |
+
+These two were one rule until 2026-08-29, and the split matters to anyone who
+ran the tool: a call through an interface has a body in this checkout — the walk
+simply cannot decide which one runs — and telling you to inline it is telling
+you to undo the abstraction. It was 96.7% of every finding in the survey, so
+`[rules] closed-world = false`, the obvious way to quiet it, also switched off
+the one cause that is honest about not being able to look. `BUGS.md` TC-93.
 
 **Every rule includes the benchmark that earned it, and the case where the same
 benchmark found nothing.** `closed-world` measures the mechanism a call boundary
