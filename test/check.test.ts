@@ -80,8 +80,10 @@ test('a function is checked only where it is annotated', () => {
       'nearest',
       'oneStage',
       'optionalField',
+      'sliceUnknown',
       'sortedStages',
       'splitJoin',
+      'storeByDestructuring',
       'taggedShapes',
       'topTen',
       'total',
@@ -119,6 +121,14 @@ test('the fifth distinct property set fires: the cliff', () => {
 // touches no property.
 test('a cast does not hide the read: the map is the object\'s, not the checker\'s', () => {
   assert.deepStrictEqual(rules('fiveShapesCast'), ['megamorphic-elements']);
+});
+
+// A destructuring assignment stores and never loads, and the access sits under
+// an array or object literal rather than directly under the `=`. Matching only
+// the direct parent counted it as a read and fired the rule on a body that
+// loads nothing — TC-8 again, in the shape its first fix missed.
+test('a destructuring store is not a read', () => {
+  assert.deepStrictEqual(rules('storeByDestructuring'), []);
 });
 
 test('five property sets with no load off an element stay silent', () => {
@@ -329,6 +339,14 @@ test('the same chain on Object.keys stays silent', () => {
 // bench/chained.jl carries.
 test('a chain a literal slice bounds below the measured n stays silent', () => {
   assert.deepStrictEqual(rules('topTen'), []);
+});
+
+// `.slice(2, -3)` bounds nothing the tool can see — the count depends on a
+// length it does not know — so the rule fires. Two indices of the SAME sign are
+// a real bound: `slice(-10, -5)` is five elements, and reading only the first
+// argument called it ten.
+test('a slice whose bound depends on an unknown length still fires', () => {
+  assert.deepStrictEqual(rules('sliceUnknown'), ['chained-allocation']);
 });
 
 test('the same chain with nothing bounding it still fires', () => {
@@ -569,6 +587,9 @@ test('a truncated walk exits 1: not clean, even with no findings', () => {
 // recorded it, and a fixture that only works on one machine is not a fixture.
 // The frame positions are V8's — a function's position is its parameter list's
 // `(`, which is why the two columns below are not where the nodes start.
+// The path carries the pid: two overlapping test runs shared one file and
+// deleted each other's, which read as a real failure twice before it read as a
+// race.
 function writeProfile(target: string, frames: Array<{ line: number; column: number }>): string {
   fs.mkdirSync(path.dirname(target), { recursive: true });
   const url = `file://${path.join(root, 'test', 'fixtures', 'profile', 'work.ts')}`;
@@ -591,7 +612,7 @@ test('a profile marks the function it measured as hot, and not the other one', (
   // `export function kernel(`, line 4 column 26 is `export function parseOnce(`.
   // parseOnce gets 0.5% of the samples, under the 1% default, so this also
   // proves the threshold filters rather than just that the lookup works.
-  const prof = writeProfile(path.join(root, 'tmp', 'test-hot.cpuprofile'), [
+  const prof = writeProfile(path.join(root, 'tmp', `test-hot-${process.pid}.cpuprofile`), [
     { line: 8, column: 23 },
     { line: 4, column: 26 },
   ]);
@@ -611,7 +632,7 @@ test('a profile marks the function it measured as hot, and not the other one', (
 // lie TC-7 and TC-17 are both about.
 test('a profile matching no function in the program is exit 2, never a clean run', () => {
   const dir = path.join(root, 'test', 'fixtures', 'profile');
-  const prof = writeProfile(path.join(root, 'tmp', 'test-stale.cpuprofile'), [{ line: 900, column: 1 }]);
+  const prof = writeProfile(path.join(root, 'tmp', `test-stale-${process.pid}.cpuprofile`), [{ line: 900, column: 1 }]);
   const run = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), prof, dir], {
     cwd: root,
     encoding: 'utf8',
@@ -619,6 +640,20 @@ test('a profile matching no function in the program is exit 2, never a clean run
   fs.unlinkSync(prof);
   assert.match(run.stderr, /stale against these sources/);
   assert.strictEqual(run.status, 2);
+});
+
+// The suppression line is counted per site too. Counting it per mark made one
+// disabled line reached from three annotated functions read as "3 findings
+// suppressed" — the fan-in TC-62 removed from every count above it, left behind
+// in the line underneath.
+test('one suppressed line reached from three functions is one suppression', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'suppress')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /1 finding suppressed \(chained-allocation\)/);
+  assert.strictEqual(run.status, 0);
 });
 
 // TC-62. One line reached from three annotated functions is one finding. The

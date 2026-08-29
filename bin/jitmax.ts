@@ -89,19 +89,25 @@ try {
   const allKeys = new Set(configDisabled);
   for (const mark of marks) for (const key of mark.disabled) allKeys.add(key);
 
-  let suppressed = 0;
+  // Counted per SITE, like the findings it sits beside. Counting per mark made
+  // one disabled line reached from three annotated functions read as "3
+  // findings suppressed" — the call-graph fan-in that BUGS TC-62 removed from
+  // the error and warning counts, left behind in the line under them.
+  const suppressedSites = new Set<string>();
   const results = marks.map((mark) => {
     const disabled = resolveDisabled([...configDisabled, ...mark.disabled]);
     const raw = check(ts, checker, mark);
     const findings = raw.filter((f) => !disabled.has(f.rule));
-    suppressed += raw.length - findings.length;
+    for (const f of raw) {
+      if (disabled.has(f.rule)) suppressedSites.add(`${f.rule}|${f.file}|${f.line}|${f.column}`);
+    }
     return { mark, findings };
   });
 
   const out = render(
     cwd,
     results,
-    { count: suppressed, keys: [...allKeys].sort() },
+    { count: suppressedSites.size, keys: [...allKeys].sort() },
     fromProfile === undefined ? 'annotated function' : 'hot function'
   );
   process.stdout.write(out + '\n');

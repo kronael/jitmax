@@ -475,3 +475,21 @@ class Bare {}
 export function viaConstructor(rows: number[]): number {
   return new Built(rows).vals.length + (new Bare() ? 1 : 0);
 }
+
+/** A destructuring assignment stores and never loads. `[r.x] = [5]` puts the
+ * access under an array literal rather than directly under the `=`, so matching
+ * only the direct parent counted it as a read and fired the rule on a body that
+ * loads nothing (BUGS TC-8, the shape its first fix missed). */
+/** @jitmax */
+export function storeByDestructuring(rows: (A | B | C | D | E)[]): void {
+  const r = rows[0]!;
+  [r.x] = [5];
+}
+
+/** `.slice(2, -3)` bounds nothing this tool can see: the count depends on a
+ * length it does not know, so the rule fires as it always has. Its sibling
+ * `.slice(0, 10)` is bounded and silent. */
+/** @jitmax */
+export function sliceUnknown(rows: number[]): string[] {
+  return rows.slice(2, -3).map((r) => `row ${r}`);
+}

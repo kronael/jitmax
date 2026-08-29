@@ -430,12 +430,30 @@ function readsFromElement(
   const isElement = (t: TS.Type): boolean =>
     t === element || members(element).includes(t);
   // `r.x = v` writes and never reads. `r.x += v` and `r.x++` read first, so
-  // only the plain assignment is excluded.
-  const isStoreTarget = (node: TS.Node): boolean =>
-    node.parent !== undefined &&
-    ts.isBinaryExpression(node.parent) &&
-    node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-    node.parent.left === node;
+  // only the plain assignment is excluded — and a destructuring assignment is
+  // one: `[r.x] = [5]` and `({ x: r.x } = src)` store without loading, and the
+  // access sits under a literal rather than directly under the `=`. Matching
+  // only the direct parent counted those as reads and fired the rule on a body
+  // that never loads anything, which is TC-8 again in the shape its fix missed.
+  const isStoreTarget = (node: TS.Node): boolean => {
+    let n: TS.Node = node;
+    while (
+      n.parent !== undefined &&
+      (ts.isArrayLiteralExpression(n.parent) ||
+        ts.isObjectLiteralExpression(n.parent) ||
+        ts.isPropertyAssignment(n.parent) ||
+        ts.isSpreadElement(n.parent) ||
+        ts.isSpreadAssignment(n.parent))
+    ) {
+      n = n.parent;
+    }
+    return (
+      n.parent !== undefined &&
+      ts.isBinaryExpression(n.parent) &&
+      n.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      n.parent.left === n
+    );
+  };
   // `(iss as any).path` loads `path` off iss's map exactly as `iss.path` does —
   // the cast is a claim about the type checker, not about the object. zod's
   // `prefixIssues` is written that way and is the one true instance of this
@@ -797,10 +815,13 @@ function literalBound(ts: Ts, node: TS.Node): number | undefined {
     if (!ts.isPropertyAccessExpression(n.expression)) break;
     if (n.expression.name.text === 'slice') {
       const [from, to] = [int(n.arguments[0]), int(n.arguments[1])];
-      // `slice(0, 10)` bounds to 10, `slice(-10)` to 10. `slice(10)` bounds
-      // nothing: it drops a prefix of an array of unknown length.
-      const bound = from !== undefined && from < 0 ? -from
-        : from !== undefined && to !== undefined ? Math.max(0, to - from)
+      // `slice(0, 10)` and `slice(-10, -5)` both bound to `to - from`, because
+      // two indices of the same sign are the same distance apart either way.
+      // `slice(-10)` bounds to 10. `slice(10)` and `slice(2, -3)` bound
+      // nothing: both depend on a length the tool cannot see.
+      const sameSign = from !== undefined && to !== undefined && from < 0 === to < 0;
+      const bound = sameSign ? Math.max(0, to! - from!)
+        : from !== undefined && from < 0 && to === undefined ? -from
         : undefined;
       if (bound !== undefined) best = best === undefined ? bound : Math.min(best, bound);
     }
