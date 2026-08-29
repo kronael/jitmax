@@ -142,6 +142,42 @@ Still open from this entry: the `suggest` mode for the writing consumer, and
 `min_self_pct` remains a constant nobody has measured — it is printed on every
 run and the TOML owns it, which is the disclosure and not the fix.
 
+## TC-74 — the load gate samples once per cell, and a cell can finish on a busy machine (2026-08-29, open)
+
+Protocol rule 9 refuses to start a cell above `nproc - 1` runnable threads. It
+checks BEFORE the cell. A cell is forty processes and takes minutes, and nothing
+re-reads the machine while it runs — so a cell that starts on an idle box can
+finish on a loaded one, and the row is written and kept.
+
+**Caught by the project's own instrumentation, which is the good news.** Every
+row records `runnable` as the row is WRITTEN, which is after the measurement.
+The 2026-08-29 sweeps of `arguments` and `sparse` were run in a resume loop on a
+machine that also carried another tenant at 94% of one core, a second Claude
+session, and this session's own test runs:
+
+    arguments   27 rows, 7 with runnable <= 1   {1:7, 2:6, 3:4, 4:3, 5:2, 6:3, 7:2}
+    sparse      36 rows, 15 with runnable <= 1  {1:15, 2:9, 3:6, 4:2, 5:2, 8:1, 12:1}
+
+**41 of 63 rows were measured on a machine the gate would have refused.** One
+sparse row records `runnable = 12` on a two-core box. Both files are moved to
+`-busy` and are history, not evidence. Nothing is published from them.
+
+**This also indicts the 592 rows in TC-46 from a second direction.** That entry
+is about a gate reading the wrong NUMBER. This is the same gate reading the
+right number at the wrong TIME, and it applies to every sweep this project has
+ever run, including the ones behind shipped rules. The per-row `runnable` is
+already in those files, so the question is answerable by reading them — and
+nobody has read them for this.
+
+**Proposal:** read `runnable` again after the cell and before the row is
+written, and refuse the row when either reading is above the gate — a cell
+measured on a machine that filled up is void for the same reason a cell whose
+timed region missed 120ms is void, and rule 3 already has that vocabulary.
+Cheap, and it makes the existing per-row field load-bearing instead of
+decorative. Then re-run every sweep whose rows fail the new test.
+
+Found 2026-08-29, checking the environment on fresh rows before publishing them.
+
 ## TC-73 — README prose can quote a ratio no data supports (2026-08-29, open, proposal)
 
 `site/index.html` is held to "every ratio on this page must BE a value in the
@@ -289,6 +325,24 @@ or it will make a version-specific claim in a general voice.
 
 Raised 2026-08-29.
 
+**Derivation SHIPPED 2026-08-29; the candidate rule and the test/exec sweep are
+still open.** `make builtins` (or `make build`, the umbrella with `numbers`)
+runs `lib/derive-builtins.ts`, which extracts every `case Builtin::k…` from the
+pinned checkout — 168 names — into the generated `lib/builtins.ts`, together
+with the pin from README's ```pin block, the same block `bench/v8-check.js`
+reads. `make test` asserts the committed artifact against a re-derivation and
+fails naming `make build`; without `v8src/` it reports the comparison as
+skipped rather than passing quietly. The hand-written `PRIMITIVES` set in
+scan.ts — this project's own hand-asserted copy of the list — is now the
+derived statics (52 spellings, up from 36), the walk counts the sites it steps
+over, and the report says once per run how many calls were lowered AND under
+which V8 that claim is true, exactly as the trap paragraph requires. The weekly
+`v8-drift` workflow re-derives against V8 main (`--against-head`) so a change
+in the reducer is a scheduled failure, not a surprise. NOT done, deliberately:
+`closed-world` does not report the not-lowered set — no benchmark prices a
+builtin call yet, and a rule there would be the folklore mistake in new
+clothes — and the exec-versus-test sweep in point 3 has not been run.
+
 ## TC-69 — closed-world cannot see through an interface-typed callee, so it is loudest on the best-abstracted code (2026-08-28, partly fixed 2026-08-28 — named, not followed)
 
 `@noble/curves`, 26 files: **2,113 warnings against 2 errors**. The top callees:
@@ -432,6 +486,21 @@ What did land beside it is TC-45's half: the escape test used to require the
 callee to be types-only or unresolvable, so an interface member fell through
 both branches and was never reported at all. The tool was silent about it, not
 loud. It is now reported, which widens the output and is the honest direction.
+
+**Cause 1 closed the rest of the way 2026-08-29, with TC-70's derivation.** The
+platform test used to need `@types/node` to resolve into, so on a checkout with
+no node_modules — the state of every survey corpus — `path.join` was an
+ordinary opaque callee and got its note back. The walk now also reads the
+import's own specifier: `node:*` and the names in `module.builtinModules` are
+reserved by Node's resolver, so they are the platform no matter what is
+installed. Silent per TC-69's own argument — the body is C++/Torque, no rule
+here can match into it, and the advice was not actionable — while a genuinely
+opaque application callee in the same file keeps its finding, and the platform
+count line still says how many calls were skipped. On the three re-run corpora
+this removed the builtin-shaped remainder (vue: `dirname`, `extname`,
+`process.cwd`, `uriParse`); the floods that stay are cause 2 (tsc's flattened
+`_namespaces` imports) and cause 3 (noble's interface dispatch), which are
+TC-51 and the proposal above, not this.
 
 ## TC-68 — two more measured mechanisms with no rule (2026-08-28, open)
 
