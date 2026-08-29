@@ -36,14 +36,13 @@ It exits 0 when every annotated function is clean, 1 when it has findings **or
 when the walk was truncated**, and 2 when the tool itself failed. A gate reads
 the exit code, so a run that could not see everything is never a pass.
 
-To get the `jitmax` command on your PATH instead, install it from git into
-the project you want to check:
+**Installing it as a dependency does not work, and that is a defect, not a
+policy.** `bin/jitmax.ts` is TypeScript run directly by Node, and Node refuses
+to strip types from a file inside `node_modules`, so a packed install fails at
+startup with `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`. Clone it and run it
+by path until that is fixed. `BUGS.md` TC-72.
 
-```sh
-npm install <repo-url>          # then: npx jitmax src
-```
-
-Either way it loads *your* TypeScript, not a bundled copy.
+It loads *your* TypeScript, not a bundled copy.
 
 ## Configure it
 

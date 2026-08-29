@@ -142,6 +142,37 @@ Still open from this entry: the `suggest` mode for the writing consumer, and
 `min_self_pct` remains a constant nobody has measured — it is printed on every
 run and the TOML owns it, which is the disclosure and not the fix.
 
+## TC-72 — the tool cannot be installed as a dependency (2026-08-29, open, owner decision)
+
+`package.json` declares `"bin": {"jitmax": "bin/jitmax.ts"}` and ships `bin/`
+and `lib/` as TypeScript. Node refuses to strip types from a file inside
+`node_modules`, so the documented install path is dead:
+
+    npm pack && npm install jitmax-0.10.0.tgz && node node_modules/.bin/jitmax
+    node:internal/modules/typescript:156
+        throw new ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING(filename);
+
+A local `npm install /path/to/repo` SYMLINKS, so the file resolves outside
+`node_modules` and appears to work — which is why this survived. Verified
+2026-08-29 with a packed tarball, which is what a real user gets.
+
+`private: true` hides it today. It stops hiding it the moment TC-50's
+recommendation is taken and this is published, so the two decisions are one
+decision.
+
+**Two options, and they trade against the same thing.** Ship a compiled `dist/`
+for the published artifact only, keeping development build-free — this project's
+"TypeScript run directly by Node, no build step" is a real property and would
+survive for contributors but not for consumers. Or stay clone-only and delete
+the `bin` field, which is honest and forecloses npm.
+
+Not applied: this is packaging, it is bound to the licence and publish decisions
+in TC-50, and neither is mine to make. README's instruction to
+`npm install <repo-url>` was FALSE and has been corrected to say so.
+
+Found 2026-08-29 by a commissioned CTO review; reproduced here before it was
+written down.
+
 ## TC-71 — two exit-2 crashes on legal source (2026-08-29, FIXED 2026-08-29)
 
 Both found by a commissioned CTO review and both reproduced here before they
