@@ -11,8 +11,8 @@ function is hot, not how large its data is.
 
 ## Use it
 
-Get it. There is no build step and it is not on npm, so clone it and run it
-where it lands:
+Get it. Running needs no build step and it is not on npm, so clone it and run
+it where it lands:
 
 ```sh
 git clone <repo-url> jitmax
@@ -157,7 +157,19 @@ proves nothing about part of your call tree is not a clean run either.
 
 ## Requirements
 
-Node `>=22.18`, which strips types itself, so there is no build step.
+Node `>=22.18`, which strips types itself, so RUNNING the tool needs no build
+step. Development has one, for the derived artifacts only:
+
+```sh
+make          # all: lint, test, check — asserts the committed artifacts
+              # still match their sources; regenerates nothing
+make build    # numbers + builtins: regenerate lib/numbers.ts and
+              # lib/builtins.ts after a .jl sweep or a V8 re-pin, then commit
+```
+
+`make` never runs `build`: regenerating right before the drift assertions would
+compare fresh output against fresh output, and a stale committed artifact could
+never fail again.
 TypeScript `>=5.0.0` as a peer dependency — jitmax loads *your* copy, so it
 parses with the same compiler your build does. It does **not** yet read your
 `tsconfig.json` when you pass it a path: the config is loaded only for a bare
@@ -693,14 +705,18 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
 - These ratios come from a microbenchmark, a small speed test, on one machine
   (Node v22.23.2, V8 12.4). They show that a pattern *can* cost that much. They
   do not say it costs that much in your workload.
-- **Two published ranges currently contain a cell that failed replication.**
-  Protocol rule 13 runs every published cell three whole times and calls the
-  three in agreement when a value sits inside all three intervals. Under the
-  re-measurement, `closed-world`'s n=100000 cell (4.73x, 4.68x, 3.21x) and
-  `delete-property`'s n=262144 read cell (22.98x, 13.73x, 15.53x) have no such
-  value, and both are inside a range this page quotes. They are left in rather
-  than dropped, because a range that quietly excluded its worst-behaved cell
-  would read tighter than the measurement was. `BUGS.md` TC-21.
+- **Two cells failed replication, and neither is inside a range this page
+  quotes.** Protocol rule 13 runs every published cell three whole times and
+  calls the three in agreement when a value sits inside all three intervals.
+  `closed-world`'s n=100000 cell read 3.21x and 4.68x and 4.73x with no such
+  value, and `delete-property`'s n=262144 read cell disagreed the same way.
+  Both are withdrawn inside `lib/derive.ts`, where the number is made, so
+  4.64-4.95x and 12.3-13.6x rest on the cells that replicate and on nothing
+  else. The withdrawn triples are still printed, because a range that quietly
+  excluded its worst-behaved cell would read tighter than the measurement was —
+  but they are printed as refutations, not folded into a range. This bullet said
+  the opposite until 2026-08-29, and had contradicted the paragraph above it
+  since rule 13 was enforced. `BUGS.md` TC-21, TC-37.
 - **592 published rows were measured under a load gate that could not see a
   tenant.** Protocol rule 9 refuses to start a cell while the machine is busy.
   Until 2026-08-21 the gate read the one-minute load average, and on a two-core
