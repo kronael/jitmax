@@ -20,6 +20,83 @@ Review queue. Found during audits, fixed only when the owner asks.
 > re-verified against the source here before it was written down, and every fix
 > below is held by a fixture or a register entry.
 
+## TC-95 — two false negatives the shape rules cannot see (2026-08-29, open)
+
+`objectShapes` keeps only `TypeFlags.Object` members, and a branded type
+`T & {__tag?: K}` is an Intersection. Five branded object types behind one
+receiver — the exact 3.4-11.3x program `bench/shape-sets.jl` measures — count
+zero shapes and report clean. `getPropertiesOfType` already resolves an
+intersection, so accepting Intersection members is the whole fix.
+
+`arrayParams` inspects PARAMETER declarations only, so the union array has to
+arrive as an argument. `const rows = [...as, ...bs, ...cs, ...ds, ...es]`
+followed by a loop read is the same maps at the same load site and reports
+clean. `megamorphic-dispatch` covers calls on locals; `megamorphic-elements`
+has no local story at all. This one is real work — locals and dataflow — and is
+recorded rather than proposed.
+
+Also confirmed and worth stating plainly: `bench/shape-sets.ts`'s own kernel,
+pasted into a file with its own `Row` type, comes back clean. The rule is
+silent on the source program of its own benchmark.
+
+## TC-94 — megamorphic-elements counts a read off any value whose type coincides with a union member (2026-08-29, open)
+
+TC-8 made the rule require a LOAD off the element rather than inferring one
+from a parameter's type. The check it shipped accepts a read off any value
+whose type is a member of the union, not off the array's element:
+
+```ts
+/** @jitmax */
+function count(rows: S5[], fallback: A) { return rows.length + fallback.a; }
+```
+
+`fallback.a` is a monomorphic load off an unrelated parameter, and the rule
+reports megamorphic loads on `rows`. A read narrowed by a guard to one member
+fires for the same reason, and that site is monomorphic too.
+
+The `members(element).includes(t)` arm is what does it; `t === element` keeps
+every union-typed receiver including the zod cast the rule exists for. TC-8's
+FIXED status is refuted in part.
+
+## TC-93 — closed-world fires inside its own silent clause on every finding (2026-08-29, open)
+
+The clause says a small callee is inlined and the boundary costs nothing. The
+trigger is "no readable body", which is orthogonal to size. A `.d.ts` declaring
+`inc(x: number): number` over a one-line `x + 1` produces the warning, and the
+printed fix asks the reader to hand-inline a callee V8 already inlines.
+
+`shared.ts` says a rule firing in its silent clause "is contradicting this
+project's own evidence" and that "a test asserts it stays quiet". For this rule
+no such test exists and none can be written: the tool cannot see the body whose
+size decides the question. This is TC-33 stated in the project's own strongest
+terms, and it is why the rule is a `warn`.
+
+**Proposal, and the only cheap signal gain available:** give interface dispatch
+its own rule name. `[rules] closed-world = false` kills all three causes at
+once, including the honest "no body anywhere in this program" one, and
+interface dispatch was 96.7% of every finding in the 22-codebase survey. The
+walk already computes `viaInterface`, so the split costs a name and a table
+row, and makes the loud cause separately suppressible and separately countable.
+
+## TC-92 — megamorphic-dispatch failed builds on a gap it states itself (2026-08-29, FIXED 2026-08-29)
+
+The severity contract is `error` when a benchmark measures the program the rule
+fires on. This rule's own `source` says every family in `bench/dispatch.jl`
+varies key order, the call target or where the function is held — all over ONE
+property set — that the rule counts property SETS and is silent on all four,
+and that "no sweep here varies the key set at a CALL site yet". It shipped
+`error` regardless.
+
+Fixed: `warn`, carrying TC-33, whose text stops being closed-world's private
+defect and becomes the name of the gap — the rule fires on one program and its
+benchmark measured another. The test no longer hardcodes "closed-world is the
+only warning"; it asserts that a warning IS a rule carrying TC-33.
+
+Found in the same audit: the receiver unwrap `megamorphic-elements` gained for
+zod's `(iss as any).path` never reached the call rule, so `(x as any).step()`
+was invisible while `(r as any).kind` was reported — one object, one set of
+maps, two sites. There is one `receiver()` in `shared.ts` now.
+
 ## TC-91 — a cell with a contaminated row is never re-measured, because the runner counts rows (2026-08-29, open)
 
 `bench/run.ts` resumes by counting how many rows a cell already has under the
@@ -502,6 +579,18 @@ file.
 Found 2026-08-29 in the TC-75 trial.
 
 ## TC-79 — delete-property's fix is not behaviour-preserving, and two of three trials hit it (2026-08-29, open)
+
+**Amended 2026-08-29 — the list is wrong on one member, and the check shipped
+without it.** `JSON.stringify` does NOT tell an absent key from one holding
+undefined: it omits both, and `JSON.stringify({x:1}) === JSON.stringify({x:1,
+k: undefined})` is true. It was an arm of the shipped check, so a delete whose
+object reached `JSON.stringify` had the safe rewrite withdrawn from it and was
+told a false thing about JavaScript at the same time. Removed; spread, `in` and
+`Object.keys` do distinguish and stay. `test/fixtures/tc79` holds both halves.
+
+The hand-typed "12 keys and not at 48" in the same fix line is also gone — an
+`ex.omit.sizes` citation renders the pair from the rows, and the test compares
+the printed fix to the data instead of to the sentence.
 
 `delete-property` prints one fix: "assign undefined where the key may stay
 present". `{b: undefined}` shares the map of `{b: 1}`, so the fix is correct
