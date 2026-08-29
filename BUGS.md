@@ -162,19 +162,32 @@ session, and this session's own test runs:
 sparse row records `runnable = 12` on a two-core box. Both files are moved to
 `-busy` and are history, not evidence. Nothing is published from them.
 
-**This also indicts the 592 rows in TC-46 from a second direction.** That entry
-is about a gate reading the wrong NUMBER. This is the same gate reading the
-right number at the wrong TIME, and it applies to every sweep this project has
-ever run, including the ones behind shipped rules. The per-row `runnable` is
-already in those files, so the question is answerable by reading them — and
-nobody has read them for this.
+**It bears on TC-46 from a second direction.** That entry is about a gate
+reading the wrong NUMBER. This is the same gate reading the right number at the
+wrong TIME, and the 592 registered rows are the accumulated result: every one is
+a row some cell finished over its gate. They are registered and withdrawn
+nowhere, which TC-46 already says.
 
-**Proposal:** read `runnable` again after the cell and before the row is
-written, and refuse the row when either reading is above the gate — a cell
-measured on a machine that filled up is void for the same reason a cell whose
-timed region missed 120ms is void, and rule 3 already has that vocabulary.
-Cheap, and it makes the existing per-row field load-bearing instead of
-decorative. Then re-run every sweep whose rows fail the new test.
+**Correction to the first draft of this entry: keeping an over-gate row is
+deliberate, not an oversight.** `bench/run.js` reads `runnable` as the row is
+written, prints `OVER GATE`, and keeps the row — rule 10 reports failures in the
+same format as wins — and `test/check.test.ts` holds a per-file register that
+fails the build on any NEW unaccounted over-gate row. The machinery is
+consistent and it did its job here: the two sweeps are `-busy`, are outside
+`SWEPT`, and publish nothing.
+
+**What is actually missing is a check DURING the cell.** The register catches
+contamination at build time, which is hours after the measurement was wasted,
+and the runner will happily spend a whole sweep producing rows it knows are
+over the gate. `--wait-load` exists but only gates the START.
+
+**Proposal:** re-read `runnable` after the cell, and when it is above the gate,
+write the row with `void: true` and a reason. `lib/derive.ts` already excludes
+`void` rows, so contamination becomes self-excluding instead of depending on a
+hand-maintained register; rule 3 already has the vocabulary for a cell that is
+void rather than slow. The runner should also stop the sweep at that point, the
+way it stops when the start gate refuses, so a busy machine costs one cell and
+not a night.
 
 Found 2026-08-29, checking the environment on fresh rows before publishing them.
 
