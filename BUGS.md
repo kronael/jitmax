@@ -142,6 +142,33 @@ Still open from this entry: the `suggest` mode for the writing consumer, and
 `min_self_pct` remains a constant nobody has measured — it is printed on every
 run and the TOML owns it, which is the disclosure and not the fix.
 
+## TC-73 — README prose can quote a ratio no data supports (2026-08-29, open, proposal)
+
+`site/index.html` is held to "every ratio on this page must BE a value in the
+derived table". README is not: its test asserts only that the prose CONTAINS
+each `readme: true` value. So a sentence can be built around derived numbers and
+still say something false — which is exactly how the Honest-limits bullet fixed
+in 7a254ed survived, contradicting a paragraph 480 lines above it.
+
+Measured 2026-08-29: **53 ratios in README prose, 31 of them not derived values.**
+
+The page's rule cannot simply be copied here, and that is the point of this
+entry. README narrates history, and most of the 31 are legitimately not in the
+current table: superseded numbers quoted as superseded (`4.42-4.79x`,
+`3.21-4.95x`, `6.48-7.51x`), withdrawn rules (`0.96-1.08x` and `1.39-1.66x` for
+`boxed-elements`, `1.21-1.34x` for the property-add refutation), sweeps that
+ship no rule (`6.17-6.34x`, TC-12), and round figures in ordinary prose (`2x`,
+`5x`, `8x`, `200x`). A blanket assertion would fail on honest history.
+
+**Proposal:** an explicit register in the test — every non-derived ratio listed
+with a one-line reason, the way `OVER_GATE` and `DEFECT` already work here. The
+31 become visible and pinned, and a NEW typed ratio fails the build. Doing it
+properly means reading all 31 in context and confirming each is history rather
+than a live wrong claim, which is the work, not the test.
+
+Found 2026-08-29 by a commissioned CTO review, which also found the one live
+false sentence this gap was hiding.
+
 ## TC-72 — the tool cannot be installed as a dependency (2026-08-29, open, owner decision)
 
 `package.json` declares `"bin": {"jitmax": "bin/jitmax.ts"}` and ships `bin/`
