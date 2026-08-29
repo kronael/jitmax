@@ -14,11 +14,34 @@ Review queue. Found during audits, fixed only when the owner asks.
 > it was written down. Nine of the technical findings were fixed the same day and
 > are recorded in the entries they belong to; these are the ones that are not.
 
-> **2026-08-29 — three read-only audits.** TC-83 through TC-88 come from three
+> **2026-08-29 — three read-only audits.** TC-85 through TC-90 come from three
 > commissioned audits run in parallel over one bucket each: the rule engine and
 > the walk, the CLI and the report, and the numbers pipeline. Every claim was
 > re-verified against the source here before it was written down, and every fix
 > below is held by a fixture or a register entry.
+
+## TC-91 — a cell with a contaminated row is never re-measured, because the runner counts rows (2026-08-29, open)
+
+`bench/run.ts` resumes by counting how many rows a cell already has under the
+current protocol — `have 3 runs under r2, skipping`. It counts ROWS, not rows
+within their gate. So a cell that recorded three runs, two of them above the
+load gate, is complete as far as the runner is concerned and will never
+re-measure itself however many times the sweep is re-run.
+
+Observed 2026-08-29 on `sparse`: `dict/excl/16384` wrote three rows, two at
+`runnable: 4`. The only way to re-measure it was to set the whole file aside as
+`sparse-busy4.jl` and sweep all twelve cells again, discarding nine cells of
+good measurement to fix one.
+
+Two other facts from the same run, both worth recording beside it. The gate
+refuses a cell at its START and is not re-checked during it (TC-74), so
+`runnableStart: 0, runnable: 6` is a row that passed the gate and was then
+measured under load. And a sweep re-invoked in a shell loop is contaminated by
+its own invocations: the runner refused cells 9 through 12 for "3 runnable
+outside the harness" while the only thing running was the loop starting it.
+
+**Proposal:** count rows within their own gate when deciding to skip a cell.
+A cell with three rows of which two are over gate has one good run, not three.
 
 ## TC-88 — twenty of seventy-three citations are exact twins (2026-08-29, open, proposal)
 
@@ -83,7 +106,7 @@ bodies, which is why `Body.node` widens from a signature to a plain node.
 still named "the walk follows calls but not constructors" as a known defect was
 stating something untrue.
 
-## TC-84 — two rules stayed silent, and one fired, on their own measured shapes (2026-08-29, FIXED 2026-08-29)
+## TC-90 — two rules stayed silent, and one fired, on their own measured shapes (2026-08-29, FIXED 2026-08-29)
 
 `allocating-select` counted an allocation only under a `return` statement. A
 concise arrow body IS the returned expression and has no `ReturnStatement`, so
@@ -102,7 +125,7 @@ Fixed, with `test/fixtures/concise` and `test/fixtures/notarray`. `unreadable`
 in `scan.ts` was dead and is deleted, along with `rules.ts`'s second copy of
 `isFunctionLike`, which differed from `scan.ts`'s in two node kinds.
 
-## TC-83 — a profile the run never opened, and a run that exited 0 over 75% of the measured time (2026-08-29, FIXED 2026-08-29)
+## TC-89 — a profile the run never opened, and a run that exited 0 over 75% of the measured time (2026-08-29, FIXED 2026-08-29)
 
 Six defects in the CLI, the report and the profile reader, each verified before
 it was touched.
@@ -297,7 +320,7 @@ walk (TC-69) subsumes it — not that real code has no five-map load sites.
 
 Found 2026-08-29, after the owner challenged the TC-64 zero.
 
-## TC-84 — two protocol rules that gate publication cannot fire in the case they were written for (2026-08-29, open)
+## TC-84 — two protocol rules that gate publication cannot fire in the case they were written for (2026-08-29, FIXED 2026-08-29)
 
 "Every published number is derived" is true. "Every published number is
 protocol-gated" is not. Verified in the source at HEAD.
@@ -353,6 +376,24 @@ through, not another guard.
 
 Found 2026-08-29 by the `red-eval` panel (`.ship/critique-red-20260829.md`),
 every claim re-verified here against the source.
+
+**Fixed, in the funnel.** Every citation in `lib/derive.ts` now declares what
+its cells claim — `'rule'`, `'broad'`, or `'nothing'` — and `replicating()`
+holds each cell to rule 6's bar for that claim right after rule 13's gate: a
+required field, so a new citation cannot skip the question. Only
+`chained-allocation` claims `'broad'`, because only its EVIDENCE names that
+bar; the distinction was not in data before and is added there, not inferred.
+Rule 13's guard lost `cell.length >= 2`, so a single-sweep cell is withdrawn
+with its count printed (`key (1 sweep)`). The one cell the bar rejects today is
+zod cleanEnum's whole call at 256 — TC-83's transfer — published as the
+rejection it is via `rejected: true`, the rule-6 twin of `unreplicable`. The
+README end-to-end tables' REJECTED verdict now imports `spans1` from the
+funnel instead of respelling it. `.cjs` and `.jsx` are read; the node_modules
+filter runs before the emptiness guard and only on the path below the named
+root, and `scan.ts` asks the resolver (`isSourceFileFromExternalLibrary`)
+instead of matching the substring. Held by the funnel test in
+`test/check.test.ts` (planted cells derived through `deriveDetail` over a copy
+of the real data), `test/fixtures/cjs`, and a temp node_modules tree.
 
 ## TC-83 — zod cleanEnum was swept twice, the sweeps straddle 1.0, and README publishes only the passing one (2026-08-29, open)
 
