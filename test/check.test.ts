@@ -965,6 +965,24 @@ test('a reduce accumulator is a loop body, and only on an array', () => {
   assert.strictEqual(run.status, 1);
 });
 
+// Three shape defects at once. The rule required the union array to ARRIVE as
+// a parameter, so one built locally was invisible; it filtered intersections
+// out of the shape count, so five branded types counted as none; and it
+// accepted a load off any value whose type is a MEMBER of the union, so a
+// monomorphic read off an unrelated parameter billed the array.
+test('a local union array counts, a branded one counts, an unrelated read does not', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'shapes')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /3 annotated functions, 2 errors/);
+  assert.match(run.stdout, /fromLocal\(\)/);
+  assert.match(run.stdout, /branded\(\)/);
+  assert.ok(!run.stdout.includes('otherReceiver'), 'a read off an unrelated value billed the array');
+  assert.strictEqual(run.status, 1);
+});
+
 // The suppression line is counted per site too. Counting it per mark made one
 // disabled line reached from three annotated functions read as "3 findings
 // suppressed" — the fan-in TC-62 removed from every count above it, left behind

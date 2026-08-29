@@ -2,7 +2,7 @@ import type * as TS from 'typescript';
 import { at } from '../scan.ts';
 import { N } from '../numbers.ts';
 import {
-  arrayParams,
+  arrayValues,
   cells,
   MAX_CACHED_MAPS,
   objectShapes,
@@ -71,7 +71,7 @@ const detect: Rule = (ts, checker, body, add) => {
   // Reporting both bills one defect twice — the mistake chained-allocation's
   // `consumed` check exists to avoid. The shipped rule keeps the finding.
   const claimed = new Set<TS.Type>();
-  for (const { element } of arrayParams(ts, checker, body)) {
+  for (const { element } of arrayValues(ts, checker, body)) {
     if (objectShapes(ts, checker, element) > MAX_CACHED_MAPS) claimed.add(element);
   }
 

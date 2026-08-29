@@ -177,7 +177,12 @@ export const objectShapes = (ts: Ts, checker: TS.TypeChecker, t: TS.Type): numbe
   t.isUnion()
     ? new Set(
         t.types
-          .filter((x) => x.flags & ts.TypeFlags.Object)
+          // Intersection as well as Object: a branded type `T & {__tag?: K}` is
+          // an Intersection, so five branded object types behind one receiver —
+          // the 3.4-11.3x program bench/shape-sets.jl measures — counted zero
+          // shapes and reported clean. `getPropertiesOfType` resolves an
+          // intersection already, so shapeKey needs nothing (TC-95).
+          .filter((x) => x.flags & (ts.TypeFlags.Object | ts.TypeFlags.Intersection))
           .map((x) => shapeKey(checker, x))
       ).size
     : 0;
@@ -194,23 +199,33 @@ export const members = (t: TS.Type): readonly TS.Type[] => (t.isUnion() ? t.type
 export const isArray = (checker: TS.TypeChecker, t: TS.Type): boolean =>
   members(t).every((x) => checker.isArrayType(x) || checker.isTupleType(x));
 
-// Parameters of every body in the closed world, not just the annotated root.
-// A helper three calls deep receives the same arrays and pays the same costs,
-// which is the entire reason the walk recurses.
-export function arrayParams(
-  ts: Ts,
-  checker: TS.TypeChecker,
-  body: Body
-): Array<{ p: TS.ParameterDeclaration; type: TS.Type; element: TS.Type }> {
-  const out: Array<{ p: TS.ParameterDeclaration; type: TS.Type; element: TS.Type }> = [];
-  // A body is not always a signature — a class field initializer is a body too
-  // and has no parameter list.
-  if (!isFunctionLike(ts, body.node)) return out;
-  for (const p of body.node.parameters) {
+// Array-typed values in every body in the closed world, not just the annotated
+// root. A helper three calls deep receives the same arrays and pays the same
+// costs, which is the entire reason the walk recurses.
+//
+// Locals as well as parameters. This read parameter declarations only, so the
+// union array had to ARRIVE as an argument: `const rows = [...as, ...bs, ...cs,
+// ...ds, ...es]` followed by a loop reading a property off an element is the
+// same maps reaching the same load site, and it reported clean (TC-95).
+export interface ArrayValue {
+  p: TS.ParameterDeclaration | TS.VariableDeclaration;
+  type: TS.Type;
+  element: TS.Type;
+}
+
+export function arrayValues(ts: Ts, checker: TS.TypeChecker, body: Body): ArrayValue[] {
+  const out: ArrayValue[] = [];
+  const take = (p: TS.ParameterDeclaration | TS.VariableDeclaration): void => {
     const type = checker.getTypeAtLocation(p);
     const element = elementType(ts, checker, type);
     if (element) out.push({ p, type, element });
-  }
+  };
+  // A body is not always a signature — a class field initializer is a body too
+  // and has no parameter list.
+  if (isFunctionLike(ts, body.node)) for (const p of body.node.parameters) take(p);
+  walk(ts, body.node, (n) => {
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name)) take(n);
+  });
   return out;
 }
 

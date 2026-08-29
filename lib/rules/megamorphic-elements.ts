@@ -3,7 +3,7 @@ import type { Ts } from '../ts.ts';
 import { at, type Body } from '../scan.ts';
 import { N } from '../numbers.ts';
 import {
-  arrayParams,
+  arrayValues,
   cells,
   MAX_CACHED_MAPS,
   members,
@@ -61,8 +61,14 @@ function readsFromElement(
   body: Body,
   element: TS.Type
 ): boolean {
-  const isElement = (t: TS.Type): boolean =>
-    t === element || members(element).includes(t);
+  // The receiver's type has to BE the element type. Accepting any member of it
+  // counted a read off an unrelated value that happens to share a member —
+  // `count(rows: S5[], fallback: A) { return rows.length + fallback.a }` reported
+  // megamorphic loads on `rows` because of `fallback.a`, a monomorphic load off
+  // a different parameter. A read narrowed by a guard to one member matched for
+  // the same reason, and that site is monomorphic too. TC-8 made this rule
+  // require a load; this makes it require the load be off the array (TC-94).
+  const isElement = (t: TS.Type): boolean => t === element;
   // `r.x = v` writes and never reads. `r.x += v` and `r.x++` read first, so
   // only the plain assignment is excluded — and a destructuring assignment is
   // one: `[r.x] = [5]` and `({ x: r.x } = src)` store without loading, and the
@@ -113,7 +119,7 @@ function readsFromElement(
 // here, because a comment quoting a measurement is a fourth copy of it and
 // this file has already had three drift (BUGS TC-28).
 const detect: Rule = (ts, checker, body, add) => {
-  for (const { p, element } of arrayParams(ts, checker, body)) {
+  for (const { p, element } of arrayValues(ts, checker, body)) {
     const shapes = objectShapes(ts, checker, element);
     if (shapes <= MAX_CACHED_MAPS) continue;
     // The load has to be there. This rule read the parameter's type and
