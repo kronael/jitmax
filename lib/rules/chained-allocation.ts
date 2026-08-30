@@ -2,7 +2,12 @@ import type * as TS from 'typescript';
 import type { Ts } from '../ts.ts';
 import { at } from '../scan.ts';
 import { N } from '../numbers.ts';
-import { cells, isArray, walk, type Evidence, type Rule } from './shared.ts';
+import { cells, isArray, walk, type Evidence, type Rule, type RuleModule } from './shared.ts';
+
+// The rule's name, once. It was a terminal string in the finding and a second
+// terminal string in the exported rule below, and the pair that drifted was in
+// interface-dispatch.ts, which reports a rule that is not its own.
+const NAME = 'chained-allocation';
 
 const evidence: Evidence = {
   // The 0.2 sweep read this cell at 7.64x and that number is not quoted here.
@@ -144,7 +149,7 @@ const detect: Rule = (ts, checker, body, add) => {
       if (inner && !consumed && onArray && !(bound !== undefined && bound < CHAINED_MIN_N)) {
         add({
           ...at(body.sf, node),
-          rule: 'chained-allocation',
+          rule: NAME,
           message:
             `${stageText(inner)} then ${stageText(outer)} allocates a whole array ` +
             'between the stages',
@@ -155,8 +160,9 @@ const detect: Rule = (ts, checker, body, add) => {
   });
 };
 
-export const chainedAllocation = {
-  name: 'chained-allocation',
+export const chainedAllocation: RuleModule = {
+  name: NAME,
   evidence,
+  scope: 'body',
   detect,
 };

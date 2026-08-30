@@ -20,6 +20,714 @@ Review queue. Found during audits, fixed only when the owner asks.
 > re-verified against the source here before it was written down, and every fix
 > below is held by a fixture or a register entry.
 
+> **2026-08-29 — the refinement pass.** TC-96 through TC-100 come from folding
+> duplicated invariants into one value each. Every one of them is a place where
+> two spellings of one fact had already drifted; each was reproduced here before
+> it was written down, and each is recorded rather than fixed because the fix
+> changes what the tool reports.
+
+## TC-101 — megamorphic-elements fires on a collection nothing ever reads (2026-08-30, open)
+
+TC-8 made the rule require a property load off an element. TC-94 made that load
+have to be off a value whose type *is* the element type. Neither makes the load
+be off an element of *this* collection, and type identity is not value
+provenance: where the element type is a union used widely in the program, any
+function that touches any value of that type satisfies the check for every
+collection in scope.
+
+Nine lines reproduce it, and it is TC-94's own counterexample with the probe
+widened from one member to the union:
+
+```ts
+type A = { a: number }; type B = { b: number }; /* ... F */
+export type U = A | B | C | D | E | F;
+
+/** @jitmax */
+export function collect(src: U[], probe: U): U[] {
+  const out: U[] = [];
+  for (const s of src) out.push(s);
+  return (probe as A).a > 0 ? out : [];
+}
+```
+
+Two errors. `out` is written and returned and never read; `src` is iterated and
+its elements are never read. The only load in the body is `(probe as A).a`, off
+a third value. TC-94's fix catches `fallback: A` because `A` is a member, not
+the union — change the annotation to `U` and the false positive returns.
+`isElement` is `t === element` in `lib/rules/megamorphic-elements.ts`, and
+`probe`'s type IS the element type of both arrays.
+
+**Measured in the field, and this is the part that matters.**
+`megamorphic-elements` fired zero times across the 30-corpus survey (TC-64). On
+effect (`packages/effect/src`, 1278 annotated functions) it fires 29 times — the
+whole of its real-world record. Ten of those 29 are this defect: the reported
+collection is never read anywhere in the function.
+
+| site | collection | reads of an element |
+| --- | --- | --- |
+| `Schema.ts:15368` | `sortedTypes` | none — compared by reference, passed on |
+| `Schema.ts:15729` | `sortedTypes` | none — same |
+| `SchemaAST.ts:1175` | `encodedParts` | none — `.push`, `.length`, stored on `this` |
+| `SchemaAST.ts:3746` | `parameters` | none — `.push`, returned |
+| `fromJsonSchemaDocument.ts:728` | `types` | none — `.push`, passed to `makeUnion` |
+| `toJsonSchemaDocument.ts:170` | `representations` | none — a parameter, passed through |
+| `structured-output.ts:69` | `types` | none |
+| `SchemaBinary.ts:2146` | `out` | none — `.push` through a closure, returned |
+| `SchemaBinary.ts:2766` | `stack` | none |
+| `RpcSerialization.ts:286` | `messages` | none — `.push`, returned |
+
+`RpcSerialization.ts:286` is the sharpest. The same loop does
+`decodeJsonRpcMessage(decoded[i])` and reads `message._tag`, so there IS a
+megamorphic load in that function — on `decoded`, which the rule did not report,
+while it reported `messages`, which is write-only.
+
+The rule is an `error`. It fails the build. A third of everything it has ever
+said about real code is wrong, and it says it with the full cliff quoted.
+
+- **Severity:** high
+- **Scope:** rules
+- **Affected:** `megamorphic-elements`
+- **Source:** `lib/rules/megamorphic-elements.ts` `readsFromElement`; repro above
+- **Status:** open
+- **Fix:**
+
+Proposal, and it is a redesign of the same check for the third time, so it needs
+sign-off: require the load to be off a value that FLOWS FROM this collection —
+the `for...of` binding over it, an indexed access on it, or the callback
+parameter of a method called on it — not off any value that shares its type. The
+dataflow this needs is the walk `lib/flow.ts` already does for receivers, run
+forward from the collection instead of backward from the call. Until then the
+honest form of this rule is a `warn`: it cannot show the load it charges for.
+
+## TC-102 — a profile whose sampled time is all `node:` builtins passes the gate clean (2026-08-30, open)
+
+Profile mode calls a run clean when the profiled workload never ran. `hotFrames`
+keeps a frame only if its url starts with `file://` (`lib/profile.ts:74`). The
+comment there names the engine's own frames — `(garbage collector)`,
+`(program)`, `(idle)` — real time with no source line. The same test also drops
+every `node:internal/...` frame, and that is where all the time goes when a
+workload throws while loading modules. No frame survives, so there are zero
+marks AND zero unmatched frames, and the report has nothing to say:
+
+```
+$ node --cpu-prof --cpu-prof-dir=. wl.mjs      # throws on line 3
+$ node bin/jitmax.ts CPU.20260830.054406.5.0.001.cpuprofile src
+jitmax - 0 hot functions, 0 errors
+
+  every hot function is clean.
+  0 hot functions from CPU.20260830.054406.5.0.001.cpuprofile at or above 1% self time
+$ echo $?
+0
+```
+
+Verified on yjs. That profile holds 65 samples and its hottest frames are
+`compileSourceTextModule` (13.8%), `get exports` (13.8%), `(garbage collector)`
+(9.2%) and `getPackageScopeConfig` (4.6%) — 100% node internals, no yjs code at
+all, because the workload threw on its third line.
+
+The contrast case works correctly. A profile of an unrelated USER file, fed
+against pixi.js, prints `1 hot frame matched no function in this program ... This
+is not a clean run` and exits 1. The only difference is that the frame's url is
+a `file://`.
+
+This is TC-89's failure arriving through a different door. TC-89 closed "three
+of four frames missing prints clean and exits 0"; this is "every frame dropped
+before it is counted", so the unmatched channel TC-89 built never sees them. A
+gate wired to profile mode goes green when the workload it profiled crashed at
+startup.
+
+- **Severity:** high
+- **Scope:** profile mode
+- **Affected:** `lib/profile.ts` `hotFrames`
+- **Source:** `lib/profile.ts:74`
+- **Status:** open
+- **Fix:**
+
+Proposal: count what the filter drops. A profile whose surviving `file://` self
+time is a small fraction of its total sampled time has not measured this
+program, and that is the blindness `unresolved` already names — exit 1 with the
+reason, never `every hot function is clean`. `(garbage collector)` and
+`(program)` stay out of the numerator. `node:` frames are real measured time
+this tool cannot report on, which is exactly what makes them the evidence.
+
+Second half, one line. `README.md:110` still says "A profile that matches no
+function in the program is exit `2`". TC-89 deliberately replaced that with exit
+1, and `bin/jitmax.ts` says so in a comment. An unrelated profile against
+pixi.js exits 1. TC-89's documentation pass fixed the exit-code section and
+missed this sentence.
+
+## TC-103 — three bug IDs are used twice, and the tool's own output cites two of them (2026-08-30, open)
+
+`TC-11`, `TC-70`, `TC-98` and `TC-99` each head two different entries in this
+file. Sessions append concurrently and each takes the next free number from a
+copy the other has already extended.
+
+**`TC-99` collided while this entry was being written**, which dates the rate:
+four collisions, and one of them inside a single afternoon.
+
+Two of the three are cited from source, in both senses:
+
+- `lib/report.ts:7` and `lib/report.ts:156` cite `BUGS TC-70` for a derived
+  numeral reaching a published sentence.
+- `lib/derive-builtins.ts:11`, `lib/derive-builtins.ts:185`, `lib/builtins.ts:9`
+  and `lib/scan.ts:12` cite `BUGS TC-70` for the hand-maintained builtin set.
+- `lib/rules/megamorphic-dispatch.ts:116` cites `BUGS TC-98`.
+
+The `known defect:` line printed under a finding is a promise that an ID
+resolves to one entry the reader can go and read. A duplicated ID breaks that
+promise in the tool's own output, and `DEFECT`'s descriptions are hand-copied
+from this file already (TC-98, the first one).
+
+- **Severity:** medium
+- **Scope:** BUGS.md, rule citations
+- **Affected:** TC-11, TC-70, TC-98, TC-99
+- **Source:** `BUGS.md` — two `## TC-98` headings; `lib/report.ts:7` vs `lib/derive-builtins.ts:11`
+- **Status:** open
+- **Fix:**
+
+Proposal: renumber the later of each colliding pair to a free ID, update the
+citations under `lib/`, and add a check to `make` that fails on a duplicate
+`## TC-` heading — the same shape as the drift check that already guards the
+derived artifacts.
+
+## TC-104 — megamorphism is modelled as a TypeScript union, and nobody writes polymorphism that way (2026-08-30, open)
+
+`objectShapes` is the shape counter both megamorphic rules read
+(`lib/rules/shared.ts:200`):
+
+```ts
+export const objectShapes = (ts, checker, t: TS.Type): number =>
+  t.isUnion() ? new Set(...).size : 0;
+```
+
+A type that is not a union answers **0**, which is under every threshold. So an
+abstract class with twenty subclasses, an interface with twenty implementations
+and a plain object type all count as zero shapes, and the rule that exists to
+find a load site over five or more maps can only see a hand-written
+`A | B | C | D | E`.
+
+Fifteen lines, one run, both halves:
+
+```ts
+// a.ts
+abstract class Base { abstract kind(): number; }
+class K1 extends Base { a = 1; kind() { return this.a; } }
+// ... K2..K6, each with its own field
+
+/** @jitmax */
+export function sumClasses(rows: Base[]): number {
+  let s = 0;
+  for (const r of rows) s += r.kind();
+  return s;
+}
+export const all: Base[] = [new K1(), new K2(), new K3(), new K4(), new K5(), new K6()];
+
+// b.ts
+type U = A | B | C | D | E | F;      // six object types, one field each
+
+/** @jitmax */
+export function sumUnion(rows: U[]): number {
+  let s = 0;
+  for (const r of rows) s += (r as A).kind;
+  return s;
+}
+```
+
+```
+jitmax - 2 annotated functions, 1 error, 1 warning
+  a.ts:10  sumClasses()   warn   interface-dispatch
+  b.ts:6   sumUnion()     error  megamorphic-elements
+```
+
+Six classes with a virtual call in a loop, and an array in the same file holding
+one of each, exits **0**. Six type aliases in a union with one property read
+fails the build. V8 charges the classes at least as much — six maps and six
+prototypes rather than six maps — and jitmax passes them.
+
+The warning it does print says "the receiver has an unknown origin (no visible
+caller of sumClasses — its arguments come from outside this program)". That is
+true of the dataflow walk and says nothing about the six subclasses declared
+eleven lines above it.
+
+This is the defect behind TC-64's headline zero. `megamorphic-elements` fired 0
+times across 30 corpora and 29 times on one (effect), and effect is a codebase
+whose AST is written as a literal `_tag` union. It is not that the pattern is
+rare in real code; it is that the rule can only see one spelling of it.
+
+It is also the answer to the owner's own hypothesis, recorded in TC-67: real
+programs "do some crazy interfaces". They do, and this is the rule that was
+supposed to catch them.
+
+- **Severity:** high
+- **Scope:** rules
+- **Affected:** `megamorphic-elements`, `megamorphic-dispatch`
+- **Source:** `lib/rules/shared.ts:200`; repro above
+- **Status:** open
+- **Fix:**
+
+Proposal, needs sign-off because it changes what the flagship rules trigger on:
+count shapes from the same place `lib/flow.ts` already counts implementations —
+the allocation sites that reach the value — rather than from the declared type's
+union members. A union type keeps its current answer as one source among
+several. `subclassesOf` already walks `extends` edges; the missing half is
+counting them as element shapes rather than only as call targets.
+
+## TC-105 — delete-property has no null-prototype guard, and fires on objects V8 never made fast (2026-08-30, open)
+
+**Amended 2026-08-30 — a null prototype is one of two ways in, and the other is
+more common.** Enough dynamic string keys demotes a plain object on its own:
+
+```
+$ node --allow-natives-syntax -e "const c={};for(let i=0;i<40;i++)c['https://x/a'+i+'.png']=i;console.log(%HasFastProperties(c))"
+false
+$ node --allow-natives-syntax -e "const c={};for(let i=0;i<8;i++)c['k'+i]=i;console.log(%HasFastProperties(c))"
+true
+```
+
+So a URL-keyed or id-keyed cache is already in dictionary mode by the time
+anything deletes from it. pixi `src/rendering/renderers/shared/texture/sources/../parsers/textures/utils/createTexture.ts:28`
+is that object: `delete loader.promiseCache[url]` on a `Record<string, ...>`
+holding one entry per loaded asset. The rule charges the transition to a
+transition that already happened, and its printed fix — assign undefined —
+turns an eviction into a leak.
+
+A third shape in the same family, from the same run: pixi
+`shared/texture/CubeTexture.ts:30` deletes from `{ ...options }`, a throwaway
+copy read once by `Object.keys` on the next line and then discarded. Dictionary
+mode on an object read once costs nothing.
+
+The single root cause under all three is that the rule has no model of the
+receiver's mode. It charges the demotion without checking whether the object was
+ever fast.
+
+
+`Object.create(null)` returns an object that is **already** in dictionary mode.
+V8's `factory.cc` builds it from `slow_object_with_null_prototype_map`, and
+`%HasFastProperties` says so:
+
+```
+$ node --allow-natives-syntax -e "console.log(%HasFastProperties(Object.create(null)), %HasFastProperties({}))"
+false true
+```
+
+`delete` on such an object cannot demote what is already demoted, so the rule's
+cost does not exist there. `lib/rules/delete-property.ts` excludes arrays and
+host objects and has no test for a null prototype.
+
+mathjs `src/utils/lruQueue.js` is the case in the field. Lines 8 and 9 are
+`let queue = Object.create(null)` and `let map = Object.create(null)`; lines 14,
+15 and 38 delete from them and are three of the ten errors mathjs reports. The
+same file is where the rule's printed fix does real damage — see the TC-79
+amendment below.
+
+- **Severity:** medium
+- **Scope:** rules
+- **Affected:** `delete-property`
+- **Source:** `lib/rules/delete-property.ts`; `n_mathjs/src/utils/lruQueue.js:8`
+- **Status:** open
+- **Fix:**
+
+Proposal: treat a receiver whose declaration is `Object.create(null)`, or whose
+type has a null prototype, the way arrays and host objects are already treated —
+the rule stays quiet. The narrow version costs one initializer check.
+
+## TC-106 — closed-world walks into abstract stubs and reports the `throw` as a hot unchecked call (2026-08-30, open)
+
+The receiver walk finds implementations through `extends` edges only. All three
+heritage-clause reads in `lib/flow.ts` (lines 170, 574, 765) begin
+`if (h.token !== ts.SyntaxKind.ExtendsKeyword) continue;`, and nothing in the
+file mentions `implements` or an interface declaration. A class that conforms
+structurally, or that is written `class X implements I`, contributes no
+implementation to the count.
+
+yjs is the case in the field. `AbstractContent` (`src/structs/Item.js:513`) has
+nine implementations in the program — `ContentAny`, `ContentBinary`,
+`ContentDeleted`, `ContentDoc`, `ContentEmbed`, `ContentFormat`, `ContentJSON`,
+`ContentString`, `ContentType` — and `grep -rn "extends AbstractContent" src/`
+returns nothing; they conform structurally. So the walk resolves
+`this.content.getLength()` to the abstract stub, and reports:
+
+```
+warn  closed-world
+  src/structs/Item.js:519 - reached by 63 annotated functions
+  calls error.methodUnimplemented, which we have no body for; the promise stops here
+  fix: inline what you need from error.methodUnimplemented, or accept that this call is unchecked
+```
+
+`Item.js:519` is the body of `getLength()`, which is `throw
+error.methodUnimplemented()`. It runs only if the program is broken. Nine such
+warnings sit in the yjs report (`Item.js:519, 526, 539, 546, 554, 570, 577,
+584, 600`), and the run header says "72 interface calls resolved to the one
+implementation this program builds, and followed — sound only for a closed
+program". The program builds nine.
+
+Two costs, and the second is worse. The noise is nine warnings pointing at
+unreachable code. The silence is that the one many-implementation hierarchy in
+the corpus produced no dispatch finding at all.
+
+- **Severity:** high
+- **Scope:** flow walk
+- **Affected:** `closed-world`, `interface-dispatch`, `megamorphic-dispatch`
+- **Source:** `lib/flow.ts:170`, `lib/flow.ts:574`, `lib/flow.ts:765`; `n_yjs/src/structs/Item.js:513`
+- **Status:** open
+- **Fix:**
+
+Proposal: a method whose only body throws is not a followable implementation —
+skip it and report the receiver as unresolved rather than as resolved-to-one.
+Separately, add `implements` edges to `childrenOf`, and for a receiver typed by
+an interface or an abstract class, count the classes assignable to it as
+candidate implementations the way `subclassesOf` counts `extends`. The
+structural case needs the assignability check the checker already offers.
+
+## TC-107 — code that runs once per process is priced as if it ran per call, and that is most of the error tier (2026-08-30, open)
+
+The walk follows a call edge and never asks how often the edge is taken. A body
+reached only from a module-load initializer, a constructor's one-time setup, or
+a CLI entry point is checked with the same rules and the same `error` severity
+as a body in a per-element loop.
+
+The clearest instance is arrow. `src/vector.ts:370-394` is an IIFE:
+
+```ts
+protected static [Symbol.toStringTag] = ((proto: Vector) => {
+    ...
+    const typeIds: Type[] = Object.keys(Type).map((T: any) => Type[T] as any).filter(...)
+    return 'Vector';
+})(Vector.prototype);
+```
+
+It runs once, at module load, over the ~20 names of an enum. jitmax reports:
+
+```
+src/visitor/iterator.ts:104  vectorIterator()
+  error  chained-allocation
+    src/vector.ts:375 - reached by 30 annotated functions
+```
+
+An `error` that fails the build, charged to 30 annotated functions, for a
+20-element array allocated once per process.
+
+Judged by inspection across four fresh corpora, this class is the dominant
+cause of an error nobody would act on:
+
+| corpus | errors | reached only from once-per-process code |
+| --- | --- | --- |
+| arrow-js | 8 | 2 — the IIFE above, `bin/cli.ts:57` |
+| pixi.js | 14 | 8 — `autoDetectRenderer.ts:164-166` at application start, four shader-compile paths, a test-only `uid` reset |
+| mathjs | 10 | 6 — `import.js:164-211` runs once per factory at `create.js:225`; `snapshot.js:293` is test-only |
+| chevrotain | 6 | 6 — every site sits under a `TRACE_INIT` block in a `Lexer` or `Parser` constructor |
+
+The two independent judges put the combined error tier at 4 TRUE, 3 FALSE and 15
+UNACTIONABLE for arrow+pixi, and 3 TRUE of 24 for mathjs+yjs+chevrotain.
+
+The contrast is what makes this worth fixing rather than documenting. pixi's
+genuinely hot per-frame dispatch loop IS found — `src/scene/container/utils/executeInstructions.ts:20`, `(renderer[instruction.renderPipeId] as
+InstructionPipe<any>).execute(instruction)` inside
+`for (let i = 0; i < instructionSet.instructionSize; i++)`, 20 property sets
+against a four-map budget. It is a `warn`, one of 239. Every one of the 14
+errors is cold. The gate is inverted: it fails on startup code and passes on the
+render loop.
+
+- **Severity:** high
+- **Scope:** walk, severity model
+- **Affected:** all rules
+- **Source:** `n_arrow-js/src/vector.ts:370`; `r_arrow.log`; `r_pixijs.log`
+- **Status:** open
+- **Fix:**
+
+Proposal, needs sign-off: the walk already knows the edge it took. A body
+reachable from the annotated root ONLY through a static/field initializer, a
+constructor, or a module-level statement has no per-call frequency and cannot
+carry an `error` — report it as a `warn` naming the once-per-process path, or
+not at all. This is the static half of what TC-57's profile mode does by
+measurement, and unlike static hotness inference it is a soundness question the
+walk can answer: not "is this hot" but "can this run more than once per
+process".
+
+## TC-108 — a platform call through a computed member is reported as an unchecked user call (2026-08-30, open)
+
+`isPlatform` (`lib/scan.ts:414`) tests the declaration's source file, and the
+walk reaches it through a property access. A call written `obj[name]()` resolves
+to the same declaration and is not recognised. Seven lines:
+
+```ts
+/** @jitmax */
+export function draw(gl: WebGL2RenderingContext, name: 'texParameteri'): void {
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl[name](gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+}
+```
+
+```
+jitmax - 1 annotated function, 0 errors, 1 warning
+  3 calls into the platform, not listed: the body is native
+
+  src/a.ts:2  draw()
+    warn  closed-world
+      src/a.ts:4
+      calls gl[name], which we have no body for; the promise stops here
+      fix: inline what you need from gl[name], or accept that this call is unchecked
+```
+
+The same method on the same object, resolved by the checker to the same
+declaration in the same `.d.ts`, counted as platform on line 3 and reported as
+an unchecked user call on line 4. The printed fix asks the reader to inline a
+native WebGL method.
+
+In pixi this is ten warnings: `grep -c "calls gl\." r_pixijs.log` is 0 and
+`grep -c "calls gl\["` is 10.
+
+- **Severity:** medium
+- **Scope:** rules
+- **Affected:** `closed-world`
+- **Source:** `lib/scan.ts:414`; repro above; `n_pixijs/src/rendering/renderers/gl/texture/utils/applyStyleParams.ts:58`
+- **Status:** open
+- **Fix:**
+
+Proposal: resolve the callee's declaration for an element access the same way as
+for a property access before asking `isPlatform`, and reuse the answer. The
+checker already gives the declaration; only the walk's shape test excludes it.
+
+## TC-109 — closed-world says it has no body while printing the file and line of two bodies (2026-08-30, open)
+
+One sentence, both halves, from the pixi run:
+
+```
+warn  closed-world
+  src/unsafe-eval/ubo/generateUboSyncPolyfill.ts:124 - reached by 3 annotated functions
+  calls arrayUploadFunction, which we have no body for; 2 implementations reach
+  this receiver (function (generateUboSyncPolyfill.ts:20), function
+  (generateUboSyncPolyfill.ts:55)) - inside V8's four-map budget; the promise
+  stops here
+  fix: inline what you need from arrayUploadFunction, or accept that this call is unchecked
+```
+
+Both named functions are in the same file, in this checkout, readable. The walk
+found them — it printed their positions — and then reported the call as
+bodiless and stopped.
+
+The run header says "N interface calls resolved to the one implementation this
+program builds, and followed", so the walk follows at one implementation and
+stops at two. Stopping is defensible; describing it as "we have no body for" is
+not, and neither is a fix line asking the reader to inline a callee the tool
+just located.
+
+Two costs. The message is false where it is loudest — `closed-world` is 86% of
+every finding across the six-corpus run below. And the sites inside those two
+bodies go unchecked, which is the blindness the exit code is supposed to
+represent, arriving here as a warning rather than as coverage.
+
+- **Severity:** medium
+- **Scope:** rules, walk
+- **Affected:** `closed-world`
+- **Source:** `r_pixijs.log`; `n_pixijs/src/unsafe-eval/ubo/generateUboSyncPolyfill.ts:20,55,124`
+- **Status:** open
+- **Fix:**
+
+Proposal: where 2 to 4 implementations reach a receiver and all their bodies are
+readable, follow all of them and union the findings — that is what a
+closed-world walk is for, and the count is already inside V8's four-map budget
+so no dispatch rule fires. Reserve the "no body" sentence for a receiver whose
+implementations the walk could not locate.
+
+## TC-100 — an unmatched hot frame in the working directory renders with no filename (2026-08-29, open)
+
+`bin/jitmax.ts:99` builds the name of a hot frame the program could not match:
+
+```ts
+`${f.name} (${path.relative(cwd, f.file)}:${f.line}:${f.column})`
+```
+
+`lib/report.ts:201` does the same job for a finding and guards it —
+`path.relative(cwd, f.file) || f.file` — because `path.relative` returns the
+empty string when the two paths are equal. A profile whose hot frame is the
+directory the run was started in therefore prints `kernel (:12:5)`, and that
+line is the whole of what the run says it could not look at. Two renderers of
+one location, one of them guarded (BUGS TC-80 is the same class in the
+unresolved-module message).
+
+The fix is the guard, and it changes a printed line, so it is recorded.
+
+## TC-99 — `make bench-all` never runs three of the fifteen sweeps (2026-08-29, open)
+
+`bench/run.ts`'s `ALL` names twelve sweeps; `bench/sweeps.ts`'s `BENCHMARKS`
+declares fifteen plus `tc11`. `shape-sets`, `arguments` and `sparse` are in the
+table, have `make bench-*` targets, and are absent from `--all`.
+
+`run.ts` states the divergence as deliberate — "declared rather than taken from
+`Object.keys(BENCHMARKS)` so adding a sweep to the table is not silently also a
+change to what a release measures" — and that reasoning is sound for the
+DIRECTION it defends. What it does not defend is the silence: `--all` writes a
+manifest row per sweep it ran and says nothing about the three it did not, so
+the artifact a release points at is missing a third of the table with no note.
+`shape-sets` is the sweep `megamorphic-elements` cites.
+
+Either derive `ALL` from the table, or have `--all` print and record which
+declared sweeps it is skipping. Both change what a release run produces, so
+this is recorded.
+
+## TC-98 — `DEFECT`'s descriptions are hand-copied from BUGS.md, and two have drifted (2026-08-29, open)
+
+`lib/rules/index.ts` holds one line per defect code a rule carries, "taken from
+the BUGS.md heading", and nothing tests it in either direction. Two of the five
+no longer match:
+
+| code | BUGS.md heading | `DEFECT` |
+| --- | --- | --- |
+| TC-33 | `closed-world`'s trigger and its benchmark measure different things | the rule fires on one program and its benchmark measured another |
+| TC-82 | loud on well-abstracted code may be correct, and the tool cannot tell | loud on well-abstracted code, and the tool cannot tell whether it is right |
+
+TC-82 is worse than drifted: its heading says `FIXED 2026-08-29 by TC-69's
+dataflow`, and `interface-dispatch` still ships `defects: ['TC-33', 'TC-82']`,
+so every finding it makes prints `known defect: TC-82` for a defect this
+repository closed. `resolveDisabled` also reads the codes off `EVIDENCE[].defects`
+and never off `DEFECT`, so a code can be disable-able with no description, or
+described and disable nothing.
+
+`UNMEASURED_TRIGGER` in `test/check.test.ts` is the shape this needs: a register
+asserted in both directions. The fix changes a printed line and removes a defect
+code from a rule, so it is recorded.
+
+## TC-99 — the receiver count counts what reaches the value, not what reaches the call (2026-08-30, half FIXED 2026-08-30)
+
+TC-98 gave both escape rules the dataflow count, and the 22-codebase survey
+immediately showed the count is not the number the finding claims it is. Three
+causes, in descending size.
+
+**Every array literal was its own map.** `originOf` keys an object literal by
+its SORTED PROPERTY NAMES — two literals that agree on names are one map,
+TC-42's direction — and keyed everything else by node identity. An array got
+node identity. valibot has 34 sites calling `dataset.issues.push()`, and each
+printed "at least 10 implementations", all ten of them `array (…)` from ten
+files. An array's map is its elements kind, not its allocation site.
+**FIXED**: one key for every array literal.
+
+**An origin without the method still counted.** The walk is 0-CFA and
+path-insensitive, so `if (isArray(source)) source.some(…)` is invisible to it.
+vue's `reactivity/src/watch.ts:161` counted 34 object literals at a `.some()`
+only an array can make, every one of them from a `.spec.ts`. An object that does
+not have the method never reaches the call: it would throw.
+**HALF FIXED**: an object literal with no spread carries exactly the names it
+spells plus Object.prototype's, so the test is exact for it and those are
+dropped. A literal WITH a spread, a class, and an array are left alone — a
+spread can bring the name in, a class can merge declarations and carry an index
+signature, and neither is readable here. vue's site still reports 7 where the
+truth is 1.
+
+**`any` receivers were counted as if declared.** es-toolkit's
+`isPlainObject(object?: any)` counted 42 shapes at an `object.toString()` that a
+`typeof` guard three lines up admits one kind of value to; `areObjectsEqual(a:
+any, …)` the same. With no declared type nothing checks the walk's answer, and
+the walk's answer is about the value rather than the call.
+**FIXED**: `Dispatch.typed` says whether the receiver's type is neither `any`
+nor `unknown`, and `megamorphicCall` requires it. Below the gate the count is
+still printed — "the receiver has no declared type, and N shapes reach the value
+across this program … which is not a count of what reaches this call" — because
+what the walk found is worth reading and is not worth failing a build on.
+
+Survey effect: `megamorphic-dispatch` at the escapes went 54 → 1 on valibot
+(the one left is `getDefault.ts:106`, where twelve schema shapes all carrying
+`default` reach `schema.default()`), 21 → 0 on es-toolkit, and 21 → 10 on vue.
+
+**What stands.** Path-insensitivity is the cause and none of the three fixes
+touch it. A count is a lower bound on what reaches the VALUE and an upper bound
+on nothing. The rule says so in its `fix` line and the survey section says so
+in prose.
+
+## TC-98 — the two escape rules read one field each, and neither counted the maps (2026-08-30, FIXED 2026-08-30)
+
+Three defects in `mark.escapes`, one cause: the split into `closed-world` and
+`interface-dispatch` (TC-93) divided the escapes but not the work done to them.
+
+**The count was taken on one side only.** `lib/scan.ts` called
+`flow.receiver(node)` inside the `isDispatchDecl` arm, so `Call.dispatch` was
+`undefined` for every escape the other rule got. `closed-world` therefore had
+nothing to say about the value:
+
+    calls pickOne, which we have no body for; the promise stops here
+
+for `const pickOne = flag ? left : right`, with both bodies sitting in the same
+file. The callee walk finds a variable and no function; the dataflow walk finds
+two. Worse, a receiver that five classes from a typed dependency reach printed
+that same sentence — a megamorphic call site reported as unreadable code. The
+maps reaching a receiver decide the inline cache whether or not the walk can
+read the callee's body, so the question belongs at both.
+
+**`megamorphic-dispatch` was reachable from one rule.** The route lived inside
+`interface-dispatch.ts` as a block of terminal strings. Five implementations at a
+call site is that rule's claim with that rule's benchmark; it is the same claim
+at an escape whose callee has no body. Now one exported `megamorphicCall`, in
+the rule that owns it, called first by both. It refuses a site with no receiver
+(`d.method === ''`): five functions reaching `f()` is call-target feedback,
+which bench/dispatch.jl varies only over one property set, and this project does
+not price a mechanism its sweep never isolated.
+
+**`closed-world` fired on the host.** The platform test in `reach()` reads the
+CALLEE'S declarations, and three host calls do not resolve to one:
+
+    calls globalThis.gz, which we have no body for; the promise stops here
+    calls (0, eval), which we have no body for; the promise stops here
+
+`globalThis.gz` resolves to the `declare global { var gz }` the program itself
+wrote; `(0, eval)` resolves to a binary expression with no symbol at all, because
+the callee walk unwrapped parentheses and nothing else. Neither has a body a
+reader can go and look at, so "inline what you need from it" is advice nobody can
+take — the same ground TC-63 took `process.env` off `delete-property` on, and
+the same complaint as TC-55's 157 notes about `path.join`.
+
+**FIXED 2026-08-30.** `intoHost` in `lib/scan.ts` reads the platform off the
+RECEIVER's leftmost name — its DECLARATION, never its type, because testing the
+type is how the first attempt at TC-63 silenced the case its benchmark measured —
+and `unwrap` now sees through a comma expression, which puts `(0, f)` back in
+reach of the callee walk. `Call.dispatch` is no longer optional. `closed-world`
+names the implementations it can see, hands a five-map receiver to
+`megamorphic-dispatch`, and says nothing about `globalThis`, a V8 builtin or
+`@types/node`. Two fixtures and two tests: `test/fixtures/host` asserts the three
+host calls are counted and not named while an opaque application callee in the
+same function still fires, and `test/fixtures/escape` asserts both counts.
+
+## TC-97 — `delete-property` cannot see the platform when `@types/node` is absent (2026-08-29, open)
+
+TC-63 gave the rule a host-object test: a `delete` on something declared in
+`@types/node` or `lib.dom.` deletes nothing V8 owns, so the rule stays out. The
+test reads the declarations of the RECEIVER'S TYPE. With no `node_modules`, the
+type has no declarations at all and the test answers false:
+
+```
+$ node bin/jitmax.ts a.ts          # from the repo, @types/node installed
+jitmax — 1 annotated function, 1 error
+$ node .../bin/jitmax.ts a.ts      # from a directory with no node_modules
+jitmax — 1 annotated function, 2 errors
+```
+
+The extra finding is `delete process.env.FOO`, and the rule prints "puts its
+object in dictionary mode" about an object with no hidden class. This is TC-55
+in a second place: `lib/scan.ts` answers the same platform-versus-application
+question with three arms — the `@types/node` path, `isSourceFileDefaultLibrary`,
+and the import's own Node specifier for exactly the uninstalled case — and the
+rule has one and a half of them, spelled separately.
+
+The fold is one platform test that both callers read. It makes the rule silent
+where it now fires, so it is recorded.
+
+## TC-96 — `delete-property` asks TypeScript what a function is, and the walk asks itself (2026-08-29, open)
+
+`lib/scan.ts` exports `isFunctionLike` with the comment "One definition, because
+rules.ts kept a second copy that differed from this one in two node kinds". Every
+caller reads it except two lines in `delete-property.ts`, which call
+`ts.isFunctionLike` — TypeScript's own, a strict superset that also matches
+`MethodSignature`, `CallSignature`, `ConstructSignature`, `IndexSignature`,
+`FunctionType` and `ConstructorType`.
+
+Two consequences, both in the alias graph that decides whether the printed fix
+keeps the assign-undefined rewrite. `targetsOf` can return a signature the walk
+never entered, and the argument-to-parameter edges get built anyway; and the
+enclosing-function search for a `return` can stop on a type node. Neither
+crashes — both make the graph claim edges the closed world does not have.
+
+The fix is to import the walk's own answer. It changes which programs keep the
+rewrite half of the fix line, so it is recorded.
+
 ## TC-95 — two false negatives the shape rules cannot see (2026-08-29, open)
 
 `objectShapes` keeps only `TypeFlags.Object` members, and a branded type
@@ -617,6 +1325,31 @@ file.
 Found 2026-08-29 in the TC-75 trial.
 
 ## TC-79 — delete-property's fix is not behaviour-preserving, and two of three trials hit it (2026-08-29, open)
+
+**Amended 2026-08-30 — the shipped observer list is four entries long and the
+field found a fifth in the first JavaScript corpus it was pointed at.** The
+check reads `in`, `for-in`, a spread, and `Object.keys`
+(`lib/rules/delete-property.ts:105-127`). It does not read `hasOwnProperty` in
+any form, `Object.values`, `Object.entries`, `Object.getOwnPropertyNames`,
+`Reflect.ownKeys`, or `Object.assign` — every one of which tells an absent key
+from one holding `undefined`.
+
+mathjs `src/utils/lruQueue.js` is the case. Line 14 is `delete queue[oldIndex]`
+and the run prints the safe-rewrite fix in full. Nine lines below, line 23 is
+the eviction scan:
+
+```js
+while (!Object.prototype.hasOwnProperty.call(queue, ++base)) { /* empty */ }
+```
+
+Assign `undefined` instead of deleting and `hasOwnProperty` answers true at the
+freed slot, so the scan stops on a hole it was written to skip and `base` stops
+advancing past freed entries. The rule offered the rewrite because its observer
+list cannot see the read that forbids it.
+
+The caveat printed beside the fix names the same four observers, so the sentence
+the reader is given to check against is itself the incomplete list.
+
 
 **Amended 2026-08-29 — the list is wrong on one member, and the check shipped
 without it.** `JSON.stringify` does NOT tell an absent key from one holding
@@ -4174,4 +4907,4 @@ invocations, so it is a hard limit and not a tier-up budget artifact. Cost is
 2.74x per statement across that one-statement edge (3.822 vs 10.484 ns).
 
 No rule ships, because source statements are a poor proxy for bytecode size and
-the mapping is unmeasured. `bench/optsize.js` reproduces it.
+the mapping is unmeasured. `bench/optsize.ts` reproduces it.

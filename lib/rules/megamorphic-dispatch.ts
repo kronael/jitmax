@@ -1,16 +1,23 @@
 import type * as TS from 'typescript';
-import { at } from '../scan.ts';
+import { at, unwrap, type Call } from '../scan.ts';
 import { N } from '../numbers.ts';
 import {
   arrayValues,
   cells,
+  fifthMap,
   MAX_CACHED_MAPS,
   objectShapes,
-  receiver,
   walk,
+  type Add,
   type Evidence,
   type Rule,
+  type RuleModule,
 } from './shared.ts';
+
+// The rule's name, once. It was a terminal string in the finding and a second
+// terminal string in the exported rule below, and the pair that drifted was in
+// interface-dispatch.ts, which reports a rule that is not its own.
+const NAME = 'megamorphic-dispatch';
 
 const evidence: Evidence = {
   cost:
@@ -77,19 +84,19 @@ const detect: Rule = (ts, checker, body, add) => {
 
   walk(ts, body.node, (node) => {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-      const recv = receiver(ts, node.expression.expression);
+      const recv = unwrap(ts, node.expression.expression);
       const t = checker.getTypeAtLocation(recv);
       const shapes = objectShapes(ts, checker, t);
       if (shapes > MAX_CACHED_MAPS && !claimed.has(t)) {
         add({
           ...at(body.sf, node),
-          rule: 'megamorphic-dispatch',
+          rule: NAME,
           // Counted the same way as megamorphic-elements, and for the same
           // reason: five names for one property set are one map (TC-42).
           message:
             `${recv.getText(body.sf)} reaches this call as ${shapes} distinct property ` +
-            `sets and .${node.expression.name.text}() is called on it; V8 caches four maps ` +
-            'per call site, so a fifth makes every call here a lookup',
+            `sets and .${node.expression.name.text}() is called on it; ` +
+            fifthMap('call'),
           fix:
             'get the receiver to four distinct property sets or fewer, or give the call ' +
             'site one shape',
@@ -99,8 +106,53 @@ const detect: Rule = (ts, checker, body, add) => {
   });
 };
 
-export const megamorphicDispatch = {
-  name: 'megamorphic-dispatch',
+// The third detector reporting this rule, and the one both escape rules share.
+// `interface-dispatch` and `closed-world` split every escape between them, and
+// each has to ask this question first: five or more implementations reaching one
+// receiver is V8's four-map budget exceeded at that call, which is THIS rule's
+// claim carrying THIS rule's benchmark — the same site, whether or not the walk
+// could read the callee's body. It was written out inside interface-dispatch.ts
+// alone, so the other half reported a fourteen-implementation receiver in the
+// same words as a receiver nothing reaches (BUGS TC-98).
+//
+// A DECLARED receiver, so `d.typed` has to hold. The walk is path-insensitive
+// and counts what reaches the value; only a declared type checks that against
+// what reaches this call, and es-toolkit's `isPlainObject(object?: any)` counted
+// 42 shapes at an `object.toString()` a `typeof` guard three lines up admits one
+// kind of value to. The count is still printed by the escape rule, and not acted
+// on (BUGS TC-99).
+//
+// A RECEIVER, so `d.method` has to be there. `f()` where five functions reach
+// `f` is call-target feedback, not a map at a load site, and bench/dispatch.jl
+// varies the target only over one property set — this rule would be pricing a
+// mechanism its sweep never isolated. The escape rules keep those in their own
+// words, with their own count printed.
+//
+// Returns whether it reported, so the caller stops rather than saying it twice.
+export function megamorphicCall(c: Call, add: Add): boolean {
+  const d = c.dispatch;
+  if (d.method === '' || d.count <= MAX_CACHED_MAPS || !d.typed) return false;
+  const listed = d.names.slice(0, 5).join(', ');
+  add({
+    file: c.file,
+    line: c.line,
+    column: c.column,
+    rule: NAME,
+    message:
+      `${d.recv} reaches this call as at least ${d.count} implementations built by ` +
+      `this program (${listed}${d.count > 5 ? ', …' : ''}) and .${d.method}() is ` +
+      `called on it; ${fifthMap('call')}`,
+    fix:
+      'get the implementations reaching this call to four or fewer, or give the ' +
+      'call site one shape — the count is a lower bound: two identical classes are ' +
+      'still two maps, and a consumer of an exported interface can add more',
+  });
+  return true;
+}
+
+export const megamorphicDispatch: RuleModule = {
+  name: NAME,
   evidence,
+  scope: 'body',
   detect,
 };

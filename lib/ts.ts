@@ -41,11 +41,25 @@ export function program(ts: Ts, cwd: string, inputs: string[]): TS.Program {
     : undefined;
   if (parsed && inputs.length === 0) return ts.createProgram(parsed.fileNames, parsed.options);
 
+  // Every extension the tool reads. `.cjs` and `.jsx` were missing, so those
+  // files were skipped without a word and a directory of them reported `every
+  // annotated function is clean` at exit 0 (BUGS TC-84).
+  const EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.mjs', '.cjs', '.jsx'];
   const files: string[] = [];
   for (const root of inputs.length ? inputs : [cwd]) {
     const abs = path.resolve(cwd, root);
     if (ts.sys.directoryExists(abs)) {
-      files.push(...ts.sys.readDirectory(abs, ['.ts', '.tsx', '.mts', '.cts', '.js', '.mjs']));
+      // The walk skips dependencies the caller did not name; a root that is
+      // itself inside node_modules WAS named — a dependency you can read is a
+      // dependency you can check (scan.ts) — so only the path below the named
+      // root can exclude a file. The filter used to run on the whole path,
+      // after the emptiness guard, so `jitmax node_modules/dep` dropped every
+      // file it had just collected and reported clean at exit 0 (BUGS TC-84).
+      files.push(
+        ...ts.sys
+          .readDirectory(abs, EXTENSIONS)
+          .filter((f) => !path.relative(abs, f).includes('node_modules'))
+      );
     } else if (ts.sys.fileExists(abs)) {
       files.push(abs);
     } else {
@@ -59,7 +73,7 @@ export function program(ts: Ts, cwd: string, inputs: string[]): TS.Program {
   // readily as .ts and never writes. Everything else — `paths`, the resolution
   // mode, the lib set — comes from the project so the walk resolves what the
   // project's own build resolves.
-  return ts.createProgram(files.filter((f) => !f.includes('node_modules')), {
+  return ts.createProgram(files, {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext,

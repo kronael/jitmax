@@ -1,8 +1,13 @@
 import type * as TS from 'typescript';
 import type { Ts } from '../ts.ts';
-import { at, targetsOf, type Mark } from '../scan.ts';
+import { at, targetsOf, unwrap, type Mark } from '../scan.ts';
 import { N } from '../numbers.ts';
-import { cells, isArray, walk, type Evidence, type Rule } from './shared.ts';
+import { cells, isArray, walk, type Evidence, type Rule, type RuleModule } from './shared.ts';
+
+// The rule's name, once. It was a terminal string in the finding and a second
+// terminal string in the exported rule below, and the pair that drifted was in
+// interface-dispatch.ts, which reports a rule that is not its own.
+const NAME = 'delete-property';
 
 const evidence: Evidence = {
   cost:
@@ -68,15 +73,7 @@ interface ObjectUses {
 // property's for `this.cache` — the same symbol every other reference to that
 // name resolves to, which is what lets one object be tracked across bodies.
 function symAt(ts: Ts, checker: TS.TypeChecker, e: TS.Expression): TS.Symbol | undefined {
-  let n = e;
-  while (
-    ts.isParenthesizedExpression(n) ||
-    ts.isAsExpression(n) ||
-    ts.isNonNullExpression(n) ||
-    ts.isTypeAssertionExpression(n)
-  ) {
-    n = n.expression;
-  }
+  const n = unwrap(ts, e);
   if (ts.isIdentifier(n) || ts.isPropertyAccessExpression(n)) {
     return checker.getSymbolAtLocation(ts.isIdentifier(n) ? n : n.name);
   }
@@ -269,7 +266,7 @@ const detect: Rule = (ts, checker, body, add, mark) => {
         'where filling it key by key normalizes it too';
       add({
         ...at(body.sf, node),
-        rule: 'delete-property',
+        rule: NAME,
         message: `delete ${node.expression.getText(body.sf)} puts its object in dictionary mode`,
         fix: seen
           ? `${seen.op} reads ${object.getText(body.sf)} at line ${seen.line} and tells an ` +
@@ -284,8 +281,9 @@ const detect: Rule = (ts, checker, body, add, mark) => {
   });
 };
 
-export const deleteProperty = {
-  name: 'delete-property',
+export const deleteProperty: RuleModule = {
+  name: NAME,
   evidence,
+  scope: 'body',
   detect,
 };

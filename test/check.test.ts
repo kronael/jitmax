@@ -14,10 +14,12 @@ import {
   overGate,
   rows,
   type Row,
-  spans1,
   unreplicable,
   withoutBlock,
 } from '../lib/derive.ts';
+// Rule 6's REJ predicate lives with the protocol it belongs to, and both
+// bench/run.ts and this file read it from there.
+import { spans1 } from '../bench/driver.ts';
 import { deriveBuiltins, loweredCases } from '../lib/derive-builtins.ts';
 import { BUILTINS } from '../lib/builtins.ts';
 import { N } from '../lib/numbers.ts';
@@ -1063,6 +1065,61 @@ test('a call into the platform is counted, not listed', () => {
   );
   assert.match(run.stdout, /1 call into the platform/);
   assert.ok(!run.stdout.includes('closed-world'), 'the platform call was listed as a finding');
+  assert.strictEqual(run.status, 0);
+});
+
+// The host, reached three ways the callee's own declaration cannot see:
+// `globalThis` augmented from own source resolves to a declaration this program
+// wrote, `(0, eval)` resolves to a binary expression with no symbol at all, and
+// `process.hrtime` resolves into `@types/node`. None of the three is a body a
+// reader can go and look at, so "inline what you need from it" is advice nobody
+// can take — the same ground TC-63 took `process.env` off `delete-property` on.
+// A genuinely opaque application callee in the same function must STILL fire,
+// or this is silencing the rule rather than aiming it (BUGS TC-98).
+test('the host is counted, not listed, and opaque application code still fires', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'host')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /3 calls into the platform, not listed/);
+  assert.strictEqual(
+    (run.stdout.match(/warn {2}closed-world/g) ?? []).length,
+    1,
+    `one finding for the opaque callee and none for the host:\n${run.stdout}`
+  );
+  assert.match(run.stdout, /calls opaque/);
+  for (const host of ['hostHook', 'eval', 'hrtime']) {
+    assert.ok(!run.stdout.includes(host), `${host} was reported as unreadable code`);
+  }
+  assert.strictEqual(run.status, 0);
+});
+
+// The receiver count is taken at EVERY escape, not only where the callee
+// resolved to an interface member. `pickOne` is a conditional initializer: no
+// function for the callee walk to follow, two sitting in the same file for the
+// dataflow walk to name. And `p.emit()` on five classes declared in a `.d.ts`
+// is V8's four-map budget exceeded at a call site — `megamorphic-dispatch`'s
+// claim, carrying `megamorphic-dispatch`'s benchmark, whether or not the walk
+// could read the callee's body. Both used to render as "we have no body for it"
+// (BUGS TC-98).
+test('an unreadable callee still counts what reaches its receiver', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'escape')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(
+    run.stdout,
+    /calls pickOne, which we have no body for; 2 implementations reach this receiver \(left\(\), right\(\)\)/
+  );
+  // Not megamorphic-dispatch's own body detector: P1 through P5 carry ONE
+  // property set between them, so `objectShapes` counts 1 and that detector is
+  // silent. The finding can only have come through the escape rule.
+  assert.match(
+    run.stdout,
+    /megamorphic-dispatch\n\s+\S+escape\.ts:\d+\n\s+p reaches this call as at least 5 implementations built by this program \(P1, P2, P3, P4, P5\)/
+  );
   assert.strictEqual(run.status, 0);
 });
 

@@ -9,7 +9,13 @@ import {
   walkLoops,
   type Evidence,
   type Rule,
+  type RuleModule,
 } from './shared.ts';
+
+// The rule's name, once. It was a terminal string in the finding and a second
+// terminal string in the exported rule below, and the pair that drifted was in
+// interface-dispatch.ts, which reports a rule that is not its own.
+const NAME = 'allocating-select';
 
 const evidence: Evidence = {
   cost:
@@ -104,7 +110,7 @@ const detect: Rule = (ts, checker, body, add) => {
       ) {
         add({
           ...at(body.sf, node),
-          rule: 'allocating-select',
+          rule: NAME,
           message:
             `${target} is replaced by ${call.expression.getText(body.sf)}(...), which returns a new ` +
             'object every pass, including the passes that choose the value it already held',
@@ -115,8 +121,9 @@ const detect: Rule = (ts, checker, body, add) => {
   });
 };
 
-export const allocatingSelect = {
-  name: 'allocating-select',
+export const allocatingSelect: RuleModule = {
+  name: NAME,
   evidence,
+  scope: 'body',
   detect,
 };

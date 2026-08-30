@@ -1,6 +1,11 @@
-import type { Mark } from '../scan.ts';
 import { N } from '../numbers.ts';
-import { cells, type Add, type Evidence } from './shared.ts';
+import { megamorphicCall } from './megamorphic-dispatch.ts';
+import { cells, reached, type EscapeRule, type Evidence, type RuleModule } from './shared.ts';
+
+// The rule's name, once. It was a terminal string in the finding and a second
+// terminal string in the exported rule below, and the pair that drifted was in
+// interface-dispatch.ts, which reports a rule that is not its own.
+const NAME = 'closed-world';
 
 const evidence: Evidence = {
   cost:
@@ -15,7 +20,11 @@ const evidence: Evidence = {
     '"cannot consider"',
   severity: 'warn',
   silent:
-    'this bounds what ONE unchecked call can cost, not what any particular one does cost ' +
+    'the platform. A call into `globalThis`, a V8 builtin or `@types/node` has no body a ' +
+    'reader can go and look at and no `npm install` that produces one, so "inline what you ' +
+    'need from it" is advice nobody can take — those are counted and not named (BUGS ' +
+    'TC-55, TC-98). And this bounds what ONE unchecked call can cost, not what any ' +
+    'particular one does cost ' +
     '— a small callee is inlined and the boundary costs nothing. The trigger and the ' +
     'benchmark are different programs: the rule fires on a callee with no readable body, ' +
     'and the sweep measures a readable one padded past the inlining budget, because a ' +
@@ -33,22 +42,42 @@ const evidence: Evidence = {
 // the 22-codebase survey under this same name, so `[rules] closed-world = false`
 // — the obvious way to quiet it — also switched off the one cause that is honest
 // about not being able to look. It has its own name now (BUGS TC-93).
-function detect(mark: Mark, add: Add): void {
+const detect: EscapeRule = (mark, add) => {
+  // The complement of interface-dispatch's guard, over ONE field: an escape is
+  // either a callee with no body anywhere or a call through an interface, and
+  // the two rules split `mark.escapes` between them. `|| c.dispatch` was a
+  // second term that decided nothing, and a De Morgan pair spelled out in two
+  // files is two edits in opposite directions the day a third escape kind
+  // appears.
   for (const c of mark.escapes) {
-    if (c.viaInterface || c.dispatch) continue;
+    if (c.viaInterface) continue;
+    // The receiver's maps decide the inline cache whether or not the callee's
+    // body is readable, so this rule asks the megamorphic question the same way
+    // interface-dispatch does, and hands the site to the rule that carries the
+    // sweep for it. Unreadable and megamorphic is not two findings (BUGS TC-98).
+    if (megamorphicCall(c, add)) continue;
+    const d = c.dispatch;
     add({
       file: c.file,
       line: c.line,
       column: c.column,
-      rule: 'closed-world',
-      message: `calls ${c.text}, which we have no body for; the promise stops here`,
+      rule: NAME,
+      // What reaches the receiver, when anything does. `const f = pick ? a : b`
+      // has no body the callee walk can follow and two the dataflow walk can
+      // see, and printing "we have no body for f" over both of them is a
+      // coverage claim this rule exists to keep honest.
+      message:
+        d.count >= 2
+          ? `calls ${c.text}, which we have no body for${reached(d)}; the promise stops here`
+          : `calls ${c.text}, which we have no body for; the promise stops here`,
       fix: `inline what you need from ${c.text}, or accept that this call is unchecked`,
     });
   }
-}
+};
 
-export const closedWorld = {
-  name: 'closed-world',
+export const closedWorld: RuleModule = {
+  name: NAME,
   evidence,
+  scope: 'escapes',
   detect,
 };

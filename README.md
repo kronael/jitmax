@@ -130,7 +130,8 @@ jitmax — 46 annotated functions, 15 errors, 1 warning
 benchmark measures the program it fires on. Three do: `closed-world`,
 `interface-dispatch` and `megamorphic-dispatch`. Together they were 98.8% of
 every finding across the 22-codebase survey below, so before this they decided
-nearly every exit code on evidence this project does not have.
+nearly every exit code on evidence this project does not have. Re-measured
+2026-08-30, they are 98.6%.
 
 Four things, and the second is the point:
 
@@ -220,8 +221,8 @@ false for both (`BUGS.md` TC-39).
 | `chained-allocation` | `.map().filter()` or `Object.entries(o).map()` allocates between stages | one stage; large n; `Object.keys(o).map()`, `.sort()`, `.split().map().join()` |
 | `allocating-select` | `x = Lib.min(x, y)` in a loop returns a new object every pass | the same loop on numbers |
 | `delete-property` | `delete` demotes an object to dictionary mode — 12.3-13.6x per property load after it | assigning `undefined` instead, which costs 1.00-1.06x |
-| `closed-world` | calls to code with no readable body anywhere in the checkout | a callee small enough to inline costs nothing |
-| `interface-dispatch` | a call through an interface, whose body IS here but cannot be picked | one implementation reaching the receiver |
+| `closed-world` | calls to somebody's code with no readable body anywhere in the checkout | a callee small enough to inline costs nothing; the platform, which is counted and never named |
+| `interface-dispatch` | a call through an interface, whose body IS here but cannot be picked | one implementation reaching the receiver, which the walk follows instead of reporting |
 
 These two were one rule until 2026-08-29, and the split matters to anyone who
 ran the tool: a call through an interface has a body in this checkout — the walk
@@ -229,6 +230,15 @@ simply cannot decide which one runs — and telling you to inline it is telling
 you to undo the abstraction. It was 96.7% of every finding in the survey, so
 `[rules] closed-world = false`, the obvious way to quiet it, also switched off
 the one cause that is honest about not being able to look. `BUGS.md` TC-93.
+
+Both count first. The dataflow walk asks what actually reaches the receiver at
+every escape, not only at the ones that resolved to an interface member, and
+five or more implementations at one call site is `megamorphic-dispatch`'s claim
+carrying `megamorphic-dispatch`'s benchmark — the same site, whether or not the
+walk could read the callee's body. Below that threshold the count is printed
+rather than acted on. And neither rule fires on the platform: a call into
+`globalThis`, a V8 builtin or `@types/node` has no body an `npm install`
+produces and no map to count, so it is counted and not named. `BUGS.md` TC-98.
 
 **Every rule includes the benchmark that earned it, and the case where the same
 benchmark found nothing.** `closed-world` measures the mechanism a call boundary
@@ -551,45 +561,56 @@ printed:
   between the microbenchmark and the function is the finding either way.
 
 **The whole survey, so the four examples are not four picks out of a hat.**
-Twelve libraries, 850 annotated functions, 1500 findings — **54 of them errors,
-at 54 distinct source lines.** No library produced nothing.
+Twelve libraries, 850 annotated functions, 1546 findings — **53 of them errors,
+at 53 distinct source lines.** No library produced nothing.
 
-Re-measured 2026-08-28, and the counting changed with it. A finding is now one
-per SITE: a line reached from 28 annotated functions used to be 28 findings, so
+Re-measured 2026-08-30, and the counting changed with it. A finding is one per
+SITE: a line reached from 28 annotated functions used to be 28 findings, so
 every count in this section used to be the call-graph fan-in rather than the
-work (`BUGS.md` TC-62). Calls into the platform are counted for the run and
-never listed (TC-55), and every call the walk cannot follow is now reported
-rather than falling through both branches and vanishing (TC-45).
+work (`BUGS.md` TC-62). Calls into the platform — Node's own API, V8's builtins
+and anything reached off `globalThis` — are counted for the run and never
+listed (TC-55, TC-98), and every call the walk cannot follow is reported rather
+than falling through both branches and vanishing (TC-45).
 
 | Library | annotated | findings | what fired |
 |---|---|---|---|
-| es-toolkit 1.50.0 | 286 | 192 | 180 `closed-world`, 7 `delete-property`, 3 `chained-allocation`, 2 `accumulating-spread` |
-| ramda 0.32.0 | 100 | 199 | 198 `closed-world`, 1 `delete-property` (`_dissoc`) |
-| immutable 5.1.9 | 89 | 270 | 267 `closed-world`, 2 `chained-allocation`, 1 `delete-property` |
+| es-toolkit 1.50.0 | 286 | 202 | 189 `closed-world`, 7 `delete-property`, 3 `chained-allocation`, 2 `accumulating-spread`, 1 `interface-dispatch` |
+| ramda 0.32.0 | 100 | 176 | 175 `closed-world`, 1 `delete-property` (`_dissoc`) |
+| immutable 5.1.9 | 89 | 268 | 264 `closed-world`, 2 `megamorphic-dispatch`, 1 each `chained-allocation` and `delete-property` |
 | remeda 2.0.0 | 79 | 81 | 78 `closed-world`, 2 `delete-property`, 1 `accumulating-spread` |
-| zod 4.4.3 (`v4/core`) | 78 | 123 | 102 `closed-world`, 15 `delete-property`, 5 `chained-allocation`, 1 `megamorphic-elements` |
-| just 1.22.4 | 61 | 76 | 74 `closed-world`, 1 `delete-property`, 1 `chained-allocation` |
-| luxon 3.7.2 | 52 | 105 | 99 `closed-world`, 3 each `delete-property` and `chained-allocation` |
-| decimal.js 10.6.0 | 36 | 220 | 220 `closed-world` |
-| date-fns 4.4.0 (`core`) | 28 | 24 | 21 `closed-world`, 1 each `delete-property`, `chained-allocation`, `accumulating-spread` |
-| dinero.js 2.0.2 | 20 | 145 | 143 `closed-world`, 1 `chained-allocation`, 1 `accumulating-spread` |
-| big.js 7.0.1 | 13 | 53 | 53 `closed-world` |
-| radash 12.1.1 | 8 | 12 | 11 `closed-world`, 1 `accumulating-spread` |
+| zod 4.4.3 (`v4/core`) | 78 | 134 | 59 `interface-dispatch`, 54 `closed-world`, 15 `delete-property`, 5 `chained-allocation`, 1 `megamorphic-elements` |
+| just 1.22.4 | 61 | 72 | 70 `closed-world`, 1 each `chained-allocation` and `delete-property` |
+| luxon 3.7.2 | 52 | 112 | 106 `closed-world`, 3 each `chained-allocation` and `delete-property` |
+| decimal.js 10.6.0 | 36 | 260 | 260 `closed-world` |
+| date-fns 4.4.0 (`core`) | 28 | 24 | 17 `closed-world`, 3 `interface-dispatch`, 1 each `megamorphic-dispatch`, `chained-allocation`, `delete-property` and `accumulating-spread` |
+| dinero.js 2.0.2 | 20 | 143 | 141 `closed-world`, 1 `chained-allocation`, 1 `accumulating-spread` |
+| big.js 7.0.1 | 13 | 64 | 64 `closed-world` |
+| radash 12.1.1 | 8 | 10 | 9 `closed-world`, 1 `accumulating-spread` |
 
 Three things in that table are about the tool rather than the libraries.
 
-**`closed-world` is 1446 of the 1500 findings** — 96% — and it warns rather
-than erring, so none of it fails a run. Three different things live under that
-one rule and the report now says which: a typed dependency the walk cannot read
-into, a callee reached through an interface whose body IS in the checkout, and
-a missing `npm install`. Node's own API is no longer among them at all — those
-calls are counted for the run and never listed, because "inline what you need
-from `path.join`" is advice nobody can take (`BUGS.md` TC-55, TC-69, TC-51).
-The 54 errors under it are what a reader is actually asked to act on.
+**The two escape rules are 1490 of the 1546 findings** — 96% — and both warn
+rather than err, so none of it fails a run. They were one rule until 2026-08-29
+and the split is what the ratio between them is for: 1427 `closed-world`, a
+callee whose body is nowhere in the checkout, against 63 `interface-dispatch`,
+a body that IS here at a site the walk cannot bind to one implementation. The
+platform is in neither — Node's own API, V8's builtins and anything reached off
+`globalThis` are counted for the run and never listed, because "inline what you
+need from `path.join`" is advice nobody can take (`BUGS.md` TC-55, TC-69,
+TC-51, TC-98). The 53 errors are what a reader is actually asked to act on.
 
-**`megamorphic-dispatch` never fired once** in these 850 annotated functions.
-The sharpest cliff this project measured, 12.9-22.7x, is not a shape utility
-libraries have. It does appear in the two applications below.
+**`megamorphic-dispatch` fires three times** in these 850 annotated functions,
+all three through the escape route added in TC-98 — five or more implementations
+reaching one receiver at a call the walk could not follow. immutable's
+`Seq.js:65` and `:83` call `this.__iterateUncached()` and
+`this.__iteratorUncached()`, and ten `Seq` subclasses reach that `this`;
+date-fns's `parse` calls `this.parse()` on a `this` that 31 parser classes reach
+— `EraParser`, `YearParser`, `LocalWeekYearParser` and the rest. Both are
+dispatch tables written on purpose, which is the honest reading: the rule found
+the two places these libraries chose polymorphism, not a mistake. It fired NOT
+AT ALL before that route existed, which is the more useful fact about it: the sharpest cliff this project measured, 12.9-22.7x, is
+not a shape utility libraries write on purpose. The applications below have
+more.
 
 **`megamorphic-elements` fires at exactly one site in 850 functions** — zod's
 `prefixIssues`, whose `issues` parameter unions twelve issue types and which
@@ -606,15 +627,18 @@ were run exactly the same way — cloned shallow, annotated by
 
 | Program | annotated | findings | what fired |
 |---|---|---|---|
-| TypeScript 5.9.3 (`src/compiler`) | 465 | 6454 | 6430 `closed-world`, 12 `allocating-select`, 5 `megamorphic-elements`, 4 `chained-allocation`, 2 `accumulating-spread`, 1 `delete-property` |
-| typescript-eslint 8.67.0 | 311 | 2893 | 2882 `closed-world`, 8 `chained-allocation`, 2 `delete-property`, 1 `megamorphic-dispatch` |
+| TypeScript 5.9.3 (`src/compiler`) | 465 | 5879 | 4831 `interface-dispatch`, 1010 `closed-world`, 20 `megamorphic-elements`, 12 `allocating-select`, 4 `chained-allocation`, 1 each `delete-property` and `accumulating-spread` |
+| typescript-eslint 8.67.0 | 311 | 2882 | 2863 `closed-world`, 9 `interface-dispatch`, 7 `chained-allocation`, 2 `delete-property`, 1 `megamorphic-dispatch` |
 
 Read those `closed-world` totals as a defect in this tool before reading them
 as anything about either codebase. Neither checkout had `node_modules` installed, so every call into a
 missing package is an unresolvable callee, reported once per annotated caller
 that reaches it. `BUGS.md` TC-51. The two rows are kept out
 of the table above for the same reason: mixed in they would move
-`closed-world`'s share from 96% to 99% and teach a reader nothing.
+the two escape rules' share from 96% to 99% and teach a reader nothing. The
+compiler is also the one codebase where `interface-dispatch` is the larger
+half: TypeScript dispatches almost everything through `Node`, `Symbol` and
+`Type` interfaces whose implementations are all in the checkout.
 
 Under the flood are the two rules twelve libraries never exercised.
 
@@ -624,7 +648,7 @@ write.** `packages/eslint-plugin/src/rules/no-misused-promises.ts:543` calls
 sets — a TypeScript declaration name is not one node type. Six is past the four
 maps V8 caches for the site.
 
-**`megamorphic-elements` fires at five sites in the compiler**, against one in
+**`megamorphic-elements` fires at 20 sites in the compiler**, against one in
 all twelve libraries, and its widest instance is `checker.ts:44260`:
 `checkUnusedIdentifiers` walks a `PotentiallyUnusedIdentifier[]` and reads
 `node.kind` off every element, where that union is 20 distinct property sets at
@@ -646,18 +670,22 @@ so that the absence would mean something:
 
 | Codebase | annotated | findings | what fired besides `closed-world` |
 |---|---|---|---|
-| svelte (`packages/svelte/src`) | 504 | 2813 | 16 `allocating-select`, 13 `delete-property`, 12 `chained-allocation`, 2 `accumulating-spread` |
-| vue (`packages/*/src`) | 409 | 2340 | 13 `delete-property`, 6 `chained-allocation`, 4 `accumulating-spread`, 2 `megamorphic-elements`, 1 each `allocating-select` and `megamorphic-dispatch` |
-| typebox | 199 | 57 | **29 `accumulating-spread`**, 3 `delete-property` |
-| mobx | 49 | 132 | 2 `delete-property` |
-| valibot | 87 | 176 | 9 `chained-allocation`, 1 `delete-property` |
-| rxjs | 60 | 241 | nothing |
-| immer | 10 | 54 | 2 `delete-property` |
-| ts-pattern | 9 | 23 | nothing |
+| svelte (`packages/svelte/src`) | 504 | 2760 | 16 `allocating-select`, 13 `delete-property`, 12 `chained-allocation`, 9 `interface-dispatch`, 2 `accumulating-spread` |
+| vue (`packages/*/src`) | 409 | 2237 | 277 `interface-dispatch`, 13 `delete-property`, 10 `megamorphic-dispatch`, 8 `megamorphic-elements`, 5 `chained-allocation`, 4 `accumulating-spread`, 1 `allocating-select` |
+| typebox | 199 | 57 | **30 `accumulating-spread`**, 7 `interface-dispatch`, 3 `delete-property` |
+| mobx | 49 | 83 | 28 `interface-dispatch`, 2 `delete-property` |
+| valibot | 87 | 133 | 9 `chained-allocation`, 1 each `interface-dispatch`, `megamorphic-dispatch` and `delete-property` |
+| rxjs | 60 | 248 | 25 `interface-dispatch` |
+| immer | 10 | 60 | 12 `interface-dispatch`, 2 `delete-property` |
+| ts-pattern | 9 | 26 | nothing |
 
-**Vue is the only codebase that fires all seven rules.** A framework is not a
+**Vue is the only codebase that fires all eight rules.** A framework is not a
 pipeline, and both megamorphic rules find shapes in it that no utility library
-has.
+has. Eight of its ten `megamorphic-dispatch` sites are the rule counting
+declared property sets — `vnode.type` is nine of them, at `.hydrate()`,
+`.process()`, `.remove()` and `.toLowerCase()`. The other two are the escape
+route added in TC-98: `watch.ts:161` calls `.some()` and `.map()` on a `source`
+that seven allocation sites reach.
 
 **And the survey is what closed TC-8.** Vue reported 46 `megamorphic-elements`
 before the rule was made to check for a read off an element. Of 46 findings on a
@@ -672,14 +700,17 @@ returned `any`, so the one true instance of this rule in twelve libraries went
 silent with the false ones. A cast is a claim about the type checker, not about
 the object; V8 loads from the object's map either way.
 
-**What the rule is worth, counted per site: eight lines in 2953 annotated
-functions** — five in the TypeScript compiler, two in vue, one in zod. That is
+**What the rule is worth, counted per site: 29 lines in 2953 annotated
+functions** — 20 in the TypeScript compiler, 8 in vue, one in zod. It was eight
+until the rule was taught to count an intersection as an object type, which is
+what a branded type is, and five branded types behind one receiver had counted
+as zero shapes (`BUGS.md` TC-95). That is
 the flagship rule's whole footprint on 22 real codebases, and it is the number
 this README leads with. `BUGS.md` TC-64 reaches the same place from 30 other
 corpora and a different annotation rule.
 
-**TypeBox has 29 distinct accumulating-spread sites, more than every other
-codebase here put together.** It used to print as 119, which was those sites
+**TypeBox has 30 distinct accumulating-spread sites, more than every other
+codebase here put together** — 13 across the other twenty-one. It used to print as 119, which was those sites
 counted once per annotated function reaching them. `FromObject` in
 `value/create/from_object.ts` is six lines and is the whole rule:
 `required.reduce((result, key) => ({ ...result, [key]: … }), {})`.

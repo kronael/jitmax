@@ -8,7 +8,13 @@ import {
   walkLoops,
   type Evidence,
   type Rule,
+  type RuleModule,
 } from './shared.ts';
+
+// The rule's name, once. It was a terminal string in the finding and a second
+// terminal string in the exported rule below, and the pair that drifted was in
+// interface-dispatch.ts, which reports a rule that is not its own.
+const NAME = 'accumulating-spread';
 
 const evidence: Evidence = {
   cost:
@@ -141,7 +147,7 @@ const detect: Rule = (ts, checker, body, add) => {
   const report = (node: TS.Node, name: string, form: Form): void =>
     add({
       ...at(body.sf, node),
-      rule: 'accumulating-spread',
+      rule: NAME,
       message: `${name} is rebuilt from a copy of itself; every pass copies everything it already holds`,
       fix: FIX[form].replaceAll('NAME', name),
     });
@@ -191,8 +197,9 @@ const detect: Rule = (ts, checker, body, add) => {
   });
 };
 
-export const accumulatingSpread = {
-  name: 'accumulating-spread',
+export const accumulatingSpread: RuleModule = {
+  name: NAME,
   evidence,
+  scope: 'body',
   detect,
 };

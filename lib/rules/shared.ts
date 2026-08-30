@@ -1,6 +1,6 @@
 import type * as TS from 'typescript';
 import type { Ts } from '../ts.ts';
-import { isFunctionLike, type Body, type Mark, type Site } from '../scan.ts';
+import { isFunctionLike, type Body, type Dispatch, type Mark, type Site } from '../scan.ts';
 
 export interface Evidence {
   cost: string;
@@ -55,6 +55,19 @@ export type Add = (f: Omit<Finding, 'evidence'>) => void;
 // a rewrite or a data corruption depends on what the REST of the tree does
 // with the deleted object (BUGS TC-79).
 export type Rule = (ts: Ts, checker: TS.TypeChecker, body: Body, add: Add, mark: Mark) => void;
+// The rules that read `mark.escapes` instead — the calls the walk could NOT
+// follow, which are a property of the whole mark and not of any one body.
+export type EscapeRule = (mark: Mark, add: Add) => void;
+
+// What every file in lib/rules/ exports, and the only thing lib/rules/index.ts
+// registers. `scope` is on the rule because it used to be at the call site: a
+// hand-written array held the six body rules, a hand-written map held all eight
+// evidences, and two detectors were called by name below both — three registers
+// a new rule had to reach, and a rule that reached only two lost its evidence
+// silently and downgraded itself to a warning.
+export type RuleModule =
+  | { name: string; evidence: Evidence; scope: 'body'; detect: Rule }
+  | { name: string; evidence: Evidence; scope: 'escapes'; detect: EscapeRule };
 
 const isLoop = (ts: Ts, n: TS.Node): boolean =>
   ts.isForStatement(n) ||
@@ -128,27 +141,38 @@ export const reassignedInLoop = (ts: Ts, node: TS.Node, inLoop: boolean): node i
 
 // DEFAULT_MAX_POLYMORPHIC_MAP_COUNT, the constant README's V8 table cites. Both
 // megamorphic rules fire on the fifth map, from one threshold rather than two.
-// `(iss as any).path` loads `path` off iss's map exactly as `iss.path` does —
-// the cast is a claim about the type checker, not about the object. zod's
-// `prefixIssues` is written that way and is the one true instance of
-// megamorphic-elements that twelve libraries contain; reading the type off the
-// cast instead of off the value silenced it. `megamorphic-dispatch` reads the
-// same objects at a CALL site and never got this, so `(x as any).step()` was
-// invisible while `(r as any).kind` was reported — same object, same maps.
-export const receiver = (ts: Ts, e: TS.Expression): TS.Expression => {
-  let n = e;
-  while (
-    ts.isAsExpression(n) ||
-    ts.isParenthesizedExpression(n) ||
-    ts.isNonNullExpression(n) ||
-    ts.isTypeAssertionExpression(n)
-  ) {
-    n = n.expression;
-  }
-  return n;
-};
-
 export const MAX_CACHED_MAPS = 4;
+
+// What the fifth map costs, in one sentence. Three findings end with it —
+// `megamorphic-elements` at a load site, and both detectors that report
+// `megamorphic-dispatch` at a call site — and each carried its own copy of a
+// claim about V8 that has to be the same claim.
+export const fifthMap = (site: 'load' | 'call'): string =>
+  `V8 caches four maps per ${site} site, so a fifth makes every ${site} here a lookup`;
+
+// What the dataflow walk counted, in one clause, for a finding that is NOT
+// reporting a megamorphic site. Both escape rules print it and each had its own
+// wording for the half it could reach.
+//
+// Three shapes, because a count over the budget that did NOT route to
+// `megamorphic-dispatch` has a reason it did not, and printing "inside V8's
+// four-map budget" over 37 of them would be the rule contradicting its own
+// threshold. The walk is 0-CFA: it counts what reaches the VALUE, and only a
+// declared type checks that against what reaches this CALL (BUGS TC-99).
+export function reached(d: Dispatch): string {
+  if (d.count === 0) return '';
+  const names = d.names.join(', ');
+  if (d.count <= MAX_CACHED_MAPS) {
+    return (
+      `; ${d.count} implementation${d.count === 1 ? '' : 's'} reach${d.count === 1 ? 'es' : ''} ` +
+      `this receiver (${names}) — inside V8's four-map budget`
+    );
+  }
+  return (
+    `; the receiver has no declared type, and ${d.count} shapes reach the value across this ` +
+    `program (${names}) — which is not a count of what reaches this call`
+  );
+}
 
 // The property names a member carries, sorted. V8 keys a map on the property
 // names AND the order they were added, and a TypeScript type records neither

@@ -1,18 +1,23 @@
 import type * as TS from 'typescript';
 import type { Ts } from '../ts.ts';
-import { at, type Body } from '../scan.ts';
+import { at, unwrap, type Body } from '../scan.ts';
 import { N } from '../numbers.ts';
 import {
   arrayValues,
   cells,
+  fifthMap,
   MAX_CACHED_MAPS,
-  members,
   objectShapes,
-  receiver,
   walk,
   type Evidence,
   type Rule,
+  type RuleModule,
 } from './shared.ts';
+
+// The rule's name, once. It was a terminal string in the finding and a second
+// terminal string in the exported rule below, and the pair that drifted was in
+// interface-dispatch.ts, which reports a rule that is not its own.
+const NAME = 'megamorphic-elements';
 
 const evidence: Evidence = {
   cost:
@@ -100,7 +105,7 @@ function readsFromElement(
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
       if (
         !isStoreTarget(node) &&
-        isElement(checker.getTypeAtLocation(receiver(ts, node.expression)))
+        isElement(checker.getTypeAtLocation(unwrap(ts, node.expression)))
       ) {
         found = true;
       }
@@ -133,14 +138,14 @@ const detect: Rule = (ts, checker, body, add) => {
     if (!readsFromElement(ts, checker, body, element)) continue;
     add({
       ...at(body.sf, p),
-      rule: 'megamorphic-elements',
+      rule: NAME,
       // What the count is, said in the words of the thing counted. It read
       // "unions N object types" while counting union members, and a reader who
       // took that literally could satisfy the fix by renaming a member (TC-42).
       // Distinct property sets cannot be merged by a rename.
       message:
         `${p.name.getText(body.sf)} reaches this line as ${shapes} distinct property sets; ` +
-        'V8 caches four maps per load site, so a fifth makes every load here a lookup',
+        fifthMap('load'),
       fix:
         'get the element type to four distinct property sets or fewer, or give it one ' +
         'construction path — renaming a member does not merge two shapes',
@@ -148,8 +153,9 @@ const detect: Rule = (ts, checker, body, add) => {
   }
 };
 
-export const megamorphicElements = {
-  name: 'megamorphic-elements',
+export const megamorphicElements: RuleModule = {
+  name: NAME,
   evidence,
+  scope: 'body',
   detect,
 };

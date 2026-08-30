@@ -3,7 +3,9 @@ import { BUILTINS } from './builtins.ts';
 import type { Mark } from './scan.ts';
 import { DEFECT, type Finding } from './rules.ts';
 
-const plural = (n: number, s: string): string => `${n} ${s}${n === 1 ? '' : 's'}`;
+// One spelling of the count-and-noun, because a hand-written plural beside a
+// derived numeral is how `1 cells` reached a published sentence (BUGS TC-70).
+export const plural = (n: number, s: string): string => `${n} ${s}${n === 1 ? '' : 's'}`;
 
 // A finding no benchmark prices is a warning, not an error, and a warning does
 // not fail a build. A rule that carries no evidence at all defaults to the same
@@ -11,19 +13,18 @@ const plural = (n: number, s: string): string => `${n} ${s}${n === 1 ? '' : 's'}
 // something this project cannot support (BUGS TC-33, TC-52).
 export const severity = (f: Finding): 'error' | 'warn' => f.evidence?.severity ?? 'warn';
 
-const wrap = (text: string, indent: string, width = 88): string[] => {
-  const lines: string[] = [];
-  let line = indent;
-  for (const word of text.split(/\s+/)) {
-    if (line !== indent && line.length + 1 + word.length > width) {
-      lines.push(line);
-      line = indent;
-    }
-    line += line === indent ? word : ` ${word}`;
-  }
-  if (line !== indent) lines.push(line);
-  return lines;
-};
+// One finding per SITE. The same line reached from 28 annotated functions was
+// 28 findings, so the headline counted the call-graph fan-in rather than the
+// work: agent-twitter-client reported 118 errors over 12 distinct lines, and
+// tsc 49 over 5. TC-51 read this as `closed-world`'s problem; it is how every
+// finding was counted, and that rule only made it visible first because it
+// fires most (BUGS TC-62). The finding is kept under the first annotated
+// function that reaches it, and how many others do is printed.
+//
+// bin/jitmax.ts counts SUPPRESSED findings per site too, and the two counts
+// only agree while one line spells what a site is.
+export const findingKey = (f: Finding): string =>
+  `${f.rule}|${f.file}|${f.line}|${f.column}`;
 
 export interface Blind {
   // Modules the program could not resolve. Every type from one reads as `any`,
@@ -37,6 +38,20 @@ export interface Blind {
   // a total miss threw and a partial miss printed `clean` over it (BUGS TC-77).
   unmatched: string[];
 }
+
+// Could this run see everything it was asked to look at? ONE answer, because
+// the two channels below are one question and were asked separately: an
+// unresolved module reached the exit code and an unmatched hot frame did not,
+// so a run that checked nothing over 75% of the measured time exited 0. The
+// verdict line and bin/jitmax.ts's exit code both read this, and a third
+// channel added to `Blind` reaches both by being added here.
+export const blinded = (b: Blind): boolean =>
+  b.unresolved.length > 0 || b.unmatched.length > 0;
+
+// The first eight, and how many were not printed. Both blindness channels
+// print a list and both truncate it the same way.
+const listed = (items: string[]): string =>
+  items.slice(0, 8).join(', ') + (items.length > 8 ? `, and ${items.length - 8} more` : '');
 
 export interface Suppression {
   // Findings a config or an annotation removed before they reached this
@@ -58,28 +73,20 @@ export function render(
   subject = 'annotated function'
 ): string {
   const out: string[] = [];
-  // One finding per SITE. The same line reached from 28 annotated functions was
-  // 28 findings, so the headline counted the call-graph fan-in rather than the
-  // work: agent-twitter-client reported 118 errors over 12 distinct lines, and
-  // tsc 49 over 5. TC-51 read this as `closed-world`'s problem; it is how every
-  // finding was counted, and that rule only made it visible first because it
-  // fires most (BUGS TC-62). The finding is kept under the first annotated
-  // function that reaches it, and how many others do is printed.
-  const key = (f: Finding): string => `${f.rule}|${f.file}|${f.line}|${f.column}`;
   // Counted first, then rendered, because the fan-in is printed ON the finding
   // and the last caller is not known until every mark has been walked. The
   // fan-in is kept rather than discarded: a line reached by 28 annotated
   // functions is a better fix than one reached by one.
   const reach = new Map<string, number>();
   for (const f of results.flatMap((r) => r.findings)) {
-    reach.set(key(f), (reach.get(key(f)) ?? 0) + 1);
+    reach.set(findingKey(f), (reach.get(findingKey(f)) ?? 0) + 1);
   }
   const shown = new Set<string>();
   const perSite = results.map(({ mark, findings }) => ({
     mark,
     findings: findings.filter((f) => {
-      if (shown.has(key(f))) return false;
-      shown.add(key(f));
+      if (shown.has(findingKey(f))) return false;
+      shown.add(findingKey(f));
       return true;
     }),
   }));
@@ -117,8 +124,7 @@ export function render(
     out.push(
       `  ${plural(blind.unresolved.length, 'module')} could not be resolved, so the types`,
       '  they declare read as `any` and every type-based rule is blind on the files',
-      `  that import them: ${blind.unresolved.slice(0, 8).join(', ')}` +
-        (blind.unresolved.length > 8 ? `, and ${blind.unresolved.length - 8} more` : '')
+      `  that import them: ${listed(blind.unresolved)}`
     );
     if (relative) out.push('  a relative specifier resolves to no file on disk: check the path.');
     if (bare) {
@@ -134,8 +140,7 @@ export function render(
     out.push(
       `  ${plural(blind.unmatched.length, 'hot frame')} matched no function in this program,`,
       '  so measured time was not checked — the sources are transformed, or the profile',
-      `  is stale: ${blind.unmatched.slice(0, 8).join(', ')}` +
-        (blind.unmatched.length > 8 ? `, and ${blind.unmatched.length - 8} more` : ''),
+      `  is stale: ${listed(blind.unmatched)}`,
       '  This is not a clean run.'
     );
   }
@@ -154,6 +159,18 @@ export function render(
     out.push(
       `  ${plural(lowered, 'call')} lowered to inline code, not listed: no call ` +
         `boundary exists there (V8 ${BUILTINS.version} @ ${BUILTINS.revision.slice(0, 10)})`
+    );
+  }
+  // Interface-typed calls whose receiver the dataflow walk traced to exactly
+  // one implementation this program builds: followed, so the rules ran over
+  // those bodies, and not reported (BUGS TC-69). The assumption is stated
+  // where the claim is made — the enumeration sees only this program, so a
+  // consumer handing in an implementation of its own is not counted.
+  const followed = results.reduce((n, r) => n + r.mark.followed, 0);
+  if (followed > 0) {
+    out.push(
+      `  ${plural(followed, 'interface call')} resolved to the one implementation this ` +
+        'program builds, and followed — sound only for a closed program'
     );
   }
 
@@ -178,7 +195,7 @@ export function render(
       // The walk follows callees, so a finding is often not in the annotated
       // function at all. Saying where it is is the difference between a report
       // and a riddle.
-      const from = reach.get(key(f)) ?? 1;
+      const from = reach.get(findingKey(f)) ?? 1;
       const alsoFrom = from > 1 ? ` — reached by ${from} annotated functions` : '';
       if (f.file !== mark.file || f.line !== mark.line) {
         out.push(`      ${path.relative(cwd, f.file) || f.file}:${f.line}${alsoFrom}`);
@@ -207,11 +224,7 @@ export function render(
   // `total` counts errors only, so both of the branches below printed "no
   // findings" above a page of printed warnings.
   const nothing = all.length === 0 ? 'no findings' : `no errors, ${plural(warnings, 'warning')}`;
-  const clean =
-    all.length === 0 &&
-    partial.length === 0 &&
-    blind.unresolved.length === 0 &&
-    blind.unmatched.length === 0;
+  const clean = all.length === 0 && partial.length === 0 && !blinded(blind);
   out.push(
     '',
     clean

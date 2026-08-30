@@ -29,7 +29,7 @@ import path from 'node:path';
 // Protocol rule 13's test, imported rather than re-stated. It has one
 // definition, in the file that runs the sweeps, and the gate below is the
 // second caller it should always have had (BUGS TC-37).
-import { replicates } from '../bench/driver.ts';
+import { replicates, RUNNER } from '../bench/driver.ts';
 
 export interface Row {
   runner?: string;
@@ -136,9 +136,9 @@ interface Citation {
 // never a source for a published number — so a citation reads this protocol's
 // rows unless it says otherwise, and one whose cells have not been re-measured
 // fails loudly at `no rows match` rather than quietly averaging two protocols
-// together. `bench/run.ts` owns this string; it is repeated rather than
-// imported because that file is an ESM script with a `process.exit` in it.
-const RUNNER = 'r2';
+// together. The marker is bench/driver.ts's, imported: it used to be a second
+// `const RUNNER = 'r2'` here, and the two had to be equal with nothing making
+// them equal — the writer moving to `r3` alone would fail every citation.
 export const current = (r: Row): boolean => r.runner === RUNNER;
 
 // The sweeps that have been re-measured under it, whole. A file moves in here
@@ -177,7 +177,6 @@ const files = (c: Citation): string[] => (Array.isArray(c.file) ? c.file : [c.fi
 const readsHistory = (c: Citation): boolean =>
   Boolean(c.history) || !files(c).every((f) => REMEASURED.has(f));
 
-const fresh = (r: Row): boolean => r.replicate === undefined;
 const replicated = (r: Row): boolean => r.protocol === 'replicated';
 
 export const CITATIONS: Record<string, Citation> = {
@@ -948,12 +947,6 @@ const cellKey = (r: Row): string =>
 // history are kept BECAUSE they disagree.
 type Mode = 'gate' | 'about' | 'off';
 
-// Rule 6's REJ verdict on one interval — the predicate bench/run.ts prints per
-// sweep while a human watches, applied here to what a cell's sweeps agree on.
-// One definition; the README end-to-end tables print the word REJECTED from
-// this one (BUGS TC-84).
-export const spans1 = (a: { lo: number; hi: number }): boolean => a.lo <= 1 && a.hi >= 1;
-
 // Rule 6, enforced where the number is made, beside rule 13 below (BUGS
 // TC-84). The bar is what the citation `claims`: nothing is shipped as the
 // refutation or provenance it is; a rule's evidence needs the agreed
@@ -1301,12 +1294,10 @@ export function markdown(root: string): string {
 // README's prose with the generated block cut out of it. The prose quotes some
 // of these numbers in sentences, and a check that the block contains them would
 // only ever be checking the block against itself.
-export function withoutBlock(text: string): string {
-  const from = text.indexOf(BEGIN);
-  const to = text.indexOf(END);
-  if (from === -1 || to === -1) throw new Error('README.md has lost its generated-numbers markers');
-  return text.slice(0, from) + text.slice(to + END.length);
-}
+// README with the generated block cut out — which is `spliceReadme` splicing
+// nothing in. The two were the same four lines twice, missing marker message
+// included.
+export const withoutBlock = (text: string): string => spliceReadme(text, '');
 
 export function spliceReadme(text: string, block: string): string {
   const from = text.indexOf(BEGIN);
@@ -1315,7 +1306,13 @@ export function spliceReadme(text: string, block: string): string {
   return text.slice(0, from) + block + text.slice(to + END.length);
 }
 
-if (process.argv[2] === '--write') {
+// Run as a script, not imported: `make numbers` and `make builtins` are the
+// only callers, and both lib/derive.ts and lib/derive-builtins.ts are also
+// imported as modules — by test/check.test.ts, and now by bench/run.ts through
+// the protocol file. Matching argv[2] alone meant any importer whose OWN second
+// argument was `--write` rewrote the published artifacts. bench/tiers.ts
+// already guards its main this way.
+if (process.argv[1] === import.meta.filename && process.argv[2] === '--write') {
   const root = path.join(import.meta.dirname, '..');
   fs.writeFileSync(path.join(root, 'lib', 'numbers.ts'), generate(root));
   const readmePath = path.join(root, 'README.md');
