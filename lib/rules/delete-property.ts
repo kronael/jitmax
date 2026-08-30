@@ -1,6 +1,6 @@
 import type * as TS from 'typescript';
 import type { Ts } from '../ts.ts';
-import { at, targetsOf, unwrap, type Mark } from '../scan.ts';
+import { at, symbolOf, targetsOf, unwrap, type Mark } from '../scan.ts';
 import { N } from '../numbers.ts';
 import { cells, isArray, walk, type Evidence, type Rule, type RuleModule } from './shared.ts';
 
@@ -211,9 +211,33 @@ const detect: Rule = (ts, checker, body, add, mark) => {
   // withdrawn — and on `number[]` it does not even typecheck (BUGS TC-36).
   // The rule fires where its benchmark measured: a property on something that
   // is not an array.
-  const onArray = (node: TS.Expression): boolean =>
-    (ts.isElementAccessExpression(node) || ts.isPropertyAccessExpression(node)) &&
-    isArray(checker, checker.getTypeAtLocation(node.expression));
+  // Array-LIKE, and the receiver UNWRAPPED. es-toolkit's compat layer writes
+  // `delete (array as any)[i]` over an `ArrayLike<T>`, in functions whose
+  // neighbours call `Array.prototype.splice` on the same value and whose comment
+  // reads "For handling sparse arrays". The cast made the type `any`, `isArray`
+  // wants a real Array or Tuple, and the rule fired on an array delete and told
+  // the author to box it — assigning undefined turns PACKED_DOUBLE_ELEMENTS
+  // into PACKED_ELEMENTS, the 1.39-1.66x boxing `boxed-elements` was withdrawn
+  // over (TC-36). A cast is a claim about the type checker, not about the
+  // object: the lesson megamorphic-elements learned in TC-8 (BUGS TC-121).
+  //
+  // Array-like and not merely numeric-indexed: `Record<PropertyKey, unknown>`
+  // carries a numeric index signature and is an ordinary object with a real map.
+  // A number-typed `length` beside the index signature is what separates
+  // typebox's `delete value[key]`, which stays a finding, from `ArrayLike<T>`,
+  // which does not.
+  const arrayLike = (t: TS.Type): boolean => {
+    if (!checker.getIndexTypeOfType(t, ts.IndexKind.Number)) return false;
+    const len = checker.getPropertyOfType(t, 'length');
+    const decl = len?.valueDeclaration ?? len?.declarations?.[0];
+    if (!len || !decl) return false;
+    return (checker.getTypeOfSymbolAtLocation(len, decl).flags & ts.TypeFlags.NumberLike) !== 0;
+  };
+  const onArray = (node: TS.Expression): boolean => {
+    if (!ts.isElementAccessExpression(node) && !ts.isPropertyAccessExpression(node)) return false;
+    const t = checker.getTypeAtLocation(unwrap(ts, node.expression));
+    return isArray(checker, t) || arrayLike(t);
+  };
 
   // `delete process.env.X` deletes nothing V8 owns. Node implements
   // `process.env` with a named-property interceptor: the get, set and delete
@@ -225,9 +249,30 @@ const detect: Rule = (ts, checker, body, add, mark) => {
   //
   // The test is the type's own declaration file, which is the same
   // platform-versus-application question `closed-world` asks in scan.ts.
+  //
+  // Three arms, because the type test alone answers false in two cases it must
+  // not. `delete globalThis.gz` fired even with `@types/node` installed —
+  // TypeScript synthesises `globalThis` from the global scope and no
+  // declaration says "this is the host". And with no `node_modules`, `process`
+  // resolves to NOTHING at all, so the type has no declarations and the rule
+  // claimed a hidden class for an object it cannot even name (BUGS TC-97). An
+  // identifier this tool cannot bind is not a JS object it can price.
+  //
+  // That third arm stays HERE and does not move into scan.ts's `intoHost`,
+  // which `closed-world` reads: that rule asks whether there is a body a reader
+  // could go and look at, and an unresolvable callee in somebody's package
+  // still is one.
   const onHostObject = (node: TS.Expression): boolean => {
     if (!ts.isElementAccessExpression(node) && !ts.isPropertyAccessExpression(node)) return false;
-    const sym = checker.getTypeAtLocation(node.expression).getSymbol();
+    let base: TS.Expression = unwrap(ts, node.expression);
+    while (ts.isPropertyAccessExpression(base) || ts.isElementAccessExpression(base)) {
+      base = unwrap(ts, base.expression);
+    }
+    if (ts.isIdentifier(base)) {
+      if (base.text === 'globalThis') return true;
+      if ((symbolOf(ts, checker, base)?.getDeclarations() ?? []).length === 0) return true;
+    }
+    const sym = checker.getTypeAtLocation(unwrap(ts, node.expression)).getSymbol();
     return (sym?.declarations ?? []).some((d) => {
       const file = d.getSourceFile()?.fileName ?? '';
       // `@types/node` and the DOM, and NOT the language libs. `Record`,

@@ -588,6 +588,129 @@ described and disable nothing.
 asserted in both directions. The fix changes a printed line and removes a defect
 code from a rule, so it is recorded.
 
+## TC-122 — three deletes on one object are three build-failing errors for one demotion (2026-08-30, open)
+
+luxon's `impl/conversions.js:134-136` deletes `localWeekday`, `localWeekNumber`
+and `localWeekYear` from the same object on three consecutive lines, and
+`delete-property` reports three errors. Only the FIRST transitions the map;
+after it the object is already in dictionary mode and the next two delete out of
+a dictionary, which is not what `bench/delete.jl` measured — that sweep deletes
+one property from a four-key literal and then reads.
+
+The rule has no notion of an object already demoted. The fix is per-object
+state across the walk, which is a new contract, so it is recorded.
+
+## TC-121 — delete-property fires where there is no map to demote (2026-08-30, FIXED 2026-08-30)
+
+Three classes, all verified against the 22-codebase survey.
+
+**An array element behind a cast.** es-toolkit's compat layer writes `delete
+(array as any)[i]` over an `ArrayLike<T>` — `pullAt.ts:96`, `pullAllWith.ts:158`
+— in functions whose neighbours call `Array.prototype.splice` on the same value
+and whose comments read "For handling sparse arrays". `isArray` wants a real
+Array or Tuple and the cast made the type `any`, so the rule fired and printed
+"assign undefined instead": the `PACKED_DOUBLE_ELEMENTS` to `PACKED_ELEMENTS`
+boxing `bench/arrays.jl` priced at 1.39-1.66x and over which `boxed-elements`
+was withdrawn (TC-36). The remedy makes those two sites slower.
+
+**`globalThis`.** `delete globalThis.gz` fired even with `@types/node`
+installed. `onHostObject` reads the receiver TYPE's declarations, and TypeScript
+synthesises `globalThis` from the global scope — its declarations are whatever
+files augment it, own source included, and none says "this is the host".
+
+**An identifier that binds to nothing.** This is TC-97. With no `node_modules`,
+`process` resolves to zero declarations, the type test answers false, and the
+rule claimed a hidden class for an object it cannot even name. Verified: from a
+clean directory the tool used to report `delete process.env.FOO puts its object
+in dictionary mode`.
+
+**FIXED 2026-08-30.** `onArray` unwraps the receiver and accepts array-LIKE — a
+numeric index signature WITH a number-typed `length`, which keeps
+`Record<PropertyKey, unknown>` a finding, as the benchmark measured. `onHostObject`
+gained the `globalThis` arm and the unbound-identifier arm.
+
+**TC-97's proposal was measurably wrong and is superseded.** It asked for "one
+platform test that both callers read". Swapping in `scan.ts`'s `intoHost` does
+NOT close TC-97 — with no `@types/node`, `process` has zero declarations and
+`intoHost` answers false exactly as the type test does — and it would REGRESS
+the DOM, because `el.dataset.x` off an own-source `declare const el: HTMLElement`
+is found by the type and not by the declaration. The two tests catch different
+things and the union is what is needed. The unbound arm must NOT be shared with
+`closed-world`: that rule asks whether there is a body a reader could go and
+look at, and an unresolvable callee in somebody's package still is one.
+
+Survey effect: es-toolkit 7 to 5, and nothing else moves. Verified.
+
+**What stands.** `delete anyValue[i]` on an untyped array is unfixable
+statically — es-toolkit's `pullAllBy.ts:136` is `arr: any` with the comment "For
+handling sparse arrays" directly above. There are 13 `any`-receiver bracket
+deletes in the survey and exactly one is an array; silencing all of them trades
+12 true positives for 1. That is the same "nothing static separates the two"
+that withdrew `boxed-elements`, and it is a known false positive rather than a
+fix.
+
+## TC-120 — the finding names as its evidence a sweep its own rule disclaims (2026-08-30, open)
+
+`lib/report.ts:215` scrapes every `bench/*.jl` out of `evidence.source` with a
+regex, so every `megamorphic-elements` finding prints "measured in
+bench/shape-sets.jl and bench/shapes-calibrated.jl" — while the rule's own
+`source` says shapes-calibrated.jl "priced a program this rule is silent on
+(BUGS TC-42)" and its `unreported` calls that sweep "what it misses". A reader
+is pointed at a sweep the rule's own evidence disclaims.
+
+This is TC-33's defect reintroduced by a regex: the citation is derived from
+prose rather than declared. The fix is a declared field on `Evidence`, which is
+cross-cutting, so it is recorded rather than bundled.
+
+## TC-119 — megamorphic-elements pairs an array in one nested function with a read in another (2026-08-30, FIXED 2026-08-30)
+
+`lib/scan.ts` says of `isFunctionLike`: "A function boundary: what the walk
+follows into, and what the rules **must not walk across**." `readsFromElement`
+walked across it. `walk` recurses with `ts.forEachChild` and does not stop at a
+function, so an array declared in one nested function was paired with a property
+read in an unrelated SIBLING nested function, linked only by the identity of the
+element `TS.Type`.
+
+TypeScript's `checker.ts` carries exactly ONE `@jitmax`, on `createTypeChecker`
+at line 1476 — a ~50,000-line function. Six of its eight findings named an array
+that is never loaded from inside its own function:
+
+- `checker.ts:11703` — `const literalMembers: PropertyName[] = []` is filled by
+  `push` and handed to `getRestType`. Write-only. The read the rule matched is
+  `memberDecl.name.kind` at line 33452, 22,000 lines away.
+- `checker.ts:40124` — `checkObjectLiteralAssignment`'s whole body is
+  `properties.length` plus a call. `.length` loads off the ARRAY, whose map does
+  not change with its elements — the exact thing TC-8 exists to exclude. The
+  matched read is at line 22957.
+- vue's `transformText.ts:28` — the matched read is `node.type` at line 21, off
+  `transformText`'s own parameter, a different value, monomorphic per call.
+
+This is TC-94 in the shape TC-94's fix did not cover: that one narrowed "any
+union member" to "the element type", and never tied the read to THIS array or
+THIS scope.
+
+**FIXED 2026-08-30.** `readsFromElement` takes the innermost function that owns
+the array declaration. A parameter's owner IS the body, so the shape
+`bench/shape-sets.jl` measured is untouched — and the sweep's penalty is
+LARGEST at the smallest n (10.78-11.35x at n=256 against 3.37-4.12x at
+n=262144), so short arrays are inside the strongest part of the measured band
+and array size is not what separates a good finding from a bad one.
+
+Survey: 29 sites to 22 — TypeScript 20 to 14, vue 8 to 7, zod's one true
+positive kept. `demo/` and `test/fixtures/shapes` unchanged; the fixture gains
+`nestedScopes`, which reports the array its own function loads from and not the
+write-only local in its sibling.
+
+**Precedent for the sign-off this needed:** TC-8's entry says "requiring a
+property-load site on the element changes what the rule triggers on, which is a
+redesign of the flagship rule and needs sign-off". This changes what it triggers
+on the same way and removes 24% of the survey's errors under it.
+
+**What stands.** The finding is reported at the array DECLARATION while its text
+says "reaches this line … every load here is a lookup" — at `checker.ts:40124`
+there was no load on that line at all. The load site is what goes megamorphic
+and is where the finding belongs. Recorded, not fixed.
+
 ## TC-117 — chained-allocation fires on stage pairs and shapes no cell measured (2026-08-30, open, proposal)
 
 `chained-allocation` fires at 52 distinct sites across 12 codebases and
@@ -829,7 +952,7 @@ names the implementations it can see, hands a five-map receiver to
 host calls are counted and not named while an opaque application callee in the
 same function still fires, and `test/fixtures/escape` asserts both counts.
 
-## TC-97 — `delete-property` cannot see the platform when `@types/node` is absent (2026-08-29, open)
+## TC-97 — `delete-property` cannot see the platform when `@types/node` is absent (2026-08-29, FIXED 2026-08-30 under TC-121, whose entry records why this one's proposal was wrong)
 
 TC-63 gave the rule a host-object test: a `delete` on something declared in
 `@types/node` or `lib.dom.` deletes nothing V8 owns, so the rule stays out. The

@@ -1,6 +1,6 @@
 import type * as TS from 'typescript';
 import type { Ts } from '../ts.ts';
-import { at, unwrap, type Body } from '../scan.ts';
+import { at, isFunctionLike, unwrap, type Body } from '../scan.ts';
 import { N } from '../numbers.ts';
 import {
   arrayValues,
@@ -60,10 +60,22 @@ const evidence: Evidence = {
 //
 // A method call counts: `r.area()` loads `area` off r's map before calling it.
 // So does a destructure, which is the same read written without a dot.
+//
+// The SCOPE to search, not the whole body. `walk` recurses with
+// `ts.forEachChild` and does not stop at a function boundary, which
+// `isFunctionLike` in scan.ts calls "what the rules must not walk across" — so
+// an array declared in one nested function was paired with a read in a SIBLING
+// nested function that never sees it. TypeScript's checker.ts carries ONE
+// annotation, on a 50,000-line `createTypeChecker`, and six of its eight
+// findings named an array nothing loads from: `literalMembers` is filled by
+// `push` and handed on, and the read the rule matched sits 22,000 lines away in
+// an unrelated function. A parameter's owner IS the body, so the shape
+// bench/shape-sets.jl measured is untouched (BUGS TC-119, the case TC-94's fix
+// did not cover).
 function readsFromElement(
   ts: Ts,
   checker: TS.TypeChecker,
-  body: Body,
+  scope: TS.Node,
   element: TS.Type
 ): boolean {
   // The receiver's type has to BE the element type. Accepting any member of it
@@ -100,7 +112,7 @@ function readsFromElement(
     );
   };
   let found = false;
-  walk(ts, body.node, (node) => {
+  walk(ts, scope, (node) => {
     if (found) return;
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
       if (
@@ -123,6 +135,16 @@ function readsFromElement(
 // The two figures are `elem.reads` and `elem.silent.24`; they are not repeated
 // here, because a comment quoting a measurement is a fourth copy of it and
 // this file has already had three drift (BUGS TC-28).
+// The innermost function that owns this array value — where a load off it can
+// reach the same inline cache. A parameter's owner is the body itself, so this
+// changes nothing for a parameter; it only stops a local in one nested function
+// from borrowing a read in another (BUGS TC-119).
+function scopeOf(ts: Ts, decl: TS.Node, body: Body): TS.Node {
+  let n: TS.Node | undefined = decl.parent;
+  while (n && !isFunctionLike(ts, n)) n = n.parent;
+  return n ?? body.node;
+}
+
 const detect: Rule = (ts, checker, body, add) => {
   for (const { p, element } of arrayValues(ts, checker, body)) {
     const shapes = objectShapes(ts, checker, element);
@@ -135,7 +157,7 @@ const detect: Rule = (ts, checker, body, add) => {
     // off an element there is no site to go megamorphic, and the annotation
     // cannot rescue it, because hot code that never reads a property still
     // never reads a property (BUGS TC-8).
-    if (!readsFromElement(ts, checker, body, element)) continue;
+    if (!readsFromElement(ts, checker, scopeOf(ts, p, body), element)) continue;
     add({
       ...at(body.sf, p),
       rule: NAME,

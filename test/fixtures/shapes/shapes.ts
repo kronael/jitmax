@@ -47,3 +47,23 @@ export function branded(rows: Branded[]): number {
 export function otherReceiver(rows: Five[], fallback: A): number {
   return rows.length + fallback.a;
 }
+
+// The load has to be in the array's OWN function. `walk` recurses with
+// `ts.forEachChild` and does not stop at a function boundary, so a write-only
+// array in one nested function borrowed the read in a sibling that never sees
+// it. Six of TypeScript's eight findings were this, under one annotation on a
+// 50,000-line function (BUGS TC-119).
+/** @jitmax */
+export function nestedScopes(): number {
+  function collect(): number {
+    const acc: Five[] = [];
+    for (const a of as) acc.push(a);
+    return acc.length;
+  }
+  function sum(rows: Five[]): number {
+    let n = 0;
+    for (const r of rows) n += r.kind.length;
+    return n;
+  }
+  return collect() + sum([...as, ...bs, ...cs, ...ds, ...es]);
+}

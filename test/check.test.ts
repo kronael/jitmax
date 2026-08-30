@@ -979,10 +979,40 @@ test('a local union array counts, a branded one counts, an unrelated read does n
     [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'shapes')],
     { cwd: root, encoding: 'utf8' }
   );
-  assert.match(run.stdout, /3 annotated functions, 2 errors/);
+  assert.match(run.stdout, /4 annotated functions, 3 errors/);
   assert.match(run.stdout, /fromLocal\(\)/);
   assert.match(run.stdout, /branded\(\)/);
   assert.ok(!run.stdout.includes('otherReceiver'), 'a read off an unrelated value billed the array');
+  // The fourth is `nestedScopes`, and it reports `rows` — the array its own
+  // function loads from — and not `acc`, a write-only local in a SIBLING
+  // function. `walk` does not stop at a function boundary, so `acc` borrowed
+  // the read in `sum`; six of TypeScript's eight findings were that, under one
+  // annotation on a 50,000-line function (BUGS TC-119).
+  assert.match(run.stdout, /rows reaches this line as 5 distinct property sets/);
+  assert.ok(
+    !run.stdout.includes('acc reaches this line'),
+    `an array its own function never loads from was billed:\n${run.stdout}`
+  );
+  assert.strictEqual(run.status, 1);
+});
+
+// A `delete` on something with no hidden class to demote is not this rule's
+// mechanism at all. `globalThis` has no declaration saying it is the host, an
+// identifier that binds to nothing cannot be claimed to have a map, and an
+// array element behind a cast is still an array element — where the printed
+// remedy costs the 1.39-1.66x boxing `boxed-elements` was withdrawn over
+// (BUGS TC-63, TC-97, TC-121).
+test('a delete with no map to demote stays out, and a real one still fires', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'hostdelete')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /2 annotated functions, 1 error/);
+  assert.match(run.stdout, /delete o\[k\] puts its object in dictionary mode/);
+  for (const quiet of ['hostSlot', 'dataset', 'process.env', 'xs as any', 'al as any']) {
+    assert.ok(!run.stdout.includes(quiet), `${quiet} was reported:\n${run.stdout}`);
+  }
   assert.strictEqual(run.status, 1);
 });
 
