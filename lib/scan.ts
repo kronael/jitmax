@@ -46,7 +46,7 @@ export interface Dispatch {
   // `any`, nothing does, and es-toolkit's `isPlainObject(object?: any)` had 42
   // shapes counted at an `object.toString()` that a `typeof` guard three lines
   // up lets one kind of value reach. A megamorphic claim needs the check, so
-  // the count is printed there and not acted on (BUGS TC-99).
+  // the count is printed there and not acted on (BUGS TC-111).
   typed: boolean;
 }
 
@@ -66,7 +66,7 @@ export interface Call extends Site {
   // fourteen-implementation site and a one-implementation site in the same
   // words. The maps reaching a receiver decide the inline cache whether or not
   // the walk could read the callee's body, so the question is asked at both
-  // (BUGS TC-98).
+  // (BUGS TC-110).
   dispatch: Dispatch;
 }
 
@@ -219,7 +219,7 @@ export function unwrap(ts: Ts, e: TS.Expression): TS.Expression {
   // that is the right operand. `(0, eval)('…')` and the `(0, mod.fn)(…)` a
   // bundler emits resolved to a binary expression with no symbol, so the callee
   // walk found no declarations at all and closed-world reported a V8 builtin as
-  // somebody's unreadable code (BUGS TC-98).
+  // somebody's unreadable code (BUGS TC-110).
   while (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.CommaToken) {
     n = unwrap(ts, n.right);
   }
@@ -453,7 +453,7 @@ function reach(
   // inline out of `globalThis`, no reader who can go and look at one, and no map
   // to count: the receiver is a V8 interceptor object, not a JS object. That is
   // the class TC-63 took out of `delete-property`, at the other rule that asks
-  // the same platform-versus-application question (BUGS TC-98).
+  // the same platform-versus-application question (BUGS TC-110).
   //
   // The DECLARATION of the base name, never its type. A value TYPED
   // `Record<string, number>` is declared in lib.es5.d.ts and is an ordinary
@@ -568,7 +568,15 @@ function reach(
               return;
             }
             let base = false;
-            for (const h of depth < 8 ? d.heritageClauses ?? [] : []) {
+            // The depth cap CUTS the walk, and a cut walk is not an empty
+            // constructor. `depth < 8` used to hand a nine-deep `extends` chain
+            // to the `!base` test below, which read "this class declares no
+            // constructor and inherits nothing" and set `emptyCtor` — so the
+            // `new` was not even an escape and the run called itself checked
+            // (BUGS TC-115). A class with heritage the walk refused to follow
+            // stays an escape.
+            const cut = depth >= 8 && (d.heritageClauses ?? []).length > 0;
+            for (const h of cut ? [] : d.heritageClauses ?? []) {
               if (h.token !== ts.SyntaxKind.ExtendsKeyword) continue;
               for (const t of h.types) {
                 for (const b of targetsOf(ts, checker, t.expression)) {
@@ -577,7 +585,12 @@ function reach(
                 }
               }
             }
-            if (!base && inits.length === 0 && d.getSourceFile()?.isDeclarationFile === false) {
+            if (
+              !base &&
+              !cut &&
+              inits.length === 0 &&
+              d.getSourceFile()?.isDeclarationFile === false
+            ) {
               emptyCtor = true;
             }
           };
@@ -636,7 +649,7 @@ function reach(
               // fourteen classes reach reads the same as one nothing reaches.
               // The dataflow walk answers both, and what separates the two
               // rules is which body is missing, not which one got counted
-              // (BUGS TC-98).
+              // (BUGS TC-110).
               const r = flow.receiver(node);
               const one =
                 r.origins.length === 1 && r.unknown.length === 0 ? r.origins[0] : undefined;

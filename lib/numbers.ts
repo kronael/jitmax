@@ -97,8 +97,6 @@ export const N = {
   'chained.n.min': '1000',
   // chained.jl: reading the finished array back, all six chained forms, both sizes — 1 of 12 cells withdrawn as unreplicable (rule 13): splitjoin|packed|excl|1000|dispatch-table
   'chained.silent.reads': '0.95-1.10x',
-  // chained.jl: map then filter with construction counted at n=100000, where bandwidth dominates
-  'chained.silent.big': '1.44-1.52x',
   // chained.jl: Object.keys(o).map(f) against the for-in walk that fuses it, construction counted
   'chained.silent.keys': '0.84-1.00x',
   // chained.jl: xs.map(f).sort() against the same map, construction counted — .sort() is in place

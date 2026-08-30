@@ -1,6 +1,6 @@
 import type * as TS from 'typescript';
 import type { Ts } from '../ts.ts';
-import { at } from '../scan.ts';
+import { at, unwrap } from '../scan.ts';
 import { N } from '../numbers.ts';
 import { cells, isArray, walk, type Evidence, type Rule, type RuleModule } from './shared.ts';
 
@@ -27,8 +27,12 @@ const evidence: Evidence = {
   source: `bench/chained.jl, ${cells(N['chained.cells'])} in the 0.3 sweep, 20 pairs each`,
   silent:
     `reading the finished array costs nothing (${N['chained.silent.reads']} across all ` +
-    `six forms), and at n=100000 map-then-filter falls to ${N['chained.silent.big']}, ` +
-    'where memory bandwidth dominates the allocation; Object.keys(o).map(f) is FASTER ' +
+    'six forms), so a chain built once and read many times is not what this sweep ' +
+    'measured. This clause used to add "and at n=100000 map-then-filter falls to" a ' +
+    'figure that is the SAME figure the cost above quotes: the n=1000 cell it fell FROM ' +
+    'was withdrawn under rule 13 (TC-37), and the sentence outlived its comparator. ' +
+    'map-then-filter now has no measured silence at any size, which is half of what ' +
+    'TC-9 is about for this rule; Object.keys(o).map(f) is FASTER ' +
     `than the for-in loop that fuses it (${N['chained.silent.keys']}), so keys stays out ` +
     'and the rule would be wrong to ask for that rewrite; .sort() and .reverse() sort in ' +
     'place and hand back the same array, so xs.map(f).sort() allocates no more than ' +
@@ -72,8 +76,15 @@ function literalBound(ts: Ts, node: TS.Node): number | undefined {
   const int = (a: TS.Node | undefined): number | undefined =>
     a && ts.isNumericLiteral(a) ? Number(a.text) : undefined;
   let best: number | undefined;
-  let n: TS.Node = node;
-  for (; ts.isCallExpression(n); n = n.expression.expression) {
+  // The exported unwrap at every hop. This walked raw nodes, so one erased
+  // token defeated the whole gate: `(['a','b','c'] as const).map(f).filter(g)`
+  // stopped at the AsExpression and failed the build over a three-element
+  // intermediate. TC-54 recorded "no chain in the survey carries a literal
+  // bound", which was true only of the spelling it checked — typescript-eslint's
+  // `member-ordering.ts:320` carries a four-element one behind `as const`
+  // (BUGS TC-116).
+  let n: TS.Node = unwrap(ts, node as TS.Expression);
+  for (; ts.isCallExpression(n); n = unwrap(ts, n.expression.expression)) {
     if (!ts.isPropertyAccessExpression(n.expression)) break;
     if (n.expression.name.text === 'slice') {
       const [from, to] = [int(n.arguments[0]), int(n.arguments[1])];

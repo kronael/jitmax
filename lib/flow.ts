@@ -113,8 +113,11 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
       else m.set(k, [v]);
     };
     const calleeName = (e: TS.Expression): string | undefined => {
-      let n = e;
-      while (ts.isParenthesizedExpression(n)) n = n.expression;
+      // The exported unwrap, for the reason receiver() takes it: this index is
+      // what paramFlow reads to find a function's callers, and `(f as F)(x)`
+      // never entered it. A caller the index cannot see is an origin the count
+      // silently lacks (BUGS TC-113).
+      const n = unwrap(ts, e);
       if (ts.isPropertyAccessExpression(n)) return n.name.text;
       if (ts.isIdentifier(n)) return n.text;
       return undefined;
@@ -259,7 +262,7 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
           // the same reason `literalShape` sorts names: where the walk cannot
           // tell two maps apart it counts one, rather than warning about a
           // program whose maps nobody has counted (TC-42's direction, BUGS
-          // TC-99).
+          // TC-111).
           o.kind === 'array'
           ? 'A'
           : `${o.kind}:${idOf(o.node)}`;
@@ -574,14 +577,30 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
 
     const out = emptyRes();
     let callers = 0;
+    let capped = false;
     for (const name of names) {
       for (const call of buildIndex().calls.get(name) ?? []) {
         if (!ts.isCallExpression(call)) continue;
         if (!targets(call.expression).some((t) => t === fn || t === p)) continue;
+        if (callers >= 64) {
+          capped = true;
+          break;
+        }
         callers++;
         merge(out, argAt(call, argIndex, param, q));
-        if (callers >= 64) break;
       }
+    }
+    // The cap is said, or the count reads complete when it is not. Stopping
+    // silently at 64 callers let 64 `go(new A())` sites hide a 65th
+    // `go(new B())`: the walk reported ONE implementation, scan.ts followed
+    // A's body as the only one that runs, and the tool printed "every
+    // annotated function is clean" at exit 0 for a call site where B also
+    // runs and no rule ever saw it. That is the clean-run-that-checked-nothing
+    // failure this project exists to prevent (BUGS TC-112).
+    if (capped) {
+      out.unknown.add(
+        `more than 64 visible callers of ${[...names][0]} — not all of them were read`
+      );
     }
     if (callers === 0) {
       out.unknown.add(
@@ -898,8 +917,15 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     const have = traced.get(call);
     if (have) return have;
     const q: Query = { budget: VISIT_BUDGET, stack: new Set(), reading: new Set() };
-    let callee: TS.Expression = call.expression;
-    while (ts.isParenthesizedExpression(callee)) callee = callee.expression;
+    // The exported unwrap, not a fourth parentheses-only loop. scan.ts unwraps
+    // this same callee before it builds `Dispatch.recv` and `.method`, so two
+    // walks that disagree about what the receiver is are two answers to one
+    // question — the drift `unwrap`'s own comment records three earlier copies
+    // of. `p.paint!()` loads `paint` off p's map exactly as `p.paint()` does,
+    // and the `!` is erased before V8 sees anything; without this it took the
+    // bare-call branch and a five-map site read as monomorphic-and-followed
+    // (BUGS TC-113).
+    const callee = unwrap(ts, call.expression);
 
     let res: Res;
     let method: string | undefined;
@@ -929,6 +955,16 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     // its word.
     if (res.tainted && unknowns.length === 0) {
       unknowns.push('the value flow is cyclic, so the count may be incomplete');
+    }
+    // The same statement for the other way origins go missing. `starved` is
+    // set when a query ran out of budget, and `readProperty` drops the budget
+    // MESSAGE as soon as the write channel yields any origin — so this flag is
+    // the only survivor, and nothing read it. An alias chain longer than
+    // MAX_DEPTH turned a two-implementation receiver into "the one
+    // implementation this program builds, and followed": same program, longer
+    // chain, stronger claim (BUGS TC-112).
+    if (res.starved && unknowns.length === 0) {
+      unknowns.push('the analysis budget ran out before every origin was found');
     }
     const out = { origins, unknown: unknowns };
     traced.set(call, out);

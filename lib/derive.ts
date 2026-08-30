@@ -588,13 +588,6 @@ export const CITATIONS: Record<string, Citation> = {
     pick: (r) => r.mode === 'excl',
     agg: 'range',
   },
-  'chained.silent.big': {
-    claims: 'nothing',
-    file: 'chained.jl',
-    cells: 'map then filter with construction counted at n=100000, where bandwidth dominates',
-    pick: (r) => r.variant === 'chained' && r.mode === 'incl' && r.n === 100000,
-    agg: 'range',
-  },
   'chained.silent.keys': {
     claims: 'nothing',
     file: 'chained.jl',

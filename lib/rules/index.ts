@@ -16,6 +16,7 @@ export type { Evidence, Finding } from './shared.ts';
 // One line per code in `defects`, taken from the BUGS.md heading. Keep in
 // sync with BUGS.md: a code appears here only if a rule's `defects` cites it.
 export const DEFECT: Record<string, string> = {
+  'TC-44': 'the rule prices a value that escapes, at a site where it may not',
   'TC-2': 'a TypeScript union member is not a V8 map',
   'TC-9': 'rules fire outside the conditions their own evidence establishes',
   'TC-13': 'a method in a field has no four-map budget',

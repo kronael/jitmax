@@ -3,7 +3,7 @@
 // declaration this program wrote; `(0, eval)` resolves to a binary expression
 // with no symbol at all. Neither is a body a reader can go and look at, and
 // neither has a map to demote — the class TC-63 took out of `delete-property`
-// (BUGS TC-98).
+// (BUGS TC-110).
 declare global {
   // eslint-disable-next-line no-var
   var hostHook: (n: number) => number;

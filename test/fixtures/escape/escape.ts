@@ -3,7 +3,7 @@
 // variable and no function; `run` is a method on five classes reached through a
 // bodyless declaration. The maps decide the inline cache either way, so the
 // count is taken at both and five of them is megamorphic-dispatch's claim, not
-// a note about unreadable code (BUGS TC-98).
+// a note about unreadable code (BUGS TC-110).
 import { P1, P2, P3, P4, P5 } from './dep.d.ts';
 
 class A { run(): number { return 1; } }

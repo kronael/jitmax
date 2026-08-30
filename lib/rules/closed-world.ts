@@ -23,7 +23,7 @@ const evidence: Evidence = {
     'the platform. A call into `globalThis`, a V8 builtin or `@types/node` has no body a ' +
     'reader can go and look at and no `npm install` that produces one, so "inline what you ' +
     'need from it" is advice nobody can take — those are counted and not named (BUGS ' +
-    'TC-55, TC-98). And this bounds what ONE unchecked call can cost, not what any ' +
+    'TC-55, TC-110). And this bounds what ONE unchecked call can cost, not what any ' +
     'particular one does cost ' +
     '— a small callee is inlined and the boundary costs nothing. The trigger and the ' +
     'benchmark are different programs: the rule fires on a callee with no readable body, ' +
@@ -54,7 +54,7 @@ const detect: EscapeRule = (mark, add) => {
     // The receiver's maps decide the inline cache whether or not the callee's
     // body is readable, so this rule asks the megamorphic question the same way
     // interface-dispatch does, and hands the site to the rule that carries the
-    // sweep for it. Unreadable and megamorphic is not two findings (BUGS TC-98).
+    // sweep for it. Unreadable and megamorphic is not two findings (BUGS TC-110).
     if (megamorphicCall(c, add)) continue;
     const d = c.dispatch;
     add({

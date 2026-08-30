@@ -238,7 +238,7 @@ carrying `megamorphic-dispatch`'s benchmark — the same site, whether or not th
 walk could read the callee's body. Below that threshold the count is printed
 rather than acted on. And neither rule fires on the platform: a call into
 `globalThis`, a V8 builtin or `@types/node` has no body an `npm install`
-produces and no map to count, so it is counted and not named. `BUGS.md` TC-98.
+produces and no map to count, so it is counted and not named. `BUGS.md` TC-110.
 
 **Every rule includes the benchmark that earned it, and the case where the same
 benchmark found nothing.** `closed-world` measures the mechanism a call boundary
@@ -371,7 +371,6 @@ published number is no longer what its rows say.
 | `22` | `bench/chained.jl` — the 0.3 sweep, which is every row the dispatch-table kernel wrote — 2 of 24 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table, splitjoin|packed|excl|1000|dispatch-table |
 | `1000` | `bench/chained.jl` — the smallest n any construction-counted cell in this sweep was measured at — 1 of 12 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table |
 | `0.95-1.10x` | `bench/chained.jl` — reading the finished array back, all six chained forms, both sizes — 1 of 12 cells withdrawn as unreplicable (rule 13): splitjoin|packed|excl|1000|dispatch-table |
-| `1.44-1.52x` | `bench/chained.jl` — map then filter with construction counted at n=100000, where bandwidth dominates |
 | `0.84-1.00x` | `bench/chained.jl` — Object.keys(o).map(f) against the for-in walk that fuses it, construction counted |
 | `0.99-1.09x` | `bench/chained.jl` — xs.map(f).sort() against the same map, construction counted — .sort() is in place |
 | `0.91-1.22` | `bench/chained.jl` — every interval measured for those cells |
@@ -569,7 +568,7 @@ SITE: a line reached from 28 annotated functions used to be 28 findings, so
 every count in this section used to be the call-graph fan-in rather than the
 work (`BUGS.md` TC-62). Calls into the platform — Node's own API, V8's builtins
 and anything reached off `globalThis` — are counted for the run and never
-listed (TC-55, TC-98), and every call the walk cannot follow is reported rather
+listed (TC-55, TC-110), and every call the walk cannot follow is reported rather
 than falling through both branches and vanishing (TC-45).
 
 | Library | annotated | findings | what fired |
@@ -597,10 +596,10 @@ a body that IS here at a site the walk cannot bind to one implementation. The
 platform is in neither — Node's own API, V8's builtins and anything reached off
 `globalThis` are counted for the run and never listed, because "inline what you
 need from `path.join`" is advice nobody can take (`BUGS.md` TC-55, TC-69,
-TC-51, TC-98). The 53 errors are what a reader is actually asked to act on.
+TC-51, TC-110). The 53 errors are what a reader is actually asked to act on.
 
 **`megamorphic-dispatch` fires three times** in these 850 annotated functions,
-all three through the escape route added in TC-98 — five or more implementations
+all three through the escape route added in TC-110 — five or more implementations
 reaching one receiver at a call the walk could not follow. immutable's
 `Seq.js:65` and `:83` call `this.__iterateUncached()` and
 `this.__iteratorUncached()`, and ten `Seq` subclasses reach that `this`;
@@ -684,7 +683,7 @@ pipeline, and both megamorphic rules find shapes in it that no utility library
 has. Eight of its ten `megamorphic-dispatch` sites are the rule counting
 declared property sets — `vnode.type` is nine of them, at `.hydrate()`,
 `.process()`, `.remove()` and `.toLowerCase()`. The other two are the escape
-route added in TC-98: `watch.ts:161` calls `.some()` and `.map()` on a `source`
+route added in TC-110: `watch.ts:161` calls `.some()` and `.map()` on a `source`
 that seven allocation sites reach.
 
 **And the survey is what closed TC-8.** Vue reported 46 `megamorphic-elements`

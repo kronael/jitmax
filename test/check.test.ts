@@ -1068,6 +1068,62 @@ test('a call into the platform is counted, not listed', () => {
   assert.strictEqual(run.status, 0);
 });
 
+// The dataflow walk says what it lost, or a cutoff turns into a stronger claim
+// than the program supports. 64 `go(new A())` call sites hid the 65th
+// `go(new B())`: the walk reported ONE implementation, scan.ts followed A as
+// the only body that runs, and every rule ran over a call site where B also
+// runs (BUGS TC-112).
+test('a capped caller walk says so, instead of reporting one implementation', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'cap')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /more than 64 visible callers of go — not all of them were read/);
+  assert.ok(
+    !run.stdout.includes('resolved to the one implementation'),
+    `a capped walk must not resolve a receiver to one body:\n${run.stdout}`
+  );
+  assert.strictEqual(run.status, 0);
+});
+
+// One `!` used to decide whether a five-map call site was megamorphic or
+// monomorphic-and-followed, because lib/flow.ts stripped only parentheses from
+// the callee while lib/scan.ts unwrapped it fully. The token is erased before
+// V8 sees anything (BUGS TC-113).
+test('an erased token does not change what the receiver is', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'erased')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /warn {2}megamorphic-dispatch/);
+  assert.match(run.stdout, /at least 5 implementations built by this program \(A, B, C, D, E\)/);
+  assert.strictEqual(run.status, 0);
+});
+
+// A tsconfig that does not parse must not degrade the run to default compiler
+// options and then call the result clean. That is TC-76's degraded run with the
+// diagnostic removed (BUGS TC-114).
+test('a tsconfig that does not parse fails the run', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jitmax-badconfig-'));
+  fs.writeFileSync(path.join(dir, 'tsconfig.json'), '{ "compilerOptions": { "strict": true');
+  fs.writeFileSync(
+    path.join(dir, 'entry.ts'),
+    '/** @jitmax */\nexport function k(n: number): number {\n  return n + 1;\n}\n'
+  );
+  const run = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), '.'], {
+    cwd: dir,
+    encoding: 'utf8',
+  });
+  assert.notStrictEqual(run.status, 0, `a broken tsconfig exited 0:\n${run.stdout}`);
+  assert.match(`${run.stdout}${run.stderr}`, /nothing here was checked/);
+  assert.ok(
+    !run.stdout.includes('every annotated function is clean'),
+    'the run called itself clean over default options'
+  );
+});
+
 // The host, reached three ways the callee's own declaration cannot see:
 // `globalThis` augmented from own source resolves to a declaration this program
 // wrote, `(0, eval)` resolves to a binary expression with no symbol at all, and
@@ -1075,7 +1131,7 @@ test('a call into the platform is counted, not listed', () => {
 // reader can go and look at, so "inline what you need from it" is advice nobody
 // can take — the same ground TC-63 took `process.env` off `delete-property` on.
 // A genuinely opaque application callee in the same function must STILL fire,
-// or this is silencing the rule rather than aiming it (BUGS TC-98).
+// or this is silencing the rule rather than aiming it (BUGS TC-110).
 test('the host is counted, not listed, and opaque application code still fires', () => {
   const run = spawnSync(
     process.execPath,
@@ -1102,7 +1158,7 @@ test('the host is counted, not listed, and opaque application code still fires',
 // is V8's four-map budget exceeded at a call site — `megamorphic-dispatch`'s
 // claim, carrying `megamorphic-dispatch`'s benchmark, whether or not the walk
 // could read the callee's body. Both used to render as "we have no body for it"
-// (BUGS TC-98).
+// (BUGS TC-110).
 test('an unreadable callee still counts what reaches its receiver', () => {
   const run = spawnSync(
     process.execPath,

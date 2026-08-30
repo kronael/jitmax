@@ -113,14 +113,14 @@ const detect: Rule = (ts, checker, body, add) => {
 // claim carrying THIS rule's benchmark — the same site, whether or not the walk
 // could read the callee's body. It was written out inside interface-dispatch.ts
 // alone, so the other half reported a fourteen-implementation receiver in the
-// same words as a receiver nothing reaches (BUGS TC-98).
+// same words as a receiver nothing reaches (BUGS TC-110).
 //
 // A DECLARED receiver, so `d.typed` has to hold. The walk is path-insensitive
 // and counts what reaches the value; only a declared type checks that against
 // what reaches this call, and es-toolkit's `isPlainObject(object?: any)` counted
 // 42 shapes at an `object.toString()` a `typeof` guard three lines up admits one
 // kind of value to. The count is still printed by the escape rule, and not acted
-// on (BUGS TC-99).
+// on (BUGS TC-111).
 //
 // A RECEIVER, so `d.method` has to be there. `f()` where five functions reach
 // `f` is call-target feedback, not a map at a load site, and bench/dispatch.jl

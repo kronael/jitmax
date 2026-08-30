@@ -588,9 +588,152 @@ described and disable nothing.
 asserted in both directions. The fix changes a printed line and removes a defect
 code from a rule, so it is recorded.
 
-## TC-99 — the receiver count counts what reaches the value, not what reaches the call (2026-08-30, half FIXED 2026-08-30)
+## TC-117 — chained-allocation fires on stage pairs and shapes no cell measured (2026-08-30, open, proposal)
 
-TC-98 gave both escape rules the dataflow count, and the 22-codebase survey
+`chained-allocation` fires at 52 distinct sites across 12 codebases and
+`severity: 'error'`, so all 52 fail a build. Four conditions its benchmark
+establishes and the detector does not check.
+
+**Stage pairs.** `CHAINABLE` holds six names, so the detector matches 36 ordered
+pairs plus `Object.entries → *`. Two pairs were measured. **30 of the 52 sites
+are on pairs no cell ran**, including `.concat().concat()` in just's
+`collection-diff` and `.flatMap().flat()` in typescript-eslint.
+
+**The n gate quotes a different program.** `CHAINED_MIN_N` derives `minn` over
+ALL `mode==='incl'` rows and comes out 1000 — a value set by the `entriesmap`,
+`keysmap`, `chainedsort` and `splitjoin` cells. After rule 13 withdrew the
+n=1000 map-then-filter cell (TC-37) no surviving `map→filter` cell exists below
+n=100000, so a `.map().filter()` chain passes a threshold no `.map().filter()`
+measurement set.
+
+**Construction against read.** The cost exists only in `incl`; the `excl` cells
+measured 0.95-1.10x. Nothing asks whether the array is built once and read many
+times.
+
+**The fusion has to be legal.** Six of the eleven `Object.entries().map()` sites
+are `await Promise.all(Object.entries(o).map(async …))` — valibot's `*Async`
+schemas, `getDefaultsAsync`, `getFallbacksAsync`. The intermediate array holds
+promises and the measured rewrite is a synchronous `for-in` walk, so "do the
+stages in one pass" serialises what `Promise.all` runs together. That is not a
+mis-sized number; it is a fix that changes what the program does.
+
+Narrowing to measured pairs takes 52 to 22. Both that and the `Promise.all`
+exclusion are redesigns — new contract, changed control flow, 30 findings
+removed — so they are recorded here rather than shipped.
+
+## TC-116 — one erased token defeats chained-allocation's literal bound (2026-08-30, FIXED 2026-08-30)
+
+TC-54 gave the rule a gate: a chain whose length a literal fixes is not the
+program the sweep measured. `literalBound` walked raw nodes, so a parenthesis,
+an `as const`, a `satisfies` or a `!` stopped it at the wrapper:
+
+    ['a','b','c'].map(f).filter(g)             silent
+    (['a','b','c']).map(f).filter(g)           error
+    (['a','b','c'] as const).map(f).filter(g)  error
+
+TC-54's own text says "It changed nothing in the 22-codebase survey — no chain
+there carries a literal bound." That was true only of the spelling it checked:
+typescript-eslint's `member-ordering.ts:320` carries a four-element one behind
+`as const`, and the rule failed a build over a three-element intermediate.
+
+**FIXED 2026-08-30** — `literalBound` reads the exported `unwrap` at every hop,
+which is the same one `scan.ts` and `lib/flow.ts` read. typescript-eslint goes
+7 to 6; `demo/` is unchanged at 5.
+
+## TC-118 — chained-allocation's silent clause outlived its comparator (2026-08-30, FIXED 2026-08-30)
+
+The `silent` field said "at n=100000 map-then-filter falls to" a figure that is
+the SAME figure `cost` quotes — `chained.silent.big` and `chained.mapfilter`
+resolve to the same three rows and both render 1.44-1.52x. The n=1000 cell it
+fell FROM was withdrawn under rule 13 (TC-37) and the sentence outlived its
+comparator, so the rule's evidence contained a clause claiming it stays out of
+the one cell it stands on. README's derived table carried the duplicate as two
+rows with one value and two descriptions.
+
+**FIXED 2026-08-30** — the clause is replaced by what is true: map-then-filter
+has no measured silence at any size, which is half of what TC-9 is about for
+this rule. The `chained.silent.big` citation is deleted and `make numbers` ran;
+82 citations now, and the duplicate README row is gone.
+
+## TC-115 — a class heritage chain deeper than 8 reads as an empty constructor (2026-08-30, FIXED 2026-08-30)
+
+`classBodies` in `lib/scan.ts` follows `extends` to a depth of 8. Past that it
+iterated an empty list, and the `!base` test below then read "this class
+declares no constructor and inherits nothing" and set `emptyCtor`, which takes
+the `new` out of `escapes` entirely. A nine-deep chain therefore reported as
+checked. The cap is now distinguished from the absence of heritage: a class
+whose bases the walk refused to follow stays an escape.
+
+## TC-114 — a tsconfig that does not parse degrades the run silently (2026-08-30, FIXED 2026-08-30)
+
+`lib/ts.ts` read the config as `ts.readConfigFile(...).config ?? {}` and never
+looked at `.error`, and never read `parsed.errors` either. A truncated
+`tsconfig.json` therefore produced DEFAULT compiler options — a different
+program from the one the caller named — and the run printed "every annotated
+function is clean" at exit 0 over it. Verified on a directory with one annotated
+function and a `tsconfig.json` cut mid-object.
+
+This is TC-76's degraded run with the diagnostic removed. `bin/jitmax.ts`
+already throws on source syntax errors for exactly this reason; the options that
+decide how the source is read now hold the same gate.
+
+## TC-113 — two walks disagree about what the receiver of a call is (2026-08-30, FIXED 2026-08-30)
+
+`lib/flow.ts`'s `receiver()` stripped only parentheses from the callee, while
+`lib/scan.ts` unwraps the same callee with the exported `unwrap` before it builds
+`Dispatch.recv` and `.method`. One `!` token separated the two answers:
+
+    p.paint()   → warn megamorphic-dispatch: p reaches this call as at least
+                  5 implementations (A, B, C, D, E)
+    p.paint!()  → every annotated function is clean … resolved to the one
+                  implementation this program builds, and followed
+
+The `!` is erased before V8 sees anything — `p.paint!` loads `paint` off p's map
+exactly as `p.paint` does — so the second run is the first program with a
+stronger claim made about it. `(p.paint as F)()` took the same wrong branch.
+This is the fourth copy of a parentheses-only unwrap loop; `unwrap`'s own comment
+records three earlier ones that disagreed.
+
+`calleeName`, which builds the reverse index `paramFlow` reads to find a
+function's callers, had the same loop, so `(f as F)(x)` never entered the index —
+an undercount with nothing to flag it. **FIXED**: both read the exported
+`unwrap`.
+
+## TC-112 — lib/flow.ts loses origins silently, and the walk then follows the wrong one (2026-08-30, FIXED 2026-08-30)
+
+Two cutoffs in the dataflow walk drop origins without saying so, and the caller
+in `lib/scan.ts` follows a single remaining origin as "the one implementation
+this program builds". Both produce a clean run over code nothing checked — the
+TC-7 class.
+
+**The caller cap.** `paramFlow` reads at most 64 call sites of a function and
+added no `unknown` when it stopped. With 64 `go(new A())` sites before one
+`go(new B())`, the run printed "every annotated function is clean" and "1
+interface call resolved to the one implementation this program builds, and
+followed". B runs at that site and no rule saw its body. With four callers the
+same program reports "2 implementations reach this receiver (A, B)".
+
+**The starved flag.** `receiver()` turns `tainted` into an `unknown` and ignored
+`starved`. `readProperty` drops the budget MESSAGE as soon as the write channel
+yields any origin, so the flag is the only survivor — and nothing read it. An
+alias chain past `MAX_DEPTH` turned a two-implementation receiver into one
+followed implementation: same program, longer chain, stronger claim.
+
+**FIXED 2026-08-30** — both say what they lost, which makes
+`origins.length === 1 && unknown.length === 0` in scan.ts refuse to follow, the
+correct downstream effect.
+
+**What stands.** The sibling caps have the same shape and are not yet fixed:
+`ctorArgFlow`'s site cap, the `.slice(0, 128)` write list (the 129th write to a
+property vanishes and can leave exactly one origin), `decls.slice(0, 8)`, and
+`subclassesOf`'s 128. `merge`'s 64-origin cap is direction-safe — it cannot
+reduce a count to one — and needs nothing. The reverse index is keyed by NAME,
+so `import { go as g }` call sites are missed: an undercount feeding the same
+follow decision, with no cheap fix.
+
+## TC-111 — the receiver count counts what reaches the value, not what reaches the call (2026-08-30, half FIXED 2026-08-30)
+
+TC-110 gave both escape rules the dataflow count, and the 22-codebase survey
 immediately showed the count is not the number the finding claims it is. Three
 causes, in descending size.
 
@@ -634,7 +777,7 @@ touch it. A count is a lower bound on what reaches the VALUE and an upper bound
 on nothing. The rule says so in its `fix` line and the survey section says so
 in prose.
 
-## TC-98 — the two escape rules read one field each, and neither counted the maps (2026-08-30, FIXED 2026-08-30)
+## TC-110 — the two escape rules read one field each, and neither counted the maps (2026-08-30, FIXED 2026-08-30)
 
 Three defects in `mark.escapes`, one cause: the split into `closed-world` and
 `interface-dispatch` (TC-93) divided the escapes but not the work done to them.
@@ -4076,7 +4219,38 @@ A change to the printed contract, so: **owner signs off before anything ships.**
 Reproduce: `node examples/annotate.js tmp/lib-zod/packages/zod/src/v4/core` then
 `node bin/jitmax.ts tmp/lib-zod/packages/zod/src/v4/core`.
 
-## TC-18 — allocating-select fires on advancing a cursor, which its benchmark never measured (2026-08-15, open, proposal)
+## TC-18 — allocating-select fires on advancing a cursor, which its benchmark never measured (2026-08-15, FIXED 2026-08-30)
+
+**FIXED 2026-08-30.** Re-measured first: 29 sites across 22 codebases and 2953
+annotated functions, none of them the measured shape — svelte 16, TypeScript 12,
+vue 1. `scope = createChildScope(scope)` takes one argument and can never return
+`scope`; `value = b.call('$.proxy', value)` builds an AST node from a name and a
+child; `spread = getSpreadType(spread, mergedType, node.symbol, objectFlags,
+inConstContext)` merges two types into a third. In each the value changes on
+every pass, so "compare first" skips no store and is not a rewrite — it changes
+what the program computes.
+
+`selectsAmongPeers` is the clause: the call takes nothing but candidates and
+hands one back, which is what `Box.min(a, b)` is and what the sweep ran. A
+receiver whose declared type is `any` fails it — sixteen of the 29 are JSDoc'd
+`.js` where every argument matches. The survey goes 29 to 0; `demo/lib.ts`'s
+`lowest` and the `concise` fixture still fire. Strictly quieter, which is the
+only safe direction for a rule that fails a build.
+
+A peer test alone does NOT reach zero: it leaves the three `getSpreadType`
+sites, which pass it. Requiring the RESULT to be a candidate too is what closes
+them. TC-18's original "six findings to zero" was measured on the older
+12-codebase run.
+
+**What stands:** the clause is necessary and not sufficient. `union(a, b)` over
+two Sets is a merge over two peers and still reports. And TC-44 is still open —
+nothing asks where the target lives, so the rule prices an escaping value at a
+site where it may not escape. The rule now carries TC-44 in its defect list,
+which it did not before.
+
+---
+
+**Original report (2026-08-15).**
 
 Twelve libraries, 850 annotated functions, six `allocating-select` findings, and
 **not one of them is the shape `bench/select.jl` measured.**

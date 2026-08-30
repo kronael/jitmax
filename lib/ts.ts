@@ -32,13 +32,24 @@ export function load(cwd: string): Ts {
 // documented invocation was the degraded one (BUGS TC-76).
 export function program(ts: Ts, cwd: string, inputs: string[]): TS.Program {
   const configPath = ts.findConfigFile(cwd, ts.sys.fileExists, 'tsconfig.json');
-  const parsed = configPath
-    ? ts.parseJsonConfigFileContent(
-        ts.readConfigFile(configPath, ts.sys.readFile).config ?? {},
-        ts.sys,
-        path.dirname(configPath)
-      )
-    : undefined;
+  // A tsconfig that does not read or does not parse fails the run. `.config ??
+  // {}` dropped `.error`, so a truncated `tsconfig.json` silently produced
+  // DEFAULT compiler options — a different program from the one the caller
+  // named — and the tool printed "every annotated function is clean" at exit 0
+  // over it. bin/jitmax.ts already holds source syntax to this gate; the
+  // options that decide how the source is read deserve the same one
+  // (BUGS TC-114).
+  let parsed: TS.ParsedCommandLine | undefined;
+  if (configPath) {
+    const read = ts.readConfigFile(configPath, ts.sys.readFile);
+    if (read.error) {
+      throw new Error(
+        `${configPath}: ${ts.flattenDiagnosticMessageText(read.error.messageText, ' ')}` +
+          ' — nothing here was checked'
+      );
+    }
+    parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(configPath));
+  }
   if (parsed && inputs.length === 0) return ts.createProgram(parsed.fileNames, parsed.options);
 
   // Every extension the tool reads. `.cjs` and `.jsx` were missing, so those

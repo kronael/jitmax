@@ -158,7 +158,7 @@ export const fifthMap = (site: 'load' | 'call'): string =>
 // `megamorphic-dispatch` has a reason it did not, and printing "inside V8's
 // four-map budget" over 37 of them would be the rule contradicting its own
 // threshold. The walk is 0-CFA: it counts what reaches the VALUE, and only a
-// declared type checks that against what reaches this CALL (BUGS TC-99).
+// declared type checks that against what reaches this CALL (BUGS TC-111).
 export function reached(d: Dispatch): string {
   if (d.count === 0) return '';
   const names = d.names.join(', ');
