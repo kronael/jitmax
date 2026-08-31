@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "allowJs": false,
+    "rewriteRelativeImportExtensions": true
+  },
+  "//": "The build that only a CONSUMER needs; a clone never runs it. `rewriteRelativeImportExtensions` is what lets the source keep writing './scan.ts' while the emitted JS says './scan.js' — without it the two spellings would have to differ, and the source spelling is the one Node runs from a clone. Only the CLI's entry point is named: tsc follows its imports, so dist/ holds exactly the transitive closure of what `jitmax` runs, never lib/derive.ts and the bench/ tree it pulls in.",
+  "include": ["bin/jitmax.ts"]
+}

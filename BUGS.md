@@ -26,6 +26,29 @@ Review queue. Found during audits, fixed only when the owner asks.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
+## TC-130 — the peer range admitted TypeScript 7, which has none of the API this tool calls (2026-08-31, FIXED 2026-08-31)
+
+`peerDependencies` said `"typescript": ">=5.0.0"`, so a fresh `npm install`
+resolved **7.0.2** — the native rewrite. It has no `ts.sys` and no
+`ts.createProgram`:
+
+    $ node -e "import('typescript').then(m=>console.log(typeof (m.default??m).sys))"
+    undefined
+
+`lib/ts.ts` calls `ts.findConfigFile(cwd, ts.sys.fileExists, …)` on its second
+line of work and `ts.createProgram` on its fourth, so every install that did not
+already pin 5.x was dead on arrival — before TC-72's type-stripping failure and
+independently of it. This repo develops against a devDependency of `^5.9.0` and
+so never saw it: the only surface where the peer range is what resolves is
+somebody else's install.
+
+Fixed 2026-08-31: the range is `>=5.0.0 <6`, and a test asserts the range has an
+upper bound below 6 rather than trusting the string. Verified by installing the
+packed tarball into a scratch project, where npm now resolves typescript 5.9.3
+and the run prints a finding.
+
+Found 2026-08-31 while reproducing TC-72.
+
 ## TC-128 — the key-order false negative is invisible at the CLI (2026-08-31, open)
 
 Found by an adversarial audit today. `megamorphic-elements` records this gap
@@ -2444,33 +2467,48 @@ than a live wrong claim, which is the work, not the test.
 Found 2026-08-29 by a commissioned CTO review, which also found the one live
 false sentence this gap was hiding.
 
-## TC-72 — the tool cannot be installed as a dependency (2026-08-29, open, owner decision)
+## TC-72 — the tool cannot be installed as a dependency (2026-08-29, FIXED 2026-08-31)
 
-`package.json` declares `"bin": {"jitmax": "bin/jitmax.ts"}` and ships `bin/`
+`package.json` declared `"bin": {"jitmax": "bin/jitmax.ts"}` and shipped `bin/`
 and `lib/` as TypeScript. Node refuses to strip types from a file inside
-`node_modules`, so the documented install path is dead:
+`node_modules`, so the documented install path was dead:
 
     npm pack && npm install jitmax-0.10.0.tgz && node node_modules/.bin/jitmax
     node:internal/modules/typescript:156
         throw new ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING(filename);
 
 A local `npm install /path/to/repo` SYMLINKS, so the file resolves outside
-`node_modules` and appears to work — which is why this survived. Verified
+`node_modules` and appeared to work — which is why this survived. Verified
 2026-08-29 with a packed tarball, which is what a real user gets.
 
-`private: true` hides it today. It stops hiding it the moment TC-50's
-recommendation is taken and this is published, so the two decisions are one
-decision.
+**Fixed 2026-08-31, option 1: the consumed artifact carries compiled JS and
+development stays build-free.** `bin` now points at `bin/cli.js`, a shim that
+prefers `dist/bin/jitmax.js` and falls back to `bin/jitmax.ts`.
+`tsconfig.build.json` emits that `dist/` from the CLI's entry point alone —
+tsc follows the imports, so the tree is exactly what `jitmax` runs — and npm's
+`prepare` runs it on `npm pack`, on publish, and on install **from a git URL**,
+which is the `npx github:kronael/jitmax` path. `dist/` is gitignored and listed
+in `files`, so it exists in every consumed copy and in no clone; the fallback is
+what a clone runs, and it is also what bun runs when it skips `prepare`, since
+bun reads TypeScript anywhere. No runtime dependency was added — `typescript`
+stays a peer. `private: true` is untouched: this is not published, and
+`npm pack` does not need it lifted.
 
-**Two options, and they trade against the same thing.** Ship a compiled `dist/`
-for the published artifact only, keeping development build-free — this project's
-"TypeScript run directly by Node, no build step" is a real property and would
-survive for contributors but not for consumers. Or stay clone-only and delete
-the `bin` field, which is honest and forecloses npm.
+Verified 2026-08-31 on four paths, all against the same annotated fixture:
+`node bin/jitmax.ts demo` from the clone; the packed tarball installed into a
+scratch project and run under node; the same install run under bun; and
+`npx --package <spec> jitmax src` for both a tarball and a `git+file://` URL,
+the stand-in for `github:kronael/jitmax`, where the npx cache holds a `dist/`
+that `prepare` built. Under node with `dist/` deleted from an installed copy the
+shim exits **2**, the code that means the tool failed, rather than letting an
+unhandled rejection exit 1 and read as a finding.
 
-Not applied: this is packaging, it is bound to the licence and publish decisions
-in TC-50, and neither is mine to make. README's instruction to
-`npm install <repo-url>` was FALSE and has been corrected to say so.
+The type-stripping ban is not the only thing that made an install fail; TC-130
+is the second, found while reproducing this one.
+
+`private: true` still hides it from npm. It stops hiding it the moment TC-50's
+recommendation is taken and this is published, so the licence and publish
+decision there is still open — but it is no longer bound to this one.
 
 Found 2026-08-29 by a commissioned CTO review; reproduced here before it was
 written down.

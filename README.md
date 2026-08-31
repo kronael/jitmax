@@ -11,8 +11,16 @@ function is hot, not how large its data is.
 
 ## Use it
 
-Get it. Running needs no build step and it is not on npm, so clone it and run
-it where it lands:
+Run it from the repository — no clone, no build step:
+
+```sh
+npx github:kronael/jitmax src
+```
+
+`bunx github:kronael/jitmax src` does the same. It is not on npm, so the
+repository URL is the name.
+
+Clone it instead if you are going to change it:
 
 ```sh
 git clone https://github.com/kronael/jitmax jitmax
@@ -26,7 +34,7 @@ Mark the function you need fast:
 export function total(rows: Row[]): number { … }
 ```
 
-Point it at your sources:
+From a clone, point it at your sources by path:
 
 ```sh
 node /path/to/jitmax/bin/jitmax.ts src
@@ -38,13 +46,16 @@ could not resolve, or a hot frame from a profile that matched no function here �
 and 2 when the tool itself failed. A gate reads the exit code, so a run that
 could not see everything is never a pass. Warnings alone do not fail a run.
 
-**Installing it as a dependency does not work, and that is a defect, not a
-policy.** `bin/jitmax.ts` is TypeScript run directly by Node, and Node refuses
-to strip types from a file inside `node_modules`, so a packed install fails at
-startup with `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`. Clone it and run it
-by path until that is fixed. `BUGS.md` TC-72.
+**An installed copy runs compiled JavaScript; a clone runs the TypeScript.**
+Node refuses to strip types from any file under `node_modules`, so the `bin`
+entry is a JavaScript shim: it prefers `dist/`, which npm's `prepare` compiles
+into every packed and every git-installed copy, and falls back to
+`bin/jitmax.ts` where there is no `dist/` — a clone, or bun, which reads
+TypeScript anywhere. A clone still needs no build step. `BUGS.md` TC-72.
 
-It loads *your* TypeScript, not a bundled copy.
+It loads *your* TypeScript, not a bundled copy — 5.x, because TypeScript 7 is
+the native rewrite and has neither `ts.sys` nor `ts.createProgram`, which is
+every API this tool is built on (`BUGS.md` TC-130).
 
 ## Configure it
 

@@ -2257,6 +2257,50 @@ test('both published surfaces state this version and this many rules', () => {
   );
 });
 
+// The packaging contract, which nothing checked and which was broken for two
+// releases (BUGS TC-72, TC-130). Both halves are one-line settings a tidying
+// edit can undo silently, and neither shows up in a run from a clone — the
+// only place they are visible is somebody else's `npx`.
+test('an installed copy can run without a type stripper', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as {
+    bin: Record<string, string>;
+    files: string[];
+    scripts: Record<string, string>;
+    peerDependencies: Record<string, string>;
+  };
+
+  // Node refuses to strip types from any file under node_modules, so the entry
+  // point a package manager links has to be JavaScript. `bin/jitmax.ts` was
+  // that entry, and every installed copy died on its first line.
+  const entry = pkg.bin.jitmax;
+  assert.ok(entry.endsWith('.js'), `package.json bin.jitmax is ${entry}; Node cannot strip types under node_modules`);
+  assert.ok(fs.existsSync(path.join(root, entry)), `package.json bin.jitmax names ${entry}, which does not exist`);
+  // The shim's fallback, which is what a clone and bun run.
+  assert.ok(fs.existsSync(path.join(root, 'bin', 'jitmax.ts')));
+
+  // The compiled half: `prepare` emits it on pack and on a git install, and
+  // `files` is what carries it into the tarball. Either one missing leaves the
+  // shim with nothing to prefer and the install back where TC-72 found it.
+  assert.ok(pkg.files.includes('dist/'), 'package.json files no longer ships dist/');
+  assert.match(pkg.scripts.prepare ?? '', /tsconfig\.build\.json/);
+  const build = JSON.parse(fs.readFileSync(path.join(root, 'tsconfig.build.json'), 'utf8')) as {
+    compilerOptions: { noEmit: boolean; outDir: string };
+  };
+  assert.strictEqual(build.compilerOptions.noEmit, false, 'tsconfig.build.json emits nothing');
+  assert.strictEqual(build.compilerOptions.outDir, 'dist');
+
+  // TypeScript 7 is the native rewrite: no `ts.sys` and no `ts.createProgram`,
+  // which is every call lib/ts.ts makes. An open `>=5.0.0` let a fresh install
+  // resolve it, so the tool was dead on arrival for anyone who had not pinned
+  // 5.x themselves — invisible here, because this repo develops against 5.9.
+  const upper = pkg.peerDependencies.typescript.match(/<\s*(\d+)/);
+  assert.ok(upper, `peerDependencies.typescript is ${pkg.peerDependencies.typescript}, which has no upper bound`);
+  assert.ok(
+    Number(upper[1]) <= 6,
+    `peerDependencies.typescript allows TypeScript ${upper[1]}; ts.sys and ts.createProgram are gone from 7`
+  );
+});
+
 // Protocol rule 13 — three whole sweeps per published cell, and agreement is a
 // value common to all three intervals — had no code path to publication.
 // `replicates()` lives in bench/driver.ts and was called from exactly two

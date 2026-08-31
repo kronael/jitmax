@@ -6,15 +6,16 @@
   "private": true,
   "files": [
     "bin/",
+    "dist/",
     "lib/",
     "README.md",
     "LICENSE"
   ],
   "bin": {
-    "jitmax": "bin/jitmax.ts"
+    "jitmax": "bin/cli.js"
   },
   "peerDependencies": {
-    "typescript": ">=5.0.0"
+    "typescript": ">=5.0.0 <6"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
@@ -23,6 +24,7 @@
   },
   "type": "module",
   "scripts": {
+    "prepare": "tsc -p tsconfig.build.json",
     "test": "node --test test/check.test.ts test/tiers.test.ts",
     "lint": "tsc --noEmit"
   },
