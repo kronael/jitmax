@@ -493,3 +493,126 @@ export function storeByDestructuring(rows: (A | B | C | D | E)[]): void {
 export function sliceUnknown(rows: number[]): string[] {
   return rows.slice(2, -3).map((r) => `row ${r}`);
 }
+
+// ——— What reaches an interface-typed receiver, by dataflow (BUGS TC-69) ———
+
+interface Grower {
+  grow(xs: number[]): number[];
+}
+
+/** The one implementation this program builds, behind a factory. The walk used
+ * to stop at the interface signature; the dataflow walk traces GROWER to this
+ * literal, follows `grow`, and the violation inside it is found. */
+function makeGrower(): Grower {
+  return {
+    grow(xs: number[]): number[] {
+      let acc: number[] = [];
+      for (const x of xs) acc = [...acc, x];
+      return acc;
+    },
+  };
+}
+
+const GROWER: Grower = makeGrower();
+
+/** @jitmax */
+export function viaOneImpl(xs: number[]): number[] {
+  return GROWER.grow(xs);
+}
+
+interface Op {
+  run(v: number): number;
+}
+
+/** Five classes, five prototypes, five maps — behind ONE non-union interface,
+ * so the type-based dispatch rule sees nothing at the call. The receiver's
+ * ORIGINS are what carry the count (BUGS TC-69, TC-81, TC-82). */
+class OpA implements Op {
+  a = 1;
+  run(v: number): number {
+    return v + this.a;
+  }
+}
+class OpB implements Op {
+  b = 2;
+  run(v: number): number {
+    return v + this.b;
+  }
+}
+class OpC implements Op {
+  c = 3;
+  run(v: number): number {
+    return v + this.c;
+  }
+}
+class OpD implements Op {
+  d = 4;
+  run(v: number): number {
+    return v + this.d;
+  }
+}
+class OpE implements Op {
+  e = 5;
+  run(v: number): number {
+    return v + this.e;
+  }
+}
+
+const OPS: Op[] = [new OpA(), new OpB(), new OpC(), new OpD(), new OpE()];
+
+/** @jitmax */
+export function runAll(vs: number[]): number {
+  let s = 0;
+  for (const op of OPS) {
+    for (const v of vs) s += op.run(v);
+  }
+  return s;
+}
+
+/** Three implementations are inside V8's four-map budget: a note, never an
+ * error, and never a bare "cannot tell which implementation runs". */
+const TRIO: Op[] = [new OpA(), new OpB(), new OpC()];
+
+/** @jitmax */
+export function runTrio(vs: number[]): number {
+  let s = 0;
+  for (const op of TRIO) {
+    for (const v of vs) s += op.run(v);
+  }
+  return s;
+}
+
+/** A value from JSON.parse has no construction site to count: the walk says
+ * the origin is unknown instead of printing a number it cannot stand behind. */
+/** @jitmax */
+export function runParsed(raw: string): number {
+  const op = JSON.parse(raw) as Op;
+  return op.run(2);
+}
+
+// ——— The delete rewrite is conditional on the program (BUGS TC-79) ———
+
+/** The deleted object reaches Object.keys in the same body. An absent key and
+ * a key holding undefined differ there, so "assign undefined" is not a rewrite
+ * of this program and the fix drops it. */
+/** @jitmax */
+export function scrub(
+  o: Record<string, number | undefined>
+): Record<string, number | undefined> {
+  for (const k of Object.keys(o)) {
+    if (o[k] === undefined) delete o[k];
+  }
+  return o;
+}
+
+function dropTemp(o: Record<string, number>): void {
+  delete o.tmp;
+}
+
+/** The delete is in the callee and the spread is in the caller, on the same
+ * object: the check crosses bodies the way the walk does. */
+/** @jitmax */
+export function dropThenSpread(o: Record<string, number>): Record<string, number> {
+  dropTemp(o);
+  return { ...o };
+}
