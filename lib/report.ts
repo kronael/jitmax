@@ -325,5 +325,12 @@ export function render(
         '  not say how large its data is. Each rule also records where its own\n' +
         '  benchmark found nothing; README.md prints that beside the cost.'
   );
+  if (nothingChecked) {
+    out.push(
+      subject === 'annotated function'
+        ? '  add `/** @jitmax */` above one hot function, then run this command again.'
+        : '  confirm the workload reached this code, or lower `[profile] min_self_pct`.'
+    );
+  }
   return out.join('\n');
 }

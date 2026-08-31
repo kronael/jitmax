@@ -1490,8 +1490,27 @@ test('a directory with no annotation is not a clean run', () => {
   );
   assert.match(run.stdout, /0 annotated functions/);
   assert.match(run.stdout, /nothing was checked, so this is not a clean run/);
+  assert.match(run.stdout, /add `\/\*\* @jitmax \*\/` above one hot function/);
   assert.ok(!run.stdout.includes('is clean.'), 'the clean verdict must not appear');
   assert.strictEqual(run.status, 1, 'the text and the exit code have to say the same thing');
+});
+
+test('a profile selecting no source function says how to make the next run useful', () => {
+  const dir = path.join(root, 'test', 'fixtures', 'profile');
+  const prof = writeProfile(
+    path.join(root, 'tmp', `test-runtime-only-${process.pid}.cpuprofile`),
+    [{ line: 1, column: 1 }],
+    'node:internal/modules/esm/utils'
+  );
+  const run = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), prof, dir], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  fs.unlinkSync(prof);
+  assert.match(run.stdout, /0 hot functions/);
+  assert.match(run.stdout, /confirm the workload reached this code, or lower/);
+  assert.ok(!run.stdout.includes('is clean.'), 'an empty profile selection read as clean');
+  assert.strictEqual(run.status, 1);
 });
 
 // TC-62. One line reached from three annotated functions is one finding. The

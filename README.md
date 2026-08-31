@@ -11,14 +11,15 @@ function is hot, not how large its data is.
 
 ## Use it
 
-Run it from the repository — no clone, no build step:
+Run it from the root of a TypeScript repository — no clone, no build step:
 
 ```sh
-npx github:kronael/jitmax src
+npx github:kronael/jitmax
 ```
 
-`bunx github:kronael/jitmax src` does the same. It is not on npm, so the
-repository URL is the name.
+`bunx github:kronael/jitmax` does the same. With no path argument jitmax reads
+the repository's `tsconfig.json`, including its module resolution and file
+list. It is not on npm, so use the repository URL as the package name.
 
 Clone it instead if you are going to change it:
 
@@ -34,11 +35,13 @@ Mark the function you need fast:
 export function total(rows: Row[]): number { … }
 ```
 
-From a clone, point it at your sources by path:
+From a clone, run it from the TypeScript repository root:
 
 ```sh
-node /path/to/jitmax/bin/jitmax.ts src
+node /path/to/jitmax/bin/jitmax.ts
 ```
+
+Pass paths only when the repository has no usable `tsconfig.json`.
 
 It exits 0 when every annotated function is clean, 1 when it has an error to
 report **or when it could not see everything** — a truncated walk, a module it
@@ -907,7 +910,7 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
 ## Development
 
 ```sh
-make test    # 155 unit tests, including the must-stay-silent cases
+make test    # 156 unit tests, including the must-stay-silent cases
 make lint    # tsc --noEmit
 make numbers # re-derive every published number from the .jl sweeps
 make check   # run the checker against demo/

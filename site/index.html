@@ -95,9 +95,14 @@
 <pre><code>/** @jitmax */
 export function total(rows: Row[]): number { … }</code></pre>
 
-<p>Point it at your source:</p>
+<p>Run it from the root of your TypeScript repository:</p>
 
-<pre><code>node /path/to/jitmax/bin/jitmax.ts src</code></pre>
+<pre><code>npx github:kronael/jitmax</code></pre>
+
+<p>
+  With no path argument it reads the repository's <code>tsconfig.json</code>.
+  Add <code>/** @jitmax */</code> above one hot function, then run it again.
+</p>
 
 <p>
   It prints the line, what is wrong with it, the fix, and the sweep that priced
