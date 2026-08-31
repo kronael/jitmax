@@ -1,5 +1,28 @@
 # Changelog
 
+## [v0.12.1] — 20260831
+
+> jitmax v0.12.1 — the recording is the film
+>
+> The launch loop had a borrowed comic panel in front of it and Google's V8 mark behind it, neither cleared; both are gone and the real terminal recording stands on its own.
+>
+> • The page hero is the asciinema run of the checker, re-cut so it shows what the tool prints today.
+> • The social card is a real frame of that recording — `make card` — so the page cannot advertise output the tool does not produce.
+> • 261 lines of film pipeline and two external image fetches deleted.
+>
+> Full notes: https://github.com/kronael/jitmax/blob/main/CHANGELOG.md
+
+### Changed
+
+- The three-act launch film is one act: the real recording. `make meme`,
+  `asset.py`, `recolour.py`, `capture.js`, `compose.sh` and `rig.template.html`
+  are gone, along with the `curl` targets that fetched Google's V8 mark and the
+  "This Is Fine" panel. `make card` cuts the social card from a frame of the
+  recording (`BUGS.md` TC-30).
+- `demo/demo.gif` and `.mp4` are re-recorded: they were cut on 2026-08-28, and
+  every rule became an error since, so they quoted output the tool no longer
+  prints.
+
 ## [v0.12.0] — 20260831
 
 > jitmax v0.12.0 — every finding fails the run, and npx works
