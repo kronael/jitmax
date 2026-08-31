@@ -37,6 +37,12 @@ export interface Blind {
   // not look at, which is the unresolved-module problem with a different cause:
   // a total miss threw and a partial miss printed `clean` over it (BUGS TC-77).
   unmatched: string[];
+  // Annotated declarations with no body anywhere in this program — an ambient
+  // `declare function`, or an overload signature whose implementation is not
+  // here. The walk had nothing to walk and reported nothing, which read as
+  // clean (BUGS TC-124). An overload signature whose implementation IS here is
+  // not in this list: scan() binds the mark to the implementation instead.
+  bodyless: string[];
 }
 
 // Could this run see everything it was asked to look at? ONE answer, because
@@ -46,7 +52,7 @@ export interface Blind {
 // verdict line and bin/jitmax.ts's exit code both read this, and a third
 // channel added to `Blind` reaches both by being added here.
 export const blinded = (b: Blind): boolean =>
-  b.unresolved.length > 0 || b.unmatched.length > 0;
+  b.unresolved.length > 0 || b.unmatched.length > 0 || b.bodyless.length > 0;
 
 // The first eight, and how many were not printed. Both blindness channels
 // print a list and both truncate it the same way.
@@ -67,7 +73,7 @@ export function render(
   cwd: string,
   results: Array<{ mark: Mark; findings: Finding[] }>,
   suppression: Suppression = { count: 0, keys: [] },
-  blind: Blind = { unresolved: [], unmatched: [] },
+  blind: Blind = { unresolved: [], unmatched: [], bodyless: [] },
   // What the functions in this run are. An annotation is the author asserting
   // hotness; a profile is a measurement of it. The report says which.
   subject = 'annotated function'
@@ -141,6 +147,15 @@ export function render(
       `  ${plural(blind.unmatched.length, 'hot frame')} matched no function in this program,`,
       '  so measured time was not checked — the sources are transformed, or the profile',
       `  is stale: ${listed(blind.unmatched)}`,
+      '  This is not a clean run.'
+    );
+  }
+
+  if (blind.bodyless.length > 0) {
+    out.push(
+      `  ${plural(blind.bodyless.length, 'annotation')} sits on a declaration with no body in`,
+      '  this program, so nothing was checked there — an overload signature whose',
+      `  implementation is elsewhere, or an ambient declaration: ${listed(blind.bodyless)}`,
       '  This is not a clean run.'
     );
   }
@@ -233,6 +248,8 @@ export function render(
       ? `  ${nothing}, but the types above were unreadable: this is not a clean run.`
       : total === 0 && blind.unmatched.length > 0
       ? `  ${nothing}, but the hot frames above matched nothing here: this is not a clean run.`
+      : total === 0 && blind.bodyless.length > 0
+      ? `  ${nothing}, but the annotations above have no body here: this is not a clean run.`
       : total === 0 && partial.length > 0
       ? `  ${nothing}, but ${plural(partial.length, 'walk')} truncated: this is not a clean run.`
       : total === 0

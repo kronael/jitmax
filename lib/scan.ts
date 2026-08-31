@@ -730,13 +730,57 @@ function unresolvedModules(ts: Ts, checker: TS.TypeChecker, files: Set<string>,
   return [...out].sort();
 }
 
+// An annotation on a declaration with no body. `isFunctionLike` is a test on the
+// NODE KIND, and an overload signature and an ambient `declare function` are
+// both that kind with nothing inside them — so the walk had nothing to walk,
+// found nothing, and the run printed "every annotated function is clean" at
+// exit 0 over an unchecked hot body. That is the one failure this tool exists
+// to prevent, and JSDoc above the first overload is the ordinary way to
+// document an overload set (BUGS TC-124).
+//
+// An overload signature HAS a body — on its implementation, which the symbol's
+// other declarations hold. Bind to it. When no declaration anywhere has a body
+// the annotation names something this program cannot read, and that is not a
+// clean run: the mark is dropped and the name is returned so the report can say
+// so. Both paths run here, because `given` marks come from a profile and V8
+// names a body-less declaration just as readily.
+function withBodies(
+  ts: Ts,
+  checker: TS.TypeChecker,
+  marks: Mark[]
+): { marks: Mark[]; bodyless: (Site & { name: string })[] } {
+  const kept: Mark[] = [];
+  const bodyless: (Site & { name: string })[] = [];
+  const seen = new Set<TS.Node>();
+  for (const mark of marks) {
+    let node: TS.SignatureDeclaration | undefined = mark.node;
+    if ((node as TS.FunctionLikeDeclaration).body === undefined) {
+      const name = (node as TS.NamedDeclaration).name;
+      const symbol = name ? checker.getSymbolAtLocation(name) : undefined;
+      node = symbol?.declarations?.find(
+        (d): d is TS.SignatureDeclaration =>
+          isFunctionLike(ts, d) && (d as TS.FunctionLikeDeclaration).body !== undefined
+      );
+      if (node === undefined) {
+        bodyless.push({ name: mark.name, file: mark.file, line: mark.line, column: mark.column });
+        continue;
+      }
+    }
+    // Annotating the signature AND the implementation is one function, not two.
+    if (seen.has(node)) continue;
+    seen.add(node);
+    kept.push(node === mark.node ? mark : newMark(ts, node.getSourceFile(), node, mark.disabled));
+  }
+  return { marks: kept, bodyless };
+}
+
 export function scan(
   ts: Ts,
   program: TS.Program,
   given?: Mark[]
-): { checker: TS.TypeChecker; marks: Mark[]; unresolved: string[] } {
+): { checker: TS.TypeChecker; marks: Mark[]; unresolved: string[]; bodyless: (Site & { name: string })[] } {
   const checker = program.getTypeChecker();
-  const marks = given ?? findMarks(ts, program);
+  const { marks, bodyless } = withBodies(ts, checker, given ?? findMarks(ts, program));
   // One flow analysis per program: its indexes and memo are shared across
   // every mark, because "who writes this field" is a fact about the program
   // and not about the annotation that asked.
@@ -763,5 +807,5 @@ export function scan(
     files.add(mark.file);
     for (const body of mark.reached) files.add(body.sf.fileName);
   }
-  return { checker, marks, unresolved: unresolvedModules(ts, checker, files, program) };
+  return { checker, marks, bodyless, unresolved: unresolvedModules(ts, checker, files, program) };
 }

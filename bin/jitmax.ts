@@ -102,7 +102,7 @@ try {
       `  ${plural(found.marks.length, 'hot function')} from ` +
       `${path.basename(profilePath)} at or above ${minSelfPct}% self time`;
   }
-  const { checker, marks, unresolved } = scan(ts, p, given);
+  const { checker, marks, unresolved, bodyless } = scan(ts, p, given);
 
   const allKeys = new Set(configDisabled);
   for (const mark of marks) for (const key of mark.disabled) allKeys.add(key);
@@ -122,7 +122,13 @@ try {
     return { mark, findings };
   });
 
-  const blind: Blind = { unresolved, unmatched };
+  // Formatted here, like `unmatched` above and for the same reason: scan()
+  // knows the absolute path and only this file knows what it is relative to.
+  const blind: Blind = {
+    unresolved,
+    unmatched,
+    bodyless: bodyless.map((b) => `${b.name} (${path.relative(cwd, b.file) || b.file}:${b.line}:${b.column})`),
+  };
   const out = render(
     cwd,
     results,
