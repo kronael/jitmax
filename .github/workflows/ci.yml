@@ -41,3 +41,19 @@ jobs:
       - run: make all
       # Every V8 citation in README against the pinned checkout.
       - run: make v8-check
+      # The tool against a real library. Pinned like v8src/ is: a gate that
+      # follows a moving upstream reports that upstream changed, not that this
+      # tool did. This check was prose nobody ran until it had been wrong for a
+      # whole release (BUGS TC-123), so it runs here.
+      - name: restore radash
+        id: radash
+        uses: actions/cache@v4
+        with:
+          path: tmp/demo-real
+          key: radash-4cab1900d08e0997abc4f17aec3cbfe18958d766
+      - name: clone radash (cache miss only)
+        if: steps.radash.outputs.cache-hit != 'true'
+        run: |
+          git clone --filter=blob:none https://github.com/rayepps/radash tmp/demo-real
+          git -C tmp/demo-real checkout 4cab1900d08e0997abc4f17aec3cbfe18958d766
+      - run: make reality

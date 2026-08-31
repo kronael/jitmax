@@ -4,9 +4,16 @@
 # before the drift assertions would leave them comparing fresh against fresh,
 # and a stale committed artifact could never fail again.
 .DEFAULT_GOAL := all
-.PHONY: all build builtins test lint check v8-check numbers bench bench-all bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-arguments bench-sparse bench-dispatch bench-delete bench-arrays bench-tc11 tiers example demo meme publish clean
+.PHONY: all verify build builtins test lint check v8-check reality numbers bench bench-all bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-arguments bench-sparse bench-dispatch bench-delete bench-arrays bench-tc11 tiers example demo meme publish clean
 
 all: lint test check
+
+# Every gate, in the order a release needs them: `all` first because it needs
+# nothing but the repo, then the two that need a checkout somebody has to clone
+# (v8src/ and radash) and say so when they do not have it. This is the whole
+# pre-publication list, in one place, because it was three commands and a
+# paragraph of prose, and the paragraph is what went stale (TC-123).
+verify: all v8-check reality
 
 # Regenerate every derived artifact. Never a prerequisite of `all` or `test`.
 build: numbers builtins
@@ -27,6 +34,28 @@ check:
 # non-zero when v8src/ is missing rather than passing quietly.
 v8-check:
 	node bench/v8-check.ts
+
+# The tool against somebody else's library: radash, whose ONE error must be
+# accumulating-spread on `assign`. A second error is a false positive. Warnings
+# are not counted — they are radash's callbacks, which the walk reports rather
+# than drops. A missing checkout exits 2 and says how to get it rather than
+# passing quietly, the same rule as v8-check. This was prose nothing ran, and it
+# asked for a count that had been wrong for a release (TC-123).
+REAL = tmp/demo-real
+reality:
+	@test -d $(REAL)/src || { \
+	  echo "reality: $(REAL)/src is missing. git clone https://github.com/rayepps/radash $(REAL)"; \
+	  exit 2; }
+	@mkdir -p tmp
+	@node bin/jitmax.ts $(REAL)/src > tmp/reality.log 2>&1; \
+	  test $$? -le 1 || { echo "reality: the tool failed"; cat tmp/reality.log; exit 2; }
+	@head -1 tmp/reality.log | grep -q ', 1 error' || { \
+	  echo "reality: expected exactly 1 error — a second error is a false positive"; \
+	  head -1 tmp/reality.log; exit 1; }
+	@grep -q 'error  accumulating-spread' tmp/reality.log || { \
+	  echo "reality: the one error is no longer accumulating-spread"; \
+	  grep -m1 'error ' tmp/reality.log; exit 1; }
+	@head -1 tmp/reality.log
 
 # Every published ratio, re-derived from the .jl sweeps into lib/numbers.ts and
 # README's generated block. `make test` fails when they are out of date.

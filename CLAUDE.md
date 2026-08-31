@@ -138,7 +138,7 @@ implements it and names these numbers next to the code that enforces each one;
    one more means the scheduler must put something on the pinned core. It
    replaced a one-minute load average whose window was dominated by the sweep's
    own previous children — a gate that tripped on an idle machine and could not
-   see a tenant behind the harness; 592 published rows were written above it,
+   see a tenant behind the harness; 601 published rows were written above it,
    registered per file in `make test` and withdrawn nowhere (TC-46). That is a
    model and not a measurement — it is written here so it can be argued with
    rather than discovered in an `if`. What it cannot see is a tenant asleep at
@@ -194,11 +194,17 @@ Results apply only to the engine and hardware tested.
   benchmark in a costume. The function is chosen by `examples/annotate.js`, not
   by taste, and the after half must stay clean under `make test`.
 
-Reality check before any release: `node bin/jitmax.ts tmp/demo-real/src`
-against a radash checkout must report exactly one ERROR — `accumulating-spread`
-on `assign()`. A second error means a false positive shipped. The
-`closed-world` warnings beside it are radash's callback parameters, which the
-walk cannot follow and reports rather than drops (`100f22f`); their count is a
-coverage number, not a verdict. This gate said "exactly one finding" over both
-severities until 2026-08-31, and had been false since v0.10.0 — nothing runs
-it, so nothing caught that (BUGS TC-123).
+Reality check before any release: `make reality`. It runs the tool against a
+radash checkout, where the one error must be `accumulating-spread` on
+`assign()` — a second error is a false positive. Warnings are not counted:
+they are radash's callback parameters, which the walk reports rather than
+drops. Missing checkout exits 2 and says how to clone it.
+
+```sh
+git clone https://github.com/rayepps/radash tmp/demo-real
+make reality
+```
+
+CI runs it on every push, at a pinned radash revision. This was prose asking
+for "exactly one finding" over both severities until 2026-08-31, and had been
+false since v0.10.0, because nothing ran it (BUGS TC-123).
