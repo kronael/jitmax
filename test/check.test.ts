@@ -32,6 +32,24 @@ import { scan, type Mark } from '../lib/scan.ts';
 import { check, DEFECT, EVIDENCE, resolveDisabled } from '../lib/rules.ts';
 import { loadConfig } from '../lib/config.ts';
 import { render } from '../lib/report.ts';
+// The dataflow walkers, at module scope so a test can call one of them on a
+// node of its own (lib/flow.ts).
+import {
+  compute,
+  ctorArgFlow,
+  declsOf,
+  elementsOf,
+  makeIndex,
+  makeWalk,
+  memberValueInner,
+  paramFlow,
+  readProperty,
+  symbolFlow,
+  type Query,
+  type Res,
+  type Walk,
+} from '../lib/flow.ts';
+import type * as TS from 'typescript';
 
 const root = path.join(import.meta.dirname, '..');
 const ts = load(root);
@@ -2206,4 +2224,221 @@ test('README quotes the over-gate register, not a number beside it', () => {
     readme.includes(`${total} published rows were measured under a load gate`),
     `README no longer quotes the over-gate total of ${total} rows`
   );
+});
+
+// ---------------------------------------------------------------------------
+// lib/flow.ts's walkers, called directly.
+//
+// Every one of these was a closure inside `createFlow`, observable only through
+// scan → check → report. That is where both provenance bugs lived and why
+// `isElement` shipped as `t === element` for months: a pure function no test
+// can call is a function whose behaviour is only ever seen through the whole
+// pipeline. `makeWalk` builds the shared state over a tiny program; each test
+// below picks one node and calls ONE walker on it.
+
+let flowFixtures = 0;
+function walkOver(source: string): { walk: Walk; sf: TS.SourceFile; prog: TS.Program } {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jitmax-flow-'));
+  const file = path.join(dir, `f${flowFixtures++}.ts`);
+  fs.writeFileSync(file, source);
+  const prog = program(ts, dir, [file]);
+  const sf = prog.getSourceFile(file) ?? assert.fail(`no source file for ${file}`);
+  return { walk: makeWalk(ts, prog, prog.getTypeChecker()), sf, prog };
+}
+
+function allNodes<T extends TS.Node>(root: TS.Node, is: (n: TS.Node) => n is T): T[] {
+  const out: T[] = [];
+  const visit = (n: TS.Node): void => {
+    if (is(n)) out.push(n);
+    ts.forEachChild(n, visit);
+  };
+  visit(root);
+  return out;
+}
+const nth = <T extends TS.Node>(root: TS.Node, is: (n: TS.Node) => n is T, i = 0): T =>
+  allNodes(root, is)[i] ?? assert.fail('the fixture has no such node');
+const identsNamed = (root: TS.Node, text: string): TS.Identifier[] =>
+  allNodes(root, ts.isIdentifier).filter((id) => id.text === text);
+const fresh = (): Query => ({ budget: 4000, stack: new Set(), reading: new Set() });
+const originNames = (r: Res): string[] => [...r.origins.values()].map((o) => o.name).sort();
+const originKinds = (r: Res): string[] => [...r.origins.values()].map((o) => o.kind).sort();
+
+test('compute resolves a literal, an array, and both arms of a conditional', () => {
+  const { walk, sf } = walkOver(
+    'export const pick = (b: boolean) => (b ? { a: 1, b: 2 } : [1, 2, 3]);\n'
+  );
+  const res = compute(walk, nth(sf, ts.isConditionalExpression), fresh());
+  assert.deepStrictEqual(originKinds(res), ['array', 'literal']);
+  assert.deepStrictEqual([...res.unknown], []);
+  assert.ok(
+    originNames(res).some((n) => n.startsWith('{a,b} (')),
+    `the literal arm is not named by its shape: ${originNames(res).join(' | ')}`
+  );
+});
+
+test('symbolFlow follows a declaration initializer and every later assignment', () => {
+  const { walk, sf } = walkOver(
+    'class A { m(): void {} }\n' +
+      'class B { m(): void {} }\n' +
+      'export function go(): void {\n' +
+      '  let v = new A();\n' +
+      '  v = new B();\n' +
+      '  v.m();\n' +
+      '}\n'
+  );
+  const use = identsNamed(sf, 'v').at(-1) ?? assert.fail('no use of v');
+  const res = symbolFlow(walk, use, fresh());
+  assert.deepStrictEqual(originNames(res), ['A', 'B']);
+  assert.deepStrictEqual([...res.unknown], []);
+});
+
+test('symbolFlow says a declared name nothing assigns is not an origin', () => {
+  const { walk, sf } = walkOver(
+    'declare const g: { m(): void };\nexport function go(): void { g.m(); }\n'
+  );
+  const use = identsNamed(sf, 'g').at(-1) ?? assert.fail('no use of g');
+  const res = symbolFlow(walk, use, fresh());
+  assert.deepStrictEqual(originNames(res), []);
+  assert.deepStrictEqual([...res.unknown], ['g is never visibly assigned']);
+});
+
+test('paramFlow reads every visible caller, and names the function when there is none', () => {
+  const { walk, sf } = walkOver(
+    'class A { m(): void {} }\n' +
+      'class B { m(): void {} }\n' +
+      'function run(v: { m(): void }): void { v.m(); }\n' +
+      'run(new A());\n' +
+      'run(new B());\n' +
+      'export function orphan(v: { m(): void }): void { v.m(); }\n'
+  );
+  const params = allNodes(sf, ts.isParameter);
+  const called = paramFlow(walk, params[0] ?? assert.fail('no parameter of run'), fresh());
+  assert.deepStrictEqual(originNames(called), ['A', 'B']);
+  assert.deepStrictEqual([...called.unknown], []);
+
+  const none = paramFlow(walk, params[1] ?? assert.fail('no parameter of orphan'), fresh());
+  assert.deepStrictEqual(originNames(none), []);
+  assert.deepStrictEqual(
+    [...none.unknown],
+    ['no visible caller of orphan — its arguments come from outside this program']
+  );
+});
+
+test('ctorArgFlow counts new, a subclass that declares no constructor, and super', () => {
+  const { walk, sf } = walkOver(
+    'class Seed {}\n' +
+      'class Leaf {}\n' +
+      'class Root {}\n' +
+      'export class C { constructor(readonly v: object) {} }\n' +
+      'class D extends C {}\n' +
+      'class E extends C { constructor() { super(new Root()); } }\n' +
+      'new C(new Seed());\n' +
+      'new D(new Leaf());\n' +
+      'new E();\n'
+  );
+  const c = allNodes(sf, ts.isClassDeclaration)[3] ?? assert.fail('no class C');
+  const param = nth(c, ts.isParameter);
+  const res = ctorArgFlow(walk, c, 0, param, fresh());
+  assert.deepStrictEqual(originNames(res), ['Leaf', 'Root', 'Seed']);
+  assert.deepStrictEqual([...res.unknown], []);
+});
+
+test('memberValueInner reads an own member, then walks up the extends chain', () => {
+  const { walk, sf } = walkOver(
+    'class Base { tag = { kind: 1 }; run(): void {} }\n' +
+      'class Sub extends Base { other(): void {} }\n' +
+      'export const s = new Sub();\n'
+  );
+  const [base, sub] = allNodes(sf, ts.isClassDeclaration);
+  assert.ok(base && sub, 'the fixture lost a class');
+
+  const own = memberValueInner(walk, base, 'run', false, fresh());
+  assert.deepStrictEqual(originKinds(own), ['function']);
+  assert.deepStrictEqual(originNames(own), ['run()']);
+
+  const inherited = memberValueInner(walk, sub, 'tag', false, fresh());
+  assert.ok(
+    originNames(inherited)[0]?.startsWith('{kind} ('),
+    `the base's field did not reach the subclass: ${originNames(inherited).join(' | ')}`
+  );
+
+  const absent = memberValueInner(walk, sub, 'nope', false, fresh());
+  assert.deepStrictEqual(originNames(absent), []);
+});
+
+// The write channel is matched by property DECLARATION, never by name, or every
+// `.type` field in a program would pour into every other. Passing no
+// declarations is what that channel being closed looks like.
+test('readProperty reads a literal field, plus writes that share its declaration', () => {
+  const { walk, sf } = walkOver(
+    'class A { m(): void {} }\n' +
+      'class B { m(): void {} }\n' +
+      'interface Holder { impl: { m(): void } }\n' +
+      'const h: Holder = { impl: new A() };\n' +
+      'function set(x: Holder): void { x.impl = new B(); }\n' +
+      'export function go(): void { set(h); h.impl.m(); }\n'
+  );
+  const read =
+    allNodes(sf, ts.isPropertyAccessExpression)
+      .filter((a) => a.name.text === 'impl')
+      .at(-1) ?? assert.fail('no read of .impl');
+  const base = walk.valueOf(read.expression, fresh());
+  const decls = declsOf(walk.checker, walk.checker.getSymbolAtLocation(read.name));
+
+  const both = readProperty(walk, base, 'impl', decls, fresh());
+  assert.deepStrictEqual(originNames(both), ['A', 'B']);
+
+  const literalOnly = readProperty(walk, base, 'impl', [], fresh());
+  assert.deepStrictEqual(originNames(literalOnly), ['A']);
+});
+
+test('elementsOf enumerates an array through a spread, and names what it cannot', () => {
+  const { walk, sf } = walkOver(
+    'class A { m(): void {} }\n' +
+      'class B { m(): void {} }\n' +
+      'const tail = [new B()];\n' +
+      'const all = [new A(), ...tail];\n' +
+      'const solo = { m(): void {} };\n' +
+      'export function go(): void {\n' +
+      '  for (const v of all) v.m();\n' +
+      '  solo.m();\n' +
+      '}\n'
+  );
+  const use = identsNamed(sf, 'all').at(-1) ?? assert.fail('no use of all');
+  const res = elementsOf(walk, walk.valueOf(use, fresh()), fresh());
+  assert.deepStrictEqual(originNames(res), ['A', 'B']);
+  assert.deepStrictEqual([...res.unknown], []);
+
+  const notArray = walk.valueOf(nth(sf, ts.isObjectLiteralExpression), fresh());
+  const refused = elementsOf(walk, notArray, fresh());
+  assert.deepStrictEqual(originNames(refused), []);
+  assert.deepStrictEqual(
+    [...refused.unknown],
+    ['an element of a collection the walk cannot enumerate']
+  );
+});
+
+// The reverse-edge index every walker that looks BACKWARDS reads. A caller it
+// cannot see is an origin the count silently lacks, which is how a five-map
+// site read as monomorphic-and-followed (BUGS TC-113).
+test('makeIndex sees a callee behind a cast, a super call, and a property write', () => {
+  const { sf, prog } = walkOver(
+    'type F = (n: number) => void;\n' +
+      'function f(n: number): void { void n; }\n' +
+      'export function go(): void { (f as F)(1); }\n' +
+      'class Base { constructor(readonly n: number) {} }\n' +
+      'class Sub extends Base { constructor() { super(2); } }\n' +
+      'export const s = new Sub();\n' +
+      'export function w(b: { n: number }): void { b.n = 3; }\n'
+  );
+  const index = makeIndex(ts, prog)();
+  assert.strictEqual(
+    (index.calls.get('f') ?? []).length,
+    1,
+    'a call written behind a cast did not enter the index'
+  );
+  assert.strictEqual(index.supers.length, 1);
+  assert.strictEqual(index.supers[0]?.cls, allNodes(sf, ts.isClassDeclaration)[1]);
+  assert.deepStrictEqual((index.writes.get('n') ?? []).map((wr) => wr.kind), ['assign']);
+  assert.strictEqual(index.classes.length, 2);
 });

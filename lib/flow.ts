@@ -27,13 +27,13 @@ import { isFunctionLike, isOwnSource, symbolOf, targetsOf, unwrap } from './scan
 const VISIT_BUDGET = 4000;
 const MAX_DEPTH = 48;
 
-interface Origin {
+export interface Origin {
   kind: 'class' | 'classobj' | 'literal' | 'array' | 'function';
   node: TS.Node;
   name: string;
 }
 
-interface Res {
+export interface Res {
   origins: Map<string, Origin>;
   unknown: Set<string>;
   // Touched a node already on the query stack: a back-edge was cut, so
@@ -60,7 +60,7 @@ export interface Flow {
   receiver(call: TS.CallExpression | TS.NewExpression): Traced;
 }
 
-interface Query {
+export interface Query {
   budget: number;
   stack: Set<TS.Node>;
   // Property and element reads in flight, keyed by container and name.
@@ -71,36 +71,684 @@ interface Query {
   reading: Set<string>;
 }
 
-export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker): Flow {
+// Reverse edges cannot be rooted at the call site — "every caller of f" and
+// "every write to .f" need the program scanned once. Keyed by NAME, resolved
+// by symbol only on demand, so the one pass stays a cheap AST walk and the
+// checker is only asked about candidates a query actually pulls.
+export type Write =
+  | { kind: 'assign'; access: TS.PropertyAccessExpression; value: TS.Expression }
+  | { kind: 'propassign'; prop: TS.PropertyAssignment }
+  | { kind: 'shorthand'; prop: TS.ShorthandPropertyAssignment }
+  | { kind: 'propdecl'; member: TS.PropertyDeclaration };
+
+export interface Index {
+  calls: Map<string, Array<TS.CallExpression | TS.NewExpression>>;
+  writes: Map<string, Write[]>;
+  varWrites: Map<string, TS.BinaryExpression[]>;
+  supers: Array<{ call: TS.CallExpression; cls: TS.ClassLikeDeclaration }>;
+  classes: TS.ClassLikeDeclaration[];
+}
+
+// Everything one program's walk shares: the two module handles, and the
+// memoised answers every query must see the same of. It is the first parameter
+// of every walker below, and that is the whole reason they are out here — a
+// closure over `createFlow`'s locals can only ever be called through the whole
+// pipeline, which is how `isElement` shipped as `t === element` for months.
+// `makeWalk` builds one over a program; a test then calls a single walker on a
+// node of its own.
+export interface Walk {
+  ts: Ts;
+  checker: TS.TypeChecker;
+  idOf(n: TS.Node): number;
+  index(): Index;
+  targets(e: TS.Expression): TS.Node[];
+  childrenOf(): Map<TS.ClassLikeDeclaration, TS.ClassLikeDeclaration[]>;
+  constructed(c: TS.ClassLikeDeclaration): boolean;
+  returnsOf(fn: TS.SignatureDeclaration): TS.Expression[];
+  writeDecls(w: Write, name: string): TS.Node[];
+  valueOf(node: TS.Node, q: Query): Res;
+  literalProperty(lit: TS.ObjectLiteralExpression, name: string, q: Query): Res;
+  memberValue(cls: TS.ClassLikeDeclaration, name: string, wantStatic: boolean, q: Query): Res;
+}
+
+export const strip = (ts: Ts, e: TS.Expression): TS.Expression => unwrap(ts, e);
+
+export const className = (c: TS.ClassLikeDeclaration): string => c.name?.text ?? '<anonymous class>';
+
+export const where = (n: TS.Node): string => {
+  const sf = n.getSourceFile();
+  const { line } = sf.getLineAndCharacterOfPosition(n.getStart(sf));
+  const base = sf.fileName.split('/').pop() ?? sf.fileName;
+  return `${base}:${line + 1}`;
+};
+
+export const emptyRes = (): Res => ({
+  origins: new Map(),
+  unknown: new Set(),
+  tainted: false,
+  starved: false,
+});
+
+// Both sets are capped: past 64 origins every count reads "at least", and
+// past 8 unknown reasons no ninth says anything new. Uncapped, zod's spread
+// chains merged thousand-entry sets quadratically.
+export const merge = (into: Res, from: Res): void => {
+  for (const [k, v] of from.origins) {
+    if (into.origins.size >= 64 && !into.origins.has(k)) continue;
+    into.origins.set(k, v);
+  }
+  for (const u of from.unknown) {
+    if (into.unknown.size >= 8) break;
+    into.unknown.add(u);
+  }
+  into.tainted ||= from.tainted;
+  into.starved ||= from.starved;
+};
+
+export const unknown = (why: string): Res => {
+  const r = emptyRes();
+  r.unknown.add(why);
+  return r;
+};
+
+export const hasSpread = (ts: Ts, n: TS.Node): boolean =>
+  ts.isObjectLiteralExpression(n) && n.properties.some((p) => ts.isSpreadAssignment(p));
+
+// Same sorted-name key the rules use for a property set: names without
+// order, because a type cannot see order, and two literals that agree on
+// names are treated as one map rather than warned about (TC-42's direction).
+export const literalShape = (w: Walk, n: TS.ObjectLiteralExpression): string =>
+  n.properties
+    .map((p) => (p.name && w.ts.isIdentifier(p.name) ? p.name.text : `#${w.idOf(p)}`))
+    .sort()
+    .join(',');
+
+export const originOf = (w: Walk, o: Origin): Res => {
+  const r = emptyRes();
+  const key =
+    o.kind === 'literal' && !hasSpread(w.ts, o.node)
+      ? `L:${literalShape(w, o.node as TS.ObjectLiteralExpression)}`
+      : // Every array literal is ONE key. An array's map is decided by its
+        // elements kind — PACKED_SMI, PACKED, HOLEY — and not by where it was
+        // allocated, so ten `[]` in ten files are one map and were counted as
+        // ten. valibot has 34 sites calling `dataset.issues.push()` and the
+        // count printed at each was 10, every one of them an `array` origin.
+        // Nothing static reads an elements kind, so this collapses to one for
+        // the same reason `literalShape` sorts names: where the walk cannot
+        // tell two maps apart it counts one, rather than warning about a
+        // program whose maps nobody has counted (TC-42's direction, BUGS
+        // TC-111).
+        o.kind === 'array'
+        ? 'A'
+        : `${o.kind}:${w.idOf(o.node)}`;
+  r.origins.set(key, o);
+  return r;
+};
+
+// Object.prototype's own members, which every object literal inherits. A
+// literal that does not spell `toString` still answers a `.toString()` call.
+const OBJECT_PROTOTYPE = new Set([
+  'constructor',
+  'hasOwnProperty',
+  'isPrototypeOf',
+  'propertyIsEnumerable',
+  'toLocaleString',
+  'toString',
+  'valueOf',
+]);
+
+// Whether this origin could be the receiver at a call of `method`. An origin
+// that does not have the method never reaches that call — it would throw — and
+// the walk is path-insensitive, so `if (isArray(source)) source.some(…)` is
+// invisible to it: vue's `watch.ts:161` counted 34 object literals at a call
+// only an array can make, every one of them from a `.spec.ts`.
+//
+// Object literals only. A literal without a spread carries exactly the names
+// it spells plus Object.prototype's, which makes the test exact. A class can
+// merge declarations, inherit from an unread base and carry an index
+// signature, so classes are left alone rather than guessed at.
+export const carries = (ts: Ts, o: Origin, method: string): boolean => {
+  if (o.kind !== 'literal') return true;
+  const lit = o.node as TS.ObjectLiteralExpression;
+  if (hasSpread(ts, lit) || OBJECT_PROTOTYPE.has(method)) return true;
+  return lit.properties.some((p) => {
+    const n = p.name;
+    if (!n) return true;
+    if (ts.isIdentifier(n) || ts.isStringLiteral(n)) return n.text === method;
+    // A computed name is a name the walk cannot read, so it could be this one.
+    return true;
+  });
+};
+
+// The canonical declarations behind a property symbol, so a write through an
+// instantiated generic and a read through another still meet.
+export const declsOf = (checker: TS.TypeChecker, sym: TS.Symbol | undefined): TS.Node[] => {
+  if (!sym) return [];
+  const roots = checker.getRootSymbols(sym);
+  const out: TS.Node[] = [];
+  for (const s of roots.length > 0 ? roots : [sym]) {
+    for (const d of s.getDeclarations() ?? []) out.push(d);
+  }
+  return out;
+};
+
+export const sameProperty = (a: TS.Node[], b: TS.Node[]): boolean => a.some((d) => b.includes(d));
+
+export const bodyOf = (ts: Ts, n: TS.Node): TS.Node | undefined => {
+  if (isFunctionLike(ts, n) && (n as TS.FunctionLikeDeclaration).body) return n;
+  return undefined;
+};
+
+export const subclassesOf = (w: Walk, cls: TS.ClassLikeDeclaration): TS.ClassLikeDeclaration[] => {
+  const out: TS.ClassLikeDeclaration[] = [];
+  const seen = new Set<TS.ClassLikeDeclaration>([cls]);
+  const queue = [cls];
+  for (let i = 0; i < queue.length && out.length < 128; i++) {
+    for (const c of w.childrenOf().get(queue[i]!) ?? []) {
+      if (seen.has(c)) continue;
+      seen.add(c);
+      out.push(c);
+      queue.push(c);
+    }
+  }
+  return out;
+};
+
+export function compute(w: Walk, node: TS.Node, q: Query): Res {
+  const ts = w.ts;
+  const e = ts.isExpression(node) ? strip(ts, node) : node;
+  if (e !== node) return w.valueOf(e, q);
+
+  if (ts.isObjectLiteralExpression(e)) {
+    // The dedup key is the full shape; the printed name is not — a field
+    // object can carry thirty properties and the message needs a handle,
+    // not an inventory.
+    const names = e.properties
+      .map((p) => (p.name && ts.isIdentifier(p.name) ? p.name.text : '…'))
+      .slice(0, 3);
+    const label = e.properties.length > 3 ? `${names.join(',')},…` : names.join(',');
+    return originOf(w, { kind: 'literal', node: e, name: `{${label}} (${where(e)})` });
+  }
+  if (ts.isArrayLiteralExpression(e)) {
+    return originOf(w, { kind: 'array', node: e, name: `array (${where(e)})` });
+  }
+  if (ts.isNewExpression(e)) {
+    const out = emptyRes();
+    for (const d of w.targets(e.expression)) {
+      if (ts.isClassDeclaration(d) || ts.isClassExpression(d)) {
+        merge(out, originOf(w, { kind: 'class', node: d, name: className(d) }));
+      }
+    }
+    if (out.origins.size === 0) out.unknown.add(`new ${e.expression.getText()} resolves to no visible class`);
+    return out;
+  }
+  if (ts.isArrowFunction(e) || ts.isFunctionExpression(e)) {
+    return originOf(w, { kind: 'function', node: e, name: `function (${where(e)})` });
+  }
+  if (ts.isCallExpression(e)) return callResult(w, e, q);
+  if (ts.isAwaitExpression(e)) return w.valueOf(e.expression, q);
+  if (ts.isConditionalExpression(e)) {
+    const out = emptyRes();
+    merge(out, w.valueOf(e.whenTrue, q));
+    merge(out, w.valueOf(e.whenFalse, q));
+    return out;
+  }
+  if (ts.isBinaryExpression(e)) {
+    const k = e.operatorToken.kind;
+    if (
+      k === ts.SyntaxKind.BarBarToken ||
+      k === ts.SyntaxKind.QuestionQuestionToken ||
+      k === ts.SyntaxKind.AmpersandAmpersandToken
+    ) {
+      const out = emptyRes();
+      merge(out, w.valueOf(e.left, q));
+      merge(out, w.valueOf(e.right, q));
+      return out;
+    }
+    if (k === ts.SyntaxKind.EqualsToken || k === ts.SyntaxKind.CommaToken) {
+      return w.valueOf(e.right, q);
+    }
+    return emptyRes();
+  }
+  if (ts.isPropertyAccessExpression(e)) return propRead(w, e, q);
+  if (ts.isElementAccessExpression(e)) return elementsOf(w, w.valueOf(e.expression, q), q);
+  if (e.kind === ts.SyntaxKind.ThisKeyword) return thisFlow(w, e, q);
+  if (ts.isIdentifier(e)) return symbolFlow(w, e, q);
+  // Literals, template strings, unary arithmetic: primitives, which are
+  // never a dispatch receiver the escape test lets through.
+  return emptyRes();
+}
+
+export function symbolFlow(w: Walk, id: TS.Identifier, q: Query): Res {
+  const { ts, checker } = w;
+  const sym = symbolOf(ts, checker, id);
+  const decls = sym?.getDeclarations() ?? [];
+  if (decls.length === 0) return unknown(`${id.text} resolves to nothing — an unresolved import, or untyped code`);
+  const out = emptyRes();
+  for (const d of decls.slice(0, 8)) {
+    if (ts.isVariableDeclaration(d)) {
+      if (d.initializer) merge(out, w.valueOf(d.initializer, q));
+      const list = d.parent;
+      if (
+        !d.initializer &&
+        ts.isVariableDeclarationList(list) &&
+        ts.isForOfStatement(list.parent)
+      ) {
+        merge(out, elementsOf(w, w.valueOf(list.parent.expression, q), q));
+      }
+      for (const wr of w.index().varWrites.get(id.text) ?? []) {
+        if (ts.isIdentifier(wr.left) && checker.getSymbolAtLocation(wr.left) === sym) {
+          merge(out, w.valueOf(wr.right, q));
+        }
+      }
+      if (out.origins.size === 0 && out.unknown.size === 0 && !d.initializer) {
+        out.unknown.add(`${id.text} is never visibly assigned`);
+      }
+    } else if (ts.isParameter(d)) {
+      merge(out, paramFlow(w, d, q));
+    } else if (ts.isBindingElement(d)) {
+      merge(out, bindingFlow(w, d, q));
+    } else if (ts.isFunctionDeclaration(d)) {
+      merge(out, originOf(w, { kind: 'function', node: d, name: `${id.text}()` }));
+    } else if (ts.isClassDeclaration(d) || ts.isClassExpression(d)) {
+      merge(out, originOf(w, { kind: 'classobj', node: d, name: className(d) }));
+    } else if (ts.isEnumDeclaration(d) || ts.isNamespaceImport(d) || ts.isModuleDeclaration(d)) {
+      merge(out, originOf(w, { kind: 'classobj', node: d, name: id.text }));
+    } else {
+      out.unknown.add(`${id.text} is declared as a ${ts.SyntaxKind[d.kind]} the walk does not model`);
+    }
+  }
+  return out;
+}
+
+// `const { Fp } = CURVE` and `function f({ Fp }: Opts)` are field reads
+// written as patterns: find what the pattern's source holds, then read the
+// one property.
+export function bindingFlow(w: Walk, d: TS.BindingElement, q: Query): Res {
+  const { ts, checker } = w;
+  const pattern = d.parent;
+  if (!ts.isObjectBindingPattern(pattern)) return unknown('an array-destructured value');
+  const holder = pattern.parent;
+  const name = ts.isIdentifier(d.propertyName ?? d.name) ? (d.propertyName ?? d.name) : undefined;
+  if (!name || !ts.isIdentifier(name)) return unknown('a computed destructuring key');
+  let src: Res;
+  if (ts.isVariableDeclaration(holder) && holder.initializer) {
+    src = w.valueOf(holder.initializer, q);
+  } else if (ts.isParameter(holder)) {
+    src = paramFlow(w, holder, q);
+  } else {
+    return unknown('a destructuring the walk does not model');
+  }
+  const out = readProperty(w, src, name.text, declsOf(checker, checker.getSymbolAtLocation(d.name)), q);
+  if (d.initializer) merge(out, w.valueOf(d.initializer, q));
+  return out;
+}
+
+export function paramFlow(w: Walk, param: TS.ParameterDeclaration, q: Query): Res {
+  const ts = w.ts;
+  const fn = param.parent;
+  if (!isFunctionLike(ts, fn)) return unknown('a parameter outside a function');
+  if (param.dotDotDotToken) return unknown('a rest parameter');
+  const params = fn.parameters.filter(
+    (p) => !(ts.isIdentifier(p.name) && p.name.text === 'this')
+  );
+  const argIndex = params.indexOf(param);
+  if (argIndex < 0) return unknown('a this-parameter');
+
+  if (ts.isConstructorDeclaration(fn)) {
+    const cls = fn.parent;
+    if (!ts.isClassDeclaration(cls) && !ts.isClassExpression(cls)) {
+      return unknown('a constructor outside a class');
+    }
+    return ctorArgFlow(w, cls, argIndex, param, q);
+  }
+
+  const names = new Set<string>();
+  const fname = (fn as TS.NamedDeclaration).name;
+  if (fname && ts.isIdentifier(fname)) names.add(fname.text);
+  const p = fn.parent;
+  if (p && (ts.isVariableDeclaration(p) || ts.isPropertyAssignment(p)) && ts.isIdentifier(p.name)) {
+    names.add(p.name.text);
+  }
+  if (names.size === 0) return unknown('a callback with no name to find callers by');
+
+  const out = emptyRes();
+  let callers = 0;
+  let capped = false;
+  for (const name of names) {
+    for (const call of w.index().calls.get(name) ?? []) {
+      if (!ts.isCallExpression(call)) continue;
+      if (!w.targets(call.expression).some((t) => t === fn || t === p)) continue;
+      if (callers >= 64) {
+        capped = true;
+        break;
+      }
+      callers++;
+      merge(out, argAt(w, call, argIndex, param, q));
+    }
+  }
+  // The cap is said, or the count reads complete when it is not. Stopping
+  // silently at 64 callers let 64 `go(new A())` sites hide a 65th
+  // `go(new B())`: the walk reported ONE implementation, scan.ts followed
+  // A's body as the only one that runs, and the tool printed "every
+  // annotated function is clean" at exit 0 for a call site where B also
+  // runs and no rule ever saw it. That is the clean-run-that-checked-nothing
+  // failure this project exists to prevent (BUGS TC-112).
+  if (capped) {
+    out.unknown.add(
+      `more than 64 visible callers of ${[...names][0]} — not all of them were read`
+    );
+  }
+  if (callers === 0) {
+    out.unknown.add(
+      `no visible caller of ${[...names][0]} — its arguments come from outside this program`
+    );
+  }
+  return out;
+}
+
+// `new C(x)` runs C's constructor; so does `new D(x)` for a subclass D that
+// declares none, and `super(x)` from a subclass constructor.
+export function ctorArgFlow(
+  w: Walk,
+  cls: TS.ClassLikeDeclaration,
+  argIndex: number,
+  param: TS.ParameterDeclaration,
+  q: Query
+): Res {
+  const ts = w.ts;
+  const out = emptyRes();
+  let sites = 0;
+  const constructing = [cls];
+  for (const sub of subclassesOf(w, cls)) {
+    const ownCtor = sub.members.some((m) => ts.isConstructorDeclaration(m) && m.body);
+    if (!ownCtor) constructing.push(sub);
+  }
+  for (const c of constructing) {
+    const name = c.name?.text;
+    if (name === undefined) continue;
+    for (const call of w.index().calls.get(name) ?? []) {
+      if (!ts.isNewExpression(call)) continue;
+      if (!w.targets(call.expression).includes(c)) continue;
+      sites++;
+      merge(out, argAt(w, call, argIndex, param, q));
+      if (sites >= 64) break;
+    }
+  }
+  for (const s of w.index().supers) {
+    for (const h of s.cls.heritageClauses ?? []) {
+      if (h.token !== ts.SyntaxKind.ExtendsKeyword) continue;
+      if (h.types.some((t) => w.targets(t.expression).includes(cls))) {
+        sites++;
+        merge(out, argAt(w, s.call, argIndex, param, q));
+      }
+    }
+  }
+  if (sites === 0) {
+    out.unknown.add(`no visible construction of ${className(cls)}`);
+  }
+  return out;
+}
+
+export function argAt(
+  w: Walk,
+  call: TS.CallExpression | TS.NewExpression,
+  argIndex: number,
+  param: TS.ParameterDeclaration,
+  q: Query
+): Res {
+  const args: readonly TS.Expression[] = call.arguments ?? [];
+  if (args.slice(0, argIndex + 1).some((a) => w.ts.isSpreadElement(a))) {
+    return unknown('a spread argument');
+  }
+  const arg = args[argIndex];
+  if (arg) return w.valueOf(arg, q);
+  if (param.initializer) return w.valueOf(param.initializer, q);
+  return emptyRes();
+}
+
+// `this` in a method: every visible construction of the class or one of its
+// subclasses can be the receiver. Context-insensitive, like the rest of the
+// walk — an instance built anywhere may call any method.
+export function thisFlow(w: Walk, node: TS.Node, q: Query): Res {
+  const ts = w.ts;
+  let fn: TS.Node | undefined = node;
+  while (fn && !(isFunctionLike(ts, fn) && !ts.isArrowFunction(fn))) fn = fn.parent;
+  if (!fn) return unknown('`this` outside any method');
+  const holder = fn.parent;
+  if (holder && ts.isObjectLiteralExpression(holder)) return w.valueOf(holder, q);
+  if (!holder || (!ts.isClassDeclaration(holder) && !ts.isClassExpression(holder))) {
+    return unknown('`this` in a plain function, whose receiver the walk cannot see');
+  }
+  const isStatic = ts
+    .getCombinedModifierFlags(fn as TS.Declaration)
+    .valueOf() & ts.ModifierFlags.Static;
+  if (isStatic) return originOf(w, { kind: 'classobj', node: holder, name: className(holder) });
+  const out = emptyRes();
+  for (const c of [holder, ...subclassesOf(w, holder)]) {
+    if (w.constructed(c)) merge(out, originOf(w, { kind: 'class', node: c, name: className(c) }));
+  }
+  if (out.origins.size === 0) {
+    out.unknown.add(`no visible construction of ${className(holder)} or a subclass`);
+  }
+  return out;
+}
+
+export function propRead(w: Walk, access: TS.PropertyAccessExpression, q: Query): Res {
+  const base = w.valueOf(access.expression, q);
+  const propDecls = declsOf(w.checker, w.checker.getSymbolAtLocation(access.name));
+  return readProperty(w, base, access.name.text, propDecls, q);
+}
+
+export function readProperty(
+  w: Walk,
+  base: Res,
+  name: string,
+  propDecls: TS.Node[],
+  q: Query
+): Res {
+  const out = emptyRes();
+  out.tainted = base.tainted;
+  out.starved = base.starved;
+  for (const o of base.origins.values()) {
+    if (o.kind === 'literal') {
+      merge(out, w.literalProperty(o.node as TS.ObjectLiteralExpression, name, q));
+    } else if (o.kind === 'class' || o.kind === 'classobj') {
+      merge(out, w.memberValue(o.node as TS.ClassLikeDeclaration, name, o.kind === 'classobj', q));
+    }
+    // array and function origins hold no named field worth following.
+  }
+  // Writes anywhere in the program to the SAME declared property — `this.f =
+  // v` in a constructor, `{ f: v }` under a contextual type — reach a read
+  // the base origins cannot explain. Matched by declaration, not by name, or
+  // every `.type` field in a program would pour into every other.
+  if (propDecls.length > 0) {
+    for (const wr of (w.index().writes.get(name) ?? []).slice(0, 128)) {
+      if (!sameProperty(w.writeDecls(wr, name), propDecls)) continue;
+      if (wr.kind === 'assign') merge(out, w.valueOf(wr.value, q));
+      else if (wr.kind === 'propassign') merge(out, w.valueOf(wr.prop.initializer, q));
+      else if (wr.kind === 'shorthand') merge(out, symbolFlow(w, wr.prop.name, q));
+      else merge(out, w.valueOf(wr.member.initializer!, q));
+    }
+  }
+  if (out.origins.size === 0 && out.unknown.size === 0) {
+    if (base.unknown.size > 0) for (const u of base.unknown) out.unknown.add(u);
+    else out.unknown.add(`no visible write to .${name}`);
+  }
+  return out;
+}
+
+export function literalPropertyInner(
+  w: Walk,
+  lit: TS.ObjectLiteralExpression,
+  name: string,
+  q: Query,
+  out: Res
+): Res {
+  const ts = w.ts;
+  let found = false;
+  for (const p of lit.properties) {
+    if (ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === name) {
+      found = true;
+      merge(out, w.valueOf(p.initializer, q));
+    } else if (ts.isShorthandPropertyAssignment(p) && p.name.text === name) {
+      found = true;
+      merge(out, symbolFlow(w, p.name, q));
+    } else if (ts.isMethodDeclaration(p) && ts.isIdentifier(p.name) && p.name.text === name) {
+      found = true;
+      merge(out, originOf(w, { kind: 'function', node: p, name: `${name}()` }));
+    } else if (ts.isGetAccessorDeclaration(p) && ts.isIdentifier(p.name) && p.name.text === name) {
+      found = true;
+      for (const r of w.returnsOf(p)) merge(out, w.valueOf(r, q));
+    }
+  }
+  if (!found) {
+    for (const p of lit.properties) {
+      if (ts.isSpreadAssignment(p)) {
+        merge(out, readProperty(w, w.valueOf(p.expression, q), name, [], q));
+      }
+    }
+  }
+  return out;
+}
+
+export function memberValueInner(
+  w: Walk,
+  cls: TS.ClassLikeDeclaration,
+  name: string,
+  wantStatic: boolean,
+  q: Query
+): Res {
+  const ts = w.ts;
+  const out = emptyRes();
+  let cur: TS.ClassLikeDeclaration | undefined = cls;
+  for (let depth = 0; cur && depth < 8; depth++) {
+    // A `classobj` origin can be an enum or a namespace object (symbolFlow
+    // files both under it): neither has class members to walk.
+    if (!ts.isClassDeclaration(cur) && !ts.isClassExpression(cur)) break;
+    for (const m of cur.members) {
+      if (!m.name || !ts.isIdentifier(m.name) || m.name.text !== name) continue;
+      const isStatic = Boolean(
+        ts.getCombinedModifierFlags(m as TS.Declaration).valueOf() & ts.ModifierFlags.Static
+      );
+      if (isStatic !== wantStatic) continue;
+      if (ts.isMethodDeclaration(m) && m.body) {
+        merge(out, originOf(w, { kind: 'function', node: m, name: `${name}()` }));
+      } else if (ts.isPropertyDeclaration(m) && m.initializer) {
+        merge(out, w.valueOf(m.initializer, q));
+      } else if (ts.isGetAccessorDeclaration(m) && m.body) {
+        for (const r of w.returnsOf(m)) merge(out, w.valueOf(r, q));
+      }
+    }
+    if (out.origins.size > 0 || out.unknown.size > 0) break;
+    let base: TS.ClassLikeDeclaration | undefined;
+    for (const h of cur.heritageClauses ?? []) {
+      if (h.token !== ts.SyntaxKind.ExtendsKeyword) continue;
+      for (const t of h.types) {
+        const d = w.targets(t.expression).find(
+          (x): x is TS.ClassLikeDeclaration => ts.isClassDeclaration(x) || ts.isClassExpression(x)
+        );
+        if (d) base = d;
+      }
+    }
+    cur = base;
+  }
+  return out;
+}
+
+export function elementsOf(w: Walk, base: Res, q: Query): Res {
+  const ts = w.ts;
+  const out = emptyRes();
+  out.tainted = base.tainted;
+  out.starved = base.starved;
+  for (const o of base.origins.values()) {
+    if (o.kind !== 'array') {
+      out.unknown.add('an element of a collection the walk cannot enumerate');
+      continue;
+    }
+    const key = `e${w.idOf(o.node)}`;
+    if (q.reading.has(key)) {
+      out.tainted = true;
+      continue;
+    }
+    q.reading.add(key);
+    try {
+      for (const el of (o.node as TS.ArrayLiteralExpression).elements) {
+        if (ts.isSpreadElement(el)) merge(out, elementsOf(w, w.valueOf(el.expression, q), q));
+        else merge(out, w.valueOf(el, q));
+      }
+    } finally {
+      q.reading.delete(key);
+    }
+  }
+  for (const u of base.unknown) out.unknown.add(u);
+  return out;
+}
+
+export function callResult(w: Walk, call: TS.CallExpression, q: Query): Res {
+  const ts = w.ts;
+  const callee = strip(ts, call.expression);
+  // Object.freeze hands back the object it was given — ES semantics, not a
+  // measurement. Without this the one literal @noble/curves builds its field
+  // object from reads as "the result of Object.freeze", an unknown.
+  if (
+    ts.isPropertyAccessExpression(callee) &&
+    ts.isIdentifier(callee.expression) &&
+    callee.expression.text === 'Object' &&
+    callee.name.text === 'freeze' &&
+    call.arguments[0]
+  ) {
+    return w.valueOf(call.arguments[0], q);
+  }
+  const found = w.targets(call.expression);
+  const out = emptyRes();
+  let followed = 0;
+  for (const d of found) {
+    let fn: TS.Node | undefined;
+    if (isFunctionLike(ts, d) && (d as TS.FunctionLikeDeclaration).body) fn = d;
+    else if (ts.isVariableDeclaration(d) && d.initializer) {
+      const init = strip(ts, d.initializer);
+      if (isFunctionLike(ts, init) && (init as TS.FunctionLikeDeclaration).body) fn = init;
+    }
+    if (!fn) continue;
+    followed++;
+    for (const r of w.returnsOf(fn as TS.SignatureDeclaration)) merge(out, w.valueOf(r, q));
+  }
+  if (followed === 0) {
+    const text = call.expression.getText();
+    out.unknown.add(
+      text === 'JSON.parse'
+        ? 'a value from JSON.parse, which has no construction site to count'
+        : `the result of ${text}(), whose body the walk cannot read`
+    );
+  }
+  return out;
+}
+
+// The memoised answers, one factory each, so a test can build one over a tiny
+// program and ask it directly rather than through the whole walk. Seven of the
+// ten are here; `valueOf`, `literalProperty` and `memberValue` are not, because
+// each calls a walker and every walker calls back into all three, so a whole
+// Walk is the smallest thing their caches can belong to. Each cache is keyed on
+// nodes of ONE program, so a Walk belongs to one program and is shared by every
+// query against it.
+
+export function makeIdOf(): Walk['idOf'] {
   const ids = new Map<TS.Node, number>();
-  const idOf = (n: TS.Node): number => {
+  return (n) => {
     const have = ids.get(n);
     if (have !== undefined) return have;
     ids.set(n, ids.size + 1);
     return ids.size;
   };
+}
 
+export function makeIndex(ts: Ts, program: TS.Program): Walk['index'] {
   const own = (): TS.SourceFile[] =>
     program.getSourceFiles().filter((sf) => isOwnSource(program, sf));
 
-  // Reverse edges cannot be rooted at the call site — "every caller of f" and
-  // "every write to .f" need the program scanned once. Keyed by NAME, resolved
-  // by symbol only on demand, so the one pass stays a cheap AST walk and the
-  // checker is only asked about candidates a query actually pulls.
-  type Write =
-    | { kind: 'assign'; access: TS.PropertyAccessExpression; value: TS.Expression }
-    | { kind: 'propassign'; prop: TS.PropertyAssignment }
-    | { kind: 'shorthand'; prop: TS.ShorthandPropertyAssignment }
-    | { kind: 'propdecl'; member: TS.PropertyDeclaration };
-  interface Index {
-    calls: Map<string, Array<TS.CallExpression | TS.NewExpression>>;
-    writes: Map<string, Write[]>;
-    varWrites: Map<string, TS.BinaryExpression[]>;
-    supers: Array<{ call: TS.CallExpression; cls: TS.ClassLikeDeclaration }>;
-    classes: TS.ClassLikeDeclaration[];
-  }
   let index: Index | undefined;
-  const buildIndex = (): Index => {
+  return () => {
     if (index) return index;
     const calls = new Map<string, Array<TS.CallExpression | TS.NewExpression>>();
     const writes = new Map<string, Write[]>();
@@ -163,13 +811,33 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     index = { calls, writes, varWrites, supers, classes };
     return index;
   };
+}
 
-  // extends edges, resolved once: which own-source classes derive from which.
+// Symbol resolution is pure per node and the checker is the whole cost of
+// this analysis, so every resolved answer is kept: callee targets, write
+// sites' property declarations, whether a class is ever constructed.
+export function makeTargets(ts: Ts, checker: TS.TypeChecker): Walk['targets'] {
+  const targetCache = new Map<TS.Node, TS.Node[]>();
+  return (e) => {
+    const have = targetCache.get(e);
+    if (have) return have;
+    const out = targetsOf(ts, checker, e);
+    targetCache.set(e, out);
+    return out;
+  };
+}
+
+// extends edges, resolved once: which own-source classes derive from which.
+export function makeChildren(
+  ts: Ts,
+  index: Walk['index'],
+  targets: Walk['targets']
+): Walk['childrenOf'] {
   let childrenMap: Map<TS.ClassLikeDeclaration, TS.ClassLikeDeclaration[]> | undefined;
-  const childrenOf = (): Map<TS.ClassLikeDeclaration, TS.ClassLikeDeclaration[]> => {
+  return () => {
     if (childrenMap) return childrenMap;
     childrenMap = new Map();
-    for (const cls of buildIndex().classes) {
+    for (const cls of index().classes) {
       for (const h of cls.heritageClauses ?? []) {
         if (h.token !== ts.SyntaxKind.ExtendsKeyword) continue;
         for (const t of h.types) {
@@ -184,200 +852,32 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     }
     return childrenMap;
   };
-  const subclassesOf = (cls: TS.ClassLikeDeclaration): TS.ClassLikeDeclaration[] => {
-    const out: TS.ClassLikeDeclaration[] = [];
-    const seen = new Set<TS.ClassLikeDeclaration>([cls]);
-    const queue = [cls];
-    for (let i = 0; i < queue.length && out.length < 128; i++) {
-      for (const c of childrenOf().get(queue[i]!) ?? []) {
-        if (seen.has(c)) continue;
-        seen.add(c);
-        out.push(c);
-        queue.push(c);
-      }
-    }
-    return out;
-  };
+}
 
-  // Symbol resolution is pure per node and the checker is the whole cost of
-  // this analysis, so every resolved answer is kept: callee targets, write
-  // sites' property declarations, whether a class is ever constructed.
-  const targetCache = new Map<TS.Node, TS.Node[]>();
-  const targets = (e: TS.Expression): TS.Node[] => {
-    const have = targetCache.get(e);
-    if (have) return have;
-    const out = targetsOf(ts, checker, e);
-    targetCache.set(e, out);
-    return out;
-  };
-
-  const strip = (e: TS.Expression): TS.Expression => unwrap(ts, e);
-
-  const className = (c: TS.ClassLikeDeclaration): string =>
-    c.name?.text ?? '<anonymous class>';
-  const where = (n: TS.Node): string => {
-    const sf = n.getSourceFile();
-    const { line } = sf.getLineAndCharacterOfPosition(n.getStart(sf));
-    const base = sf.fileName.split('/').pop() ?? sf.fileName;
-    return `${base}:${line + 1}`;
-  };
-
-  const emptyRes = (): Res => ({
-    origins: new Map(),
-    unknown: new Set(),
-    tainted: false,
-    starved: false,
-  });
-  // Both sets are capped: past 64 origins every count reads "at least", and
-  // past 8 unknown reasons no ninth says anything new. Uncapped, zod's spread
-  // chains merged thousand-entry sets quadratically.
-  const merge = (into: Res, from: Res): void => {
-    for (const [k, v] of from.origins) {
-      if (into.origins.size >= 64 && !into.origins.has(k)) continue;
-      into.origins.set(k, v);
-    }
-    for (const u of from.unknown) {
-      if (into.unknown.size >= 8) break;
-      into.unknown.add(u);
-    }
-    into.tainted ||= from.tainted;
-    into.starved ||= from.starved;
-  };
-  const unknown = (why: string): Res => {
-    const r = emptyRes();
-    r.unknown.add(why);
-    return r;
-  };
-  const originOf = (o: Origin): Res => {
-    const r = emptyRes();
-    const key =
-      o.kind === 'literal' && !hasSpread(o.node)
-        ? `L:${literalShape(o.node as TS.ObjectLiteralExpression)}`
-        : // Every array literal is ONE key. An array's map is decided by its
-          // elements kind — PACKED_SMI, PACKED, HOLEY — and not by where it was
-          // allocated, so ten `[]` in ten files are one map and were counted as
-          // ten. valibot has 34 sites calling `dataset.issues.push()` and the
-          // count printed at each was 10, every one of them an `array` origin.
-          // Nothing static reads an elements kind, so this collapses to one for
-          // the same reason `literalShape` sorts names: where the walk cannot
-          // tell two maps apart it counts one, rather than warning about a
-          // program whose maps nobody has counted (TC-42's direction, BUGS
-          // TC-111).
-          o.kind === 'array'
-          ? 'A'
-          : `${o.kind}:${idOf(o.node)}`;
-    r.origins.set(key, o);
-    return r;
-  };
-  const hasSpread = (n: TS.Node): boolean =>
-    ts.isObjectLiteralExpression(n) && n.properties.some((p) => ts.isSpreadAssignment(p));
-  // Same sorted-name key the rules use for a property set: names without
-  // order, because a type cannot see order, and two literals that agree on
-  // names are treated as one map rather than warned about (TC-42's direction).
-  const literalShape = (n: TS.ObjectLiteralExpression): string =>
-    n.properties
-      .map((p) => (p.name && ts.isIdentifier(p.name) ? p.name.text : `#${idOf(p)}`))
-      .sort()
-      .join(',');
-
-  // Object.prototype's own members, which every object literal inherits. A
-  // literal that does not spell `toString` still answers a `.toString()` call.
-  const OBJECT_PROTOTYPE = new Set([
-    'constructor',
-    'hasOwnProperty',
-    'isPrototypeOf',
-    'propertyIsEnumerable',
-    'toLocaleString',
-    'toString',
-    'valueOf',
-  ]);
-
-  // Whether this origin could be the receiver at a call of `method`. An origin
-  // that does not have the method never reaches that call — it would throw — and
-  // the walk is path-insensitive, so `if (isArray(source)) source.some(…)` is
-  // invisible to it: vue's `watch.ts:161` counted 34 object literals at a call
-  // only an array can make, every one of them from a `.spec.ts`.
-  //
-  // Object literals only. A literal without a spread carries exactly the names
-  // it spells plus Object.prototype's, which makes the test exact. A class can
-  // merge declarations, inherit from an unread base and carry an index
-  // signature, so classes are left alone rather than guessed at.
-  const carries = (o: Origin, method: string): boolean => {
-    if (o.kind !== 'literal') return true;
-    const lit = o.node as TS.ObjectLiteralExpression;
-    if (hasSpread(lit) || OBJECT_PROTOTYPE.has(method)) return true;
-    return lit.properties.some((p) => {
-      const n = p.name;
-      if (!n) return true;
-      if (ts.isIdentifier(n) || ts.isStringLiteral(n)) return n.text === method;
-      // A computed name is a name the walk cannot read, so it could be this one.
-      return true;
-    });
-  };
-
-  // The canonical declarations behind a property symbol, so a write through an
-  // instantiated generic and a read through another still meet.
-  const declsOf = (sym: TS.Symbol | undefined): TS.Node[] => {
-    if (!sym) return [];
-    const roots = checker.getRootSymbols(sym);
-    const out: TS.Node[] = [];
-    for (const s of roots.length > 0 ? roots : [sym]) {
-      for (const d of s.getDeclarations() ?? []) out.push(d);
-    }
-    return out;
-  };
-  const sameProperty = (a: TS.Node[], b: TS.Node[]): boolean =>
-    a.some((d) => b.includes(d));
-
-  // Which declared property a write site writes, resolved once per site: the
-  // checker's contextual-type answer is the expensive half of a field read,
-  // and it does not change between queries.
-  const writeDeclCache = new Map<TS.Node, TS.Node[]>();
-  const writeDecls = (
-    w:
-      | { kind: 'assign'; access: TS.PropertyAccessExpression; value: TS.Expression }
-      | { kind: 'propassign'; prop: TS.PropertyAssignment }
-      | { kind: 'shorthand'; prop: TS.ShorthandPropertyAssignment }
-      | { kind: 'propdecl'; member: TS.PropertyDeclaration },
-    name: string
-  ): TS.Node[] => {
-    const node =
-      w.kind === 'assign' ? w.access : w.kind === 'propdecl' ? w.member : w.prop;
-    const have = writeDeclCache.get(node);
-    if (have) return have;
-    let out: TS.Node[];
-    if (w.kind === 'assign') out = declsOf(checker.getSymbolAtLocation(w.access.name));
-    else if (w.kind === 'propdecl') out = declsOf(checker.getSymbolAtLocation(w.member.name));
-    else {
-      const lit = w.prop.parent;
-      out = ts.isObjectLiteralExpression(lit)
-        ? declsOf(checker.getContextualType(lit)?.getProperty(name))
-        : [];
-      // The literal's own property symbol as well: a read typed by the same
-      // literal resolves there rather than at an interface.
-      for (const d of declsOf(checker.getSymbolAtLocation(w.prop.name))) out.push(d);
-    }
-    writeDeclCache.set(node, out);
-    return out;
-  };
-
-  // Whether the program visibly constructs a class, once per class.
+// Whether the program visibly constructs a class, once per class.
+export function makeConstructed(
+  ts: Ts,
+  index: Walk['index'],
+  targets: Walk['targets']
+): Walk['constructed'] {
   const constructedCache = new Map<TS.ClassLikeDeclaration, boolean>();
-  const constructed = (c: TS.ClassLikeDeclaration): boolean => {
+  return (c) => {
     const have = constructedCache.get(c);
     if (have !== undefined) return have;
     const name = c.name?.text;
     const built =
       name !== undefined &&
-      (buildIndex().calls.get(name) ?? []).some(
+      (index().calls.get(name) ?? []).some(
         (call) => ts.isNewExpression(call) && targets(call.expression).includes(c)
       );
     constructedCache.set(c, built);
     return built;
   };
+}
 
+export function makeReturnsOf(ts: Ts): Walk['returnsOf'] {
   const returnsCache = new Map<TS.Node, TS.Expression[]>();
-  const returnsOf = (fn: TS.SignatureDeclaration): TS.Expression[] => {
+  return (fn) => {
     const have = returnsCache.get(fn);
     if (have) return have;
     const out: TS.Expression[] = [];
@@ -395,6 +895,45 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     returnsCache.set(fn, out);
     return out;
   };
+}
+
+// Which declared property a write site writes, resolved once per site: the
+// checker's contextual-type answer is the expensive half of a field read,
+// and it does not change between queries.
+export function makeWriteDecls(ts: Ts, checker: TS.TypeChecker): Walk['writeDecls'] {
+  const writeDeclCache = new Map<TS.Node, TS.Node[]>();
+  return (w, name) => {
+    const node =
+      w.kind === 'assign' ? w.access : w.kind === 'propdecl' ? w.member : w.prop;
+    const have = writeDeclCache.get(node);
+    if (have) return have;
+    let out: TS.Node[];
+    if (w.kind === 'assign') out = declsOf(checker, checker.getSymbolAtLocation(w.access.name));
+    else if (w.kind === 'propdecl') out = declsOf(checker, checker.getSymbolAtLocation(w.member.name));
+    else {
+      const lit = w.prop.parent;
+      out = ts.isObjectLiteralExpression(lit)
+        ? declsOf(checker, checker.getContextualType(lit)?.getProperty(name))
+        : [];
+      // The literal's own property symbol as well: a read typed by the same
+      // literal resolves there rather than at an interface.
+      for (const d of declsOf(checker, checker.getSymbolAtLocation(w.prop.name))) out.push(d);
+    }
+    writeDeclCache.set(node, out);
+    return out;
+  };
+}
+
+// One program's walk: the seven factories above, plus the three memos that
+// close the recursion with the walkers.
+export function makeWalk(ts: Ts, program: TS.Program, checker: TS.TypeChecker): Walk {
+  const idOf = makeIdOf();
+  const index = makeIndex(ts, program);
+  const targets = makeTargets(ts, checker);
+  const childrenOf = makeChildren(ts, index, targets);
+  const constructed = makeConstructed(ts, index, targets);
+  const returnsOf = makeReturnsOf(ts);
+  const writeDecls = makeWriteDecls(ts, checker);
 
   const memo = new Map<TS.Node, Res>();
   const dirty = new Map<TS.Node, Res>();
@@ -413,322 +952,12 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
       return r;
     }
     q.stack.add(node);
-    const res = compute(node, q);
+    const res = compute(walk, node, q);
     q.stack.delete(node);
     if (res.starved) return res;
     if (!res.tainted) memo.set(node, res);
     else dirty.set(node, res);
     return res;
-  }
-
-  function compute(node: TS.Node, q: Query): Res {
-    const e = ts.isExpression(node) ? strip(node) : node;
-    if (e !== node) return valueOf(e, q);
-
-    if (ts.isObjectLiteralExpression(e)) {
-      // The dedup key is the full shape; the printed name is not — a field
-      // object can carry thirty properties and the message needs a handle,
-      // not an inventory.
-      const names = e.properties
-        .map((p) => (p.name && ts.isIdentifier(p.name) ? p.name.text : '…'))
-        .slice(0, 3);
-      const label = e.properties.length > 3 ? `${names.join(',')},…` : names.join(',');
-      return originOf({ kind: 'literal', node: e, name: `{${label}} (${where(e)})` });
-    }
-    if (ts.isArrayLiteralExpression(e)) {
-      return originOf({ kind: 'array', node: e, name: `array (${where(e)})` });
-    }
-    if (ts.isNewExpression(e)) {
-      const out = emptyRes();
-      for (const d of targets(e.expression)) {
-        if (ts.isClassDeclaration(d) || ts.isClassExpression(d)) {
-          merge(out, originOf({ kind: 'class', node: d, name: className(d) }));
-        }
-      }
-      if (out.origins.size === 0) out.unknown.add(`new ${e.expression.getText()} resolves to no visible class`);
-      return out;
-    }
-    if (ts.isArrowFunction(e) || ts.isFunctionExpression(e)) {
-      return originOf({ kind: 'function', node: e, name: `function (${where(e)})` });
-    }
-    if (ts.isCallExpression(e)) return callResult(e, q);
-    if (ts.isAwaitExpression(e)) return valueOf(e.expression, q);
-    if (ts.isConditionalExpression(e)) {
-      const out = emptyRes();
-      merge(out, valueOf(e.whenTrue, q));
-      merge(out, valueOf(e.whenFalse, q));
-      return out;
-    }
-    if (ts.isBinaryExpression(e)) {
-      const k = e.operatorToken.kind;
-      if (
-        k === ts.SyntaxKind.BarBarToken ||
-        k === ts.SyntaxKind.QuestionQuestionToken ||
-        k === ts.SyntaxKind.AmpersandAmpersandToken
-      ) {
-        const out = emptyRes();
-        merge(out, valueOf(e.left, q));
-        merge(out, valueOf(e.right, q));
-        return out;
-      }
-      if (k === ts.SyntaxKind.EqualsToken || k === ts.SyntaxKind.CommaToken) {
-        return valueOf(e.right, q);
-      }
-      return emptyRes();
-    }
-    if (ts.isPropertyAccessExpression(e)) return propRead(e, q);
-    if (ts.isElementAccessExpression(e)) return elementsOf(valueOf(e.expression, q), q);
-    if (e.kind === ts.SyntaxKind.ThisKeyword) return thisFlow(e, q);
-    if (ts.isIdentifier(e)) return symbolFlow(e, q);
-    // Literals, template strings, unary arithmetic: primitives, which are
-    // never a dispatch receiver the escape test lets through.
-    return emptyRes();
-  }
-
-  function symbolFlow(id: TS.Identifier, q: Query): Res {
-    const sym = symbolOf(ts, checker, id);
-    const decls = sym?.getDeclarations() ?? [];
-    if (decls.length === 0) return unknown(`${id.text} resolves to nothing — an unresolved import, or untyped code`);
-    const out = emptyRes();
-    for (const d of decls.slice(0, 8)) {
-      if (ts.isVariableDeclaration(d)) {
-        if (d.initializer) merge(out, valueOf(d.initializer, q));
-        const list = d.parent;
-        if (
-          !d.initializer &&
-          ts.isVariableDeclarationList(list) &&
-          ts.isForOfStatement(list.parent)
-        ) {
-          merge(out, elementsOf(valueOf(list.parent.expression, q), q));
-        }
-        for (const w of buildIndex().varWrites.get(id.text) ?? []) {
-          if (ts.isIdentifier(w.left) && checker.getSymbolAtLocation(w.left) === sym) {
-            merge(out, valueOf(w.right, q));
-          }
-        }
-        if (out.origins.size === 0 && out.unknown.size === 0 && !d.initializer) {
-          out.unknown.add(`${id.text} is never visibly assigned`);
-        }
-      } else if (ts.isParameter(d)) {
-        merge(out, paramFlow(d, q));
-      } else if (ts.isBindingElement(d)) {
-        merge(out, bindingFlow(d, q));
-      } else if (ts.isFunctionDeclaration(d)) {
-        merge(out, originOf({ kind: 'function', node: d, name: `${id.text}()` }));
-      } else if (ts.isClassDeclaration(d) || ts.isClassExpression(d)) {
-        merge(out, originOf({ kind: 'classobj', node: d, name: className(d) }));
-      } else if (ts.isEnumDeclaration(d) || ts.isNamespaceImport(d) || ts.isModuleDeclaration(d)) {
-        merge(out, originOf({ kind: 'classobj', node: d, name: id.text }));
-      } else {
-        out.unknown.add(`${id.text} is declared as a ${ts.SyntaxKind[d.kind]} the walk does not model`);
-      }
-    }
-    return out;
-  }
-
-  // `const { Fp } = CURVE` and `function f({ Fp }: Opts)` are field reads
-  // written as patterns: find what the pattern's source holds, then read the
-  // one property.
-  function bindingFlow(d: TS.BindingElement, q: Query): Res {
-    const pattern = d.parent;
-    if (!ts.isObjectBindingPattern(pattern)) return unknown('an array-destructured value');
-    const holder = pattern.parent;
-    const name = ts.isIdentifier(d.propertyName ?? d.name) ? (d.propertyName ?? d.name) : undefined;
-    if (!name || !ts.isIdentifier(name)) return unknown('a computed destructuring key');
-    let src: Res;
-    if (ts.isVariableDeclaration(holder) && holder.initializer) {
-      src = valueOf(holder.initializer, q);
-    } else if (ts.isParameter(holder)) {
-      src = paramFlow(holder, q);
-    } else {
-      return unknown('a destructuring the walk does not model');
-    }
-    const out = readProperty(src, name.text, declsOf(checker.getSymbolAtLocation(d.name)), q);
-    if (d.initializer) merge(out, valueOf(d.initializer, q));
-    return out;
-  }
-
-  function paramFlow(param: TS.ParameterDeclaration, q: Query): Res {
-    const fn = param.parent;
-    if (!isFunctionLike(ts, fn)) return unknown('a parameter outside a function');
-    if (param.dotDotDotToken) return unknown('a rest parameter');
-    const params = fn.parameters.filter(
-      (p) => !(ts.isIdentifier(p.name) && p.name.text === 'this')
-    );
-    const argIndex = params.indexOf(param);
-    if (argIndex < 0) return unknown('a this-parameter');
-
-    if (ts.isConstructorDeclaration(fn)) {
-      const cls = fn.parent;
-      if (!ts.isClassDeclaration(cls) && !ts.isClassExpression(cls)) {
-        return unknown('a constructor outside a class');
-      }
-      return ctorArgFlow(cls, argIndex, param, q);
-    }
-
-    const names = new Set<string>();
-    const fname = (fn as TS.NamedDeclaration).name;
-    if (fname && ts.isIdentifier(fname)) names.add(fname.text);
-    const p = fn.parent;
-    if (p && (ts.isVariableDeclaration(p) || ts.isPropertyAssignment(p)) && ts.isIdentifier(p.name)) {
-      names.add(p.name.text);
-    }
-    if (names.size === 0) return unknown('a callback with no name to find callers by');
-
-    const out = emptyRes();
-    let callers = 0;
-    let capped = false;
-    for (const name of names) {
-      for (const call of buildIndex().calls.get(name) ?? []) {
-        if (!ts.isCallExpression(call)) continue;
-        if (!targets(call.expression).some((t) => t === fn || t === p)) continue;
-        if (callers >= 64) {
-          capped = true;
-          break;
-        }
-        callers++;
-        merge(out, argAt(call, argIndex, param, q));
-      }
-    }
-    // The cap is said, or the count reads complete when it is not. Stopping
-    // silently at 64 callers let 64 `go(new A())` sites hide a 65th
-    // `go(new B())`: the walk reported ONE implementation, scan.ts followed
-    // A's body as the only one that runs, and the tool printed "every
-    // annotated function is clean" at exit 0 for a call site where B also
-    // runs and no rule ever saw it. That is the clean-run-that-checked-nothing
-    // failure this project exists to prevent (BUGS TC-112).
-    if (capped) {
-      out.unknown.add(
-        `more than 64 visible callers of ${[...names][0]} — not all of them were read`
-      );
-    }
-    if (callers === 0) {
-      out.unknown.add(
-        `no visible caller of ${[...names][0]} — its arguments come from outside this program`
-      );
-    }
-    return out;
-  }
-
-  // `new C(x)` runs C's constructor; so does `new D(x)` for a subclass D that
-  // declares none, and `super(x)` from a subclass constructor.
-  function ctorArgFlow(
-    cls: TS.ClassLikeDeclaration,
-    argIndex: number,
-    param: TS.ParameterDeclaration,
-    q: Query
-  ): Res {
-    const out = emptyRes();
-    let sites = 0;
-    const constructing = [cls];
-    for (const sub of subclassesOf(cls)) {
-      const ownCtor = sub.members.some((m) => ts.isConstructorDeclaration(m) && m.body);
-      if (!ownCtor) constructing.push(sub);
-    }
-    for (const c of constructing) {
-      const name = c.name?.text;
-      if (name === undefined) continue;
-      for (const call of buildIndex().calls.get(name) ?? []) {
-        if (!ts.isNewExpression(call)) continue;
-        if (!targets(call.expression).includes(c)) continue;
-        sites++;
-        merge(out, argAt(call, argIndex, param, q));
-        if (sites >= 64) break;
-      }
-    }
-    for (const s of buildIndex().supers) {
-      for (const h of s.cls.heritageClauses ?? []) {
-        if (h.token !== ts.SyntaxKind.ExtendsKeyword) continue;
-        if (h.types.some((t) => targets(t.expression).includes(cls))) {
-          sites++;
-          merge(out, argAt(s.call, argIndex, param, q));
-        }
-      }
-    }
-    if (sites === 0) {
-      out.unknown.add(`no visible construction of ${className(cls)}`);
-    }
-    return out;
-  }
-
-  function argAt(
-    call: TS.CallExpression | TS.NewExpression,
-    argIndex: number,
-    param: TS.ParameterDeclaration,
-    q: Query
-  ): Res {
-    const args: readonly TS.Expression[] = call.arguments ?? [];
-    if (args.slice(0, argIndex + 1).some((a) => ts.isSpreadElement(a))) {
-      return unknown('a spread argument');
-    }
-    const arg = args[argIndex];
-    if (arg) return valueOf(arg, q);
-    if (param.initializer) return valueOf(param.initializer, q);
-    return emptyRes();
-  }
-
-  // `this` in a method: every visible construction of the class or one of its
-  // subclasses can be the receiver. Context-insensitive, like the rest of the
-  // walk — an instance built anywhere may call any method.
-  function thisFlow(node: TS.Node, q: Query): Res {
-    let fn: TS.Node | undefined = node;
-    while (fn && !(isFunctionLike(ts, fn) && !ts.isArrowFunction(fn))) fn = fn.parent;
-    if (!fn) return unknown('`this` outside any method');
-    const holder = fn.parent;
-    if (holder && ts.isObjectLiteralExpression(holder)) return valueOf(holder, q);
-    if (!holder || (!ts.isClassDeclaration(holder) && !ts.isClassExpression(holder))) {
-      return unknown('`this` in a plain function, whose receiver the walk cannot see');
-    }
-    const isStatic = ts
-      .getCombinedModifierFlags(fn as TS.Declaration)
-      .valueOf() & ts.ModifierFlags.Static;
-    if (isStatic) return originOf({ kind: 'classobj', node: holder, name: className(holder) });
-    const out = emptyRes();
-    for (const c of [holder, ...subclassesOf(holder)]) {
-      if (constructed(c)) merge(out, originOf({ kind: 'class', node: c, name: className(c) }));
-    }
-    if (out.origins.size === 0) {
-      out.unknown.add(`no visible construction of ${className(holder)} or a subclass`);
-    }
-    return out;
-  }
-
-  function propRead(access: TS.PropertyAccessExpression, q: Query): Res {
-    const base = valueOf(access.expression, q);
-    const propDecls = declsOf(checker.getSymbolAtLocation(access.name));
-    return readProperty(base, access.name.text, propDecls, q);
-  }
-
-  function readProperty(base: Res, name: string, propDecls: TS.Node[], q: Query): Res {
-    const out = emptyRes();
-    out.tainted = base.tainted;
-    out.starved = base.starved;
-    for (const o of base.origins.values()) {
-      if (o.kind === 'literal') {
-        merge(out, literalProperty(o.node as TS.ObjectLiteralExpression, name, q));
-      } else if (o.kind === 'class' || o.kind === 'classobj') {
-        merge(out, memberValue(o.node as TS.ClassLikeDeclaration, name, o.kind === 'classobj', q));
-      }
-      // array and function origins hold no named field worth following.
-    }
-    // Writes anywhere in the program to the SAME declared property — `this.f =
-    // v` in a constructor, `{ f: v }` under a contextual type — reach a read
-    // the base origins cannot explain. Matched by declaration, not by name, or
-    // every `.type` field in a program would pour into every other.
-    if (propDecls.length > 0) {
-      for (const w of (buildIndex().writes.get(name) ?? []).slice(0, 128)) {
-        if (!sameProperty(writeDecls(w, name), propDecls)) continue;
-        if (w.kind === 'assign') merge(out, valueOf(w.value, q));
-        else if (w.kind === 'propassign') merge(out, valueOf(w.prop.initializer, q));
-        else if (w.kind === 'shorthand') merge(out, symbolFlow(w.prop.name, q));
-        else merge(out, valueOf(w.member.initializer!, q));
-      }
-    }
-    if (out.origins.size === 0 && out.unknown.size === 0) {
-      if (base.unknown.size > 0) for (const u of base.unknown) out.unknown.add(u);
-      else out.unknown.add(`no visible write to .${name}`);
-    }
-    return out;
   }
 
   // Memoized like valueOf, for the same reason: a spread chain re-expands the
@@ -745,44 +974,12 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     }
     q.reading.add(key);
     try {
-      const res = literalPropertyInner(lit, name, q, out);
+      const res = literalPropertyInner(walk, lit, name, q, out);
       if (!res.starved) litPropCache.set(key, res);
       return res;
     } finally {
       q.reading.delete(key);
     }
-  }
-
-  function literalPropertyInner(
-    lit: TS.ObjectLiteralExpression,
-    name: string,
-    q: Query,
-    out: Res
-  ): Res {
-    let found = false;
-    for (const p of lit.properties) {
-      if (ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === name) {
-        found = true;
-        merge(out, valueOf(p.initializer, q));
-      } else if (ts.isShorthandPropertyAssignment(p) && p.name.text === name) {
-        found = true;
-        merge(out, symbolFlow(p.name, q));
-      } else if (ts.isMethodDeclaration(p) && ts.isIdentifier(p.name) && p.name.text === name) {
-        found = true;
-        merge(out, originOf({ kind: 'function', node: p, name: `${name}()` }));
-      } else if (ts.isGetAccessorDeclaration(p) && ts.isIdentifier(p.name) && p.name.text === name) {
-        found = true;
-        for (const r of returnsOf(p)) merge(out, valueOf(r, q));
-      }
-    }
-    if (!found) {
-      for (const p of lit.properties) {
-        if (ts.isSpreadAssignment(p)) {
-          merge(out, readProperty(valueOf(p.expression, q), name, [], q));
-        }
-      }
-    }
-    return out;
   }
 
   const memberCache = new Map<string, Res>();
@@ -795,119 +992,30 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     const key = `m${idOf(cls)}:${wantStatic ? 's' : 'i'}:${name}`;
     const have = memberCache.get(key);
     if (have) return have;
-    const res = memberValueInner(cls, name, wantStatic, q);
+    const res = memberValueInner(walk, cls, name, wantStatic, q);
     if (!res.starved) memberCache.set(key, res);
     return res;
   }
 
-  function memberValueInner(
-    cls: TS.ClassLikeDeclaration,
-    name: string,
-    wantStatic: boolean,
-    q: Query
-  ): Res {
-    const out = emptyRes();
-    let cur: TS.ClassLikeDeclaration | undefined = cls;
-    for (let depth = 0; cur && depth < 8; depth++) {
-      // A `classobj` origin can be an enum or a namespace object (symbolFlow
-      // files both under it): neither has class members to walk.
-      if (!ts.isClassDeclaration(cur) && !ts.isClassExpression(cur)) break;
-      for (const m of cur.members) {
-        if (!m.name || !ts.isIdentifier(m.name) || m.name.text !== name) continue;
-        const isStatic = Boolean(
-          ts.getCombinedModifierFlags(m as TS.Declaration).valueOf() & ts.ModifierFlags.Static
-        );
-        if (isStatic !== wantStatic) continue;
-        if (ts.isMethodDeclaration(m) && m.body) {
-          merge(out, originOf({ kind: 'function', node: m, name: `${name}()` }));
-        } else if (ts.isPropertyDeclaration(m) && m.initializer) {
-          merge(out, valueOf(m.initializer, q));
-        } else if (ts.isGetAccessorDeclaration(m) && m.body) {
-          for (const r of returnsOf(m)) merge(out, valueOf(r, q));
-        }
-      }
-      if (out.origins.size > 0 || out.unknown.size > 0) break;
-      let base: TS.ClassLikeDeclaration | undefined;
-      for (const h of cur.heritageClauses ?? []) {
-        if (h.token !== ts.SyntaxKind.ExtendsKeyword) continue;
-        for (const t of h.types) {
-          const d = targets(t.expression).find(
-            (x): x is TS.ClassLikeDeclaration => ts.isClassDeclaration(x) || ts.isClassExpression(x)
-          );
-          if (d) base = d;
-        }
-      }
-      cur = base;
-    }
-    return out;
-  }
+  const walk: Walk = {
+    ts,
+    checker,
+    idOf,
+    index,
+    targets,
+    childrenOf,
+    constructed,
+    returnsOf,
+    writeDecls,
+    valueOf,
+    literalProperty,
+    memberValue,
+  };
+  return walk;
+}
 
-  function elementsOf(base: Res, q: Query): Res {
-    const out = emptyRes();
-    out.tainted = base.tainted;
-    out.starved = base.starved;
-    for (const o of base.origins.values()) {
-      if (o.kind !== 'array') {
-        out.unknown.add('an element of a collection the walk cannot enumerate');
-        continue;
-      }
-      const key = `e${idOf(o.node)}`;
-      if (q.reading.has(key)) {
-        out.tainted = true;
-        continue;
-      }
-      q.reading.add(key);
-      try {
-        for (const el of (o.node as TS.ArrayLiteralExpression).elements) {
-          if (ts.isSpreadElement(el)) merge(out, elementsOf(valueOf(el.expression, q), q));
-          else merge(out, valueOf(el, q));
-        }
-      } finally {
-        q.reading.delete(key);
-      }
-    }
-    for (const u of base.unknown) out.unknown.add(u);
-    return out;
-  }
-
-  function callResult(call: TS.CallExpression, q: Query): Res {
-    const callee = strip(call.expression);
-    // Object.freeze hands back the object it was given — ES semantics, not a
-    // measurement. Without this the one literal @noble/curves builds its field
-    // object from reads as "the result of Object.freeze", an unknown.
-    if (
-      ts.isPropertyAccessExpression(callee) &&
-      ts.isIdentifier(callee.expression) &&
-      callee.expression.text === 'Object' &&
-      callee.name.text === 'freeze' &&
-      call.arguments[0]
-    ) {
-      return valueOf(call.arguments[0], q);
-    }
-    const found = targets(call.expression);
-    const out = emptyRes();
-    let followed = 0;
-    for (const d of found) {
-      let fn: TS.Node | undefined;
-      if (isFunctionLike(ts, d) && (d as TS.FunctionLikeDeclaration).body) fn = d;
-      else if (ts.isVariableDeclaration(d) && d.initializer) {
-        const init = strip(d.initializer);
-        if (isFunctionLike(ts, init) && (init as TS.FunctionLikeDeclaration).body) fn = init;
-      }
-      if (!fn) continue;
-      followed++;
-      for (const r of returnsOf(fn as TS.SignatureDeclaration)) merge(out, valueOf(r, q));
-    }
-    if (followed === 0) {
-      const text = call.expression.getText();
-      out.unknown.add(
-        text === 'JSON.parse'
-          ? 'a value from JSON.parse, which has no construction site to count'
-          : `the result of ${text}(), whose body the walk cannot read`
-      );
-    }
-    return out;
-  }
+export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker): Flow {
+  const w = makeWalk(ts, program, checker);
 
   // The receiver of one call, traced to its origins. For `x.m()` the receiver
   // is x and `follow` is m's body on each origin; for a bare `f()` through a
@@ -930,10 +1038,10 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     let res: Res;
     let method: string | undefined;
     if (ts.isPropertyAccessExpression(callee)) {
-      res = valueOf(callee.expression, q);
+      res = w.valueOf(callee.expression, q);
       method = callee.name.text;
     } else {
-      res = valueOf(callee, q);
+      res = w.valueOf(callee, q);
     }
 
     const origins: Array<{ name: string; follow: TS.Node | undefined }> = [];
@@ -941,11 +1049,11 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
       if (method === undefined) {
         // A bare call: only a function origin is a body to follow, and a
         // non-function origin says nothing about the call target.
-        if (o.kind === 'function') origins.push({ name: o.name, follow: bodyOf(o.node) });
+        if (o.kind === 'function') origins.push({ name: o.name, follow: bodyOf(ts, o.node) });
         continue;
       }
       if (o.kind === 'function') continue;
-      if (!carries(o, method)) continue;
+      if (!carries(ts, o, method)) continue;
       origins.push({ name: o.name, follow: methodBody(o, method, q) });
     }
     const unknowns = [...res.unknown];
@@ -971,20 +1079,15 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     return out;
   }
 
-  function bodyOf(n: TS.Node): TS.Node | undefined {
-    if (isFunctionLike(ts, n) && (n as TS.FunctionLikeDeclaration).body) return n;
-    return undefined;
-  }
-
   function methodBody(o: Origin, name: string, q: Query): TS.Node | undefined {
     let holder: Res;
-    if (o.kind === 'literal') holder = literalProperty(o.node as TS.ObjectLiteralExpression, name, q);
+    if (o.kind === 'literal') holder = w.literalProperty(o.node as TS.ObjectLiteralExpression, name, q);
     else if (o.kind === 'class' || o.kind === 'classobj') {
-      holder = memberValue(o.node as TS.ClassLikeDeclaration, name, o.kind === 'classobj', q);
+      holder = w.memberValue(o.node as TS.ClassLikeDeclaration, name, o.kind === 'classobj', q);
     } else return undefined;
     const fns = [...holder.origins.values()].filter((x) => x.kind === 'function');
     if (fns.length !== 1 || holder.unknown.size > 0) return undefined;
-    return bodyOf(fns[0]!.node);
+    return bodyOf(ts, fns[0]!.node);
   }
 
   return { receiver };
