@@ -1055,6 +1055,75 @@ test('a read off one collection does not bill its same-typed sibling', () => {
   );
 });
 
+// One run of the provenance fixture, three questions of it. `elementFlow`
+// answered "did this value come out of this collection" for four forms, and
+// everything else returned nothing — which the rule reads as silence, and
+// silence is invisible by construction. Six ordinary forms were in that gap
+// (BUGS TC-127).
+const provenanceRun = spawnSync(
+  process.execPath,
+  [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'provenance')],
+  { cwd: root, encoding: 'utf8' }
+);
+
+// Every one of these was silent before 2026-08-31. `guardRows` is the case the
+// entry warned about twice over: `find` returns `T | undefined`, so the read
+// sits behind a narrowing, and narrowing moves the TYPE and not the provenance.
+test('an element-returning method, a destructuring and a named callback reach their collection', () => {
+  const run = provenanceRun;
+  assert.match(run.stdout, /14 annotated functions, 17 errors/);
+  for (const fires of [
+    'atRows',
+    'atUsed',
+    'popRows',
+    'popUsed',
+    'findRows',
+    'findUsed',
+    'guardRows',
+    'destRows',
+    'destUsed',
+    'nameRows',
+    'nameUsed',
+    'arrowRows',
+  ]) {
+    assert.match(
+      run.stdout,
+      new RegExp(`${fires} reaches this line as 5 distinct property sets`),
+      `${fires}: the read never reached its collection:\n${run.stdout}`
+    );
+  }
+  assert.strictEqual(run.status, 1);
+});
+
+// The half a list of new edges does not have. Each of these arrays is in scope
+// beside one the same form does reach, and none of them is read.
+test('the same form on a collection nothing read stays silent', () => {
+  const run = provenanceRun;
+  for (const quiet of [
+    'atSpare',
+    'popSpare',
+    'findSpare',
+    'destSpare',
+    'nameSpare',
+    'letSpare',
+    'letA',
+  ]) {
+    assert.ok(
+      !run.stdout.includes(`${quiet} reaches this line`),
+      `${quiet}: an unread collection was billed:\n${run.stdout}`
+    );
+  }
+});
+
+// `let g = letRows; if (flag) g = letOther` puts both arrays behind one load
+// site, and the honest answer is the union of what every write contributes.
+// Reading the declaration alone reports the first and drops the second.
+test('a reassigned local bills every write, not its declaration', () => {
+  const run = provenanceRun;
+  assert.match(run.stdout, /letRows reaches this line as 5 distinct property sets/);
+  assert.match(run.stdout, /letOther reaches this line as 5 distinct property sets/);
+});
+
 // A `delete` on something with no hidden class to demote is not this rule's
 // mechanism at all. `globalThis` has no declaration saying it is the host, an
 // identifier that binds to nothing cannot be claimed to have a map, and an

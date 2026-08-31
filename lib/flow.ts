@@ -1010,6 +1010,13 @@ const ELEMENT_PARAM = new Map<string, readonly number[]>([
   ['reduceRight', [1]],
 ]);
 
+// The other half of the same table, keyed the same way: methods whose RETURN
+// value is an element of the receiver. `at`, `find` and `findLast` return
+// `T | undefined`, so the read normally sits behind a `!` or a guard — and
+// narrowing changes the TYPE, never where the value came from, which is the
+// distinction TC-94 turned on (BUGS TC-127).
+const ELEMENT_RETURN = new Set<string>(['at', 'pop', 'shift', 'find', 'findLast']);
+
 // Whether a value came OUT of one named collection. This is the second
 // question this module answers and it is deliberately not `receiver`'s walk:
 // `valueOf` above resolves a value to its ALLOCATION sites, and two values
@@ -1023,10 +1030,12 @@ const ELEMENT_PARAM = new Map<string, readonly number[]>([
 // collections nothing reads (BUGS TC-101, TC-94).
 //
 // So: the same hops as the walk above — an identifier to its declaration, a
-// `for...of` binding to the iterated expression, an index to its base — run
-// against a declaration instead of against an origin set. It errs the same way
-// too. A value whose path here cannot be followed is NOT an element, so the
-// rule loses loads it could have charged for and never invents one.
+// `for...of` or destructuring binding to the expression it takes apart, an
+// element-returning method or an index to its receiver, a callback's element
+// parameter to the call that runs it — run against a declaration instead of
+// against an origin set. It errs the same way too. A value whose path here
+// cannot be followed is NOT an element, so the rule loses loads it could have
+// charged for and never invents one.
 export interface ElementFlow {
   // An expression that holds an element of the collection.
   value(e: TS.Expression): boolean;
@@ -1038,7 +1047,13 @@ export interface ElementFlow {
 export function elementFlow(
   ts: Ts,
   checker: TS.TypeChecker,
-  collection: TS.ParameterDeclaration | TS.VariableDeclaration
+  collection: TS.ParameterDeclaration | TS.VariableDeclaration,
+  // The function that owns the collection — the same scope the caller searches
+  // for loads. Two edges below are REVERSE edges, "every write to this local"
+  // and "every call that names this callback", and a reverse edge needs
+  // somewhere to look. `createFlow` answers both for the whole program, and
+  // that index is a closure over a program this function is never handed.
+  scope: TS.Node
 ): ElementFlow {
   // Cleared per query, not kept. It exists to cut a cycle, and a cut is a
   // reason to answer "not an element" HERE — never an answer to remember for
@@ -1048,8 +1063,50 @@ export function elementFlow(
   const declarations = (id: TS.Identifier): readonly TS.Declaration[] =>
     symbolOf(ts, checker, id)?.getDeclarations() ?? [];
 
+  interface Scoped {
+    assigns: TS.BinaryExpression[];
+    calls: TS.CallExpression[];
+  }
+  let scoped: Scoped | undefined;
+  function inScope(): Scoped {
+    if (scoped) return scoped;
+    const assigns: TS.BinaryExpression[] = [];
+    const calls: TS.CallExpression[] = [];
+    const visit = (n: TS.Node): void => {
+      if (
+        ts.isBinaryExpression(n) &&
+        n.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isIdentifier(n.left)
+      ) {
+        assigns.push(n);
+      }
+      if (ts.isCallExpression(n)) calls.push(n);
+      ts.forEachChild(n, visit);
+    };
+    visit(scope);
+    scoped = { assigns, calls };
+    return scoped;
+  }
+
+  // Every expression written into a binding, the declaration's initializer
+  // aside. `let g = rows; g = other` puts both arrays behind `g`, and the load
+  // site inside `for (const r of g)` sees the elements of both: the honest
+  // answer is the union, and reading the declaration alone answers about one
+  // collection while saying nothing about the other (BUGS TC-127).
+  function writtenTo(id: TS.Identifier): TS.Expression[] {
+    const sym = symbolOf(ts, checker, id);
+    if (!sym) return [];
+    return inScope()
+      .assigns.filter(
+        (a) =>
+          ts.isIdentifier(a.left) && a.left.text === id.text && symbolOf(ts, checker, a.left) === sym
+      )
+      .map((a) => a.right);
+  }
+
   // The collection itself, through aliases: `const rs = rows` holds the same
-  // array, so `rs[i]` indexes the same elements.
+  // array, so `rs[i]` indexes the same elements — and so does a `let` any
+  // write puts it into.
   function isCollection(e: TS.Expression): boolean {
     const u = unwrap(ts, e);
     if (!ts.isIdentifier(u) || seen.has(u)) return false;
@@ -1057,32 +1114,71 @@ export function elementFlow(
     return declarations(u).some(
       (d) =>
         d === collection ||
-        (ts.isVariableDeclaration(d) && d.initializer !== undefined && isCollection(d.initializer))
+        (ts.isVariableDeclaration(d) &&
+          ((d.initializer !== undefined && isCollection(d.initializer)) ||
+            writtenTo(u).some((w) => isCollection(w))))
     );
   }
 
-  // The element parameter of a callback the collection is iterated with. The
-  // callback has to be the argument of that very call: a named function passed
-  // to `xs.map(f)` is reached from every other call of `f` as well, and this
-  // walk answers about one collection, so it stops rather than guesses.
-  function callbackElement(param: TS.ParameterDeclaration): boolean {
-    const fn = param.parent;
-    if (!ts.isArrowFunction(fn) && !ts.isFunctionExpression(fn)) return false;
-    const call = fn.parent;
-    if (!ts.isCallExpression(call) || !call.arguments.includes(fn)) return false;
+  // Whether this call runs a callback over the collection with an element in
+  // the callback's parameter `idx`.
+  function iterates(call: TS.CallExpression, idx: number): boolean {
     const callee = unwrap(ts, call.expression);
     if (!ts.isPropertyAccessExpression(callee)) return false;
     const holds = ELEMENT_PARAM.get(callee.name.text);
-    if (!holds || !holds.includes(fn.parameters.indexOf(param))) return false;
+    if (!holds || !holds.includes(idx)) return false;
     return isCollection(callee.expression);
   }
 
+  // The element parameter of a callback the collection is iterated with. The
+  // callback is either written at the call — `rows.map(r => …)` — or named
+  // there — `rows.map(byName)`. A named callback is reached from every other
+  // call of it as well, and each of those calls contributes its own receiver's
+  // elements to the one load site inside it, so every call in the scope that
+  // names this function is asked and any one of them is enough. `targetsOf` is
+  // the resolver from a callee expression to its declarations; a callback
+  // argument is a callee written in argument position.
+  function callbackElement(param: TS.ParameterDeclaration): boolean {
+    const owner = param.parent;
+    if (!isFunctionLike(ts, owner)) return false;
+    const idx = owner.parameters.indexOf(param);
+    if (idx < 0) return false;
+    if (ts.isArrowFunction(owner) || ts.isFunctionExpression(owner)) {
+      const call = owner.parent;
+      if (ts.isCallExpression(call) && call.arguments.includes(owner)) return iterates(call, idx);
+    }
+    return callsNaming(owner).some((c) => iterates(c, idx));
+  }
+
+  // Which calls in the scope name this function as their callback. Resolving a
+  // callee does not depend on the query, and re-resolving every call for every
+  // read is quadratic on a body with many of both — which is the size the one
+  // annotation on TypeScript's 50,000-line `createTypeChecker` has (TC-119).
+  const named = new Map<TS.Node, TS.CallExpression[]>();
+  function callsNaming(owner: TS.SignatureDeclaration): TS.CallExpression[] {
+    const have = named.get(owner);
+    if (have) return have;
+    const out = inScope().calls.filter((c) => {
+      const arg = c.arguments[0];
+      return (
+        arg !== undefined &&
+        !ts.isArrowFunction(arg) &&
+        !ts.isFunctionExpression(arg) &&
+        targetsOf(ts, checker, arg).includes(owner)
+      );
+    });
+    named.set(owner, out);
+    return out;
+  }
+
   // A declaration bound to one element: the `for...of` variable, a callback's
-  // element parameter, or a local initialized from either.
+  // element parameter, an array-destructured binding, or a local initialized
+  // from any of those.
   function bound(d: TS.Node): boolean {
     if (seen.has(d)) return false;
     seen.add(d);
     if (ts.isParameter(d)) return callbackElement(d);
+    if (ts.isBindingElement(d)) return destructuredElement(d);
     if (!ts.isVariableDeclaration(d)) return false;
     const list = d.parent;
     if (ts.isVariableDeclarationList(list) && ts.isForOfStatement(list.parent)) {
@@ -1091,9 +1187,31 @@ export function elementFlow(
     return d.initializer !== undefined && isElement(d.initializer);
   }
 
+  // `const [e] = rows` is the `for...of` edge on a different binding form. A
+  // rest element is the exception: `const [...rest] = rows` binds an ARRAY.
+  function destructuredElement(d: TS.BindingElement): boolean {
+    if (d.dotDotDotToken !== undefined) return false;
+    const pattern = d.parent;
+    if (!ts.isArrayBindingPattern(pattern)) return false;
+    const holder = pattern.parent;
+    return (
+      ts.isVariableDeclaration(holder) &&
+      holder.initializer !== undefined &&
+      isCollection(holder.initializer)
+    );
+  }
+
   function isElement(e: TS.Expression): boolean {
     const u = unwrap(ts, e);
     if (ts.isElementAccessExpression(u)) return isCollection(u.expression);
+    if (ts.isCallExpression(u)) {
+      const callee = unwrap(ts, u.expression);
+      return (
+        ts.isPropertyAccessExpression(callee) &&
+        ELEMENT_RETURN.has(callee.name.text) &&
+        isCollection(callee.expression)
+      );
+    }
     if (!ts.isIdentifier(u)) return false;
     return declarations(u).some(bound);
   }

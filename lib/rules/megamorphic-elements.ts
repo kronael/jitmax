@@ -84,9 +84,11 @@ const evidence: Evidence = {
 // of `items` (BUGS TC-94, the half its own fix did not reach — narrowing the
 // receiver to the element type catches `fallback: A` and nothing whose
 // annotation IS the union). `lib/flow.ts`'s `elementFlow` follows the values
-// instead: a `for...of` binding, an element callback's parameter, an index, or
-// a local assigned from one of those. It under-counts and never invents a load,
-// which is the direction this rule's severity demands.
+// instead: a `for...of` or destructuring binding, an element callback's
+// parameter — written at the call or named there — an index, an
+// element-returning method, or a local any write puts one of those into. It
+// under-counts and never invents a load, which is the direction this rule's
+// severity demands.
 function readsFromElement(
   ts: Ts,
   checker: TS.TypeChecker,
@@ -94,7 +96,7 @@ function readsFromElement(
   collection: TS.ParameterDeclaration | TS.VariableDeclaration,
   element: TS.Type
 ): boolean {
-  const from = elementFlow(ts, checker, collection);
+  const from = elementFlow(ts, checker, collection, scope);
   // Provenance says the value is an element; the type says it is still the
   // WHOLE element type at this site. A read a guard has narrowed to one member
   // sees one map and is monomorphic, and the rule stays off it (TC-94).

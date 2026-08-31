@@ -26,7 +26,7 @@ Review queue. Found during audits, fixed only when the owner asks.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
-## TC-127 — elementFlow under-counts six ways, and each one is a silent false negative (2026-08-31, open)
+## TC-127 — elementFlow under-counts six ways, and each one is a silent false negative (2026-08-31, FIXED 2026-08-31)
 
 TC-101's fix binds a read to a collection by provenance. `elementFlow` in
 `lib/flow.ts` answers "did this value come from this collection" for four
@@ -70,6 +70,38 @@ The `.find()` row has a second subtlety worth stating: `find` returns
 `T | undefined`, so the read is usually behind a `!` or a guard. The provenance
 is the receiver's elements either way — narrowing changes the TYPE, not where
 the value came from, which is exactly the distinction TC-94 was about.
+
+**Fixed.** All four table rows ship. `ELEMENT_RETURN` in `lib/flow.ts` is the
+element-returning table, keyed by method name the way `ELEMENT_PARAM` is;
+`destructuredElement` draws the `for...of` edge for an array binding pattern and
+refuses a rest element, which binds an ARRAY; `callbackElement` now asks every
+call in the scope that NAMES the function, resolved through `targetsOf` — the
+one callee resolver — and memoised per owner so a body with many calls and many
+reads does not become quadratic; and `isCollection` follows the union of a
+binding's declaration AND every `=` written to it, so `let g = rows; g = other`
+bills both arrays rather than whichever one the declaration happened to hold.
+`elementFlow` takes the owning scope as a parameter because both new edges are
+REVERSE edges and a reverse edge needs somewhere to look; the caller already
+computed that scope for its own walk.
+
+`test/fixtures/provenance/` is fourteen functions, one pair per form: the form
+reaching its collection, and the same form beside a collection it must not
+reach. Before the change the run was 4 errors and both fires-tests failed; after
+it is 17, and the third test — `atSpare`, `popSpare`, `findSpare`, `destSpare`,
+`nameSpare`, `letSpare` and the monomorphic `letA` all silent — passes on both
+sides, which is what makes it a guard rather than a description.
+
+**What is still under-counted.** `findLast` is in the table and fires, but only
+where the project's `lib` declares it: under this repo's ES2022 default the
+method has no type, so the read is not the element type and the rule stays off
+it — the fixture demonstrates `at`, `pop`, `shift` and `find` instead. A read
+written directly on the call, `rows.find(p)!.kind`, is also silent: `unwrap`
+erases the `!`, but the type at `rows.find(p)` is `T | undefined` and the rule's
+own `t === element` gate rejects it. Binding it first — `const hit =
+rows.find(p)!` — or guarding it fires, and both are in the fixture. A local that
+is reassigned an ELEMENT rather than a collection (`let e = rows[0]; e = other`)
+follows its declaration only; the write-union was added for the collection
+binding the entry names and nowhere else.
 
 ## TC-125 — the guard written for TC-123 matched two sentences and missed four figures (2026-08-31, FIXED 2026-08-31)
 
