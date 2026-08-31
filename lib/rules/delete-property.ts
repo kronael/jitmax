@@ -1,6 +1,6 @@
 import type * as TS from 'typescript';
 import type { Ts } from '../ts.ts';
-import { at, symbolOf, targetsOf, unwrap, type Mark } from '../scan.ts';
+import { at, isFunctionLike, symbolOf, targetsOf, unwrap, type Mark } from '../scan.ts';
 import { N } from '../numbers.ts';
 import { cells, isArray, walk, type Evidence, type Rule, type RuleModule } from './shared.ts';
 
@@ -51,7 +51,7 @@ const evidence: Evidence = {
 // the printed rewrite would have written NULL to columns meant to be left
 // alone (BUGS TC-79). The tree is already walked, so this checks: it follows
 // the deleted object through aliases, arguments and returns across every body
-// the mark reaches, and looks for the four observers. Order-insensitive on
+// the mark reaches, and looks for the observers below. Order-insensitive on
 // purpose — proving an observer runs only before the delete is control flow
 // this walk does not do, so a hit anywhere drops the rewrite, which errs
 // toward the fix that is always sound.
@@ -59,6 +59,18 @@ interface Observed {
   op: string;
   line: number;
 }
+
+// The observers that take the object as their first argument. `in`, for-in and
+// spread are syntax and are matched in the walk; `hasOwnProperty` reaches the
+// object through three shapes and is matched there too. The list shipped four
+// entries long and the first JavaScript corpus it met held a fifth — mathjs
+// `lruQueue` deletes a slot and rescans for the next live one with
+// `Object.prototype.hasOwnProperty.call` nine lines below, where assigning
+// undefined stops the scan on the hole it was written to skip (BUGS TC-79).
+const ARG0_OBSERVERS = new Map<string, ReadonlySet<string>>([
+  ['Object', new Set(['keys', 'values', 'entries', 'getOwnPropertyNames', 'hasOwn'])],
+  ['Reflect', new Set(['ownKeys'])],
+]);
 
 interface ObjectUses {
   // Undirected alias edges: an argument and its parameter, both ends of a
@@ -117,17 +129,40 @@ function objectUses(ts: Ts, checker: TS.TypeChecker, mark: Mark): ObjectUses {
         see(symAt(ts, checker, node.expression), 'a spread', node, sf);
       } else if (ts.isCallExpression(node)) {
         const callee = node.expression;
-        if (ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression)) {
-          const ns = callee.expression.text;
+        if (ts.isPropertyAccessExpression(callee)) {
           const m = callee.name.text;
-          const op = ns === 'Object' && m === 'keys' ? 'Object.keys' : undefined;
-          if (op !== undefined && node.arguments[0]) {
-            see(symAt(ts, checker, node.arguments[0]), op, node, sf);
+          const recv = callee.expression;
+          if (m === 'hasOwnProperty') {
+            see(symAt(ts, checker, recv), 'hasOwnProperty', node, sf);
+          } else if (
+            (m === 'call' || m === 'apply') &&
+            ts.isPropertyAccessExpression(recv) &&
+            recv.name.text === 'hasOwnProperty'
+          ) {
+            // `Object.prototype.hasOwnProperty.call(o, k)`: the object is the
+            // first argument and the receiver is the borrowed method.
+            if (node.arguments[0]) {
+              see(symAt(ts, checker, node.arguments[0]), 'hasOwnProperty', node, sf);
+            }
+          } else if (ts.isIdentifier(recv)) {
+            const ns = recv.text;
+            if (ns === 'Object' && m === 'assign') {
+              // The SOURCES only. `Object.assign(t, o)` copies o's own
+              // enumerable keys, so a key holding undefined overwrites t's
+              // value where an absent key leaves it alone; `Object.assign(o,
+              // x)` reads none of o's keys and tells the two apart no better
+              // than JSON.stringify does.
+              for (const arg of node.arguments.slice(1)) {
+                see(symAt(ts, checker, arg), 'Object.assign', node, sf);
+              }
+            } else if (ARG0_OBSERVERS.get(ns)?.has(m) === true && node.arguments[0]) {
+              see(symAt(ts, checker, node.arguments[0]), `${ns}.${m}`, node, sf);
+            }
           }
         }
         for (const decl of targetsOf(ts, checker, node.expression)) {
           const target = bodies.has(decl) ? decl : undefined;
-          if (!target || !ts.isFunctionLike(target)) continue;
+          if (!target || !isFunctionLike(ts, target)) continue;
           links.push({ call: node, decl: target });
           target.parameters.forEach((p, i) => {
             const arg = node.arguments[i];
@@ -138,7 +173,7 @@ function objectUses(ts: Ts, checker: TS.TypeChecker, mark: Mark): ObjectUses {
         }
       } else if (ts.isReturnStatement(node) && node.expression) {
         let fn: TS.Node | undefined = node.parent;
-        while (fn && !ts.isFunctionLike(fn)) fn = fn.parent;
+        while (fn && !isFunctionLike(ts, fn)) fn = fn.parent;
         const sym = fn && symAt(ts, checker, node.expression);
         if (fn && sym) (returnsOf.get(fn) ?? returnsOf.set(fn, new Set()).get(fn)!).add(sym);
       }
@@ -292,8 +327,8 @@ const detect: Rule = (ts, checker, body, add, mark) => {
     ) {
       // The rewrite half of the fix is conditional on the program, and the
       // tree is checked rather than caveated (BUGS TC-79): where the deleted
-      // object reaches a spread, `in` or Object.keys in the
-      // annotated tree, a key holding undefined is not an absent key and the
+      // object reaches one of the observers above anywhere in the annotated
+      // tree, a key holding undefined is not an absent key and the
       // rewrite is dropped. Where it reaches none, the rewrite stands and
       // states its precondition — the tree is not the whole program, and the
       // object may still escape to a reader the walk cannot see.
@@ -318,8 +353,10 @@ const detect: Rule = (ts, checker, body, add, mark) => {
             `absent key from one holding undefined, so assigning undefined is not a rewrite ` +
             `here; ${rebuild}`
           : 'assign undefined where the key may stay present — equivalent only while nothing ' +
-            'downstream tells an absent key from one holding undefined (spread copies it, ' +
-            '`in` and Object.keys see it; JSON.stringify does not, it omits both) — or ' +
+            'downstream tells an absent key from one holding undefined (spread and ' +
+            'Object.assign copy it; `in`, for-in, hasOwnProperty, Object.keys, Object.values, ' +
+            'Object.entries, Object.getOwnPropertyNames and Reflect.ownKeys see it; ' +
+            'JSON.stringify does not, it omits both) — or ' +
             rebuild,
       });
     }

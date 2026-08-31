@@ -120,8 +120,12 @@ jitmax — 46 annotated functions, 15 errors, 1 warning
     error  delete-property
       demo/lib.ts:159
       delete o[k] puts its object in dictionary mode
-      fix: assign undefined where the key may stay present, or build the object without it —
-      the rebuild helps at 12 keys and not at 48, where filling it key by key normalizes it too
+      fix: assign undefined where the key may stay present — equivalent only while nothing
+      downstream tells an absent key from one holding undefined (spread and Object.assign copy
+      it; `in`, for-in, hasOwnProperty, Object.keys, Object.values, Object.entries,
+      Object.getOwnPropertyNames and Reflect.ownKeys see it; JSON.stringify does not, it omits
+      both) — or build the object without the key — the rebuild helps at the smaller of n=12
+      and n=48 and not at the larger, where filling it key by key normalizes it too
       measured in bench/delete.jl
       known defect: TC-9 — rules fire outside the conditions their own evidence establishes
 ```
@@ -516,8 +520,9 @@ printed:
   in all three sweeps. `%HasFastProperties` is false on *both* sides: building a
   46-key object one key at a time normalizes it just as `delete` does. The fix
   stops fixing the read somewhere between 12 keys and 48, and the rule still
-  cannot see the width — so the `fix:` line says it: *"the rebuild helps at 12
-  keys and not at 48, where filling it key by key normalizes it too"*.
+  cannot see the width — so the `fix:` line says it, in the sizes the cells were
+  swept at: *"the rebuild helps at the smaller of n=12 and n=48 and not at the
+  larger, where filling it key by key normalizes it too"*.
 - **`mergeAll` at n=64 stopped disagreeing, and that is not a promotion.** It
   read 17.34x, 19.34x, 20.10x with no value inside all three intervals, and was
   printed here as a cell rule 13 refuses. Three fresh sweeps read 20.29x,

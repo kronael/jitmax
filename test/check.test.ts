@@ -54,9 +54,13 @@ import type * as TS from 'typescript';
 const root = path.join(import.meta.dirname, '..');
 const ts = load(root);
 
-function rulesByFunction(dir: string): Map<string, string[]> {
+function findingsByFunction(dir: string): Map<string, ReturnType<typeof check>> {
   const { checker, marks } = scan(ts, program(ts, root, [path.join(root, dir)]));
-  return new Map(marks.map((m) => [m.name, check(ts, checker, m).map((f) => f.rule)]));
+  return new Map(marks.map((m) => [m.name, check(ts, checker, m)]));
+}
+
+function rulesByFunction(dir: string): Map<string, string[]> {
+  return new Map([...findingsByFunction(dir)].map(([name, fs]) => [name, fs.map((f) => f.rule)]));
 }
 
 const found = rulesByFunction('demo');
@@ -426,6 +430,30 @@ test('the delete fix says where the rebuild stops paying, in the swept sizes', (
   );
 });
 
+// The same sentence is republished three times outside the rule — twice in
+// README and once in the example's header, which says it is quoting the run —
+// and all three typed the pair by hand, so a re-measurement moved the rule and
+// left the copies claiming the old sizes. Every copy is read here and held to
+// the derived pair (BUGS TC-48).
+test('every published copy of the delete fix quotes the swept sizes', () => {
+  const sizes = N['ex.omit.sizes'];
+  const typed: string[] = [];
+  let copies = 0;
+  for (const file of ['README.md', path.join('examples', 'estoolkit-omit.before.ts')]) {
+    // The sentence wraps across lines in prose and inside a `//` transcript, so
+    // the file is flattened before it is matched.
+    const flat = fs
+      .readFileSync(path.join(root, file), 'utf8')
+      .replace(/\n\s*(\/\/)?\s*/g, ' ');
+    for (const m of flat.matchAll(/the rebuild helps at ([^,]+),/g)) {
+      copies++;
+      if (!m[1]!.includes(sizes)) typed.push(`${file}: "the rebuild helps at ${m[1]}"`);
+    }
+  }
+  assert.ok(copies >= 3, `the fix sentence was found ${copies} times — the regex has drifted`);
+  assert.deepStrictEqual(typed, [], `these do not quote the swept sizes (${sizes})`);
+});
+
 // TC-79: "assign undefined" is correct about V8 and not always correct about
 // the program. The tree is checked rather than caveated — where the deleted
 // object reaches an observer that tells an absent key from one holding
@@ -453,7 +481,83 @@ test('the observer check crosses bodies: a spread in the caller reaches a delete
 test('a delete no observer reaches keeps the rewrite, with its precondition stated', () => {
   const f = rawFindings('drop').find((x) => x.rule === 'delete-property');
   assert.match(f?.fix ?? '', /assign undefined where the key may stay present/);
-  assert.match(f?.fix ?? '', /spread copies it, `in` and Object\.keys see it/);
+  assert.match(f?.fix ?? '', /spread and Object\.assign copy it/);
+  assert.match(f?.fix ?? '', /Reflect\.ownKeys see it; JSON\.stringify does not/);
+});
+
+// The observer list, one row per entry. It shipped four entries long and the
+// first JavaScript corpus it was pointed at held a fifth: mathjs `lruQueue`
+// deletes a slot and, nine lines below, scans for the next live one with
+// `Object.prototype.hasOwnProperty.call` — assign undefined and the scan stops
+// on the hole it was written to skip. A list with no test per entry is how the
+// first four drifted, so every entry is a row here (BUGS TC-79).
+const tc79 = findingsByFunction(path.join('test', 'fixtures', 'tc79'));
+const deleteFix = (name: string): string =>
+  (tc79.get(name) ?? assert.fail(`no mark ${name}`)).find((f) => f.rule === 'delete-property')
+    ?.fix ?? assert.fail(`${name} has no delete-property finding`);
+
+test('every observer that tells an absent key from an undefined one drops the rewrite', () => {
+  const withRewrite: string[] = [];
+  const unnamed: string[] = [];
+  const observers: Array<[string, string]> = [
+    ['enumerated', 'Object.keys'],
+    ['scanned', 'hasOwnProperty'],
+    ['askedDirectly', 'hasOwnProperty'],
+    ['askedStatically', 'Object.hasOwn'],
+    ['valued', 'Object.values'],
+    ['paired', 'Object.entries'],
+    ['named', 'Object.getOwnPropertyNames'],
+    ['reflected', 'Reflect.ownKeys'],
+    ['copiedFrom', 'Object.assign'],
+  ];
+  for (const [fn, op] of observers) {
+    const fix = deleteFix(fn);
+    if (fix.includes('assign undefined')) withRewrite.push(`${fn} (${op})`);
+    if (!new RegExp(`^${op.replace(/\./g, '\\.')} reads o at line \\d+`).test(fix)) {
+      unnamed.push(`${fn}: ${fix}`);
+    }
+  }
+  assert.deepStrictEqual(withRewrite, [], 'the rewrite survived an observer that forbids it');
+  assert.deepStrictEqual(unnamed, [], 'the finding does not name the observer it found');
+});
+
+// Both halves. `JSON.stringify` omits an absent key and a key holding undefined
+// alike, and `Object.assign(o, …)` writes o rather than reading its keys —
+// withdrawing the rewrite there would assert a false thing about JavaScript,
+// which is what the shipped `JSON.stringify` arm did (BUGS TC-79).
+test('a call that cannot tell the two apart keeps the rewrite', () => {
+  for (const fn of ['stringified', 'copiedInto']) {
+    assert.match(
+      deleteFix(fn),
+      /assign undefined where the key may stay present/,
+      `${fn} lost the rewrite to a call that cannot tell an absent key from an undefined one`
+    );
+  }
+});
+
+// `lib/scan.ts` exports `isFunctionLike` because a second copy in rules.ts
+// differed from it in two node kinds. TypeScript's own is a third answer and a
+// strict superset — MethodSignature, CallSignature, ConstructSignature,
+// IndexSignature, FunctionType and ConstructorType are functions to it and are
+// nodes the walk never enters — so a rule that asks it builds alias edges out
+// of declarations the closed world does not have (BUGS TC-96). The walk owns
+// the answer; nothing under lib/ may ask TypeScript for a second one.
+test('the walk owns what a function is, and no rule asks TypeScript instead', () => {
+  const dir = path.join(root, 'lib');
+  const second: string[] = [];
+  for (const file of fs.readdirSync(dir, { recursive: true, encoding: 'utf8' })) {
+    if (!file.endsWith('.ts')) continue;
+    fs.readFileSync(path.join(dir, file), 'utf8')
+      .split('\n')
+      .forEach((line, i) => {
+        if (line.includes('ts.isFunctionLike(')) second.push(`lib/${file}:${i + 1}`);
+      });
+  }
+  assert.deepStrictEqual(
+    second,
+    [],
+    "these call TypeScript's isFunctionLike; import the walk's from lib/scan.ts"
+  );
 });
 
 // A chain on a string allocates no array at all, and the rule matched the

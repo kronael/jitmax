@@ -1285,7 +1285,7 @@ rule has one and a half of them, spelled separately.
 The fold is one platform test that both callers read. It makes the rule silent
 where it now fires, so it is recorded.
 
-## TC-96 — `delete-property` asks TypeScript what a function is, and the walk asks itself (2026-08-29, open)
+## TC-96 — `delete-property` asks TypeScript what a function is, and the walk asks itself (2026-08-29, FIXED 2026-08-31)
 
 `lib/scan.ts` exports `isFunctionLike` with the comment "One definition, because
 rules.ts kept a second copy that differed from this one in two node kinds". Every
@@ -1302,6 +1302,24 @@ crashes — both make the graph claim edges the closed world does not have.
 
 The fix is to import the walk's own answer. It changes which programs keep the
 rewrite half of the fix line, so it is recorded.
+
+**Fixed 2026-08-31.** Both lines call `lib/scan.ts`'s `isFunctionLike`, and
+nothing under `lib/` calls TypeScript's any more.
+
+No program found here exercises the difference, and that is worth writing down
+rather than implying: at the first site `bodies.has(decl)` already restricts the
+candidate to a node the walk entered, and `reach()` only ever pushes a
+`followable` declaration — one with a body — so a signature could not arrive
+there; at the second, a `return` statement cannot be nested inside a type node,
+so the upward search cannot stop on one. A probe over demo/, every fixture,
+examples/ and the radash checkout found 0 disagreements in 306 bodies and 315
+returns. The exposure was latent, not live, and the fix is that the walk owns
+the answer.
+
+So the test is the register rather than a fixture: nothing under `lib/` may ask
+TypeScript for a second definition of "function", which is the same rule
+`scan.ts`'s own comment states and which had already been broken once by a copy
+in rules.ts.
 
 ## TC-95 — two false negatives the shape rules cannot see (2026-08-29, open)
 
@@ -1912,7 +1930,34 @@ file.
 
 Found 2026-08-29 in the TC-75 trial.
 
-## TC-79 — delete-property's fix is not behaviour-preserving, and two of three trials hit it (2026-08-29, open)
+## TC-79 — delete-property's fix is not behaviour-preserving, and two of three trials hit it (2026-08-29, FIXED 2026-08-31)
+
+**The list SHIPPED at its full width 2026-08-31.** `lib/rules/delete-property.ts`
+now reads eleven forms, not four. Syntax, as before: `in`, for-in, a spread.
+Calls, by first argument: `Object.keys`, `Object.values`, `Object.entries`,
+`Object.getOwnPropertyNames`, `Object.hasOwn`, `Reflect.ownKeys` — one register
+(`ARG0_OBSERVERS`) rather than a chain of `===`. And `hasOwnProperty` in its
+three shapes: `o.hasOwnProperty(k)` off the receiver, and
+`Object.prototype.hasOwnProperty.call(o, k)` or `.apply` off the first
+argument, which is mathjs `lruQueue`'s eviction scan and the case that found
+this.
+
+`Object.assign` counts its SOURCES and not its target. `Object.assign(t, o)`
+copies o's own enumerable keys, so a key holding undefined overwrites t's value
+where an absent key leaves it; `Object.assign(o, x)` reads none of o's keys and
+tells the two apart no better than `JSON.stringify` does. Withdrawing the
+rewrite there would have been the same mistake this entry was amended for on
+2026-08-29 — a false claim about JavaScript printed as a caveat.
+
+The caveat printed where NO observer is found named the same four and now names
+the list, so the sentence the reader checks against is the sentence the tool
+checked.
+
+`test/fixtures/tc79/tc79.ts` gains one annotated function per observer and one
+per non-observer, and a table-driven test walks the rows: every observer must
+drop the rewrite AND name itself at the finding, and `JSON.stringify` and the
+assign-target must keep it. The fixture had no test reading it at all until now
+— which is how a four-entry list stayed four entries long.
 
 **Amended 2026-08-30 — the shipped observer list is four entries long and the
 field found a fifth in the first JavaScript corpus it was pointed at.** The
@@ -3364,7 +3409,7 @@ cell where it must stay quiet. Nothing enforces the first half.
 **Proposal:** export the rule names beside `RULES` and assert set equality with
 `Object.keys(EVIDENCE)`, plus at least one demo fixture per rule.
 
-## TC-48 — hand-typed integers in EVIDENCE contradict the derived numbers beside them (2026-08-19, open)
+## TC-48 — hand-typed integers in EVIDENCE contradict the derived numbers beside them (2026-08-19, FIXED 2026-08-31)
 
 **Amended 2026-08-29 — refuted as filed, and re-aimed.** An audit checked every
 hand-typed numeral in `lib/rules.ts` EVIDENCE. None contradicts its neighbour:
@@ -3397,6 +3442,28 @@ shipped: by the time a test sees an `EVIDENCE` string the derived values are
 already interpolated into it, so "typed" and "derived" are indistinguishable
 there, and a test that flagged every bare integer would flag every derived one
 too. Deriving each count as it is found is the shape that works.
+
+**The re-aimed exposure FIXED 2026-08-31, in the copies rather than in the
+rule.** The rule's own fix string was already derived: the TC-79 amendment of
+2026-08-29 replaced "12 keys and not at 48" with `N['ex.omit.sizes']` and made
+the test compare the printed fix to the rows. `ex.omit.sizes` is the right
+source — it is a `sizes` aggregation over the surviving `estoolkit-omit` reads
+cells, the same cells `ex.omit.reads12` and `ex.omit.reads48` quote — so no new
+citation was needed. This entry's heading was simply never moved.
+
+What had survived was every COPY of that sentence, all three typed by hand:
+README's sample run under "What you get", README's prose quoting the `fix:`
+line, and `examples/estoolkit-omit.before.ts`'s header, which says it is
+quoting the run. A re-measurement would have moved the rule and left the three
+copies claiming the old pair. A test now flattens both files, finds every "the
+rebuild helps at …" and holds each to `N['ex.omit.sizes']`, and fails if it
+finds fewer than three copies — the regex going quiet is the other way this
+kind of guard dies (TC-125).
+
+NOT fixed here, and still standing in the same README block: the sample run's
+header says "46 annotated functions, 15 errors, 1 warning" where demo/ today
+prints 59, 21 and 8, and the finding under it names a line number two edits
+old. That is the pasted-output drift TC-125 is about, not a hand-typed number.
 
 ## TC-47 — every published `select` number rests on rows whose recorded load is false (2026-08-19, open)
 
