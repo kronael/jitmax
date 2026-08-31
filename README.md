@@ -15,7 +15,7 @@ Get it. Running needs no build step and it is not on npm, so clone it and run
 it where it lands:
 
 ```sh
-git clone <repo-url> jitmax
+git clone https://github.com/kronael/jitmax jitmax
 cd jitmax && npm install
 ```
 
@@ -903,8 +903,8 @@ V8 is a trademark of Google LLC. This project is not affiliated with, endorsed
 by, or sponsored by Google, and every use of the name here is a reference to the
 engine the measurements were taken on.
 
-Status: v0.10.0, single machine, seven rules. Every sweep behind a published
+Status: v0.11.0, single machine, eight rules. Every sweep behind a published
 number is re-measured whole under the current runner: three sweeps per cell, and
 a cell whose three share no common value is withdrawn by `lib/derive.ts` before
-the number is written. Twenty-two are withdrawn today, and `test/check.test.ts`
+the number is written. 31 are withdrawn today, and `test/check.test.ts`
 lists every one.
