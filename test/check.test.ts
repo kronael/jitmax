@@ -907,7 +907,7 @@ test('a profile matching no function in the program names the frames, and exits 
     encoding: 'utf8',
   });
   fs.unlinkSync(prof);
-  assert.match(run.stdout, /1 hot frame matched no function in this program/);
+  assert.match(run.stdout, /0 hot frames matched a function here; 1 did not/);
   assert.match(run.stdout, /work\.ts:900:1/);
   assert.match(run.stdout, /this is not a clean run/);
   assert.strictEqual(run.status, 1);
@@ -928,7 +928,7 @@ test('a partly matching profile is not a clean run either', () => {
   });
   fs.unlinkSync(prof);
   assert.ok(!/every hot function is clean/.test(run.stdout), 'unchecked hot time read as clean');
-  assert.match(run.stdout, /1 hot frame matched no function in this program/);
+  assert.match(run.stdout, /0 hot frames matched a function here; 1 did not/);
   assert.strictEqual(run.status, 1);
 });
 
@@ -953,6 +953,122 @@ test('an unmatched hot frame in the working directory is named, not blank', () =
   fs.unlinkSync(prof);
   assert.ok(!run.stdout.includes('(:12:5)'), `the frame rendered with no file:\n${run.stdout}`);
   assert.ok(run.stdout.includes(`(${dir}:12:5)`), `the frame does not name its file:\n${run.stdout}`);
+  assert.strictEqual(run.status, 1);
+});
+
+// TC-77. A profile's frames point into the file V8 RAN, which is not the file
+// the author wrote whenever anything transformed it — and one real `enum` is
+// enough to force a transform, because type stripping cannot run it. In
+// test/fixtures/mapped the transform moves `kernel` from line 31 to line 25,
+// and line 25 of the source is a doc comment: the report that filed TC-77 had
+// V8 pointing at exactly that, and the tool answered "the profile is stale".
+// dist/work.js is tsc's output with the map in a file beside it, and
+// dist/transform.js is what Node's own --experimental-transform-types makes of
+// the same source, with the map inline. Both are committed, because what has to
+// be tested is a real transformer's map, not one written here to pass.
+const mapped = path.join(root, 'test', 'fixtures', 'mapped');
+
+// V8 reports a function at its parameter list's `(`. Read that position out of
+// the artifact instead of writing it down, so a regenerated fixture moves the
+// frame with it rather than leaving the test aimed at nothing.
+function parenOf(file: string, name: string): { line: number; column: number } {
+  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  const i = lines.findIndex((l) => l.includes(`${name}(`));
+  assert.ok(i >= 0, `${file} has no ${name}(`);
+  return { line: i + 1, column: lines[i]!.indexOf(`${name}(`) + name.length + 1 };
+}
+
+function runPorted(artifact: string, tag: string): { stdout: string; status: number | null } {
+  const gen = parenOf(path.join(mapped, 'dist', artifact), 'kernel');
+  // The two positions disagreeing IS the fixture: one where they agreed would
+  // pass without a source map ever being read.
+  assert.notDeepStrictEqual(gen, parenOf(path.join(mapped, 'src', 'work.ts'), 'kernel'));
+  const prof = writeProfile(
+    path.join(root, 'tmp', `test-${tag}-${process.pid}.cpuprofile`),
+    [gen],
+    `file://${path.join(mapped, 'dist', artifact)}`
+  );
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), prof, path.join(mapped, 'src')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  fs.unlinkSync(prof);
+  return run;
+}
+
+// The map is a file beside the artifact, which is what a build step leaves.
+test('a hot frame in a transformed file is ported back through its source map', () => {
+  const run = runPorted('work.js', 'tscmap');
+  assert.match(run.stdout, /1 hot function, 1 error/);
+  assert.match(run.stdout, /100\.0% of samples, .*ported through a source map/);
+  // The finding names the line the author wrote. That is the whole point of
+  // porting: a position in a generated file is not somewhere anybody can edit.
+  const src = parenOf(path.join(mapped, 'src', 'work.ts'), 'kernel');
+  assert.match(run.stdout, new RegExp(`work\\.ts:${src.line}\\s+kernel\\(\\)`));
+  assert.ok(!run.stdout.includes('matched a function here'), `a frame was dropped:\n${run.stdout}`);
+  assert.strictEqual(run.status, 1);
+});
+
+// The other shape of the same thing: the map inline as a data: URI, from the
+// transform Node itself runs. Its segments do not start at the `(` V8 named —
+// this one lands on the function's NAME — so it also covers the position a map
+// actually maps a declaration to.
+test('a hot frame is ported through an inline source map too', () => {
+  const run = runPorted('transform.js', 'inlinemap');
+  assert.match(run.stdout, /1 hot function, 1 error/);
+  assert.match(run.stdout, /100\.0% of samples, .*ported through a source map/);
+  assert.strictEqual(run.status, 1);
+});
+
+// And the half that must NOT guess. The same transformed source with no map
+// beside it: nothing can port the position, so nothing is matched, and the run
+// says which of the two causes that was instead of blaming the profile. A
+// position this tool cannot map is a position it must not guess at, so the
+// frame is named and the run is blind, never clean.
+test('a transformed file with no source map is diagnosed, not called stale', () => {
+  const gen = parenOf(path.join(mapped, 'dist', 'unmapped.js'), 'kernel');
+  const prof = writeProfile(
+    path.join(root, 'tmp', `test-nomap-${process.pid}.cpuprofile`),
+    [gen],
+    `file://${path.join(mapped, 'dist', 'unmapped.js')}`
+  );
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), prof, path.join(mapped, 'src')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  fs.unlinkSync(prof);
+  assert.match(run.stdout, /0 hot frames matched a function here; 1 did not/);
+  assert.match(run.stdout, new RegExp(`unmapped\\.js:${gen.line}:${gen.column}`));
+  assert.match(run.stdout, /no source map covers any of those positions/);
+  assert.match(run.stdout, /--experimental-transform-types/);
+  assert.match(run.stdout, /this is not a clean run/);
+  assert.ok(!run.stdout.includes('every hot function is clean'));
+  assert.strictEqual(run.status, 1);
+});
+
+// Porting is not matching. A position the map DOES cover, that no function
+// begins at — here the body's `return` — is still a miss, and the run says so
+// with both ends of the port so the reader can find the frame in their own
+// profile. Nothing re-matches it by the name in the frame, which would be the
+// tool guessing at which function the measured time belongs to.
+test('a ported frame that lands on no function is still a miss, at both positions', () => {
+  const body = parenOf(path.join(mapped, 'dist', 'work.js'), 'kernel').line + 1;
+  const prof = writeProfile(
+    path.join(root, 'tmp', `test-portedmiss-${process.pid}.cpuprofile`),
+    [{ line: body, column: 5 }],
+    `file://${path.join(mapped, 'dist', 'work.js')}`
+  );
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), prof, path.join(mapped, 'src')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  fs.unlinkSync(prof);
+  assert.match(run.stdout, /1 of those positions came back through a source map/);
+  assert.match(run.stdout, new RegExp(`src/work\\.ts:\\d+:\\d+ <- .*dist/work\\.js:${body}:5`));
+  assert.ok(!run.stdout.includes('every hot function is clean'));
   assert.strictEqual(run.status, 1);
 });
 

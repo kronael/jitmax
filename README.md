@@ -106,10 +106,18 @@ Nothing else changes: the walk, the rules and the exit code cannot tell a
 profiled mark from an annotated one. There is no static "hotness" mode and there
 will not be one — a loop with an unknown trip count and a high call-graph fan-in
 predict hotness weakly, and this tool prints "hotness is a property of the
-workload" under every run it makes. A profile that matches no function in the
-program is exit `2`, not a clean run: it means the profile is stale against the
-source beside it. `min_self_pct` defaults to 1 and is a constant nobody has
-measured, so the TOML owns it and every run prints the value it used.
+workload" under every run it makes.
+
+A frame's position is a position in the file V8 **ran**, which is not the file
+you wrote as soon as anything transforms it — one `enum` is enough, because type
+stripping cannot run one. So a position is ported back through the source map
+beside the profiled file before it is matched, and the finding names the line you
+wrote. When the profiled file has no source map, nothing is guessed: the run
+prints how many frames matched, names the ones that did not with their file and
+line, and says a transform is the likelier cause than a stale profile — and it
+exits `1`, because unchecked measured time is not a clean run. `min_self_pct`
+defaults to 1 and is a constant nobody has measured, so the TOML owns it and
+every run prints the value it used.
 
 ## What you get
 

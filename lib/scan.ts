@@ -308,6 +308,14 @@ export function marksFromProfile(
         // coincide, which is why half the frames matched before this line.
         const paren = sf.getLineAndCharacterOfPosition(node.parameters.pos - 1);
         put(`${sf.fileName}:${paren.line + 1}:${paren.character + 1}`, { node, sf });
+        // And its name, which is neither of those two and is where a source map
+        // lands a ported frame: a map's segments start at token boundaries, so
+        // the `(` V8 named is covered by the segment for the token before it.
+        // Measured on this project's own fixture — tsc maps the `(` itself,
+        // Node's `--experimental-transform-types` maps a declaration onto its
+        // name and a method onto its start (BUGS TC-77). All three are exact
+        // positions of one declaration; none of them is a match by name.
+        if (node.name) put(siteKey(at(sf, node.name)), { node, sf });
       }
       ts.forEachChild(node, visit);
     };
@@ -327,7 +335,11 @@ export function marksFromProfile(
     seen.add(hit.node);
     marks.push({
       ...newMark(ts, hit.sf, hit.node, []),
-      from: `${frame.pct.toFixed(1)}% of samples, ${source}`,
+      // A ported mark says so: the position that found it was not the one in
+      // the profile, and the line printed beside this is the author's.
+      from:
+        `${frame.pct.toFixed(1)}% of samples, ${source}` +
+        (frame.generated ? ', ported through a source map' : ''),
     });
   }
   return { marks, unmatched };

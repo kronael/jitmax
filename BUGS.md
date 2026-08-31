@@ -2065,7 +2065,7 @@ arguments varies across calls. If it does not separate, publish the null.
 
 Found 2026-08-29 in the TC-75 trial.
 
-## TC-77 — profile mode hard-fails on any transformed source, with no diagnostic (2026-08-29, open)
+## TC-77 — profile mode hard-fails on any transformed source, with no diagnostic (2026-08-29, FIXED 2026-08-31)
 
 From the `dinero.js` trial (TC-75). The user took a real `--cpu-prof` of the
 workload that reproduces the complaint and fed it in, which is exactly the path
@@ -2108,6 +2108,47 @@ and the source-map read that makes the match work in the first place. A profile
 whose source map is absent keeps the diagnostic and stops there — a position
 this tool cannot map is a position it must not guess at, which is the same rule
 the walk follows everywhere else.
+
+**Fixed.** `lib/profile.ts` ports every frame through the source map beside the
+file that frame names — an external `.map`, or an inline `data:` URI, whichever
+the last `sourceMappingURL` comment holds — before `marksFromProfile` looks the
+position up. The ported position is the AUTHOR's, so the finding names the line
+they wrote, and `mark.from` says `ported through a source map` where it did.
+
+Deliberately NOT ported, because each would be the tool guessing at a position:
+a file with no `sourceMappingURL`; a map named over http, since this tool reads
+the disk and nothing else; an `originalSource` that is not a filesystem path;
+and a position no segment on its OWN generated line covers — `findEntry` answers
+with the segment at or before a position, and past the last segment of a line
+that segment belongs to an earlier line, which is an answer about different
+code. Nothing is re-matched by the name in the frame.
+
+The index a position is looked up in gained the function's NAME, beside the
+declaration's start and its parameter list's `(`. A map's segments start at
+token boundaries, so the `(` V8 names is usually covered by the segment for the
+token before it: measured on the fixture below, tsc maps the `(` itself, and
+Node's own `--experimental-transform-types` maps a declaration onto its name and
+a method onto its start. All three are exact positions of one declaration; none
+of them is a match by name.
+
+The diagnostic ships too, and says which of the two causes it was. The report
+gives how many frames matched and how many did not, names the misses with their
+file and line — a ported one at both ends,
+`src/work.ts:31:23 <- dist/work.js:25:23`, so the reader can find the frame in
+their own profile — and then either "no source map covers those positions", with
+a transform named as the likelier cause than an edit, or "came back through a
+source map, and no function begins where they land", which is the stale profile
+this used to blame every time. An unmatched frame still reaches `blinded()` and
+exit 1; a run that could not look at measured time is never clean.
+
+Fixtures in `test/fixtures/mapped/`: one source, and what tsc (map in a file
+beside it) and Node's own transform (map inline, and a copy with the comment
+removed) make of it, committed because what has to be tested is a real
+transformer's map. The transform moves `kernel` from line 31 to line 25, and
+line 25 of the source is the first line of a doc comment — the shape this entry
+reports. Four tests: the external map, the inline map, the transformed file with
+no map, and a ported position that lands on no function. README's profile section said a total
+miss was exit `2`; it now says what the tool does.
 
 ## TC-76 — the documented invocation is the degraded one (2026-08-29, open)
 

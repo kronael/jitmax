@@ -84,6 +84,7 @@ try {
   // sentence printed under every run of this tool.
   let fromProfile: string | undefined;
   let unmatched: string[] = [];
+  let profileCounts = { matched: 0, ported: 0 };
   let given;
   if (profilePath !== undefined) {
     const minSelfPct = config?.minSelfPct ?? DEFAULT_MIN_SELF_PCT;
@@ -96,7 +97,19 @@ try {
     // a stale profile, a cause the tool never checked; three of four missing
     // printed `clean` and exited 0 over 75% of the measured time, with the
     // caveat below the verdict where nothing reads it (BUGS TC-77).
-    unmatched = found.unmatched.map((f) => `${f.name} (${rel(cwd, f.file)}:${f.line}:${f.column})`);
+    // A ported frame is rendered at BOTH ends: the position that was looked up
+    // is the author's, and the one the reader will find in their profile is the
+    // transformed one. Naming only the first would have the run report a
+    // position nothing in the profile contains.
+    unmatched = found.unmatched.map((f) => {
+      const at = `${rel(cwd, f.file)}:${f.line}:${f.column}`;
+      const from = f.generated;
+      return `${f.name} (${at}${from ? ` <- ${rel(cwd, from.file)}:${from.line}:${from.column}` : ''})`;
+    });
+    profileCounts = {
+      matched: hot.length - found.unmatched.length,
+      ported: found.unmatched.filter((f) => f.generated !== undefined).length,
+    };
     given = found.marks;
     fromProfile =
       `  ${plural(found.marks.length, 'hot function')} from ` +
@@ -127,6 +140,7 @@ try {
   const blind: Blind = {
     unresolved,
     unmatched,
+    profile: profileCounts,
     bodyless: bodyless.map((b) => `${b.name} (${rel(cwd, b.file)}:${b.line}:${b.column})`),
   };
   const out = render(

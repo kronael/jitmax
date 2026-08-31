@@ -45,6 +45,12 @@ export interface Blind {
   // not look at, which is the unresolved-module problem with a different cause:
   // a total miss threw and a partial miss printed `clean` over it (BUGS TC-77).
   unmatched: string[];
+  // The arithmetic behind that list, when the run was given a profile: how many
+  // frames DID match a function here, and how many of the misses were ported
+  // back through a source map before they were looked up. "N frames matched
+  // nothing" reads the same for a stale profile and for a transformed one, and
+  // the user of TC-77 was told the wrong one of the two; these say which.
+  profile: { matched: number; ported: number };
   // Annotated declarations with no body anywhere in this program — an ambient
   // `declare function`, or an overload signature whose implementation is not
   // here. The walk had nothing to walk and reported nothing, which read as
@@ -81,7 +87,7 @@ export function render(
   cwd: string,
   results: Array<{ mark: Mark; findings: Finding[] }>,
   suppression: Suppression = { count: 0, keys: [] },
-  blind: Blind = { unresolved: [], unmatched: [], bodyless: [] },
+  blind: Blind = { unresolved: [], unmatched: [], profile: { matched: 0, ported: 0 }, bodyless: [] },
   // What the functions in this run are. An annotation is the author asserting
   // hotness; a profile is a measurement of it. The report says which.
   subject = 'annotated function'
@@ -151,12 +157,32 @@ export function render(
   }
 
   if (blind.unmatched.length > 0) {
+    const missed = blind.unmatched.length;
     out.push(
-      `  ${plural(blind.unmatched.length, 'hot frame')} matched no function in this program,`,
-      '  so measured time was not checked — the sources are transformed, or the profile',
-      `  is stale: ${listed(blind.unmatched)}`,
-      '  This is not a clean run.'
+      `  ${plural(blind.profile.matched, 'hot frame')} matched a function here; ${missed} did not, so`,
+      `  measured time was not checked: ${listed(blind.unmatched)}`
     );
+    // Which of the two causes it was, named. The whole of TC-77 is that this
+    // said "stale" to somebody whose profile was minutes old: a frame with no
+    // map behind it was never ported at all, and a transform between the source
+    // and the profile explains that better than an edit to the source does.
+    const unported = missed - blind.profile.ported;
+    if (unported > 0) {
+      const which = unported === missed ? 'any of those positions' : `${unported} of those positions`;
+      out.push(
+        `  no source map covers ${which}, so they could not be ported`,
+        '  back to the source: a transform between your source and your profile — a build',
+        '  step, or the --experimental-transform-types that one `enum` forces — moves every',
+        '  position below it, and that fits a fresh profile better than a stale one.'
+      );
+    }
+    if (blind.profile.ported > 0) {
+      out.push(
+        `  ${blind.profile.ported} of those positions came back through a source map, and no function`,
+        '  begins where they land: that much of the profile is stale against this source.'
+      );
+    }
+    out.push('  This is not a clean run.');
   }
 
   if (blind.bodyless.length > 0) {
