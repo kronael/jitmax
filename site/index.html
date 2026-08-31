@@ -146,7 +146,7 @@ export function total(rows: Row[]): number { … }</code></pre>
       <td>the object moves to a slower kind of storage, and stays there</td>
       <td>12.3&ndash;13.6x per property load. On es-toolkit's <code>omit</code>
           the whole call moves 1.62&ndash;3.32x &mdash; and the read half
-          <strong>rejects at 48 keys</strong>, 0.99&ndash;1.05x, because filling
+          <strong>rejects at 48 keys</strong>, 0.97&ndash;1.04x, because filling
           a wide object key by key normalizes it exactly as
           <code>delete</code> does.</td>
     </tr>
@@ -166,8 +166,9 @@ export function total(rows: Row[]): number { … }</code></pre>
           larger, taken from a cell whose three sweeps read 6.48x, 6.58x and
           7.51x. No value sits inside all three intervals, so the cell is
           withdrawn and what is left is the size that replicates. On zod's
-          <code>cleanEnum</code> the fix <strong>rejects</strong> &mdash;
-          1.03&ndash;1.20x, intervals spanning 1.</td>
+          <code>cleanEnum</code> the same fix is worth
+          <strong>three to twelve percent</strong> &mdash; 1.10&ndash;1.12x at
+          16 members and 1.03&ndash;1.10x at 256, neither interval spanning 1.</td>
     </tr>
     <tr>
       <td><code>x = Lib.min(x, y)</code> in a loop</td>
