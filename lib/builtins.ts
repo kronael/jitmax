@@ -6,7 +6,7 @@
 // lowers to inline code. The list says one thing only: at these callees there
 // is no call boundary at all. It is NOT a fast-versus-slow classifier —
 // Array.prototype.sort is lowered and is still O(n log n) with a comparator
-// call per comparison (BUGS TC-70).
+// call per comparison (BUGS TC-126).
 
 export const BUILTINS: {
   version: string;
@@ -15,7 +15,7 @@ export const BUILTINS: {
   statics: readonly string[];
 } = {
   // The V8 this list is a fact about. The list is version-specific, so every
-  // claim made from it names this pin (BUGS TC-70).
+  // claim made from it names this pin (BUGS TC-126).
   version: '15.3.0.0',
   revision: 'c635f0d160b6e988b5ea5a907511a2929beb5d5e',
   lowered: [

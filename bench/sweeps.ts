@@ -492,3 +492,22 @@ export function* plan(bench: Bench): Generator<{
 
 export const label = (o: SweepOpts): string =>
   `${o.mode.padEnd(5)} n=${String(o.n).padEnd(6)} ${o.variant}/${o.baseline}`.padEnd(38);
+
+// Every sweep `--all` runs, in order. Declared rather than taken from
+// Object.keys(BENCHMARKS) so adding a sweep to the table is not silently also a
+// change to what a release measures — and declared BOTH ways for the same
+// reason, because the one-sided list was the silence: `shape-sets`, `arguments`
+// and `sparse` sat in the table, outside ALL, and `--all` wrote a manifest that
+// said nothing about the third of the table it had skipped. `make test` holds
+// the two lists to the table, so a new sweep in neither of them fails the build
+// instead of going unmeasured (BUGS TC-99).
+export const ALL: readonly string[] = [
+  'shapes', 'shape-sets', 'spread', 'spread-object', 'strings', 'select', 'chained',
+  'inline', 'arguments', 'sparse', 'addprop', 'dispatch', 'delete', 'arrays', 'example',
+];
+
+// Declared, and deliberately not in ALL, with the reason `--all` skips it.
+export const NOT_ALL: Record<string, string> = {
+  tc11: 're-runs cells of the other sweeps, so running it inside --all would append ' +
+    'a second set of replications to rows the same pass had just written',
+};

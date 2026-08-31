@@ -9,7 +9,7 @@ import { createFlow, type Flow } from './flow.ts';
 // at these sites at all, so reaching one is not a hole in the promise. The set
 // is derived from the pinned V8's js-call-reducer.cc by `make builtins`, never
 // written by hand — a hand-written list here was this project's own copy of
-// the mistake TC-50 charges the incumbents with (BUGS TC-70). These sites are
+// the mistake TC-50 charges the incumbents with (BUGS TC-126). These sites are
 // counted on `Mark.lowered` so the report can say the claim's V8 version.
 const PRIMITIVES = new Set<string>(BUILTINS.statics);
 
@@ -99,7 +99,7 @@ export interface Mark extends Site {
   // at these sites, which is a stronger statement than `platform`'s "the body
   // is native" and a version-specific one: the set is derived from the pinned
   // V8, so the report names that pin whenever this count is not zero
-  // (BUGS TC-70).
+  // (BUGS TC-126).
   lowered: number;
   // Interface-typed calls whose receiver the dataflow walk traced to exactly
   // ONE visible implementation, followed instead of reported: the rules then
@@ -523,7 +523,7 @@ function reach(
         if (PRIMITIVES.has(text)) {
           // No call boundary here at all — see PRIMITIVES. Counted, once per
           // site, so the report can say what was stepped over and under which
-          // V8 the stepping-over is true (BUGS TC-70).
+          // V8 the stepping-over is true (BUGS TC-126).
           const site = at(body.sf, node);
           const key = siteKey(site);
           if (!reported.has(key)) {

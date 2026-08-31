@@ -40,7 +40,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { cellOrVoid, replicate, replicates, spans1, RUNNER } from './driver.ts';
 import type { CellResult, Replicated } from './driver.ts';
-import { BENCHMARKS, plan, label } from './sweeps.ts';
+// `ALL` — the sweeps `--all` runs — is declared in sweeps.ts beside the table
+// it selects from, so a test can hold the two to each other. See the note there.
+import { ALL, BENCHMARKS, plan, label } from './sweeps.ts';
 import type { Bench } from './sweeps.ts';
 import { environment, gate, load1, runnable, MAX_RUNNABLE, CORES } from './env.ts';
 import type { Environment } from './env.ts';
@@ -52,16 +54,6 @@ type RunEnv = Environment & { runnableStart: number };
 // A row as `key` and `done` see it: parsed back off a .jl line, every field
 // the runner may have written, nothing guaranteed.
 type JlRow = Record<string, unknown>;
-
-// Every sweep, in the order `--all` runs them. Declared rather than taken from
-// Object.keys(BENCHMARKS) so adding a sweep to the table is not silently also a
-// change to what a release measures. `tc11` is absent on purpose: it re-runs
-// cells of the other sweeps and running it inside `--all` would append a second
-// set of replications to rows the same pass had just written.
-const ALL = [
-  'shapes', 'spread', 'spread-object', 'strings', 'select', 'chained',
-  'inline', 'addprop', 'dispatch', 'delete', 'arrays', 'example',
-];
 
 const MANIFEST = path.join(import.meta.dirname, 'manifest.jsonl');
 const SCRATCH = path.join(import.meta.dirname, 'scratch.jl');

@@ -282,7 +282,7 @@ function in the program is exit `2`". TC-89 deliberately replaced that with exit
 pixi.js exits 1. TC-89's documentation pass fixed the exit-code section and
 missed this sentence.
 
-## TC-103 — three bug IDs are used twice, and the tool's own output cites two of them (2026-08-30, open)
+## TC-103 — three bug IDs are used twice, and the tool's own output cites two of them (2026-08-30, FIXED 2026-08-31)
 
 `TC-11`, `TC-70`, `TC-98` and `TC-99` each head two different entries in this
 file. Sessions append concurrently and each takes the next free number from a
@@ -315,6 +315,36 @@ Proposal: renumber the later of each colliding pair to a free ID, update the
 citations under `lib/`, and add a check to `make` that fails on a duplicate
 `## TC-` heading — the same shape as the drift check that already guards the
 derived artifacts.
+
+**Fixed 2026-08-31.** Two of the four were already gone when this was worked:
+`300eaf3` renumbered the 2026-08-30 `TC-98` to `TC-110` and the 2026-08-30
+`TC-99` to `TC-111` while fixing them, which is where the convention followed
+here comes from — the LATER-FILED entry moves, the older keeps the ID its
+citations point at. `megamorphic-dispatch.ts:116` moved with it and no longer
+cites `TC-98`.
+
+`TC-70` was a real collision of two different bugs and the later-filed one — the
+builtin list derived from V8, 2026-08-29 — is now **TC-126**. Eleven citations
+moved with it (`lib/scan.ts` ×3, `lib/derive-builtins.ts` ×3 including the two
+comment lines it WRITES into the generated artifact, `lib/builtins.ts` ×2,
+`lib/report.ts` ×1, `test/check.test.ts` ×3); `make builtins` regenerates
+`lib/builtins.ts` byte-identical, so the generator and its output did not drift
+apart. The three citations of the 2026-08-28 plural bug — `lib/report.ts:7`,
+`lib/rules/shared.ts:49`, `test/check.test.ts` — keep `TC-70`, which is the ID
+their entry still heads.
+
+`TC-11` is **not** renumbered, because it is not a collision: `the audit` and
+`the original report` are one bug's two documents, the first ends with "The
+original report follows.", and every `TC-11` citation under `bench/` means the
+audit. Renumbering the original report would have invented a second bug out of
+the first one's history. It is a `###` sub-heading of the entry it belongs to
+instead — the same one-plain-heading-per-ID shape TC-15 and TC-14 already have,
+where the archived half carries the `## ✅ FIXED …` form.
+
+The guard is a test rather than a lint: `make test` reads every `## TC-NN —
+… (status)` heading in this file and fails on an ID that heads two of them. It
+is the same reader the TC-98 register check uses, so the two cannot disagree
+about what an entry is.
 
 ## TC-104 — megamorphism is modelled as a TypeScript union, and nobody writes polymorphism that way (2026-08-30, open)
 
@@ -656,7 +686,7 @@ closed-world walk is for, and the count is already inside V8's four-map budget
 so no dispatch rule fires. Reserve the "no body" sentence for a receiver whose
 implementations the walk could not locate.
 
-## TC-100 — an unmatched hot frame in the working directory renders with no filename (2026-08-29, open)
+## TC-100 — an unmatched hot frame in the working directory renders with no filename (2026-08-29, FIXED 2026-08-31)
 
 `bin/jitmax.ts:99` builds the name of a hot frame the program could not match:
 
@@ -674,7 +704,18 @@ unresolved-module message).
 
 The fix is the guard, and it changes a printed line, so it is recorded.
 
-## TC-99 — `make bench-all` never runs three of the fifteen sweeps (2026-08-29, open)
+**Fixed 2026-08-31.** Not a fourth copy of the guard: `rel(cwd, file)` in
+`lib/report.ts` is the one spelling of a printed location, and all four sites go
+through it — the two in `report.ts` that had the guard, this one, and the
+syntax-error line in `bin/jitmax.ts` that had it too. The reproduction is a
+synthesized profile whose frame url IS the directory the run is started in, run
+from inside `test/fixtures/profile`; before the fix it printed
+`f (:12:5)` and it now prints the absolute path, which is what `path.relative`
+has nothing shorter to say. TC-80's unresolved-module message is the same class
+and is still open — it is about which of two causes the message names, not about
+a blank path.
+
+## TC-99 — `make bench-all` never runs three of the fifteen sweeps (2026-08-29, FIXED 2026-08-31)
 
 `bench/run.ts`'s `ALL` names twelve sweeps; `bench/sweeps.ts`'s `BENCHMARKS`
 declares fifteen plus `tc11`. `shape-sets`, `arguments` and `sparse` are in the
@@ -692,7 +733,20 @@ Either derive `ALL` from the table, or have `--all` print and record which
 declared sweeps it is skipping. Both change what a release run produces, so
 this is recorded.
 
-## TC-98 — `DEFECT`'s descriptions are hand-copied from BUGS.md, and two have drifted (2026-08-29, open)
+**Fixed 2026-08-31.** Neither of the two, and for the reason the entry gives:
+deriving it throws away the property the declaration was defending, and printing
+the skips leaves the three sweeps unmeasured. `ALL` is still declared — and now
+DECLARED BOTH WAYS. It moved to `bench/sweeps.ts`, beside the table it selects
+from, because `bench/run.ts` measures a sweep on import and a test cannot read a
+constant out of it; it gained `shape-sets`, `arguments` and `sparse`; and
+`NOT_ALL` beside it names `tc11` with the reason `--all` skips it, which is the
+one skip that was ever deliberate. `make test` holds `ALL ∪ NOT_ALL` to
+`Object.keys(BENCHMARKS)`, so a sweep added to the table and to neither list
+fails the build instead of going unmeasured for three releases. `node
+bench/run.ts --all --plan` now names fifteen sweeps. No sweep was run: this
+entry is about which cells `--all` selects, and selecting is not measuring.
+
+## TC-98 — `DEFECT`'s descriptions are hand-copied from BUGS.md, and two have drifted (2026-08-29, FIXED 2026-08-31)
 
 `lib/rules/index.ts` holds one line per defect code a rule carries, "taken from
 the BUGS.md heading", and nothing tests it in either direction. Two of the five
@@ -713,6 +767,25 @@ described and disable nothing.
 `UNMEASURED_TRIGGER` in `test/check.test.ts` is the shape this needs: a register
 asserted in both directions. The fix changes a printed line and removes a defect
 code from a rule, so it is recorded.
+
+**Fixed 2026-08-31.** `interface-dispatch` no longer carries TC-82 —
+`node bin/jitmax.ts demo` printed `known defect: TC-82` on five findings and now
+prints none — and `DEFECT` is re-synced to the headings verbatim, backticks
+stripped because it is printed to a terminal and not rendered. Three lines
+moved, not two: TC-44's had drifted as well, and nothing had noticed because
+nothing looked.
+
+The register is now asserted in three directions, which is one more than the
+entry asked for:
+
+- every code in `DEFECT` heads a `## TC-NN` entry in BUGS.md, its line equals
+  that heading, and the heading's status does not say `FIXED` — the assertion
+  that would have caught TC-82 the day TC-69 closed it;
+- the set of codes any rule's `defects` cites equals the set `DEFECT` describes,
+  in both directions;
+- every described code actually disables a rule through `resolveDisabled`, which
+  reads codes off `EVIDENCE[].defects` and never off `DEFECT` — the third
+  register the entry names, and the one with no list of its own to check.
 
 ## TC-122 — three deletes on one object are three build-failing errors for one demotion (2026-08-30, open)
 
@@ -2098,7 +2171,7 @@ one cell cannot reintroduce it.
 
 Found 2026-08-28 while reading the strings for TC-48.
 
-## TC-70 — the builtin list should be derived from V8, not written by hand (2026-08-29, open, proposal)
+## TC-126 — the builtin list should be derived from V8, not written by hand (2026-08-29, open, proposal)
 
 Following TC-69's first cause. The owner's proposal is a list of acceptable and
 unacceptable builtins, so the tool can discern between them instead of silencing
@@ -4989,7 +5062,7 @@ is what replaced it.
 
 The original report follows.
 
-## TC-11 — the original report (2026-08-14)
+### TC-11 — the original report (2026-08-14)
 
 `bench/driver.js` asserts the achieved timed region lands within 2x of 120 ms.
 A kernel slow enough can meet that with 4 to 7 reps, and then a single GC pause

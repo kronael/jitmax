@@ -7,6 +7,14 @@ import { DEFECT, type Finding } from './rules.ts';
 // derived numeral is how `1 cells` reached a published sentence (BUGS TC-70).
 export const plural = (n: number, s: string): string => `${n} ${s}${n === 1 ? '' : 's'}`;
 
+// One spelling of a printed location, for the same reason. `path.relative`
+// returns the EMPTY STRING when the two paths are equal, so a location that is
+// the directory the run started in renders as `kernel (:12:5)` — and for an
+// unmatched hot frame that line is the whole of what the run says it could not
+// look at. Four sites rendered a location and this guard was on two of them
+// (BUGS TC-100).
+export const rel = (cwd: string, file: string): string => path.relative(cwd, file) || file;
+
 // A finding no benchmark prices is a warning, not an error, and a warning does
 // not fail a build. A rule that carries no evidence at all defaults to the same
 // place, because a gate that fails on an unmeasured claim is failing on
@@ -168,7 +176,7 @@ export function render(
   }
   // Also once per run, and with the pin: "lowered" is a fact about one V8, and
   // stating it without the version would be a version-specific claim in a
-  // general voice (BUGS TC-70). See Mark.lowered.
+  // general voice (BUGS TC-126). See Mark.lowered.
   const lowered = results.reduce((n, r) => n + r.mark.lowered, 0);
   if (lowered > 0) {
     out.push(
@@ -193,7 +201,7 @@ export function render(
     if (findings.length === 0 && !mark.truncated) continue;
     out.push(
       '',
-      `  ${path.relative(cwd, mark.file) || mark.file}:${mark.line}  ${mark.name}()` +
+      `  ${rel(cwd, mark.file)}:${mark.line}  ${mark.name}()` +
         // Where "this function is hot" came from, when the tool decided it
         // rather than the author (BUGS TC-57).
         (mark.from ? ` — ${mark.from}` : '')
@@ -213,7 +221,7 @@ export function render(
       const from = reach.get(findingKey(f)) ?? 1;
       const alsoFrom = from > 1 ? ` — reached by ${from} annotated functions` : '';
       if (f.file !== mark.file || f.line !== mark.line) {
-        out.push(`      ${path.relative(cwd, f.file) || f.file}:${f.line}${alsoFrom}`);
+        out.push(`      ${rel(cwd, f.file)}:${f.line}${alsoFrom}`);
       } else if (alsoFrom !== '') {
         out.push(`     ${alsoFrom}`);
       }

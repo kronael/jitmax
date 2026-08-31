@@ -28,7 +28,7 @@ const evidence: Evidence = {
     'by shape, which undercounts maps (BUGS TC-60), and the enumeration sees only this ' +
     'program, so a consumer of an exported interface can add more',
   severity: 'warn',
-  defects: ['TC-33', 'TC-82'],
+  defects: ['TC-33'],
 };
 
 // A call the walk reached through an interface. The body IS in this checkout —

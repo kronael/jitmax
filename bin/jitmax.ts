@@ -5,7 +5,7 @@ import { load, program } from '../lib/ts.ts';
 import { marksFromProfile, scan } from '../lib/scan.ts';
 import { hotFrames } from '../lib/profile.ts';
 import { check, resolveDisabled } from '../lib/rules.ts';
-import { blinded, findingKey, plural, render, severity, type Blind } from '../lib/report.ts';
+import { blinded, findingKey, plural, rel, render, severity, type Blind } from '../lib/report.ts';
 import { DEFAULT_MIN_SELF_PCT, loadConfig } from '../lib/config.ts';
 
 try {
@@ -76,7 +76,7 @@ try {
     const where = [...new Set(broken.map((d) => d.file?.fileName ?? '<unknown>'))];
     throw new Error(
       `${plural(broken.length, 'syntax error')} — nothing here was ` +
-        `checked: ${where.map((f) => path.relative(cwd, f) || f).join(', ')}`
+        `checked: ${where.map((f) => rel(cwd, f)).join(', ')}`
     );
   }
   // Hotness comes from the profile or from the annotation, never from a guess
@@ -96,7 +96,7 @@ try {
     // a stale profile, a cause the tool never checked; three of four missing
     // printed `clean` and exited 0 over 75% of the measured time, with the
     // caveat below the verdict where nothing reads it (BUGS TC-77).
-    unmatched = found.unmatched.map((f) => `${f.name} (${path.relative(cwd, f.file)}:${f.line}:${f.column})`);
+    unmatched = found.unmatched.map((f) => `${f.name} (${rel(cwd, f.file)}:${f.line}:${f.column})`);
     given = found.marks;
     fromProfile =
       `  ${plural(found.marks.length, 'hot function')} from ` +
@@ -127,7 +127,7 @@ try {
   const blind: Blind = {
     unresolved,
     unmatched,
-    bodyless: bodyless.map((b) => `${b.name} (${path.relative(cwd, b.file) || b.file}:${b.line}:${b.column})`),
+    bodyless: bodyless.map((b) => `${b.name} (${rel(cwd, b.file)}:${b.line}:${b.column})`),
   };
   const out = render(
     cwd,

@@ -8,7 +8,7 @@
 // one question — is there a real call into C++ or Torque at this site — and it
 // must not be written by hand: a hand-written performance list is what TC-50
 // charges oxlint and Biome with shipping, and the hand-written `PRIMITIVES`
-// set in scan.ts was this project's own copy of the same mistake (BUGS TC-70).
+// set in scan.ts was this project's own copy of the same mistake (BUGS TC-126).
 //
 // The list is version-specific. It is derived at the pin README.md's ```pin
 // block names — the same pin `bench/v8-check.ts` verifies citations against —
@@ -182,7 +182,7 @@ export function generate(root: string): string {
     '// lowers to inline code. The list says one thing only: at these callees there',
     '// is no call boundary at all. It is NOT a fast-versus-slow classifier —',
     '// Array.prototype.sort is lowered and is still O(n log n) with a comparator',
-    '// call per comparison (BUGS TC-70).',
+    '// call per comparison (BUGS TC-126).',
     '',
     'export const BUILTINS: {',
     '  version: string;',
@@ -191,7 +191,7 @@ export function generate(root: string): string {
     '  statics: readonly string[];',
     '} = {',
     '  // The V8 this list is a fact about. The list is version-specific, so every',
-    '  // claim made from it names this pin (BUGS TC-70).',
+    '  // claim made from it names this pin (BUGS TC-126).',
     `  version: '${b.version}',`,
     `  revision: '${b.revision}',`,
     '  lowered: [',

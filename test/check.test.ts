@@ -20,12 +20,16 @@ import {
 // Rule 6's REJ predicate lives with the protocol it belongs to, and both
 // bench/run.ts and this file read it from there.
 import { spans1 } from '../bench/driver.ts';
+// The sweep table and the two lists that partition it. bench/run.ts is a
+// script and runs a sweep on import; these live in sweeps.ts so they can be
+// read without measuring anything (BUGS TC-99).
+import { ALL as ALL_SWEEPS, BENCHMARKS, NOT_ALL } from '../bench/sweeps.ts';
 import { deriveBuiltins, loweredCases } from '../lib/derive-builtins.ts';
 import { BUILTINS } from '../lib/builtins.ts';
 import { N } from '../lib/numbers.ts';
 import { load, program } from '../lib/ts.ts';
 import { scan, type Mark } from '../lib/scan.ts';
-import { check, EVIDENCE, resolveDisabled } from '../lib/rules.ts';
+import { check, DEFECT, EVIDENCE, resolveDisabled } from '../lib/rules.ts';
 import { loadConfig } from '../lib/config.ts';
 import { render } from '../lib/report.ts';
 
@@ -727,9 +731,12 @@ test('a truncated walk exits 1: not clean, even with no findings', () => {
 // The path carries the pid: two overlapping test runs shared one file and
 // deleted each other's, which read as a real failure twice before it read as a
 // race.
-function writeProfile(target: string, frames: Array<{ line: number; column: number }>): string {
+function writeProfile(
+  target: string,
+  frames: Array<{ line: number; column: number }>,
+  url = `file://${path.join(root, 'test', 'fixtures', 'profile', 'work.ts')}`
+): string {
   fs.mkdirSync(path.dirname(target), { recursive: true });
-  const url = `file://${path.join(root, 'test', 'fixtures', 'profile', 'work.ts')}`;
   const nodes = frames.map((f, i) => ({
     id: i + 1,
     callFrame: { functionName: 'f', url, lineNumber: f.line - 1, columnNumber: f.column - 1 },
@@ -800,6 +807,30 @@ test('a partly matching profile is not a clean run either', () => {
   fs.unlinkSync(prof);
   assert.ok(!/every hot function is clean/.test(run.stdout), 'unchecked hot time read as clean');
   assert.match(run.stdout, /1 hot frame matched no function in this program/);
+  assert.strictEqual(run.status, 1);
+});
+
+// `path.relative` returns the EMPTY STRING when the two paths are equal, so a
+// hot frame whose file IS the directory the run was started in rendered as
+// `kernel (:12:5)` — and that line is the whole of what the run says it could
+// not look at. lib/report.ts guarded its two renderers of a location and
+// bin/jitmax.ts's third was unguarded; all four go through `rel` now
+// (BUGS TC-100). Run from inside the fixture directory, which is what makes
+// the frame's file and the run's cwd the same path.
+test('an unmatched hot frame in the working directory is named, not blank', () => {
+  const dir = path.join(root, 'test', 'fixtures', 'profile');
+  const prof = writeProfile(
+    path.join(root, 'tmp', `test-cwdframe-${process.pid}.cpuprofile`),
+    [{ line: 12, column: 5 }],
+    `file://${dir}`
+  );
+  const run = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), prof, '.'], {
+    cwd: dir,
+    encoding: 'utf8',
+  });
+  fs.unlinkSync(prof);
+  assert.ok(!run.stdout.includes('(:12:5)'), `the frame rendered with no file:\n${run.stdout}`);
+  assert.ok(run.stdout.includes(`(${dir}:12:5)`), `the frame does not name its file:\n${run.stdout}`);
   assert.strictEqual(run.status, 1);
 });
 
@@ -1279,7 +1310,7 @@ test('a platform call with no @types/node is still the platform, and opaque code
     assert.ok(!run.stdout.includes('readFileSync'), 'readFileSync was still reported');
     // Math.max is not a platform CALL: TurboFan lowers it, so no call boundary
     // exists at the site — a version-specific claim, so the line names the V8
-    // the list was derived from (BUGS TC-70).
+    // the list was derived from (BUGS TC-126).
     assert.match(run.stdout, /1 call lowered to inline code, not listed/);
     assert.ok(
       run.stdout.includes(`V8 ${BUILTINS.version} @ ${BUILTINS.revision.slice(0, 10)}`),
@@ -1291,10 +1322,10 @@ test('a platform call with no @types/node is still the platform, and opaque code
   }
 });
 
-// The lowered-builtin list itself. Derived, never hand-written (BUGS TC-70):
+// The lowered-builtin list itself. Derived, never hand-written (BUGS TC-126):
 // lowering describes the CALL BOUNDARY, not the work — Array.prototype.sort is
 // lowered and still O(n log n) — so the only claim the list may carry is
-// membership, and these are the members TC-70 checked against the pinned tree.
+// membership, and these are the members TC-126 checked against the pinned tree.
 test('the lowered list carries the known-lowered names and none of the known-not-lowered', () => {
   for (const name of ['ArrayPrototypeSort', 'MathMax', 'RegExpPrototypeTest']) {
     assert.ok(BUILTINS.lowered.includes(name), `${name} is lowered at the pin and must be listed`);
@@ -1302,7 +1333,7 @@ test('the lowered list carries the known-lowered names and none of the known-not
   for (const name of ['JsonParse', 'ObjectKeys', 'RegExpPrototypeExec']) {
     assert.ok(!BUILTINS.lowered.includes(name), `${name} is not lowered at the pin`);
   }
-  // The static spellings scan.ts matches by text, and the two TC-70 names most
+  // The static spellings scan.ts matches by text, and the two TC-126 names most
   // worth pinning: Math.max is in, JSON.parse can never be.
   assert.ok(BUILTINS.statics.includes('Math.max'));
   assert.ok(!BUILTINS.statics.includes('JSON.parse'));
@@ -1417,6 +1448,86 @@ test('a rule warns exactly when no sweep ran the program it fires on', () => {
       `${name} warns, but no longer carries TC-33 to say why`
     );
   }
+});
+
+// BUGS.md's live entries, read as a register: `## TC-44 — <text> (<date>,
+// <status>)`. The status is the LAST parenthesised group, so a heading whose
+// text carries brackets still parses. The archived `## ✅ FIXED … — TC-17 — …`
+// form is deliberately not matched: those are closed entries filed under a
+// heading of their own shape, and the plain form is the one an ID resolves to.
+function bugEntries(): Array<{ id: string; text: string; status: string }> {
+  const src = fs.readFileSync(path.join(root, 'BUGS.md'), 'utf8');
+  const out: Array<{ id: string; text: string; status: string }> = [];
+  for (const line of src.split('\n')) {
+    const m = /^## (TC-\d+) — (.+) \(([^()]*)\)\s*$/.exec(line);
+    if (m) out.push({ id: m[1]!, text: m[2]!, status: m[3]! });
+  }
+  assert.ok(out.length > 50, 'the heading pattern no longer matches BUGS.md');
+  return out;
+}
+
+// The `known defect:` line under a finding is a promise that the ID resolves to
+// ONE entry the reader can go and read. Two sessions appending concurrently
+// each take the next free number from a copy the other has already extended,
+// and it had happened four times before anything looked (BUGS TC-103).
+test('no bug ID heads two entries in BUGS.md', () => {
+  const seen = new Map<string, number>();
+  for (const { id } of bugEntries()) seen.set(id, (seen.get(id) ?? 0) + 1);
+  assert.deepStrictEqual(
+    [...seen].filter(([, n]) => n > 1).map(([id]) => id),
+    [],
+    'renumber the later-filed entry of each pair to a free ID and move its citations'
+  );
+});
+
+// The defect register, in both directions, because nothing read it at all: two
+// of its lines had drifted from the headings they were copied from, and a third
+// named TC-82 — closed by TC-69's dataflow — so every `interface-dispatch`
+// finding printed `known defect: TC-82` about a defect this repository had
+// already fixed (BUGS TC-98).
+//
+// The third direction is the one that has no register at all: `resolveDisabled`
+// reads the codes off `EVIDENCE[].defects` and never off `DEFECT`, so the two
+// can diverge either way — a code that is disable-able with no description to
+// print, or a description that disables nothing.
+test('every defect code is a live BUGS.md entry, and every code a rule cites is described', () => {
+  const entries = new Map(bugEntries().map((e) => [e.id, e]));
+  for (const [code, description] of Object.entries(DEFECT)) {
+    const entry = entries.get(code);
+    assert.ok(entry, `DEFECT describes ${code}, which heads no entry in BUGS.md`);
+    assert.strictEqual(
+      description,
+      entry.text.replaceAll('`', ''),
+      `DEFECT's line for ${code} has drifted from its BUGS.md heading`
+    );
+    assert.ok(
+      !/\bFIXED\b/.test(entry.status),
+      `${code} is "${entry.status}" — a closed defect must not be printed under a finding`
+    );
+  }
+  assert.deepStrictEqual(
+    [...new Set(Object.values(EVIDENCE).flatMap((e) => e.defects))].sort(),
+    Object.keys(DEFECT).sort(),
+    'a code a rule carries has no description, or a description names no rule'
+  );
+  for (const code of Object.keys(DEFECT)) {
+    assert.ok(resolveDisabled([code]).size > 0, `${code} is described but disables no rule`);
+  }
+});
+
+// `--all` is what a release measures, and the list is declared rather than
+// derived so that adding a cell to the table is not silently also a change to
+// what a release measures. Declaring it one-sidedly was the silence: three
+// sweeps sat in the table outside `ALL`, `--all` wrote a manifest row per sweep
+// it ran and said nothing about the third of the table it had skipped, and one
+// of them is the sweep megamorphic-elements cites (BUGS TC-99).
+test('every declared sweep is either run by --all or excluded with a reason', () => {
+  assert.deepStrictEqual(
+    [...ALL_SWEEPS, ...Object.keys(NOT_ALL)].sort(),
+    Object.keys(BENCHMARKS).sort(),
+    'a sweep in the table and in neither list is one --all would skip without a word'
+  );
+  assert.strictEqual(new Set(ALL_SWEEPS).size, ALL_SWEEPS.length, 'a sweep is listed twice');
 });
 
 // The end-to-end examples. Each `.before.ts` is a function a library ships and

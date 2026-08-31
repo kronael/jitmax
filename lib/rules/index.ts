@@ -13,15 +13,18 @@ import { deleteProperty } from './delete-property.ts';
 
 export type { Evidence, Finding } from './shared.ts';
 
-// One line per code in `defects`, taken from the BUGS.md heading. Keep in
-// sync with BUGS.md: a code appears here only if a rule's `defects` cites it.
+// One line per code in `defects`, taken verbatim from the BUGS.md heading —
+// backticks stripped, because this is printed to a terminal and not rendered.
+// Both directions are asserted against BUGS.md by `make test`: nothing checked
+// this register at all, and two lines had drifted while a third named a defect
+// this repository had closed, so every finding of `interface-dispatch` printed
+// `known defect: TC-82` about a defect that no longer existed (BUGS TC-98).
 export const DEFECT: Record<string, string> = {
-  'TC-44': 'the rule prices a value that escapes, at a site where it may not',
+  'TC-44': "allocating-select fires on a value that never escapes, and prints the wrong cell's number",
   'TC-2': 'a TypeScript union member is not a V8 map',
   'TC-9': 'rules fire outside the conditions their own evidence establishes',
   'TC-13': 'a method in a field has no four-map budget',
-  'TC-33': 'the rule fires on one program and its benchmark measured another',
-  'TC-82': 'loud on well-abstracted code, and the tool cannot tell whether it is right',
+  'TC-33': "closed-world's trigger and its benchmark measure different things",
 };
 
 // Every rule, once. `EVIDENCE`, the disable vocabulary `resolveDisabled` reads
