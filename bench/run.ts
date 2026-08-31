@@ -284,7 +284,7 @@ function sweep(name: string, env: RunEnv) {
     // finishes. Agreement is a value common to all the intervals; its absence
     // says the sweeps cannot all be describing the same quantity. The gate runs
     // again between the sweeps — the check before the cell covered the first
-    // one, and covering all three with it is what let 592 rows past (TC-46).
+    // one, and covering all three with it is what let 601 rows past (TC-46).
     let runs: Replicated[];
     try {
       runs = replicate({ script, ...opts }, (r) => {

@@ -26,7 +26,81 @@ Review queue. Found during audits, fixed only when the owner asks.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
-## TC-123 — the release gate quotes a finding count that stopped being true one release ago (2026-08-31, open)
+## TC-125 — the guard written for TC-123 matched two sentences and missed four figures (2026-08-31, FIXED 2026-08-31)
+
+Found by a commissioned hole-hunt against the v0.11.0 tag, which is the point:
+the guard was green and the bug it was written to catch was on both public
+pages.
+
+TC-123's test matched `all N rules` and the `Status:` line. It never looked at
+**"Seven rules ship."** — `README.md:203` and `site/index.html:123`, the
+sentence that introduces the rule table on both surfaces — and it did not check
+the site's rule count at all, only its version string. Three more hand-typed
+figures were stale beside it:
+
+| where | said | true |
+| --- | --- | --- |
+| README + site, rule-table intro | seven rules ship | eight |
+| README, beside `make test` | 67 unit tests | 126 |
+| site, closed-world row | 16478 of 16683, 98.8%, all of it `closed-world` | 98.6%, and it is THREE rules |
+| `CLAUDE.md`, `lib/derive.ts`, `bench/env.ts`, `bench/run.ts`, `test/check.test.ts` | 592 published rows over the gate | 601 |
+
+The site row was the worst of them: it attributed a figure for three rules to
+one, and described the pre-split behaviour of a rule this release split in two.
+The site's rule table listed six of eight rules — `megamorphic-dispatch` and
+`interface-dispatch`, the release headline, were absent from the landing page
+entirely.
+
+**Fixed.** The guard enumerates every phrasing that claims a TOTAL — `all N
+rules`, `N rules ship`, the `Status:` line — over BOTH surfaces, and holds
+README's `make test` count to the two test files. The site gained the two
+missing rows, and the closed-world row lost the misattributed count. The 601
+comments now agree with the register that sums to it; BUGS.md and `.diary/`
+keep 592, because a dated record of what was true then is not drift.
+
+**Not fixed, and recorded here rather than bundled:** the site's ratio test
+matches `Nx` only, so a bare percentage or a count like "16478 of 16683" is
+invisible to it and can drift forever. That is the class this entry and TC-123
+are both instances of, and closing it needs a register for survey figures.
+
+## TC-124 — an annotation on an overload signature reported clean over an unchecked body (2026-08-31, FIXED 2026-08-31)
+
+Found by a commissioned hole-hunt against the v0.11.0 tag, before publication.
+
+```ts
+/** @jitmax */
+export function process(rows: number[]): number;
+export function process(rows: number[]): number {
+  let acc: number[] = [];
+  for (const r of rows) acc = [...acc, r];   // accumulating-spread
+  return acc.length;
+}
+```
+
+`jitmax — 1 annotated function, 0 errors`, `every annotated function is clean.`,
+**exit 0**. Moving the same tag three lines down onto the implementation reports
+the error and exits 1. This is the failure the whole project is built to
+prevent, and it is reached by putting JSDoc where JSDoc for an overload set
+conventionally goes.
+
+`isFunctionLike` is a test on the NODE KIND. An overload signature is a
+`FunctionDeclaration` with no body, so `findMarks` marked it, `reach()` walked a
+node with no children, `truncated` stayed false, and nothing downstream could
+tell "walked and found nothing" from "had nothing to walk". The same held for a
+class method overload and for an ambient `declare function`.
+
+**Fixed.** `withBodies()` in `lib/scan.ts` runs over every mark from BOTH
+sources — annotations and profile frames, because V8 names a body-less
+declaration just as readily. A mark whose node has no body binds to the
+declaration of the same symbol that does have one; annotating the signature and
+the implementation is then one function, not two. When NO declaration has a
+body, the mark is dropped and the name is returned on a third `Blind` channel,
+which `blinded()` already funnels to both the verdict line and the exit code —
+the seam that channel's own comment anticipated.
+
+Fixtures in `test/fixtures/bodyless/`, one test per half.
+
+## TC-123 — the release gate quotes a finding count that stopped being true one release ago (2026-08-31, FIXED 2026-08-31)
 
 `CLAUDE.md` closes with "Reality check before any release:
 `node bin/jitmax.ts tmp/demo-real/src` against a radash checkout must report
@@ -64,8 +138,19 @@ Two separable defects:
   reads `v8src/`, and exits non-zero saying so when the checkout is absent
   rather than passing quietly.
 
-The second is a new make target and a documented checkout path, so it is
-recorded rather than bundled into a release.
+**Both are fixed.** `make reality` runs the check: exit 2 with the clone command
+when the checkout is missing, exit 1 naming the cause when the error count is
+not 1 or when the one error is no longer `accumulating-spread`. `ci.yml` runs it
+on every push against a pinned radash revision, pinned for the same reason
+`v8src/` is — a gate that follows a moving upstream reports that the upstream
+changed, not that this tool did. `CLAUDE.md` documents the target and the clone.
+
+The same defect was in more figures, found while fixing this one: README
+claimed "seven rules" on one line and "all eight" on another, and "Twenty-two
+are withdrawn" while the register the same sentence points the reader at listed
+31. `make test` holds both published surfaces to `package.json`'s version, to
+the rule register and to the withdrawn register. **The first version of that
+guard was itself too narrow and missed two more — see TC-125.**
 
 ## TC-101 — megamorphic-elements fires on a collection nothing ever reads (2026-08-30, open)
 

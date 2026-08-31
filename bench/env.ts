@@ -22,7 +22,7 @@ export const CORES = os.availableParallelism();
 // child at a time, each contributing about 1.0, so a sweep on an otherwise
 // idle two-core machine read ~1.5 against a gate of 1 and tripped over itself
 // — and when it did not trip, the reading could not say whether anything
-// behind the harness was real (TC-25). 592 published rows were written above
+// behind the harness was real (TC-25). 601 published rows were written above
 // that gate; `make test` holds the register (TC-46). The instantaneous count
 // has neither defect: it is only ever read while the harness's children are
 // dead — the driver spawns them synchronously — so subtracting this process

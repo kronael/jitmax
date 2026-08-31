@@ -1036,7 +1036,7 @@ export function unreplicable(root: string, file: string): string[] {
 //
 // UNLIKE rule 13's gate, this one withdraws nothing. The old pair cannot
 // separate a tenant from the harness itself — the one-minute average was
-// mostly the sweep's own children (TC-25) — so the 592 published rows over it
+// mostly the sweep's own children (TC-25) — so the 601 published rows over it
 // are rows whose gate was not answering its question, not rows known to be
 // contaminated, and whether any of them must go is a judgement about the
 // corpus, not a query over it (TC-46). What a query CAN do is keep the number
