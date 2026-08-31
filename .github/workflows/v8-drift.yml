@@ -1,0 +1,32 @@
+# What moved in V8, weekly — informational by design. This workflow must NOT
+# run on push or pull_request and must not gate any PR: an upstream V8 commit
+# failing unrelated work would be noise, not signal. CI verifies against the
+# pin (see ci.yml); this run clones V8 at MAIN and asks two questions — do the
+# README citations still hold, and did the lowered-builtin list change. A
+# failed run is the "V8 moved, someone look" signal; the answer is to re-read
+# the new source, correct the citations, move the pin, and `make build`.
+name: v8-drift
+on:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+      - run: npm ci
+      - name: clone V8 at main
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/v8/v8 v8src
+          git -C v8src sparse-checkout set src include
+      - name: citations against V8 main
+        run: node bench/v8-check.ts --against-head
+      # Runs even when the citations already drifted, so one weekly run
+      # reports both answers rather than the first.
+      - name: lowered-builtin list against V8 main
+        if: ${{ !cancelled() }}
+        run: node lib/derive-builtins.ts --against-head

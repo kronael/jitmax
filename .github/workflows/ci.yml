@@ -1,0 +1,43 @@
+# CI at the PIN, never at V8 main: the same commit always gives the same
+# result, and a V8 release upstream cannot turn a green PR red. The weekly
+# v8-drift workflow is the one place "V8 moved" is allowed to appear.
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # engines.node is the one statement of the required Node.
+          node-version-file: package.json
+      - run: npm ci
+      # README's ```pin block is the one source of the pinned revision;
+      # bench/v8-check.ts and lib/derive-builtins.ts read the same block.
+      - name: read the V8 pin
+        id: pin
+        run: |
+          rev=$(sed -n '/^```pin$/,/^```$/p' README.md | sed -n 's/^revision = //p')
+          test -n "$rev"
+          echo "revision=$rev" >> "$GITHUB_OUTPUT"
+      - name: restore the pinned v8src/
+        id: v8src
+        uses: actions/cache@v4
+        with:
+          path: v8src
+          key: v8src-${{ steps.pin.outputs.revision }}
+      - name: clone V8 at the pin (cache miss only)
+        if: steps.v8src.outputs.cache-hit != 'true'
+        run: |
+          git clone --filter=blob:none --sparse https://github.com/v8/v8 v8src
+          git -C v8src sparse-checkout set src include
+          git -C v8src checkout ${{ steps.pin.outputs.revision }}
+      # lint, test (including the derived-artifact drift assertions), check.
+      # Never `make build` first: regenerating here would leave the drift
+      # assertions comparing fresh output against fresh output.
+      - run: make all
+      # Every V8 citation in README against the pinned checkout.
+      - run: make v8-check
