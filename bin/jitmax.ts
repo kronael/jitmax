@@ -5,7 +5,7 @@ import { load, program } from '../lib/ts.ts';
 import { marksFromProfile, scan } from '../lib/scan.ts';
 import { hotFrames } from '../lib/profile.ts';
 import { check, resolveDisabled } from '../lib/rules.ts';
-import { render, severity } from '../lib/report.ts';
+import { blinded, findingKey, plural, render, severity, type Blind } from '../lib/report.ts';
 import { DEFAULT_MIN_SELF_PCT, loadConfig } from '../lib/config.ts';
 
 try {
@@ -26,6 +26,11 @@ try {
   }
   const args = argv;
 
+  // The suffixes that are not paths, in one list. They were spelled once as two
+  // `only()` calls and once as a negated filter below, so a third recognised
+  // suffix reaches one of the two and is scanned as a source file.
+  const SUFFIXES = ['.toml', '.cpuprofile'];
+
   // Positionals are named by their suffix, anywhere in the line, because this
   // binary rejects flags by design: a .toml is the config, a .cpuprofile makes
   // the tool measure hotness instead of taking the author's word for it (BUGS
@@ -42,7 +47,7 @@ try {
   };
   const configPath = only('.toml');
   const profilePath = only('.cpuprofile');
-  const inputs = args.filter((a) => !a.endsWith('.toml') && !a.endsWith('.cpuprofile'));
+  const inputs = args.filter((a) => !SUFFIXES.some((suffix) => a.endsWith(suffix)));
   const config = configPath ? loadConfig(configPath) : undefined;
   // A [profile] table with no profile to apply it to configured nothing, and
   // said nothing about it — the same silence loadConfig() throws on for a
@@ -70,7 +75,7 @@ try {
   if (broken.length > 0) {
     const where = [...new Set(broken.map((d) => d.file?.fileName ?? '<unknown>'))];
     throw new Error(
-      `${broken.length} syntax error${broken.length > 1 ? 's' : ''} — nothing here was ` +
+      `${plural(broken.length, 'syntax error')} — nothing here was ` +
         `checked: ${where.map((f) => path.relative(cwd, f) || f).join(', ')}`
     );
   }
@@ -94,7 +99,7 @@ try {
     unmatched = found.unmatched.map((f) => `${f.name} (${path.relative(cwd, f.file)}:${f.line}:${f.column})`);
     given = found.marks;
     fromProfile =
-      `  ${found.marks.length} hot function${found.marks.length === 1 ? '' : 's'} from ` +
+      `  ${plural(found.marks.length, 'hot function')} from ` +
       `${path.basename(profilePath)} at or above ${minSelfPct}% self time`;
   }
   const { checker, marks, unresolved } = scan(ts, p, given);
@@ -112,16 +117,17 @@ try {
     const raw = check(ts, checker, mark);
     const findings = raw.filter((f) => !disabled.has(f.rule));
     for (const f of raw) {
-      if (disabled.has(f.rule)) suppressedSites.add(`${f.rule}|${f.file}|${f.line}|${f.column}`);
+      if (disabled.has(f.rule)) suppressedSites.add(findingKey(f));
     }
     return { mark, findings };
   });
 
+  const blind: Blind = { unresolved, unmatched };
   const out = render(
     cwd,
     results,
     { count: suppressedSites.size, keys: [...allKeys].sort() },
-    { unresolved, unmatched },
+    blind,
     fromProfile === undefined ? 'annotated function' : 'hot function'
   );
   process.stdout.write(out + '\n');
@@ -143,8 +149,7 @@ try {
   // text says so too, so the two still agree (BUGS TC-51). An unmatched hot
   // frame is that same blindness, measured (BUGS TC-77).
   process.exitCode =
-    unresolved.length > 0 ||
-    unmatched.length > 0 ||
+    blinded(blind) ||
     results.some((r) => r.findings.some((f) => severity(f) === 'error') || r.mark.truncated)
       ? 1
       : 0;
