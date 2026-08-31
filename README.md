@@ -200,8 +200,9 @@ you where your code blocks it.
 
 ## The rules
 
-Seven rules ship. The first six check every function in the call tree. The
-seventh reports where the walk stops. Megamorphic means one code location has
+Eight rules ship. The first six check every function in the call tree. The
+last two report where the walk stops — one for a callee with no body anywhere,
+one for a call the walk cannot bind to a single implementation. Megamorphic means one code location has
 seen many object shapes. Quadratic means the work grows with the square of the
 input size.
 
@@ -870,7 +871,7 @@ rather than reporting success. `CLAUDE.md` has the three clone commands.
 ## Development
 
 ```sh
-make test    # 67 unit tests, including the must-stay-silent cases
+make test    # 126 unit tests, including the must-stay-silent cases
 make lint    # tsc --noEmit
 make numbers # re-derive every published number from the .jl sweeps
 make check   # run the checker against demo/

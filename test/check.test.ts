@@ -1070,6 +1070,44 @@ test('an unresolved module is named, and the run is never clean', () => {
   assert.strictEqual(run.status, 1);
 });
 
+// TC-124. `isFunctionLike` tests the NODE KIND, and an overload signature and an
+// ambient `declare function` are both that kind with nothing inside them. The
+// walk had nothing to walk, found nothing, and the run printed "every annotated
+// function is clean" at exit 0 over the implementation — the one failure this
+// tool exists to prevent, reached by putting JSDoc where JSDoc for an overload
+// set conventionally goes.
+test('an annotation on an overload signature checks the implementation', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'bodyless')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  // One function, not two: the signature and its implementation are one
+  // function however many of them carry the tag.
+  assert.match(run.stdout, /1 annotated function, 1 error/);
+  assert.match(run.stdout, /overload\.ts:9\s+grow\(\)/);
+  assert.match(run.stdout, /accumulating-spread/);
+  assert.ok(!run.stdout.includes('every annotated function is clean'));
+  assert.strictEqual(run.status, 1);
+});
+
+// The other half: no declaration anywhere has a body, so there is nothing to
+// bind the mark to and nothing was checked. That is a blind run, not a clean
+// one, and it reaches the exit code through `blinded()` like the other two
+// channels do.
+test('an annotation with no body anywhere is named, and the run is never clean', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'bodyless', 'ambient.ts')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /1 annotation sits on a declaration with no body/);
+  assert.match(run.stdout, /absent \(test\/fixtures\/bodyless\/ambient\.ts:/);
+  assert.match(run.stdout, /this is not a clean run/);
+  assert.ok(!run.stdout.includes('every annotated function is clean'));
+  assert.strictEqual(run.status, 1);
+});
+
 // TC-62. One line reached from three annotated functions is one finding. The
 // count used to be the call-graph fan-in: agent-twitter-client reported 118
 // errors over 12 distinct lines, and the TypeScript compiler 49 over 5.
@@ -1686,30 +1724,45 @@ test('both published surfaces state this version and this many rules', () => {
     assert.strictEqual(m[1], pkg.version, `${name} states v${m[1]}; package.json says ${pkg.version}`);
   }
 
-  // Only the sentences that claim the TOTAL. "the two rules twelve libraries
-  // never exercised" is a subset and counts something else, so a bare
-  // "<word> rules" would fail on a true sentence.
-  // The withdrawn-cell count is the third figure README states in prose and
-  // nothing derived. It said twenty-two while `DISAGREE` below listed 31, and
-  // the same sentence points the reader at that register as the list.
-  const withdrawn = readme.match(/(\d+) are withdrawn today,/);
-  assert.ok(withdrawn, 'README.md no longer states a withdrawn-cell count where this test looks');
-  assert.strictEqual(
-    Number(withdrawn[1]),
-    DISAGREE.size,
-    `README.md says ${withdrawn[1]} cells are withdrawn; the register it points at lists ${DISAGREE.size}`
-  );
-
+  // Every sentence that claims a TOTAL, on BOTH surfaces. Matching two
+  // hand-picked sentences was not enough: "Seven rules ship." shipped on both
+  // published pages while this test was green, because the first draft looked
+  // only at "all N rules" and the Status line (BUGS TC-125). A subset count
+  // like "the two rules twelve libraries never exercised" is not a total and
+  // must not be matched, so the totals are enumerated by their phrasing.
   const WORD = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
   const count = Object.keys(EVIDENCE).length;
-  const totals = [/\ball ([a-z]+) rules\b/g, /^Status: v\d+\.\d+\.\d+, [^,]+, ([a-z]+) rules\b/gm];
-  const claimed = totals.flatMap((re) => [...readme.matchAll(re)].map((m) => m[1]));
-  assert.ok(claimed.length > 0, 'README.md no longer claims a rule total where this test looks');
-  assert.deepStrictEqual(
-    [...new Set(claimed)],
-    [WORD[count]],
-    `README.md claims ${[...new Set(claimed)].join('/')} rules in total; ` +
-      `lib/rules/index.ts registers ${count} (${WORD[count]})`
+  const TOTALS = [
+    /\ball ([a-z]+) rules\b/gi,
+    /\b([a-z]+) rules ship\b/gi,
+    /Status: v\d+\.\d+\.\d+, [^,]+, ([a-z]+) rules\b/g,
+  ];
+  for (const [name, text] of [
+    ['README.md', readme],
+    ['site/index.html', page],
+  ] as const) {
+    const claimed = TOTALS.flatMap((re) => [...text.matchAll(re)].map((m) => m[1].toLowerCase()));
+    if (claimed.length === 0) continue;
+    const wrong = [...new Set(claimed)].filter((c) => c !== WORD[count]);
+    assert.deepStrictEqual(
+      wrong,
+      [],
+      `${name} claims ${wrong.join('/')} rules in total; lib/rules/index.ts registers ${count} (${WORD[count]})`
+    );
+  }
+
+  // The test count README prints beside `make test`. It was 67 against a real
+  // 126 — the same hand-typed-figure defect, on the line a reader is most
+  // likely to check first (BUGS TC-125).
+  const claimedTests = readme.match(/make test\s+#\s*(\d+) unit tests/);
+  assert.ok(claimedTests, 'README.md no longer prints a test count beside `make test`');
+  const real =
+    (fs.readFileSync(path.join(root, 'test', 'check.test.ts'), 'utf8').match(/^test\(/gm) ?? []).length +
+    (fs.readFileSync(path.join(root, 'test', 'tiers.test.ts'), 'utf8').match(/^test\(/gm) ?? []).length;
+  assert.strictEqual(
+    Number(claimedTests[1]),
+    real,
+    `README.md says ${claimedTests[1]} unit tests; the two test files define ${real}`
   );
 });
 
@@ -1865,7 +1918,7 @@ test('a single-sweep cell and a rejected interval cannot publish as live', () =>
 // healed entry fails it too. Counts per file, because an appended row has no
 // identity beyond its position.
 //
-// Every one of these 592 rows was written while its own recorded `load1`
+// Every one of these 601 rows was written while its own recorded `load1`
 // exceeded its own recorded gate, and the gate never noticed, because the
 // one-minute average it read was mostly the sweep's own children — one pinned
 // child at a time, each worth ~1.0 in the window, so an idle two-core machine
