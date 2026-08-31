@@ -26,6 +26,51 @@ Review queue. Found during audits, fixed only when the owner asks.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
+## TC-127 — elementFlow under-counts six ways, and each one is a silent false negative (2026-08-31, open)
+
+TC-101's fix binds a read to a collection by provenance. `elementFlow` in
+`lib/flow.ts` answers "did this value come from this collection" for four
+forms: an identifier to its declaration, a `for...of` binding to the expression
+it iterates, an element callback's parameter to that call's receiver, and an
+index to its base. Everything else returns nothing, and nothing means SILENCE.
+
+That direction is deliberate and correct for an `error` rule — over-firing
+fails a build on a mechanism that may not happen. But silence is invisible by
+construction, and six of these are ordinary code, not corner cases:
+
+```ts
+/** @jitmax */
+function f(rows: U[]) {
+  const a = rows.at(0)!;      const b = rows.find(p)!;    // element-returning
+  const c = rows.pop()!;      const d = rows.shift()!;    // element-returning
+  const [e] = rows;                                       // destructuring
+  rows.map(byName);                                       // callback by name
+  let g = rows; g = other; for (const h of g) h.x;        // reassigned let
+  return a.x + b.x + c.x + d.x + e.x;                     // all silent today
+}
+```
+
+**How each is counted correctly.** None needs a new mechanism; each is a form
+`elementFlow` already handles, written differently.
+
+| form | the rule |
+| --- | --- |
+| `.at(i)`, `.pop()`, `.shift()`, `.find()`, `.findLast()` | these RETURN an element of the receiver. A table of element-returning methods, keyed the same way the element-CALLBACK table already is, and the return value's provenance is the receiver's elements |
+| `const [e] = rows` | a binding element's provenance is the iterated expression — the same edge `for...of` already draws, on a different binding form |
+| `rows.map(byName)` | resolve the identifier to its declaration and bind ITS parameter to the receiver. `targetsOf` in `lib/scan.ts` already resolves a callee to its declarations; reuse it rather than re-resolving |
+| `let g = rows; g = other` | follow ALL writes to the binding, not just the declaration's initializer. `receiver`'s walk already collects multiple writes and cuts cycles; `elementFlow` follows the declaration only |
+
+**Each extension moves a case from silence to firing, so each needs its own
+fixture proving it fires where it should AND a sibling proving it stays quiet
+where it should not.** The reassigned-`let` row is the one to be most careful
+with: once `g` can be either `rows` or `other`, the honest count is the union of
+what both contribute, and taking only one is how an over-count gets in.
+
+The `.find()` row has a second subtlety worth stating: `find` returns
+`T | undefined`, so the read is usually behind a `!` or a guard. The provenance
+is the receiver's elements either way — narrowing changes the TYPE, not where
+the value came from, which is exactly the distinction TC-94 was about.
+
 ## TC-125 — the guard written for TC-123 matched two sentences and missed four figures (2026-08-31, FIXED 2026-08-31)
 
 Found by a commissioned hole-hunt against the v0.11.0 tag, which is the point:
