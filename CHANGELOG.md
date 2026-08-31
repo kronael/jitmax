@@ -1,6 +1,18 @@
 # Changelog
 
-## [Unreleased]
+## [v0.12.0] — 20260831
+
+> jitmax v0.12.0 — every finding fails the run, and npx works
+>
+> You mark the functions you need fast, so anything found in one is worth fixing — the warning tier is gone and the tool now runs straight from the repo.
+>
+> • Every rule is an error. Silence the ones you don't want with `[rules]` in TOML or `-rulename` on the function.
+> • `npx github:kronael/jitmax src` and `bunx` work — no clone, no build step.
+> • A run that checked nothing no longer says "clean": no annotations, an unreadable `any` receiver, or a body-less declaration all exit 1.
+> • Findings bind to the collection the value came from, not to any value that shares its type — a third of what one rule said about real code was wrong.
+> • A `--cpu-prof` profile from transformed source is ported back through its source map, so frames land on the line you wrote.
+>
+> Full notes: https://github.com/kronael/jitmax/blob/main/CHANGELOG.md
 
 ### Changed
 
