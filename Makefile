@@ -35,13 +35,18 @@ check:
 v8-check:
 	node bench/v8-check.ts
 
-# The tool against somebody else's library: radash, whose ONE error must be
-# accumulating-spread on `assign`. A second error is a false positive. Warnings
-# are not counted — they are radash's callbacks, which the walk reports rather
-# than drops. A missing checkout exits 2 and says how to get it rather than
-# passing quietly, the same rule as v8-check. This was prose nothing ran, and it
-# asked for a count that had been wrong for a release (TC-123).
+# The tool against somebody else's library: radash. Every finding is an error
+# since 2026-08-31, so the gate reads the composition rather than the count
+# alone: exactly ONE error is accumulating-spread, on `assign`, and every other
+# error is an escape rule — radash's callback parameters, which the walk reports
+# rather than drops. A third rule anywhere in the log is a false positive, and so
+# is a second accumulating-spread. The total is pinned too, at the revision CI
+# clones: a local checkout at another revision fails here and the count it
+# printed is the message. A missing checkout exits 2 and says how to get it
+# rather than passing quietly, the same rule as v8-check. This was prose nothing
+# ran, and it asked for a count that had been wrong for a release (TC-123).
 REAL = tmp/demo-real
+REAL_ERRORS = 10
 reality:
 	@test -d $(REAL)/src || { \
 	  echo "reality: $(REAL)/src is missing. git clone https://github.com/rayepps/radash $(REAL)"; \
@@ -49,12 +54,20 @@ reality:
 	@mkdir -p tmp
 	@node bin/jitmax.ts $(REAL)/src > tmp/reality.log 2>&1; \
 	  test $$? -le 1 || { echo "reality: the tool failed"; cat tmp/reality.log; exit 2; }
-	@head -1 tmp/reality.log | grep -q ', 1 error' || { \
-	  echo "reality: expected exactly 1 error — a second error is a false positive"; \
+	@head -1 tmp/reality.log | grep -q ", $(REAL_ERRORS) errors" || { \
+	  echo "reality: expected $(REAL_ERRORS) errors at the pinned radash revision"; \
 	  head -1 tmp/reality.log; exit 1; }
-	@grep -q 'error  accumulating-spread' tmp/reality.log || { \
-	  echo "reality: the one error is no longer accumulating-spread"; \
-	  grep -m1 'error ' tmp/reality.log; exit 1; }
+	@test "`grep -c 'error  accumulating-spread' tmp/reality.log`" = 1 || { \
+	  echo "reality: accumulating-spread must fire exactly once — a second is a false positive"; \
+	  grep -n 'error  accumulating-spread' tmp/reality.log; exit 1; }
+	@grep -B1 'error  accumulating-spread' tmp/reality.log | grep -q 'object.ts:.*assign()' || { \
+	  echo "reality: the one accumulating-spread is no longer on assign()"; \
+	  grep -B1 'error  accumulating-spread' tmp/reality.log; exit 1; }
+	@! grep 'error  ' tmp/reality.log \
+	   | grep -qvE 'accumulating-spread|closed-world|interface-dispatch' || { \
+	  echo "reality: a rule other than assign's and the escapes fired — a false positive"; \
+	  grep 'error  ' tmp/reality.log \
+	    | grep -vE 'accumulating-spread|closed-world|interface-dispatch'; exit 1; }
 	@head -1 tmp/reality.log
 
 # Every published ratio, re-derived from the .jl sweeps into lib/numbers.ts and

@@ -38,7 +38,6 @@ const evidence: Evidence = {
     `local accumulator is reported with the ${N['select.heap']} measured for a value that ` +
     'escapes. The cost is real either way and the printed figure is the wrong one of the ' +
     'two (BUGS TC-44)',
-  severity: 'error',
   defects: ['TC-44'],
 };
 

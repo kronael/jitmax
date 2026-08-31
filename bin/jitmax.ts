@@ -5,7 +5,7 @@ import { load, program } from '../lib/ts.ts';
 import { marksFromProfile, scan } from '../lib/scan.ts';
 import { hotFrames } from '../lib/profile.ts';
 import { check, resolveDisabled } from '../lib/rules.ts';
-import { blinded, findingKey, plural, rel, render, severity, type Blind } from '../lib/report.ts';
+import { blinded, findingKey, plural, rel, render, type Blind } from '../lib/report.ts';
 import { DEFAULT_MIN_SELF_PCT, loadConfig } from '../lib/config.ts';
 
 try {
@@ -115,7 +115,7 @@ try {
       `  ${plural(found.marks.length, 'hot function')} from ` +
       `${path.basename(profilePath)} at or above ${minSelfPct}% self time`;
   }
-  const { checker, marks, unresolved, bodyless } = scan(ts, p, given);
+  const { checker, marks, unresolved, bodyless, untyped } = scan(ts, p, given);
 
   const allKeys = new Set(configDisabled);
   for (const mark of marks) for (const key of mark.disabled) allKeys.add(key);
@@ -142,6 +142,7 @@ try {
     unmatched,
     profile: profileCounts,
     bodyless: bodyless.map((b) => `${b.name} (${rel(cwd, b.file)}:${b.line}:${b.column})`),
+    untyped: untyped.map((u) => `${u.name} (${rel(cwd, u.file)}:${u.line}:${u.column})`),
   };
   const out = render(
     cwd,
@@ -157,22 +158,21 @@ try {
   // already means "jitmax has something to report". A fourth code would be
   // a new contract for every gate that reads this one (BUGS TC-17).
   //
-  // A warning does not. `closed-world` fires on a callee whose body nobody can
-  // read, and no benchmark measures that program — its number bounds a
-  // mechanism on a different one (BUGS TC-33). It was 96.7% of every finding
-  // across the 22-codebase survey, so it decided the exit code of nearly every
-  // run on evidence this project does not have. It is still printed, still
-  // counted in the header, and the report says in words that warnings do not
-  // fail the run, so the text and the exit code agree.
+  // So does every finding, whichever rule made it. Three rules warned and
+  // exited 0 until 2026-08-31, because no benchmark measures the program they
+  // fire on — 98.6% of the 22-codebase survey, decided out of the exit code on
+  // that argument. The annotation is the filter: a finding on a function
+  // somebody marked as hot is actionable by definition, and a user who
+  // disagrees with a rule switches it off in the `[rules]` table or with a
+  // `-rulename` on the annotation. The unmeasured trigger is still stated —
+  // `known defect: TC-33`, under every one of those findings (BUGS TC-33).
   // An unresolved module exits 1 for the same reason a truncated walk does: the
   // rules were blind on those files and silence from them proves nothing. The
   // text says so too, so the two still agree (BUGS TC-51). An unmatched hot
-  // frame is that same blindness, measured (BUGS TC-77).
+  // frame is that same blindness, measured (BUGS TC-77), and a method read off
+  // an `any` value is that blindness inside one call (BUGS TC-129).
   process.exitCode =
-    blinded(blind) ||
-    results.some((r) => r.findings.some((f) => severity(f) === 'error') || r.mark.truncated)
-      ? 1
-      : 0;
+    blinded(blind) || results.some((r) => r.findings.length > 0 || r.mark.truncated) ? 1 : 0;
 } catch (err) {
   process.stderr.write(`jitmax: ${(err as Error).message}\n`);
   process.exitCode = 2;

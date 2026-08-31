@@ -195,10 +195,13 @@ Results apply only to the engine and hardware tested.
   by taste, and the after half must stay clean under `make test`.
 
 Reality check before any release: `make reality`. It runs the tool against a
-radash checkout, where the one error must be `accumulating-spread` on
-`assign()` — a second error is a false positive. Warnings are not counted:
-they are radash's callback parameters, which the walk reports rather than
-drops. Missing checkout exits 2 and says how to clone it.
+radash checkout and reads the COMPOSITION of what comes back, because every
+finding is an error since 2026-08-31 and a count alone no longer separates the
+two kinds: exactly one error is `accumulating-spread` on `assign()`, and every
+other error is an escape rule — radash's callback parameters, which the walk
+reports rather than drops. A second `accumulating-spread`, or any third rule, is
+a false positive. The total is pinned as well, at the revision CI clones.
+Missing checkout exits 2 and says how to clone it.
 
 ```sh
 git clone https://github.com/rayepps/radash tmp/demo-real

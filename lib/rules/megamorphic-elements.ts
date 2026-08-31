@@ -43,7 +43,6 @@ const evidence: Evidence = {
     'report. Key order is not part of a TypeScript type, so nothing static separates that ' +
     'program from one where the five builders agree. The rule misses it rather than ' +
     'guessing, and bench/shapes-calibrated.jl is what it misses',
-  severity: 'error',
   defects: ['TC-2', 'TC-9'],
 };
 

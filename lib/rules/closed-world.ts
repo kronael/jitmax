@@ -18,12 +18,15 @@ const evidence: Evidence = {
     `bench/inline.jl, ${cells(N['inline.cells'])}, 20 pairs each; the inlining decision ` +
     'itself confirmed with --trace-turbo-inlining, which reports the padded callee as ' +
     '"cannot consider"',
-  severity: 'warn',
   silent:
     'the platform. A call into `globalThis`, a V8 builtin or `@types/node` has no body a ' +
     'reader can go and look at and no `npm install` that produces one, so "inline what you ' +
     'need from it" is advice nobody can take — those are counted and not named (BUGS ' +
-    'TC-55, TC-110). And this bounds what ONE unchecked call can cost, not what any ' +
+    'TC-55, TC-110). A method read off a value typed `any` is not this rule either: ' +
+    'nothing resolves there, so the platform test cannot fire and the tool has no way to ' +
+    "tell a Map builtin from somebody's code — the site is reported as blindness and the " +
+    'run is not clean, which is what it is (BUGS TC-129). And this bounds what ONE ' +
+    'unchecked call can cost, not what any ' +
     'particular one does cost ' +
     '— a small callee is inlined and the boundary costs nothing. The trigger and the ' +
     'benchmark are different programs: the rule fires on a callee with no readable body, ' +

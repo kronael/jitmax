@@ -419,6 +419,7 @@ function reach(
   platform: number;
   lowered: number;
   followed: number;
+  untyped: (Site & { name: string })[];
   truncated: boolean;
 } {
   // `@types/node` is the platform: native code that no `npm install` and no
@@ -508,6 +509,7 @@ function reach(
   const reached: Body[] = [{ node: root.node, sf: root.sf, name: root.name }];
   const seen = new Set<TS.Node>([root.node]);
   const escapes: Call[] = [];
+  const untyped: (Site & { name: string })[] = [];
   let platform = 0;
   let lowered = 0;
   let followed = 0;
@@ -682,19 +684,40 @@ function reach(
               } else {
                 const prop = ts.isPropertyAccessExpression(callee) ? callee : undefined;
                 const rt = checker.getTypeAtLocation(prop ? prop.expression : callee);
-                escapes.push({
-                  ...site,
-                  text,
-                  viaInterface: decls.some(isDispatchDecl),
-                  dispatch: {
-                    count: r.origins.length,
-                    names: r.origins.map((o) => o.name).slice(0, 6),
-                    unknown: r.unknown.slice(0, 2),
-                    recv: prop ? prop.expression.getText(body.sf) : text,
-                    method: prop ? prop.name.text : '',
-                    typed: (rt.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) === 0,
-                  },
-                });
+                const typed = (rt.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) === 0;
+                // A method read off an `any` value: the property access resolves
+                // to no declaration, so the platform test never had one to look
+                // at and the call fell through to "somebody's code we cannot
+                // read". es-toolkit's `isEqualWith(a: any, b: any)` narrows on a
+                // tag string, so `a.entries()` and `b.has(k)` are plain Map
+                // builtins that this tool named as unreadable code and told the
+                // reader to inline. It cannot see what is called there at all —
+                // which is what `Blind` is for, and is the same `any` erasure
+                // TC-111 gated the megamorphic promotion on, one classification
+                // below it. Reported and exit 1, never a finding (BUGS TC-129).
+                //
+                // A bare `any` callee is NOT this: `opaque(s)` imported from a
+                // module that would not resolve has a name a reader can look up
+                // and an `npm install` that produces the body, which is exactly
+                // what closed-world is for. Only the receiver's erasure hides
+                // WHICH function is being called.
+                if (prop !== undefined && !typed && decls.length === 0) {
+                  untyped.push({ ...site, name: text });
+                } else {
+                  escapes.push({
+                    ...site,
+                    text,
+                    viaInterface: decls.some(isDispatchDecl),
+                    dispatch: {
+                      count: r.origins.length,
+                      names: r.origins.map((o) => o.name).slice(0, 6),
+                      unknown: r.unknown.slice(0, 2),
+                      recv: prop ? prop.expression.getText(body.sf) : text,
+                      method: prop ? prop.name.text : '',
+                      typed,
+                    },
+                  });
+                }
               }
             }
           }
@@ -704,7 +727,7 @@ function reach(
     };
     ts.forEachChild(body.node, visit);
   }
-  return { reached, escapes, platform, lowered, followed, truncated };
+  return { reached, escapes, platform, lowered, followed, untyped, truncated };
 }
 
 // Modules the program could not resolve, named. Every type imported from one
@@ -790,15 +813,25 @@ export function scan(
   ts: Ts,
   program: TS.Program,
   given?: Mark[]
-): { checker: TS.TypeChecker; marks: Mark[]; unresolved: string[]; bodyless: (Site & { name: string })[] } {
+): {
+  checker: TS.TypeChecker;
+  marks: Mark[];
+  unresolved: string[];
+  bodyless: (Site & { name: string })[];
+  untyped: (Site & { name: string })[];
+} {
   const checker = program.getTypeChecker();
   const { marks, bodyless } = withBodies(ts, checker, given ?? findMarks(ts, program));
   // One flow analysis per program: its indexes and memo are shared across
   // every mark, because "who writes this field" is a fact about the program
   // and not about the annotation that asked.
   const flow = createFlow(ts, program, checker);
+  // Per SITE across the whole run, like every other blindness channel: one call
+  // the walk could not see is one thing to report, however many annotated
+  // functions reach it.
+  const untyped = new Map<string, Site & { name: string }>();
   for (const mark of marks) {
-    const { reached, escapes, platform, lowered, followed, truncated } = reach(
+    const { reached, escapes, platform, lowered, followed, truncated, untyped: calls } = reach(
       ts,
       program,
       checker,
@@ -811,6 +844,7 @@ export function scan(
     mark.lowered = lowered;
     mark.followed = followed;
     mark.truncated = truncated;
+    for (const call of calls) untyped.set(siteKey(call), call);
   }
   // Only the files the walk actually read. A module nothing annotated imports
   // cannot have blinded a rule.
@@ -819,5 +853,11 @@ export function scan(
     files.add(mark.file);
     for (const body of mark.reached) files.add(body.sf.fileName);
   }
-  return { checker, marks, bodyless, unresolved: unresolvedModules(ts, checker, files, program) };
+  return {
+    checker,
+    marks,
+    bodyless,
+    untyped: [...untyped.values()],
+    unresolved: unresolvedModules(ts, checker, files, program),
+  };
 }

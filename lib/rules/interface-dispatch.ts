@@ -20,14 +20,13 @@ const evidence: Evidence = {
   silent:
     'a call whose receiver reaches it as one implementation is a monomorphic site and this ' +
     'rule says nothing about it — the walk follows that one body instead of reporting it. ' +
-    "Two to four are inside V8's four-map budget and are reported as a note, never as an " +
-    'error; five or more is a real megamorphic call site and belongs to ' +
-    'megamorphic-dispatch, which carries the sweep',
+    "Two to four are inside V8's four-map budget: the finding says so in those words and " +
+    "never carries megamorphic-dispatch's claim. Five or more is a real megamorphic call " +
+    'site and belongs to megamorphic-dispatch, which carries the sweep',
   unreported:
     'the count is a lower bound twice over: classes are counted by identity and literals ' +
     'by shape, which undercounts maps (BUGS TC-60), and the enumeration sees only this ' +
     'program, so a consumer of an exported interface can add more',
-  severity: 'warn',
   defects: ['TC-33'],
 };
 

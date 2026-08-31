@@ -264,7 +264,7 @@ test('five implementations reaching a receiver are a megamorphic-dispatch findin
 
 // Inside V8's four-map budget: a note at most, never an error — and it names
 // the implementations rather than saying "cannot tell which".
-test('two to four implementations are a note, never an error', () => {
+test('two to four implementations are a note, not the megamorphic claim', () => {
   assert.deepStrictEqual(rules('runTrio'), ['interface-dispatch']);
   const f = rawFindings('runTrio').find((x) => x.rule === 'interface-dispatch');
   assert.match(f?.message ?? '', /3 implementations reach this receiver/);
@@ -1148,7 +1148,11 @@ test('a run-once callback on a non-array is not a loop', () => {
     { cwd: root, encoding: 'utf8' }
   );
   assert.ok(!run.stdout.includes('accumulating-spread'), 'a run-once callback read as a loop');
-  assert.strictEqual(run.status, 0);
+  // `r.map` is an interface member, so `interface-dispatch` reports the call
+  // and the run exits 1 on that alone. This test is about the rule that must
+  // NOT be in the output.
+  assert.match(run.stdout, /1 error\n/);
+  assert.match(run.stdout, /error {2}interface-dispatch/);
 });
 
 // Two coverage holes of one class (BUGS TC-84): a file the walk skipped
@@ -1518,7 +1522,7 @@ test('a capped caller walk says so, instead of reporting one implementation', ()
     !run.stdout.includes('resolved to the one implementation'),
     `a capped walk must not resolve a receiver to one body:\n${run.stdout}`
   );
-  assert.strictEqual(run.status, 0);
+  assert.strictEqual(run.status, 1);
 });
 
 // One `!` used to decide whether a five-map call site was megamorphic or
@@ -1531,9 +1535,9 @@ test('an erased token does not change what the receiver is', () => {
     [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'erased')],
     { cwd: root, encoding: 'utf8' }
   );
-  assert.match(run.stdout, /warn {2}megamorphic-dispatch/);
+  assert.match(run.stdout, /error {2}megamorphic-dispatch/);
   assert.match(run.stdout, /at least 5 implementations built by this program \(A, B, C, D, E\)/);
-  assert.strictEqual(run.status, 0);
+  assert.strictEqual(run.status, 1);
 });
 
 // A tsconfig that does not parse must not degrade the run to default compiler
@@ -1558,6 +1562,38 @@ test('a tsconfig that does not parse fails the run', () => {
   );
 });
 
+// A method read off a value typed `any` resolves to NOTHING — not to
+// lib.es2015's Map — so the platform test never fires and the call became an
+// ordinary escape: `calls b.has, which we have no body for`, over a builtin
+// nobody can inline and this tool cannot see. That is the `any` erasure TC-111
+// gated the megamorphic promotion on, at the classification below it. It is
+// blindness, so it goes through `Blind` with the unresolved modules and exits
+// 1 — reported, never dropped, and never as a finding about somebody's code.
+// A genuinely opaque application callee in the same function must STILL fire,
+// or this is silencing the rule rather than aiming it (BUGS TC-129).
+test('a method read off an `any` value is blindness, not a callee nobody can read', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'untyped')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  for (const call of ['a.entries', 'b.has', 'b.get']) {
+    assert.ok(
+      !run.stdout.includes(`calls ${call}, which we have no body for`),
+      `${call} was reported as somebody's unreadable code:\n${run.stdout}`
+    );
+  }
+  assert.match(run.stdout, /3 calls read a method off a value typed `any`/);
+  assert.match(run.stdout, /a\.entries/);
+  assert.match(run.stdout, /This is not a clean run/);
+  assert.ok(
+    !run.stdout.includes('every annotated function is clean'),
+    `a run that could not see three callees called itself clean:\n${run.stdout}`
+  );
+  assert.match(run.stdout, /calls opaque, which we have no body for/);
+  assert.strictEqual(run.status, 1);
+});
+
 // The host, reached three ways the callee's own declaration cannot see:
 // `globalThis` augmented from own source resolves to a declaration this program
 // wrote, `(0, eval)` resolves to a binary expression with no symbol at all, and
@@ -1574,7 +1610,7 @@ test('the host is counted, not listed, and opaque application code still fires',
   );
   assert.match(run.stdout, /3 calls into the platform, not listed/);
   assert.strictEqual(
-    (run.stdout.match(/warn {2}closed-world/g) ?? []).length,
+    (run.stdout.match(/error {2}closed-world/g) ?? []).length,
     1,
     `one finding for the opaque callee and none for the host:\n${run.stdout}`
   );
@@ -1582,7 +1618,7 @@ test('the host is counted, not listed, and opaque application code still fires',
   for (const host of ['hostHook', 'eval', 'hrtime']) {
     assert.ok(!run.stdout.includes(host), `${host} was reported as unreadable code`);
   }
-  assert.strictEqual(run.status, 0);
+  assert.strictEqual(run.status, 1);
 });
 
 // The receiver count is taken at EVERY escape, not only where the callee
@@ -1610,7 +1646,7 @@ test('an unreadable callee still counts what reaches its receiver', () => {
     run.stdout,
     /megamorphic-dispatch\n\s+\S+escape\.ts:\d+\n\s+p reaches this call as at least 5 implementations built by this program \(P1, P2, P3, P4, P5\)/
   );
-  assert.strictEqual(run.status, 0);
+  assert.strictEqual(run.status, 1);
 });
 
 // The same platform, with no `@types/node` anywhere — the state of a real
@@ -1633,10 +1669,10 @@ test('a platform call with no @types/node is still the platform, and opaque code
       cwd: dir,
       encoding: 'utf8',
     });
-    assert.match(run.stdout, /0 errors, 1 warning/);
+    assert.match(run.stdout, /1 error\n/);
     assert.match(run.stdout, /2 calls into the platform, not listed/);
     assert.strictEqual(
-      (run.stdout.match(/warn {2}closed-world/g) ?? []).length,
+      (run.stdout.match(/error {2}closed-world/g) ?? []).length,
       1,
       `one finding for the opaque callee and none for the platform:\n${run.stdout}`
     );
@@ -1702,22 +1738,27 @@ test('the derivation fails loudly on a source it cannot read a list from', () =>
   assert.throws(() => loweredCases('// nothing resembling a case label'), /no longer looks like/);
 });
 
-// Severity is the exit-code contract, so it is tested through the binary too.
-// `closed-world` fires on a callee with no readable body and no sweep measures
-// that program, so it warns rather than erring — and a warning must not fail a
-// build. It was 96.7% of every finding across the 22-codebase survey, so before
-// this it decided nearly every exit code on evidence the project does not have
-// (BUGS TC-52).
+// The exit code is the contract a CI gate reads, so it is tested through the
+// binary too. `closed-world` fires on a callee with no readable body, and it
+// used to warn and exit 0 on the argument that no sweep measured that program.
+// The annotation is the filter: a user writes `/** @jitmax */` on a
+// function they need fast, so a finding on one is actionable by definition and
+// a second tier gates nobody. The gap that argued for the tier is still stated
+// — TC-33, printed under every finding of the three rules that carry it — and
+// tuning is the `[rules]` table and the per-function `-rulename` / `-TC-NN`
+// annotations (BUGS TC-33, TC-52).
 
-test('a run whose only finding is a warning exits 0', () => {
+test('a run whose only finding is closed-world fails it', () => {
   const run = spawnSync(
     process.execPath,
     [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'opaque')],
     { cwd: root, encoding: 'utf8' }
   );
-  assert.match(run.stdout, /0 errors, 1 warning/);
-  assert.match(run.stdout, /warn {2}closed-world/);
-  assert.strictEqual(run.status, 0);
+  assert.match(run.stdout, /1 error/);
+  assert.match(run.stdout, /error {2}closed-world/);
+  assert.match(run.stdout, /known defect: TC-33/);
+  assert.ok(!/\bwarn/.test(run.stdout), `a warning survived:\n${run.stdout}`);
+  assert.strictEqual(run.status, 1);
 });
 
 // TC-10. `new Foo()` is a NewExpression, so the walk stepped over it: a
@@ -1748,39 +1789,43 @@ test('a cell count agrees with the noun beside it', () => {
   }
 });
 
-// Every rule states a severity, and only a rule with no benchmark of the
-// program it fires on may warn. A rule added without one would default to
-// `warn` in the reporter and gate nothing, silently — which is the same lie a
-// missing key tells anywhere else in this project.
-//
-// The register is the two rules that SAY, in their own `source`, that no sweep
-// ran the program they fire on. `megamorphic-dispatch` joined it on its own
-// words: every family in bench/dispatch.jl varies key order, the call target or
-// where the function is held, all over one property set, and this rule counts
-// property SETS. It failed builds on that for as long as it shipped.
+// Every finding is an error, and no rule may opt out of the exit code. The
+// register below is the three rules that SAY, in their own `source`, that no
+// sweep ran the program they fire on — `megamorphic-dispatch` joined it on its
+// own words: every family in bench/dispatch.jl varies key order, the call
+// target or where the function is held, all over one property set, and this
+// rule counts property SETS. They warned until 2026-08-31. What states the gap
+// now is TC-33 in their `defects`, printed under every finding they make, so a
+// rule that drops it has either gained a sweep or quietly stopped admitting the
+// gap.
 const UNMEASURED_TRIGGER = ['megamorphic-dispatch', 'closed-world', 'interface-dispatch'];
 
-test('a rule warns exactly when no sweep ran the program it fires on', () => {
-  for (const [name, e] of Object.entries(EVIDENCE)) {
-    assert.ok(e.severity === 'error' || e.severity === 'warn', `${name} states no severity`);
+test('every rule reports as an error, and the unmeasured triggers still carry TC-33', () => {
+  const mark = markFor('drop');
+  // One finding per registered rule, at a column of its own: the report keys a
+  // site by rule|file|line|column and would otherwise fold them into one.
+  const findings = Object.entries(EVIDENCE).map(([rule, evidence], i) => ({
+    file: mark.file,
+    line: mark.line,
+    column: i + 1,
+    rule,
+    message: 'm',
+    fix: 'f',
+    evidence,
+  }));
+  const out = render(root, [{ mark, findings }]);
+  assert.match(out, new RegExp(`, ${findings.length} errors\n`));
+  for (const rule of Object.keys(EVIDENCE)) {
+    assert.match(out, new RegExp(`error {2}${rule}\n`));
   }
-  assert.deepStrictEqual(
-    Object.entries(EVIDENCE)
-      .filter(([, e]) => e.severity === 'warn')
-      .map(([name]) => name)
-      .sort(),
-    [...UNMEASURED_TRIGGER].sort()
-  );
-  // Not just the list: a warning has to carry the defect code that says WHY it
-  // is one. TC-33 is the name of this gap — the rule fires on one program and
-  // its benchmark measured another — and a rule that drops it has either gained
-  // a sweep, and should be an error, or quietly stopped admitting the gap.
+  assert.ok(!/\bwarn/.test(out), `a rule still reports as a warning:\n${out}`);
+
   for (const name of UNMEASURED_TRIGGER) {
     const e = EVIDENCE[name];
     assert.ok(e, `${name} is registered as unmeasured but is not a rule`);
     assert.ok(
       e.defects?.includes('TC-33'),
-      `${name} warns, but no longer carries TC-33 to say why`
+      `${name} fires on a program no sweep measured, but no longer carries TC-33 to say so`
     );
   }
 });

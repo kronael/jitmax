@@ -109,12 +109,17 @@ export function total(rows: Row[]): number { … }</code></pre>
 </p>
 
 <p>
-  Each finding is an <code>error</code> or a <code>warn</code>, and only an
-  error fails the run. A rule warns when no benchmark measures the program it
-  fires on. It exits <code>0</code> when everything you marked is clean or only
-  warned, <code>1</code> on an error <em>or</em> when it could not read your
-  whole call tree, and <code>2</code> when the tool itself broke. A run that
-  could not see everything is never a pass.
+  Every finding is an <code>error</code> and every error fails the run. The
+  annotation is the filter: you write <code>/** @jitmax */</code> on a
+  function you need fast, so a finding on one is actionable by definition and a
+  second severity tier gates nobody. Three rules warned until 2026-08-31,
+  because no benchmark measures the program they fire on &mdash; that gap is
+  still stated, as <code>known defect: TC-33</code> under every finding they
+  make, and the <code>[rules]</code> table and a <code>-rulename</code> on the
+  annotation are how you disagree with one. It exits <code>0</code> when
+  everything you marked is clean, <code>1</code> on a finding <em>or</em> when
+  it could not read your whole call tree, and <code>2</code> when the tool
+  itself broke. A run that could not see everything is never a pass.
 </p>
 
 <h2>What it looks for</h2>
@@ -193,21 +198,25 @@ export function total(rows: Row[]): number { … }</code></pre>
       <td>a callee too big to inline costs this much &mdash; and the checker
           cannot tell whether yours is</td>
       <td>4.64&ndash;4.95x for a callee past V8's inlining budget. The rule makes
-          no claim about your callee &mdash; it warns rather than erring, and
-          never fails a run. Node&rsquo;s own API is not among its findings at
-          all &mdash; 54,687 calls into the platform are counted for the run and
-          never listed, because nobody can inline <code>path.join</code>. Read
-          it as coverage, not as cost.</td>
+          no claim about your callee, and says so under every finding as
+          <code>known defect: TC-33</code>. Node&rsquo;s own API is not among its
+          findings at all &mdash; 54,687 calls into the platform are counted for
+          the run and never listed, because nobody can inline
+          <code>path.join</code>. Nor is a method read off a value typed
+          <code>any</code>: nothing resolves there, so the run reports what it
+          could not see instead of naming a body it never found. Read it as
+          coverage, not as cost.</td>
     </tr>
     <tr>
       <td>a call through an interface</td>
       <td>the body is in the checkout; the walk just cannot tell which one runs</td>
       <td>its own rule since v0.11.0. It used to be the loudest case of the row
           above, which meant switching that row off also switched off the honest
-          &ldquo;no body anywhere&rdquo; warning. Together these two and the
+          &ldquo;no body anywhere&rdquo; finding. Together these two and the
           dispatch row are <strong>98.6% of every finding</strong> across the
-          22-codebase survey &mdash; which is why all three warn rather than err,
-          and why the split matters more than the count. The receiver&rsquo;s
+          22-codebase survey &mdash; all three fail a run since 2026-08-31, which
+          is why the split matters more than the count: each is silenceable on
+          its own. The receiver&rsquo;s
           origins are traced by dataflow, so a finding names the implementations
           that reach it instead of guessing from the type.</td>
     </tr>

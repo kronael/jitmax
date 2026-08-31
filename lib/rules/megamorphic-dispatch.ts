@@ -51,15 +51,13 @@ const evidence: Evidence = {
     'size of the one this rule exists to report, and the same sweep measured it. No ' +
     'declared type separates that form from a prototype method, so the rule misses it ' +
     'rather than guessing. This is a miss, not a refutation',
-  // `warn`, on this rule's own words. The contract in shared.ts is `error` when
-  // a benchmark measures the program the rule FIRES on; `source` above says
-  // every family in bench/dispatch.jl varies key order, the call target or where
-  // the function is held, all over ONE property set, that this rule counts
-  // property SETS and is therefore silent on all four, and that "no sweep here
-  // varies the key set at a CALL site yet". A rule that says that about itself
-  // and then fails a build charges a cost its evidence does not carry — which
-  // is what closed-world was made a warning for (BUGS TC-33).
-  severity: 'warn',
+  // TC-33 on this rule's own words, and it is why this rule warned until
+  // 2026-08-31: `source` above says every family in bench/dispatch.jl varies key
+  // order, the call target or where the function is held, all over ONE property
+  // set, that this rule counts property SETS and is therefore silent on all
+  // four, and that "no sweep here varies the key set at a CALL site yet". It
+  // fails a build now like every other rule, and TC-33 printed under each of its
+  // findings is where a reader is told the sweep did not run this program.
   defects: ['TC-13', 'TC-33'],
 };
 

@@ -33,7 +33,6 @@ const evidence: Evidence = {
     'singleton exception is withdrawn: it was measured on a probe whose fast side a ' +
     'loop-invariant load could serve, and a kernel that has to load the object every ' +
     'pass says a single delete costs the same as a hundred thousand of them',
-  severity: 'error',
   defects: ['TC-9'],
 };
 

@@ -41,7 +41,6 @@ const evidence: Evidence = {
     `s.split(sep).map(f).join(sep) measured ${N['chained.silent.split']} against two ` +
     'different fusions, which is at the 1.10x a broad warning needs rather than clear of ' +
     'it — the rule stays out and the margin is one hundredth',
-  severity: 'error',
   defects: ['TC-9'],
 };
 

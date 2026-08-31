@@ -122,7 +122,7 @@ every run prints the value it used.
 ## What you get
 
 ```
-jitmax — 46 annotated functions, 15 errors, 1 warning
+jitmax — 59 annotated functions, 29 errors
 
   demo/lib.ts:164  viaCallee()
     error  delete-property
@@ -138,12 +138,19 @@ jitmax — 46 annotated functions, 15 errors, 1 warning
       known defect: TC-9 — rules fire outside the conditions their own evidence establishes
 ```
 
-`error` or `warn`, and only an error fails the run. A rule warns when no
-benchmark measures the program it fires on. Three do: `closed-world`,
-`interface-dispatch` and `megamorphic-dispatch`. Together they were 98.8% of
-every finding across the 22-codebase survey below, so before this they decided
-nearly every exit code on evidence this project does not have. Re-measured
-2026-08-30, they are 98.6%.
+Every finding is an error, and every error fails the run. **The annotation is
+the filter**: you write `/** @jitmax */` on a function you need fast, so
+a finding on one is actionable by definition and a second severity tier gates
+nobody. Three rules — `closed-world`, `interface-dispatch` and
+`megamorphic-dispatch` — warned and exited 0 until 2026-08-31, on the argument
+that no benchmark measures the program they fire on. That gap is real and is
+still stated: they carry `TC-33`, and the report prints `known defect: TC-33`
+under every finding they make. It is also 98.6% of every finding across the
+22-codebase survey below, so a build can now fail on a mechanism this project
+has not priced for that program. Switch a rule off in the `[rules]` table, or
+per function with `-closed-world` / `-TC-33` on the annotation — and since
+v0.11.0 `interface-dispatch` is separately silenceable, so quieting the loud
+cause no longer switches off the honest "no body anywhere" one.
 
 Four things, and the second is the point:
 
@@ -165,14 +172,16 @@ Four things, and the second is the point:
   branches (`BUGS.md` TC-31). Read the coverage line as "the calls it could
   name", not "everything it could not see".
 
-Exit codes: `0` clean or warnings only, `1` jitmax has an error to report OR
-could not see everything, `2` the tool itself failed. A path that does not exist
-is a `2`, never a clean run. Three things are a `1` with no error in them,
-because a run that proves nothing about part of your call tree is not a clean
-run either: a walk that hit its limit, a module that would not resolve (every
-type it declares reads as `any`, so every type-based rule went quiet on the
-files importing it), and a hot frame in a profile that matched no function in
-these sources.
+Exit codes: `0` clean, `1` jitmax has a finding to report OR could not
+see everything, `2` the tool itself failed. A path that does not exist is a `2`,
+never a clean run. Four things are a `1` with no finding in them, because a run
+that proves nothing about part of your call tree is not a clean run either: a
+walk that hit its limit, a module that would not resolve (every type it declares
+reads as `any`, so every type-based rule went quiet on the files importing it),
+a hot frame in a profile that matched no function in these sources, and a call
+that reads a method off a value typed `any` — nothing resolves there, so the
+tool cannot tell a `Map` builtin from your own code and says so instead of
+naming a body it never found (`BUGS.md` TC-129).
 
 ## Requirements
 
@@ -257,10 +266,10 @@ produces and no map to count, so it is counted and not named. `BUGS.md` TC-110.
 benchmark found nothing.** `closed-world` measures the mechanism a call boundary
 controls: a callee V8 refuses to inline costs 4.64-4.95x in a hot loop at
 n=1000. That is a bound on what one unchecked call can cost, not a claim about
-any particular one — and it is why `closed-world` warns rather than erring and
-never fails a run: the rule fires on a callee with no readable body and the
+any particular one: the rule fires on a callee with no readable body and the
 sweep measures a readable one padded past the inlining budget (`BUGS.md`
-TC-33). That range used to be 4.42-4.79x, one sweep per size,
+TC-33). That gap is why the rule warned until 2026-08-31, and it is why every
+one of its findings still prints `known defect: TC-33`. That range used to be 4.42-4.79x, one sweep per size,
 and then 3.21-4.95x. Re-measured three times over, the n=1000 cell replicates
 and the n=100000 cell **does not replicate at all**: 3.21x, 4.68x and 4.73x,
 with intervals 2.54-3.88, 3.88-5.58 and 4.28-5.39 that share no common value.
@@ -602,15 +611,18 @@ than falling through both branches and vanishing (TC-45).
 
 Three things in that table are about the tool rather than the libraries.
 
-**The two escape rules are 1490 of the 1546 findings** — 96% — and both warn
-rather than err, so none of it fails a run. They were one rule until 2026-08-29
+**The two escape rules are 1490 of the 1546 findings** — 96%. Both warned
+rather than erring until 2026-08-31, so none of it failed a run; all of it does
+now, and `[rules]` is where a reader who disagrees says so. They were one rule
+until 2026-08-29
 and the split is what the ratio between them is for: 1427 `closed-world`, a
 callee whose body is nowhere in the checkout, against 63 `interface-dispatch`,
 a body that IS here at a site the walk cannot bind to one implementation. The
 platform is in neither — Node's own API, V8's builtins and anything reached off
 `globalThis` are counted for the run and never listed, because "inline what you
 need from `path.join`" is advice nobody can take (`BUGS.md` TC-55, TC-69,
-TC-51, TC-110). The 53 errors are what a reader is actually asked to act on.
+TC-51, TC-110). The 53 findings from the other six rules are the ones no rule
+carries TC-33 for.
 
 **`megamorphic-dispatch` fires three times** in these 850 annotated functions,
 all three through the escape route added in TC-110 — five or more implementations

@@ -15,12 +15,6 @@ export const plural = (n: number, s: string): string => `${n} ${s}${n === 1 ? ''
 // (BUGS TC-100).
 export const rel = (cwd: string, file: string): string => path.relative(cwd, file) || file;
 
-// A finding no benchmark prices is a warning, not an error, and a warning does
-// not fail a build. A rule that carries no evidence at all defaults to the same
-// place, because a gate that fails on an unmeasured claim is failing on
-// something this project cannot support (BUGS TC-33, TC-52).
-export const severity = (f: Finding): 'error' | 'warn' => f.evidence?.severity ?? 'warn';
-
 // One finding per SITE. The same line reached from 28 annotated functions was
 // 28 findings, so the headline counted the call-graph fan-in rather than the
 // work: agent-twitter-client reported 118 errors over 12 distinct lines, and
@@ -57,16 +51,27 @@ export interface Blind {
   // clean (BUGS TC-124). An overload signature whose implementation IS here is
   // not in this list: scan() binds the mark to the implementation instead.
   bodyless: string[];
+  // Calls whose callee resolved to nothing because the value it was read off
+  // is typed `any`, each already rendered as `name (file:line:col)`. The same
+  // `any` erasure as an unresolved module, from a declaration instead of a
+  // missing package: nothing says whether `b.has(k)` is a Map builtin, the
+  // platform or somebody's code, so the tool has no finding to make and no
+  // right to call the run clean either (BUGS TC-129).
+  untyped: string[];
 }
 
 // Could this run see everything it was asked to look at? ONE answer, because
 // the two channels below are one question and were asked separately: an
 // unresolved module reached the exit code and an unmatched hot frame did not,
 // so a run that checked nothing over 75% of the measured time exited 0. The
-// verdict line and bin/jitmax.ts's exit code both read this, and a third
-// channel added to `Blind` reaches both by being added here.
+// verdict line and bin/jitmax.ts's exit code both read this, and a further
+// channel added to `Blind` reaches both by being added here — two have been
+// since (BUGS TC-124, TC-129).
 export const blinded = (b: Blind): boolean =>
-  b.unresolved.length > 0 || b.unmatched.length > 0 || b.bodyless.length > 0;
+  b.unresolved.length > 0 ||
+  b.unmatched.length > 0 ||
+  b.bodyless.length > 0 ||
+  b.untyped.length > 0;
 
 // The first eight, and how many were not printed. Both blindness channels
 // print a list and both truncate it the same way.
@@ -87,7 +92,13 @@ export function render(
   cwd: string,
   results: Array<{ mark: Mark; findings: Finding[] }>,
   suppression: Suppression = { count: 0, keys: [] },
-  blind: Blind = { unresolved: [], unmatched: [], profile: { matched: 0, ported: 0 }, bodyless: [] },
+  blind: Blind = {
+    unresolved: [],
+    unmatched: [],
+    profile: { matched: 0, ported: 0 },
+    bodyless: [],
+    untyped: [],
+  },
   // What the functions in this run are. An annotation is the author asserting
   // hotness; a profile is a measurement of it. The report says which.
   subject = 'annotated function'
@@ -112,12 +123,7 @@ export function render(
   }));
   const alsoReached = [...reach.values()].reduce((n, c) => n + (c - 1), 0);
   const all = perSite.flatMap((r) => r.findings);
-  const warnings = all.filter((f) => severity(f) === 'warn').length;
-  const total = all.length - warnings;
-  out.push(
-    `jitmax — ${plural(results.length, subject)}, ${plural(total, 'error')}` +
-      (warnings > 0 ? `, ${plural(warnings, 'warning')}` : '')
-  );
+  out.push(`jitmax — ${plural(results.length, subject)}, ${plural(all.length, 'error')}`);
   // Suppression is never silent: a run that looks clean because rules were
   // switched off says so here, every time, not only when it would otherwise
   // read as clean. BUGS TC-7 is the same class of lie in a different place.
@@ -194,6 +200,16 @@ export function render(
     );
   }
 
+  if (blind.untyped.length > 0) {
+    out.push(
+      `  ${plural(blind.untyped.length, 'call')} read a method off a value typed \`any\`, so`,
+      "  nothing resolved and the walk cannot tell a Map builtin from somebody's code:",
+      `  ${listed(blind.untyped)}`,
+      '  give the receiver a type and the call is checked like any other.',
+      '  This is not a clean run.'
+    );
+  }
+
   const partial = perSite.filter((r) => r.mark.truncated);
   // One line for the whole run, not one note per call site. See Mark.platform.
   const platform = results.reduce((n, r) => n + r.mark.platform, 0);
@@ -240,7 +256,13 @@ export function render(
       );
     }
     for (const f of findings) {
-      out.push(`    ${severity(f)}  ${f.rule}`);
+      // Every finding is an error. The annotation is the filter: a function
+      // marked `/** @jitmax */` is one somebody needs fast, so a finding
+      // on it is actionable by definition and a second tier gates nobody. Three
+      // rules fire on programs their own benchmarks did not measure — they say
+      // so in the `known defect: TC-33` line below, and the way to quiet one is
+      // the `[rules]` table or a `-rulename` on the annotation (BUGS TC-33).
+      out.push(`    error  ${f.rule}`);
       // The walk follows callees, so a finding is often not in the annotated
       // function at all. Saying where it is is the difference between a report
       // and a riddle.
@@ -270,25 +292,24 @@ export function render(
     }
   }
 
-  // `total` counts errors only, so both of the branches below printed "no
-  // findings" above a page of printed warnings.
-  const nothing = all.length === 0 ? 'no findings' : `no errors, ${plural(warnings, 'warning')}`;
+  // A run with no findings is either clean or blind, and the branches below are
+  // the second half of that: every one of them ends a run that found nothing and
+  // could not see everything, which is never a pass.
   const clean = all.length === 0 && partial.length === 0 && !blinded(blind);
   out.push(
     '',
     clean
       ? `  every ${subject} is clean.`
-      : total === 0 && blind.unresolved.length > 0
-      ? `  ${nothing}, but the types above were unreadable: this is not a clean run.`
-      : total === 0 && blind.unmatched.length > 0
-      ? `  ${nothing}, but the hot frames above matched nothing here: this is not a clean run.`
-      : total === 0 && blind.bodyless.length > 0
-      ? `  ${nothing}, but the annotations above have no body here: this is not a clean run.`
-      : total === 0 && partial.length > 0
-      ? `  ${nothing}, but ${plural(partial.length, 'walk')} truncated: this is not a clean run.`
-      : total === 0
-      ? `  no errors: ${plural(warnings, 'warning')}, and a warning prices no program\n` +
-        '  this project measured, so it does not fail this run.'
+      : all.length === 0 && blind.unresolved.length > 0
+      ? '  no findings, but the types above were unreadable: this is not a clean run.'
+      : all.length === 0 && blind.unmatched.length > 0
+      ? '  no findings, but the hot frames above matched nothing here: this is not a clean run.'
+      : all.length === 0 && blind.bodyless.length > 0
+      ? '  no findings, but the annotations above have no body here: this is not a clean run.'
+      : all.length === 0 && blind.untyped.length > 0
+      ? '  no findings, but the receivers above are `any`: this is not a clean run.'
+      : all.length === 0 && partial.length > 0
+      ? `  no findings, but ${plural(partial.length, 'walk')} truncated: this is not a clean run.`
       : '  No cost is printed beside a finding. Every rule is measured, and the\n' +
         '  measurements are in README.md and in the bench/*.jl named above — but a\n' +
         '  ratio is a property of the input, and being told a function is hot does\n' +

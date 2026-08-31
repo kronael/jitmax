@@ -46,7 +46,6 @@ const evidence: Evidence = {
     'looks: most of those intervals span 1.0, so once the result is read back the string ' +
     'and the rewrite are indistinguishable rather than the string winning. Every cell is ' +
     'replicated three times and the ones whose sweeps disagree are in the file',
-  severity: 'error',
   defects: [],
 };
 

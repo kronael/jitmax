@@ -1,5 +1,33 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- **Every finding is an error, and every error fails the run.** `closed-world`,
+  `interface-dispatch` and `megamorphic-dispatch` carried `severity: 'warn'` and
+  exited 0; the `severity` field is gone from `Evidence` entirely. The
+  annotation is the filter: you write `/** @jitmax */` only on a
+  function you need fast, so a finding on one is actionable by definition and a
+  second tier gates nobody. Tuning is the `[rules]` TOML table and the
+  per-function `-rulename` / `-TC-NN` annotations. **This changes exit codes in
+  CI**: those three rules are 98.6% of the 22-codebase survey, and they fire on
+  programs their own benchmarks did not measure — they still say so, as
+  `known defect: TC-33` under every finding (`BUGS.md` TC-33).
+- `make reality` reads the composition of the radash run, not a count of errors
+  alone: exactly one `accumulating-spread` on `assign()`, every other error an
+  escape rule, and the total pinned to the revision CI clones.
+
+### Fixed
+
+- A method read off a value typed `any` — `b.has(key)` where `b: any` — is no
+  longer reported as a callee nobody can read. The property access resolves to
+  no declaration, so the platform test never fired and es-toolkit's `Map` and
+  `Set` builtins were printed with "inline what you need from `b.has`". The call
+  now goes through the blindness channel with the unresolved modules: named,
+  counted, and exit 1, because the tool cannot see what runs there
+  (`BUGS.md` TC-129).
+
 ## [v0.11.0] — 20260831
 
 > jitmax v0.11.0 — the loud rule splits in two

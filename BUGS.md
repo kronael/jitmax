@@ -26,6 +26,132 @@ Review queue. Found during audits, fixed only when the owner asks.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
+## TC-128 — the key-order false negative is invisible at the CLI (2026-08-31, open)
+
+Found by an adversarial audit today. `megamorphic-elements` records this gap
+honestly in its own `unreported` clause — and only in source. Nothing prints it,
+so the terminal user is told "every annotated function is clean" over an axis
+this tool has never checked.
+
+```ts
+/** @jitmax */
+export function sumKeyOrder(rows: Array<{ x: number; y: number }>): number {
+  let s = 0; for (const r of rows) s += r.x + r.y; return s;
+}
+export function build() { return [{x:1,y:2},{y:3,x:4},{x:5,y:6},{y:7,x:8},{x:9,y:10}]; }
+```
+
+`jitmax — 2 annotated functions, 0 errors`, `every annotated function is
+clean.`, exit 0.
+
+**What that program actually builds, checked here rather than asserted:**
+`%HaveSameMap` over those five literals answers **2 distinct maps**, not five —
+`{x,y}` and `{y,x}`, three of one and two of the other. Two maps is inside V8's
+four-map budget, which is where this rule's own `silent` clause puts
+`0.95-1.47x` and where it deliberately says nothing. Five key ORDERS of one key
+set is the program that crosses the cliff, and it is just as silent:
+
+```ts
+/** @jitmax */
+export function sumFiveOrders(rows: Array<{ a: number; b: number; c: number }>): number {
+  let s = 0; for (const r of rows) s += r.a + r.b + r.c; return s;
+}
+export function buildFive() {
+  return [{a:1,b:2,c:3}, {a:1,c:3,b:2}, {b:2,a:1,c:3}, {b:2,c:3,a:1}, {c:3,a:1,b:2}];
+}
+```
+
+`%HaveSameMap`: **5 distinct maps** at one load site. `jitmax — 2
+annotated functions, 0 errors`, exit 0. bench/shapes-calibrated.jl measures that
+exact program at **4.4-11.5x on reads** — the same order as the case the rule
+DOES report.
+
+**This is not a detector bug.** Key order is not part of a TypeScript type, so
+nothing static separates those five builders from five that agree, and the rule
+misses it rather than guessing — which is the right call and is written down in
+`EVIDENCE.unreported`. The defect is that `unreported` has no reader: `lib/
+report.ts` prints `cost`-derived sweep names, the `silent` clause reaches
+README, and `unreported` reaches neither the terminal nor the exit code. A user
+who never opens `lib/rules/megamorphic-elements.ts` learns nothing about an
+unchecked axis with a measured 4.4-11.5x behind it.
+
+**Recorded, not fixed: it is an output-design decision and needs sign-off.**
+Three shapes it could take, and they are not equivalent:
+
+- (a) a per-run coverage line, like the platform and lowered counters:
+  `N property reads off array elements were checked for key SETS only — key
+  order is not in a TypeScript type (4.4-11.5x, bench/shapes-calibrated.jl)`.
+  Cheap, and it appears on runs where nothing is wrong, which is where a
+  coverage note belongs and also where it becomes noise.
+- (b) `unreported` printed under the finding whose rule carries it, the way
+  `known defect:` already is. Reaches only runs that already have that finding,
+  which is precisely the wrong population: the false negative is a CLEAN run.
+- (c) a `--coverage` mode that prints every rule's `silent` and `unreported`
+  clause and checks nothing. Honest, and nobody runs it.
+
+(a) is the only one that reaches the user this entry is about, and the argument
+against it is the argument against every unconditional line: the report already
+prints four counters, and a fifth that fires on every run with an array read in
+it may be the line that makes people stop reading the others.
+
+## TC-129 — closed-world reports plain Map and Set builtins as somebody's unreadable code (2026-08-31, FIXED 2026-08-31)
+
+Found by an adversarial audit today, in es-toolkit's
+`src/predicate/isEqualWith.ts`: the parameters are declared `a: any, b: any`
+(~71-72, ~85-86) and lines ~195-224 call `a.entries()`, `b.has(key)`,
+`b.get(key)` and `a.values()` on them. Those are plain `Map` and `Set` builtins.
+What the tool printed:
+
+```
+warn  closed-world
+  calls b.has, which we have no body for; the promise stops here
+  fix: inline what you need from b.has, or accept that this call is unchecked
+```
+
+Reproduced here as `test/fixtures/untyped/untyped.ts`, which narrows on a tag
+string the way es-toolkit does, because `a instanceof Map` narrows the type and
+makes the bug go away.
+
+**Cause.** `lib/scan.ts`'s platform test asks a DECLARATION where it lives —
+`@types/node`, a default-library file, a `node:` import, the host. A property
+access on an `any` receiver resolves to no declaration at all, so every one of
+those tests answers false, `native` stays false, and the call falls through to
+"somebody's code with no readable body". It is the same `any` erasure as TC-111,
+one classification below the one TC-111 fixed: `Dispatch.typed` gated the
+`megamorphic-dispatch` PROMOTION and never touched closed-world's baseline. And
+it broke the rule's own `silent` clause, which promises the platform is "counted
+and not named" — on the loudest possible surface, telling a reader to inline a
+V8 builtin.
+
+**Fixed.** The call is neither reported nor dropped: it goes through `Blind`,
+beside the unresolved modules, the unmatched hot frames and the body-less
+annotations, and the run exits 1 as those do.
+
+```
+3 calls read a method off a value typed `any`, so
+nothing resolved and the walk cannot tell a Map builtin from somebody's code:
+a.entries (…:10:24), b.has (…:11:10), b.get (…:12:15)
+give the receiver a type and the call is checked like any other.
+This is not a clean run.
+```
+
+`Blind` and not the platform counter, which was the other candidate: that
+counter's line says *the body is native*, and here nothing resolved, so the tool
+cannot know that. Blindness is what it can stand behind. `blinded()` already
+routes any channel added to it into the verdict line AND the exit code, which is
+the extension point the comment there names, so this adds no second path.
+
+**Scope, deliberately narrow.** Only a METHOD read off an `any` value — a
+property access whose callee resolved to nothing. A BARE `any` callee stays a
+`closed-world` finding: `opaque(s)` imported from a module that would not
+resolve has a name a reader can look up and an `npm install` that produces the
+body, which is exactly what that rule is for, and
+`test/fixtures/builtins/entry.ts` asserts it. Only the receiver's erasure hides
+which function is being called.
+
+**Not re-derived:** the 22-codebase survey figures in README were taken before
+this fix, so `closed-world`'s share on `any`-heavy libraries is smaller than the
+table says. The table is a dated record of a run, not a live number.
 ## TC-127 — elementFlow under-counts six ways, and each one is a silent false negative (2026-08-31, FIXED 2026-08-31)
 
 TC-101's fix binds a read to a collection by provenance. `elementFlow` in
@@ -4067,9 +4193,28 @@ positive.
 
 ## TC-33 — `closed-world`'s trigger and its benchmark measure different things (2026-08-17, open — the report says `bound` as of 2026-08-19)
 
+**Amended 2026-08-31 — the `warn` tier is gone, and this gap is now the only
+thing that states it.** `severity` was removed from `Evidence`: every finding is
+an error and every error fails the run. The owner's reasoning is that the
+annotation is the filter — a user writes `/** @jitmax */` only on a
+function they need fast, so a finding on one is actionable by definition, and
+tuning belongs to the `[rules]` table and the per-function `-rulename` /
+`-TC-NN` annotations rather than to a second tier nobody could aim.
+
+The honest cost of that, recorded rather than argued: `closed-world`,
+`interface-dispatch` and `megamorphic-dispatch` fire on programs their own
+benchmarks did not measure — this entry — and they are 98.6% of every finding
+across the 22-codebase survey. **A build can now fail on a mechanism this
+project has not priced for that program.** What makes it tenable is v0.11.0's
+split: `interface-dispatch` is separately silenceable, so quieting the noisy
+cause no longer switches off the honest "no body anywhere" one. What still says
+the gap exists is `defects`: all three carry TC-33, and the report prints
+`known defect: TC-33 — …` under every finding they make. A test holds that
+register in `make test`.
+
 **Amended 2026-08-29.** The "report says `bound`" note is stale — that flag was
 replaced by `severity`. The core gap stands: the trigger and the benchmark
-measure different programs, which is why this is the project's only `warn`.
+measure different programs.
 
 The most load-bearing entry here, because this rule is **1539 of the 1672
 findings** in the twelve-library survey — 92% of everything the tool has ever

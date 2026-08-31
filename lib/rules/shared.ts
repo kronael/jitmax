@@ -16,20 +16,20 @@ export interface Evidence {
   // rules that summary was false (BUGS TC-39). A rule with nothing to say here
   // leaves it out.
   unreported?: string;
-  // `error` when a benchmark measures the program this rule fires on, `warn`
-  // when none does. Only an error sets the exit code; a warning is printed and
-  // does not fail a build. Stated per rule and not per finding, because what
-  // separates the two is the evidence and not the site.
+  // There is no `severity` here, and that is a decision rather than an
+  // omission: every finding is an error. `closed-world`, `interface-dispatch`
+  // and `megamorphic-dispatch` carried `severity: 'warn'` until 2026-08-31 on
+  // the argument that no benchmark measures the program they fire on, which
+  // kept them out of the exit code. The annotation is the filter — a user
+  // writes `/** @jitmax */` only on a function they need fast, so a
+  // finding on one is actionable by definition and a second tier gates nobody.
+  // Tuning is the `[rules]` TOML table and the per-function `-rulename` /
+  // `-TC-NN` annotations, which already existed. The gap the tier was named for
+  // is still stated, in `defects`: those three carry TC-33, and the report
+  // prints it under every finding they make (BUGS TC-33, TC-52). It went the
+  // way of the `bound` flag before it — a field the report had stopped having
+  // anything to ask it.
   //
-  // This replaces the `bound` flag, which existed so the report could print the
-  // word `bound` instead of `measured` beside a number (BUGS TC-33). The report
-  // prints no number now, so that flag had no reader left. Severity is the
-  // stronger form of the same distinction and it reaches the exit code, which
-  // is what a CI user actually feels. Two rules are `warn`: `closed-world`,
-  // which fires on a callee with no readable body, and `megamorphic-dispatch`,
-  // whose own `source` says no sweep varies the key set at a call site. Neither
-  // has a benchmark that ran the program it fires on.
-  severity: 'error' | 'warn';
   // BUGS.md issue numbers this rule is known to be wrong or unproven about.
   // Empty when the rule carries no open defect. This is the register a
   // config or an annotation disables by defect code instead of by name.
