@@ -1659,6 +1659,60 @@ test('every ratio on the published page is a derived number', () => {
   );
 });
 
+// The version and the rule count are stated in prose on both published
+// surfaces and nowhere derived, which is how README came to say "seven rules"
+// on line 906 while line 681 said "all eight" — a rule had been added and one
+// of the two sentences moved. package.json is the one statement of the
+// version and `EVIDENCE` the one register of the rules; both surfaces are
+// held to them here (BUGS TC-123 is the same defect in the release gate).
+//
+// Each surface is matched at its OWN sentence rather than by scanning for
+// `vX.Y.Z`, because README quotes Node's version and V8's too, and a release
+// that bumped only one of the two surfaces is the drift this catches.
+test('both published surfaces state this version and this many rules', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as {
+    version: string;
+  };
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  const page = fs.readFileSync(path.join(root, 'site', 'index.html'), 'utf8');
+
+  const stated: [string, string, RegExp][] = [
+    ['README.md', readme, /^Status: v(\d+\.\d+\.\d+),/m],
+    ['site/index.html', page, /v(\d+\.\d+\.\d+), <strong>GPL/],
+  ];
+  for (const [name, text, re] of stated) {
+    const m = text.match(re);
+    assert.ok(m, `${name} no longer states a version where this test looks: ${re}`);
+    assert.strictEqual(m[1], pkg.version, `${name} states v${m[1]}; package.json says ${pkg.version}`);
+  }
+
+  // Only the sentences that claim the TOTAL. "the two rules twelve libraries
+  // never exercised" is a subset and counts something else, so a bare
+  // "<word> rules" would fail on a true sentence.
+  // The withdrawn-cell count is the third figure README states in prose and
+  // nothing derived. It said twenty-two while `DISAGREE` below listed 31, and
+  // the same sentence points the reader at that register as the list.
+  const withdrawn = readme.match(/(\d+) are withdrawn today,/);
+  assert.ok(withdrawn, 'README.md no longer states a withdrawn-cell count where this test looks');
+  assert.strictEqual(
+    Number(withdrawn[1]),
+    DISAGREE.size,
+    `README.md says ${withdrawn[1]} cells are withdrawn; the register it points at lists ${DISAGREE.size}`
+  );
+
+  const WORD = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+  const count = Object.keys(EVIDENCE).length;
+  const totals = [/\ball ([a-z]+) rules\b/g, /^Status: v\d+\.\d+\.\d+, [^,]+, ([a-z]+) rules\b/gm];
+  const claimed = totals.flatMap((re) => [...readme.matchAll(re)].map((m) => m[1]));
+  assert.ok(claimed.length > 0, 'README.md no longer claims a rule total where this test looks');
+  assert.deepStrictEqual(
+    [...new Set(claimed)],
+    [WORD[count]],
+    `README.md claims ${[...new Set(claimed)].join('/')} rules in total; ` +
+      `lib/rules/index.ts registers ${count} (${WORD[count]})`
+  );
+});
+
 // Protocol rule 13 — three whole sweeps per published cell, and agreement is a
 // value common to all three intervals — had no code path to publication.
 // `replicates()` lives in bench/driver.ts and was called from exactly two
