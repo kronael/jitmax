@@ -26,6 +26,47 @@ Review queue. Found during audits, fixed only when the owner asks.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
+## TC-123 — the release gate quotes a finding count that stopped being true one release ago (2026-08-31, open)
+
+`CLAUDE.md` closes with "Reality check before any release:
+`node bin/jitmax.ts tmp/demo-real/src` against a radash checkout must report
+exactly one finding. More than one means a false positive shipped." It was
+written on 2026-08-15 (`7085852`) and has not been true since `100f22f`, which
+shipped in **v0.10.0**.
+
+Measured here, same checkout, same command:
+
+| ref | result |
+| --- | --- |
+| v0.9.0 | 1 error — the gate passes |
+| v0.10.0 | 1 error, 11 `closed-world` warnings |
+| 552401d | 1 error, 9 `closed-world` warnings |
+
+The change is not a false positive. `100f22f` widened the escape test to
+"nothing was followable", because the previous test dropped a call that
+resolved to an interface member through both branches and reported it nowhere —
+"a coverage report that silently omits a case is the lie this rule exists to
+prevent". radash's callbacks (`getter`, `mapper`, `condition`) are exactly that
+case, and they are `warn`, not `error`.
+
+So a release gate written as one number over BOTH severities went stale the day
+the tool got more honest, and a whole release went out under it unnoticed. The
+error count — the tier that fails a build — never moved: it is 1 at v0.9.0 and
+1 today.
+
+Two separable defects:
+
+- **The wording is false.** The gate should count what it is actually a gate
+  on, which is errors.
+- **Nothing runs it.** `make v8-check` exists so the citation evidence cannot
+  rot silently; the reality check is prose, so it did. The cause fix is a
+  target — `make reality` — that reads the radash checkout the way `v8-check`
+  reads `v8src/`, and exits non-zero saying so when the checkout is absent
+  rather than passing quietly.
+
+The second is a new make target and a documented checkout path, so it is
+recorded rather than bundled into a release.
+
 ## TC-101 — megamorphic-elements fires on a collection nothing ever reads (2026-08-30, open)
 
 TC-8 made the rule require a property load off an element. TC-94 made that load
