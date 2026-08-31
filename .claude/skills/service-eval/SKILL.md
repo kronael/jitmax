@@ -36,6 +36,9 @@ summary as evidence.
 6. Run `make v8-check 2>&1 | tee tmp/service-eval/v8-check.log`. Require exit 0
    and `14 citations match`. A missing `v8src/` is unavailable evidence, not a
    pass.
+7. If README or the site advertises `npx github:kronael/jitmax`, run
+   `git ls-remote origin HEAD`. Require one non-empty ref. An empty remote means
+   the package passed local tests but no public user can install it.
 
 ## Exact first-run commands
 
@@ -65,6 +68,6 @@ the package and do not use `npm link`.
 - Never regenerate `lib/numbers.ts` or `lib/builtins.ts` to make a drift check
   pass. Correct the source or the cited evidence first.
 
-The release is healthy only when all six checks pass. A clean unit suite cannot
+The release is healthy only when all seven checks pass. A clean unit suite cannot
 replace the packed install, radash composition, or V8 citation checks because
 each guards a failure that previously shipped.

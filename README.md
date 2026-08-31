@@ -11,7 +11,7 @@ function is hot, not how large its data is.
 
 ## Use it
 
-Run it from the root of a TypeScript repository — no clone, no build step:
+The package is ready for this command from the root of a TypeScript repository:
 
 ```sh
 npx github:kronael/jitmax
@@ -19,13 +19,14 @@ npx github:kronael/jitmax
 
 `bunx github:kronael/jitmax` does the same. With no path argument jitmax reads
 the repository's `tsconfig.json`, including its module resolution and file
-list. It is not on npm, so use the repository URL as the package name.
+list. It is not on npm, so use the repository URL as the package name. The
+remote does not have a published Git ref yet, so this public install remains
+blocked by TC-133.
 
-Clone it instead if you are going to change it:
+From an existing checkout, install its development dependencies:
 
 ```sh
-git clone https://github.com/kronael/jitmax jitmax
-cd jitmax && npm install
+cd /path/to/jitmax && npm install
 ```
 
 Mark the function you need fast:
@@ -35,7 +36,7 @@ Mark the function you need fast:
 export function total(rows: Row[]): number { … }
 ```
 
-From a clone, run it from the TypeScript repository root:
+Then run it from the TypeScript repository root:
 
 ```sh
 node /path/to/jitmax/bin/jitmax.ts
@@ -49,12 +50,12 @@ could not resolve, or a hot frame from a profile that matched no function here �
 and 2 when the tool itself failed. A gate reads the exit code, so a run that
 could not see everything is never a pass. Warnings alone do not fail a run.
 
-**An installed copy runs compiled JavaScript; a clone runs the TypeScript.**
+**An installed copy runs compiled JavaScript; a checkout runs the TypeScript.**
 Node refuses to strip types from any file under `node_modules`, so the `bin`
 entry is a JavaScript shim: it prefers `dist/`, which npm's `prepare` compiles
 into every packed and every git-installed copy, and falls back to
-`bin/jitmax.ts` where there is no `dist/` — a clone, or bun, which reads
-TypeScript anywhere. A clone still needs no build step. `BUGS.md` TC-72.
+`bin/jitmax.ts` where there is no `dist/` — a checkout, or bun, which reads
+TypeScript anywhere. A checkout still needs no build step. `BUGS.md` TC-72.
 
 It loads *your* TypeScript, not a bundled copy — 5.x, because TypeScript 7 is
 the native rewrite and has neither `ts.sys` nor `ts.createProgram`, which is
@@ -928,7 +929,8 @@ worthless, every finding re-run here before it was written down.
 
 **GPL-2.0-only**. The full text is in `LICENSE`. You may use, modify and
 redistribute it under those terms. A derivative work carries the same licence.
-It is not published to npm. Get it by cloning the repository.
+It is not published to npm, and the GitHub remote has no public ref yet. TC-133
+tracks that distribution blocker.
 
 `examples/` is the exception, and deliberately so: the `.before.ts` files are
 functions vendored verbatim from radash, remeda, es-toolkit and zod, all

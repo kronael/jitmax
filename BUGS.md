@@ -26,6 +26,26 @@ Review queue. Found during audits, fixed only when the owner asks.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
+## TC-133 — the documented GitHub install has no remote ref to install (2026-08-31, open)
+
+The package artifact works when packed, installed under `node_modules`, and run
+through npx or bunx. The public command is a different boundary:
+`npx github:kronael/jitmax` asks GitHub for the repository's HEAD. On 2026-08-31
+`git ls-remote origin HEAD refs/tags/v0.12.1` returned no refs, and
+`git ls-remote --heads origin` exited 0 with empty output. A public GitHub search
+also found no repository. The README and site called that an immediate install.
+
+The code is ready to publish; the remote is not. This project forbids agent
+pushes, so no code change can create the missing ref. Until a human publishes
+one, the only working path is an existing checkout or a locally packed tarball.
+
+- **Severity:** high
+- **Scope:** distribution and first contact
+- **Affected:** README, site, GitHub install
+- **Source:** `git ls-remote origin HEAD refs/tags/v0.12.1`
+- **Status:** open, blocked on human publication
+- **Fix:**
+
 ## TC-132 — profile mode treats dependency time as stale project code (2026-08-31, proposed)
 
 Profiling jitmax while it checked Valibot, then giving that profile back to
