@@ -26,6 +26,39 @@ Review queue. Found during audits, fixed only when the owner asks.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
+## TC-131 — a directory with no annotation reported clean at exit 0 (2026-08-31, FIXED 2026-08-31)
+
+Found by a parallel session's first-contact audit against a clean valibot
+checkout, and reproduced here in one command:
+
+```
+$ node bin/jitmax.ts <any directory with no /** @jitmax */ in it>
+jitmax — 0 annotated functions, 0 errors
+
+  every annotated function is clean.
+$ echo $?
+0
+```
+
+This is the DEFAULT first-contact path. A user clones the repo, points it at
+their code before marking anything, and is told they passed. Nothing was read.
+It is the third false-clean found today (TC-124, TC-129) and the worst of the
+three, because it needs no unusual code at all — only the absence of a comment.
+
+`bin/jitmax.ts` already carried a guard against this exact SENTENCE for one
+narrow cause: `jitmax src run.cpuprofile` with the arguments in the wrong slots
+read the profile as a source file, found no annotations, and printed it. The
+comment there calls it "the silent lie this file's first comment says it stopped
+accepting". The general form went unnoticed beside it.
+
+**Fixed.** `results.length === 0` decides a verdict of its own —
+`no annotated function here — nothing was checked, so this is not a clean run` —
+and the same condition reaches `process.exitCode`, because the text and the exit
+code have to agree and a gate reads only the number. Zero marks is not routed
+through `blinded()`: blindness is "something was there and could not be read",
+and this is "there was nothing", which deserves its own sentence rather than one
+that misdescribes it.
+
 ## TC-130 — the peer range admitted TypeScript 7, which has none of the API this tool calls (2026-08-31, FIXED 2026-08-31)
 
 `peerDependencies` said `"typescript": ">=5.0.0"`, so a fresh `npm install`

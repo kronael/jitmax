@@ -1478,6 +1478,22 @@ test('an annotation with no body anywhere is named, and the run is never clean',
   assert.strictEqual(run.status, 1);
 });
 
+// TC-131. Pointed at a directory whose files carry no annotation at all, the
+// tool printed "every annotated function is clean" and exited 0. That is the
+// default first-contact path — a user clones this, runs it on their repo before
+// marking anything, and is told they passed. Nothing was read.
+test('a directory with no annotation is not a clean run', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'noannot')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /0 annotated functions/);
+  assert.match(run.stdout, /nothing was checked, so this is not a clean run/);
+  assert.ok(!run.stdout.includes('is clean.'), 'the clean verdict must not appear');
+  assert.strictEqual(run.status, 1, 'the text and the exit code have to say the same thing');
+});
+
 // TC-62. One line reached from three annotated functions is one finding. The
 // count used to be the call-graph fan-in: agent-twitter-client reported 118
 // errors over 12 distinct lines, and the TypeScript compiler 49 over 5.

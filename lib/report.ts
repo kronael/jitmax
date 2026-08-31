@@ -295,10 +295,19 @@ export function render(
   // A run with no findings is either clean or blind, and the branches below are
   // the second half of that: every one of them ends a run that found nothing and
   // could not see everything, which is never a pass.
-  const clean = all.length === 0 && partial.length === 0 && !blinded(blind);
+  // Nothing to check is not a clean bill of health. Pointed at a repo that
+  // carries no annotation at all, the tool printed `every annotated function is
+  // clean` and exited 0 — the first thing a new user sees, and it passes a gate
+  // having read nothing. The mis-slotted `.cpuprofile` case in bin/jitmax.ts
+  // already had its own guard against this exact sentence; this is the general
+  // form of it (BUGS TC-131).
+  const nothingChecked = results.length === 0;
+  const clean = !nothingChecked && all.length === 0 && partial.length === 0 && !blinded(blind);
   out.push(
     '',
-    clean
+    nothingChecked
+      ? `  no ${subject} here — nothing was checked, so this is not a clean run.`
+      : clean
       ? `  every ${subject} is clean.`
       : all.length === 0 && blind.unresolved.length > 0
       ? '  no findings, but the types above were unreadable: this is not a clean run.'

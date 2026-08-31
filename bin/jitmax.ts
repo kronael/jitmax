@@ -171,8 +171,15 @@ try {
   // text says so too, so the two still agree (BUGS TC-51). An unmatched hot
   // frame is that same blindness, measured (BUGS TC-77), and a method read off
   // an `any` value is that blindness inside one call (BUGS TC-129).
+  // `results.length === 0` is here for the same reason blinded() is: the run
+  // checked nothing, and a gate reads only this number. The report says so too,
+  // and the two have to agree (BUGS TC-131).
   process.exitCode =
-    blinded(blind) || results.some((r) => r.findings.length > 0 || r.mark.truncated) ? 1 : 0;
+    results.length === 0 ||
+    blinded(blind) ||
+    results.some((r) => r.findings.length > 0 || r.mark.truncated)
+      ? 1
+      : 0;
 } catch (err) {
   process.stderr.write(`jitmax: ${(err as Error).message}\n`);
   process.exitCode = 2;
