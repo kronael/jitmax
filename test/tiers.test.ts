@@ -1,9 +1,5 @@
 // The tier diagnostic's reader, against traces V8 actually printed.
 //
-// Plain JavaScript and not part of the tsconfig `include`, because bench/ is
-// JavaScript: the checker is the TypeScript half of this repo and the
-// measurement code is not.
-//
 // What is worth a test here is the one thing that was wrong first: the token
 // says WHAT WAS RUNNING WHEN THE STOPWATCH STARTED, and reading the last
 // optimization event in the process instead of replaying them in order reported
@@ -12,16 +8,16 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parse, summarize } from '../bench/tiers.js';
+import { parse, summarize } from '../bench/tiers.ts';
 
-const of = (trace) => summarize(parse(trace));
+const of = (trace: string) => summarize(parse(trace));
 
-const MARK = (f) =>
+const MARK = (f: string) =>
   `[marking 0x1 <JSFunction ${f} (sfi = 0x9)> for optimization to TURBOFAN, ` +
   `ConcurrencyMode::kConcurrent, reason: hot and stable]`;
-const DONE = (f, osr = '') =>
+const DONE = (f: string, osr = '') =>
   `[completed optimizing 0x1 <JSFunction ${f} (sfi = 0x9)> (target TURBOFAN)${osr}]`;
-const BAIL = (f, reason) =>
+const BAIL = (f: string, reason: string) =>
   `[bailout (kind: deopt-eager, reason: ${reason}): begin. deoptimizing 0x1 ` +
   `<JSFunction ${f} (sfi = 0x9)>, 0x2 <Code TURBOFAN>, opt id 1, bytecode offset 251]`;
 

@@ -23,7 +23,7 @@
   },
   "type": "module",
   "scripts": {
-    "test": "node --test test/check.test.ts test/tiers.test.js",
+    "test": "node --test test/check.test.ts test/tiers.test.ts",
     "lint": "tsc --noEmit"
   },
   "engines": {

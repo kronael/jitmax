@@ -6,11 +6,7 @@
 
 import fs from 'node:fs';
 import os from 'node:os';
-
-// The pin the driver applies to every observation. Read here as well as in
-// driver.js so the row says what actually happened rather than what was
-// intended.
-export const PIN_AVAILABLE = fs.existsSync('/usr/bin/taskset');
+import { PIN_LABEL } from './driver.ts';
 
 export const CORES = os.availableParallelism();
 
@@ -40,16 +36,16 @@ export const CORES = os.availableParallelism();
 // whatever value was in force is written into every row.
 export const MAX_RUNNABLE = CORES - 1;
 
-export const load1 = () => +os.loadavg()[0].toFixed(2);
+export const load1 = (): number => +os.loadavg()[0].toFixed(2);
 
-const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 // One reading: the fourth field of /proc/loadavg is `running/total` scheduling
 // entities at this instant, and the reader is running while it reads, so one —
 // this process, which is the whole harness whenever this is called — is
 // subtracted.
-function runnableNow() {
-  let text;
+function runnableNow(): number {
+  let text: string;
   try {
     text = fs.readFileSync('/proc/loadavg', 'utf8');
   } catch {
@@ -68,8 +64,8 @@ function runnableNow() {
 // instant can catch a kworker mid-wake — and a gate that trips on a blip is a
 // sweep that dies at 3am for nothing, while a register that trips on one is a
 // failing build nobody contended for.
-export function runnable() {
-  const seen = [];
+export function runnable(): number {
+  const seen: number[] = [];
   for (let i = 0; i < 5; i++) {
     if (i > 0) sleep(100);
     seen.push(runnableNow());
@@ -90,12 +86,22 @@ export function runnable() {
 // claiming 0.91 while the machine climbed to 4.55, and a recorded environment
 // that is false is worse than none. The runner stamps both onto each row as it
 // writes it, and `runnableStart` is what the gate let the sweep begin at.
-export function environment(maxRunnable) {
+export interface Environment {
+  node: string;
+  v8: string;
+  flags: string;
+  pin: string;
+  cores: number;
+  cpu: string;
+  maxRunnable: number;
+}
+
+export function environment(maxRunnable: number): Environment {
   return {
     node: process.versions.node,
     v8: process.versions.v8,
     flags: '',
-    pin: PIN_AVAILABLE ? 'taskset -c 1' : 'none',
+    pin: PIN_LABEL,
     cores: CORES,
     cpu: os.cpus()[0]?.model ?? 'unknown',
     maxRunnable,
@@ -106,7 +112,9 @@ export function environment(maxRunnable) {
 // something was wrong. `waitFor` seconds of polling is the difference between a
 // sweep that dies at 3am and one that starts when the machine is free; a sweep
 // that waited is still a sweep that started at a recorded count.
-export function gate({ maxRunnable, waitFor, log }) {
+export function gate(
+  { maxRunnable, waitFor, log }: { maxRunnable: number; waitFor: number; log: (m: string) => void }
+): number {
   if (CORES < 2) {
     throw new Error(
       `load gate: ${CORES} core means the pinned core IS the machine — pass --max-load explicitly`

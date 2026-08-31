@@ -30,13 +30,15 @@
 // `tmp` is a middle property, as in the original probe. All three read a+b+c,
 // so the per-pair checksum is a real test.
 //
-//   node bench/delete.js <variant> <n> <excl|incl|kinds> <reps> <seed>
+//   node bench/delete.ts <variant> <n> <excl|incl|kinds> <reps> <seed>
 
-import { args, emit, mulberry32 as rng } from './kernel.js';
+import { args, emit, mulberry32 as rng } from './kernel.ts';
 
 const { variant, n, mode, reps, seed } = args();
 
-const FAMILY = {
+type Row = { a: number; b: number; c: number };
+
+const FAMILY: Record<string, string | undefined> = {
   rowbase: 'row',
   rowundef: 'row',
   rowdel: 'row',
@@ -51,15 +53,17 @@ if (!family) throw new Error(`unknown variant ${variant}`);
 // indices carry identical values and the checksum compared inside every pair is
 // a real test rather than a formality. `tmp` is a constant, so it costs the
 // stream nothing and the three variants stay aligned.
-const ONE = {
+const ONE: Record<'base' | 'undef' | 'del', (r: () => number) => Row> = {
   base: (r) => ({ a: r(), b: r(), c: r() }),
   undef: (r) => {
-    const o = { a: r(), tmp: 1, b: r(), c: r() };
+    const o: { a: number; tmp: number | undefined; b: number; c: number } =
+      { a: r(), tmp: 1, b: r(), c: r() };
     o.tmp = undefined;
     return o;
   },
   del: (r) => {
-    const o = { a: r(), tmp: 1, b: r(), c: r() };
+    const o: { a: number; tmp?: number; b: number; c: number } =
+      { a: r(), tmp: 1, b: r(), c: r() };
     delete o.tmp;
     return o;
   },
@@ -68,35 +72,35 @@ const ONE = {
 // One function per variant, resolved ONCE below. A `switch` on the variant
 // inside the timed region put a string comparison in every rep and TurboFan
 // miscompiled it — a rule of the repo, and the reason this is a table.
-const BUILD = {
+const BUILD: Record<string, () => Row[]> = {
   rowbase: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) rows[i] = ONE.base(r);
     return rows;
   },
   rowundef: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) rows[i] = ONE.undef(r);
     return rows;
   },
   rowdel: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) rows[i] = ONE.del(r);
     return rows;
   },
   // One object, one delete, n slots pointing at it. The read loop below cannot
   // tell this array from `row`'s without loading the object, which is the point.
-  shbase: () => new Array(n).fill(ONE.base(rng(seed))),
-  shundef: () => new Array(n).fill(ONE.undef(rng(seed))),
-  shdel: () => new Array(n).fill(ONE.del(rng(seed))),
+  shbase: () => new Array<Row>(n).fill(ONE.base(rng(seed))),
+  shundef: () => new Array<Row>(n).fill(ONE.undef(rng(seed))),
+  shdel: () => new Array<Row>(n).fill(ONE.del(rng(seed))),
 };
 
 const build = BUILD[variant];
 
-const read = (rows) => {
+const read = (rows: Row[]): number => {
   let s = 0;
   for (let i = 0; i < rows.length; i++) s += rows[i].a + rows[i].b + rows[i].c;
   return s;
@@ -106,10 +110,10 @@ const read = (rows) => {
 // --allow-natives-syntax, which protocol rule 8 forbids in a measured process.
 // The
 // natives go through a direct eval so this file still parses without the flag.
-//   node --allow-natives-syntax bench/delete.js rowdel 4 kinds 1 1
+//   node --allow-natives-syntax bench/delete.ts rowdel 4 kinds 1 1
 if (mode === 'kinds') {
   const rows = build();
-  const ask = (expr) => {
+  const ask = (expr: string): unknown => {
     try {
       return eval(expr);
     } catch {
@@ -132,8 +136,8 @@ if (mode === 'kinds') {
   // small n, and enough loop iterations for OSR to reach it at large n.
   const WARMS = Math.max(4, Math.ceil(2e6 / n));
 
-  let t0;
-  let t1;
+  let t0: bigint;
+  let t1: bigint;
 
   if (mode === 'excl') {
     const rows = build();

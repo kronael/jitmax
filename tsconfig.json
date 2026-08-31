@@ -11,7 +11,7 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["bin", "lib", "test", "examples"],
-  "//": "test/fixtures is INPUT to the tool, not part of this build. Two fixtures are deliberately broken source — an unresolvable import and a use-before-declaration cycle — because that is what they exist to reproduce, and a build that typechecks them fails on purpose-built failures.",
-  "exclude": ["test/fixtures"]
+  "include": ["bin", "lib", "test", "examples", "bench"],
+  "//": "bench/natives.js is the ONE file that uses bare V8 natives syntax (%Foo), which neither tsc nor node's type stripper can parse; it is three wrappers, the probes that call them are TypeScript, and bench/natives.d.ts is what the compiler reads in its place. test/fixtures is INPUT to the tool, not part of this build. Two fixtures are deliberately broken source — an unresolvable import and a use-before-declaration cycle — because that is what they exist to reproduce, and a build that typechecks them fails on purpose-built failures.",
+  "exclude": ["test/fixtures", "bench/natives.js"]
 }

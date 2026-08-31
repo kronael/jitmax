@@ -11,9 +11,9 @@
 // identical arithmetic and return identical values — the only difference is
 // whether V8 was allowed to inline the call.
 //
-//   node bench/inline.js <small|large> <n> <mode> <reps> <seed>
+//   node bench/inline.ts <small|large> <n> <mode> <reps> <seed>
 
-import { args, emit, lcg } from './kernel.js';
+import { args, emit, lcg } from './kernel.ts';
 
 const { variant, n, mode, reps, seed } = args();
 
@@ -28,11 +28,11 @@ const never = process.argv.length > 99;
 // The padding is in helperLarge's OWN body. An earlier version put it in a
 // separate function, which left helperLarge tiny — V8 inlined both variants and
 // the cell measured nothing. Verified with --trace-turbo-inlining.
-function helperSmall(v) {
+function helperSmall(v: number): number {
   return v * 2 + 1;
 }
 
-function helperLarge(v) {
+function helperLarge(v: number): number {
   let t = 0;
   if (never) t += 1;
   if (never) t += 2;
@@ -279,15 +279,15 @@ function helperLarge(v) {
 
 const helper = variant === 'large' ? helperLarge : helperSmall;
 
-const sweep = (a) => {
+const sweep = (a: number[]): number => {
   let t = 0;
   for (let i = 0; i < a.length; i++) t += helper(a[i]);
   return t;
 };
 
 let sink = 0;
-let t0;
-let t1;
+let t0: bigint;
+let t1: bigint;
 
 // 'excl' is the only meaningful mode here: there is nothing to construct. It is
 // run in both so the cell shape matches every other sweep in this directory.

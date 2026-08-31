@@ -1,5 +1,5 @@
 // The preamble every workload shares. A workload is a kernel plus the three
-// things bench/driver.js requires of it, and those three are here rather than
+// things bench/driver.ts requires of it, and those three are here rather than
 // copied thirteen times:
 //
 //   args()   the argv contract the driver spawns against —
@@ -14,21 +14,21 @@
 // is the question that workload exists to ask, and a shared timing harness
 // would answer it for all of them at once.
 
-export function args() {
+export function args(): { variant: string; n: number; mode: string; reps: number; seed: number } {
   const [variant, n, mode, reps, seed] = process.argv.slice(2);
   return { variant, n: Number(n), mode, reps: Number(reps), seed: Number(seed) };
 }
 
 // The LCG glibc ships. Cheap enough that filling an array with it is not the
 // measurement, and reproducible from an integer seed.
-export function lcg(seed) {
+export function lcg(seed: number): () => number {
   let s = seed;
   return () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
 }
 
 // mulberry32. Better distributed than the LCG in the low bits, which matters
 // where the value decides an object's shape rather than just its contents.
-export function mulberry32(a) {
+export function mulberry32(a: number): () => number {
   return function () {
     a = (a + 0x6d2b79f5) | 0;
     let t = Math.imul(a ^ (a >>> 15), 1 | a);
@@ -39,7 +39,8 @@ export function mulberry32(a) {
 
 // One untimed verification pass produces the compared checksum; `sink` is
 // printed so the timed loop cannot be eliminated as dead.
-export function emit({ t0, t1, reps, n, checksum, sink }) {
+export function emit({ t0, t1, reps, n, checksum, sink }:
+  { t0: bigint; t1: bigint; reps: number; n: number; checksum: number; sink: number }): void {
   process.stdout.write(
     JSON.stringify({
       ns_per_op: Number(t1 - t0) / (reps * n),

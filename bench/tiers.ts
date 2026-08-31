@@ -18,9 +18,9 @@
 // is the tiering of the code that was actually measured rather than of a replica
 // of it.
 //
-//   node bench/tiers.js <sweep>            every published cell shape of a sweep
-//   node bench/tiers.js all                every sweep
-//   node bench/tiers.js --cell spread.js spread 10000 incl 2
+//   node bench/tiers.ts <sweep>            every published cell shape of a sweep
+//   node bench/tiers.ts all                every sweep
+//   node bench/tiers.ts --cell spread.ts spread 10000 incl 2
 //
 // What it can see, and what it cannot: --trace-opt traces the OPTIMIZING tiers.
 // Sparkplug is not traced, so a function this reports as `none` ran in Ignition,
@@ -31,12 +31,72 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-const MARKER = path.join(import.meta.dirname, 'region-marker.cjs');
+// A file URL, because --import takes a module specifier and a bare absolute
+// path is not one on every platform.
+const MARKER = pathToFileURL(path.join(import.meta.dirname, 'region-marker.ts')).href;
+
+// One optimization event as `parse` replays it: what happened, in which phase.
+interface TierEvent {
+  kind: 'mark' | 'install' | 'deopt';
+  tier?: string;
+  osr?: boolean;
+  reason?: string;
+  phase: string;
+}
+
+interface Deopt {
+  fn: string;
+  kind: string;
+  reason: string;
+  phase: string;
+}
+
+interface Trace {
+  events: Map<string, TierEvent[]>;
+  deopts: Deopt[];
+  unknown: string[];
+}
+
+// What `tiersOf` reports for one side, and what `tiersOrError` degrades to:
+// the error travels in `tiers` where the tokens would have been.
+interface Tiers {
+  tiers: Record<string, string>;
+  unstable: string[];
+  deopts?: Deopt[];
+  unknown?: string[];
+}
+
+interface CellShape {
+  script: string;
+  variant: string;
+  n: number;
+  mode: string;
+  reps: number;
+  seed?: number;
+}
+
+// A published row as this diagnostic reads it back off a .jl line: only the
+// fields the lookup and the probe need, none guaranteed by the parse.
+interface PublishedRow {
+  variant?: string;
+  baseline?: string | null;
+  mode?: string;
+  n?: number;
+  family?: string;
+  k?: number;
+  shapes?: number;
+  example?: string;
+  void?: boolean;
+  repsBase?: number;
+  repsTest?: number;
+  ratio?: number;
+}
 
 // The tiers, shortened for a row. TURBOFAN_JS is what recent V8 calls the
 // JavaScript TurboFan pipeline; TURBOFAN is what older builds print.
-const SHORT = {
+const SHORT: Record<string, string | undefined> = {
   TURBOFAN: 'TF',
   TURBOFAN_JS: 'TF',
   MAGLEV: 'MGLV',
@@ -52,18 +112,18 @@ const SHORT = {
 // top-level is not claimed: it is the one that OSRs around the timed loop, and
 // the trace shows that without needing a label.
 const namer = () => {
-  const anon = new Map();
-  return (line) => {
+  const anon = new Map<string, string>();
+  return (line: string): string | null => {
     const m = /<JSFunction ([^(]*)\(sfi ?= ?(0x[0-9a-f]+)\)>/.exec(line);
     if (!m) return null;
     const name = m[1].trim();
     if (name !== '') return name;
     if (!anon.has(m[2])) anon.set(m[2], `(anon ${anon.size + 1})`);
-    return anon.get(m[2]);
+    return anon.get(m[2])!;
   };
 };
 
-const tier = (line) => {
+const tier = (line: string): string => {
   const m = /\(target ([A-Z_]+)\)/.exec(line) ?? /optimization to ([A-Z_]+)/.exec(line);
   return m ? (SHORT[m[1]] ?? m[1]) : '?';
 };
@@ -71,15 +131,15 @@ const tier = (line) => {
 // Everything before the region opens is warmup; everything between the two
 // markers happened WHILE the stopwatch was running, which is the finding a
 // reader wants. `after` is the checksum pass the workloads run last.
-export function parse(out) {
-  const events = new Map();
-  const deopts = [];
-  const unknown = [];
+export function parse(out: string): Trace {
+  const events = new Map<string, TierEvent[]>();
+  const deopts: Deopt[] = [];
+  const unknown: string[] = [];
   let phase = 'warm';
   const fn = namer();
-  const at = (name, e) => {
+  const at = (name: string, e: Omit<TierEvent, 'phase'>) => {
     if (!events.has(name)) events.set(name, []);
-    events.get(name).push({ ...e, phase });
+    events.get(name)!.push({ ...e, phase });
   };
 
   for (const line of out.split('\n')) {
@@ -147,12 +207,12 @@ export function parse(out) {
 // region had run cold, whenever a post-region deopt-and-recompile followed; the
 // first run of this diagnostic called six shapes cells a mismatch for that
 // reason alone.
-export function summarize({ events }) {
-  const out = {};
+export function summarize({ events }: { events: Trace['events'] }): Record<string, string> {
+  const out: Record<string, string> = {};
   for (const [name, evs] of events) {
     let state = 'none';
     let marked = false;
-    const during = [];
+    const during: string[] = [];
     for (const e of evs) {
       if (e.phase === 'after') continue;
       if (e.phase === 'warm') {
@@ -170,11 +230,16 @@ export function summarize({ events }) {
   return out;
 }
 
-function traceOnce({ script, variant, n, mode, reps, seed }) {
+function traceOnce({ script, variant, n, mode, reps, seed }: CellShape): Trace {
   const args = [
     '--trace-opt',
     '--trace-deopt',
-    '--require',
+    // --import, not --require: --require cannot load ESM, which is what kept
+    // the marker CommonJS. Node has had --import since 20.6 and this repo
+    // requires >= 22.18, so the marker is TypeScript like everything else
+    // here. The tier tokens `make tiers` produces were captured under both and
+    // compared before this changed.
+    '--import',
     MARKER,
     script,
     String(variant),
@@ -199,13 +264,13 @@ function traceOnce({ script, variant, n, mode, reps, seed }) {
 // what varies between two. Where the runs disagree the row carries both tokens
 // joined by `|` and the name is listed in `tierUnstable`, rather than the
 // diagnostic picking one and calling it the answer.
-export function tiersOf({ script, variant, n, mode, reps, seed = 1 }) {
+export function tiersOf({ script, variant, n, mode, reps, seed = 1 }: CellShape): Tiers {
   const a = traceOnce({ script, variant, n, mode, reps, seed });
   const b = traceOnce({ script, variant, n, mode, reps, seed });
   const sa = summarize(a);
   const sb = summarize(b);
-  const tiers = {};
-  const unstable = [];
+  const tiers: Record<string, string> = {};
+  const unstable: string[] = [];
   for (const name of new Set([...Object.keys(sa), ...Object.keys(sb)]).values()) {
     const x = sa[name] ?? 'none';
     const y = sb[name] ?? 'none';
@@ -222,7 +287,7 @@ export function tiersOf({ script, variant, n, mode, reps, seed = 1 }) {
 
 // Never let a failed diagnostic void a measurement, and never let it pass
 // quietly either: the error goes in the row where the tiers would have been.
-export function tiersOrError(opts) {
+export function tiersOrError(opts: CellShape): Tiers {
   try {
     return tiersOf(opts);
   } catch (err) {
@@ -237,7 +302,11 @@ export function tiersOrError(opts) {
 // between a TurboFan side and a side that never left the interpreter is partly
 // a measurement of tiering rather than of the pattern under test, and this is
 // the field that says so without anyone having to re-derive it.
-export function tierPair({ script, baseline, variant, n, mode, repsBase, repsTest, seed = 1 }) {
+export function tierPair(
+  { script, baseline, variant, n, mode, repsBase, repsTest, seed = 1 }:
+    { script: string; baseline: string; variant: string; n: number; mode: string;
+      repsBase: number; repsTest: number; seed?: number }
+) {
   const b = tiersOrError({ script, variant: baseline, n, mode, reps: repsBase, seed });
   const t = tiersOrError({ script, variant, n, mode, reps: repsTest, seed });
   // A name whose token was not stable across the two traces of its OWN side
@@ -258,8 +327,9 @@ export function tierPair({ script, baseline, variant, n, mode, repsBase, repsTes
   // interpreter on one side is real — so it is printed, not dropped.
   const shared = Object.keys(b.tiers).filter((k) => k in t.tiers);
   const mismatch = shared.filter((k) => !shaky.has(k) && b.tiers[k] !== t.tiers[k]).sort();
-  const only = {};
-  for (const [side, mine, theirs] of [['base', b.tiers, t.tiers], ['test', t.tiers, b.tiers]]) {
+  const only: Record<string, string> = {};
+  for (const [side, mine, theirs] of [['base', b.tiers, t.tiers], ['test', t.tiers, b.tiers]] as
+    ['base' | 'test', Record<string, string>, Record<string, string>][]) {
     for (const k of Object.keys(mine)) if (!(k in theirs)) only[`${side}:${k}`] = mine[k];
   }
 
@@ -284,20 +354,20 @@ export function tierPair({ script, baseline, variant, n, mode, repsBase, repsTes
 
 const TIERS_JL = path.join(import.meta.dirname, 'tiers.jl');
 
-const cellKey = (r) =>
+const cellKey = (r: PublishedRow) =>
   JSON.stringify([r.variant, r.baseline ?? null, r.mode, r.n, r.family ?? null, r.k ?? null,
     r.shapes ?? null, r.example ?? null]);
 
 // The last published row for each cell of a sweep: last because a file holds
 // every sweep ever appended to it and the most recent is the one whose reps
 // describe how the cell runs today.
-function published(file) {
+function published(file: string): Map<string, PublishedRow> {
   const p = path.join(import.meta.dirname, file);
-  const by = new Map();
+  const by = new Map<string, PublishedRow>();
   if (!fs.existsSync(p)) return by;
   for (const l of fs.readFileSync(p, 'utf8').split('\n')) {
     if (!l) continue;
-    const r = JSON.parse(l);
+    const r: PublishedRow = JSON.parse(l);
     if (r.void || r.repsBase === undefined) continue;
     by.set(cellKey(r), r);
   }
@@ -305,7 +375,7 @@ function published(file) {
 }
 
 async function main() {
-  const { BENCHMARKS, plan, label } = await import('./sweeps.js');
+  const { BENCHMARKS, plan, label } = await import('./sweeps.ts');
   const args = process.argv.slice(2);
 
   if (args[0] === '--cell') {
@@ -326,24 +396,24 @@ async function main() {
       process.exit(2);
     }
     process.stdout.write(`\n${name}: ${bench.what}\n`);
-    const files = new Map();
+    const files = new Map<string, Map<string, PublishedRow>>();
     for (const { script, out: file, opts, extra } of plan(bench)) {
       const base = path.basename(file);
       if (!files.has(base)) files.set(base, published(base));
       // Only some sweeps record the baseline in their rows, so the lookup falls
       // back to the key without it rather than reporting the cell as unpublished.
-      const rows = files.get(base);
+      const rows = files.get(base)!;
       const row = rows.get(cellKey({ ...opts, ...extra, baseline: opts.baseline }))
         ?? rows.get(cellKey({ ...opts, ...extra, baseline: null }));
       if (!row) {
         process.stdout.write(`  ${label(opts)}  no published row\n`);
         continue;
       }
-      const t = tierPair({ script, ...opts, repsBase: row.repsBase, repsTest: row.repsTest });
+      const t = tierPair({ script, ...opts, repsBase: row.repsBase!, repsTest: row.repsTest! });
       const rec = { sweep: name, ...opts, ...extra, baseline: opts.baseline,
         repsBase: row.repsBase, repsTest: row.repsTest, ratio: row.ratio, ...t };
       fs.appendFileSync(TIERS_JL, JSON.stringify(rec) + '\n');
-      const show = (m) => Object.entries(m).map(([k, v]) => `${k}=${v}`).join(' ');
+      const show = (m: Record<string, string>) => Object.entries(m).map(([k, v]) => `${k}=${v}`).join(' ');
       process.stdout.write(
         `  ${label(opts)} reps ${row.repsBase}/${row.repsTest}\n` +
         `      base ${show(t.tierBase)}\n` +

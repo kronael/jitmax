@@ -1,12 +1,30 @@
 // Old published cell against its three replications.
-//   node bench/tc11-report.js
+//   node bench/tc11-report.ts
 // Reads the .jl files themselves, so it says what is on disk rather than
 // what a run printed once: rows carrying `protocol: "replicated"` are the
 // re-measurement, rows without it are what was published before TC-11.
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { replicates } from './driver.js';
+import { replicates } from './driver.ts';
+
+// A row as it comes back off a .jl line: the fields this report reads.
+interface JlRow {
+  protocol?: string;
+  variant: string;
+  mode: string;
+  n: number;
+  replicate?: number;
+  void?: boolean;
+  error?: string;
+  ratio: number;
+  lo: number;
+  hi: number;
+  repsBase: number;
+  repsTest: number;
+  msBase?: number;
+  msTest?: number;
+}
 
 const FILES = [
   'shapes-calibrated.jl',
@@ -17,17 +35,17 @@ const FILES = [
   'dispatch.jl',
 ];
 
-const key = (r) => `${r.variant}|${r.mode}|${r.n}`;
-const ci = (r) => `${r.ratio.toFixed(2)}x (${r.lo.toFixed(2)}-${r.hi.toFixed(2)})`;
+const key = (r: JlRow) => `${r.variant}|${r.mode}|${r.n}`;
+const ci = (r: JlRow) => `${r.ratio.toFixed(2)}x (${r.lo.toFixed(2)}-${r.hi.toFixed(2)})`;
 
 for (const file of FILES) {
   const rows = fs
     .readFileSync(path.join(import.meta.dirname, file), 'utf8')
     .trim()
     .split('\n')
-    .map((l) => JSON.parse(l));
+    .map((l): JlRow => JSON.parse(l));
 
-  const groups = new Map();
+  const groups = new Map<string, JlRow[]>();
   for (const r of rows) {
     if (r.protocol !== 'replicated') continue;
     const g = groups.get(key(r)) ?? [];

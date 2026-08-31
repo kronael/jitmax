@@ -16,9 +16,9 @@
 // arguments object is a real allocation, and a rest parameter is a real array
 // either way.
 //
-//   node bench/arguments.js <variant> <n> <mode> <reps> <seed>
+//   node bench/arguments.ts <variant> <n> <mode> <reps> <seed>
 
-import { args, emit, lcg } from './kernel.js';
+import { args, emit, lcg } from './kernel.ts';
 
 const { variant, n, mode, reps, seed } = args();
 
@@ -31,36 +31,36 @@ const c = Array.from({ length: n }, () => Math.floor(rand() * 1000));
 
 // The escape target. Not inlined away by being given something to do with the
 // whole collection: it sums whatever it was handed.
-function sumOf(xs) {
+function sumOf(xs: ArrayLike<number>): number {
   let t = 0;
   for (let i = 0; i < xs.length; i++) t += xs[i];
   return t;
 }
 
-function restLen(...xs) {
+function restLen(...xs: number[]): number {
   return xs.length;
 }
-function argLen() {
+function argLen(): number {
   return arguments.length;
 }
 
-function restIdx(...xs) {
+function restIdx(...xs: number[]): number {
   return xs[0] + xs[1] + xs[2];
 }
-function argIdx() {
+function argIdx(): number {
   return arguments[0] + arguments[1] + arguments[2];
 }
 
-function restEsc(...xs) {
+function restEsc(...xs: number[]): number {
   return sumOf(xs);
 }
-function argEsc() {
+function argEsc(): number {
   return sumOf(arguments);
 }
 
 // Resolved once, before timing. A switch inside a timed region produced a wrong
 // result in this project already.
-const KERNEL = {
+const KERNEL: Record<string, ((...xs: number[]) => number) | undefined> = {
   restlen: restLen,
   arglen: argLen,
   restidx: restIdx,
@@ -85,5 +85,5 @@ const t1 = process.hrtime.bigint();
 
 // 'excl' only: the arguments object is built inside the callee on every call,
 // so it is inside the timed region by construction and an 'incl' cell would be
-// the same measurement under a different name — as in bench/inline.js.
+// the same measurement under a different name — as in bench/inline.ts.
 emit({ t0, t1, reps, n, checksum: sweep(), sink });

@@ -51,13 +51,19 @@
 //   excl  — repeated reads of rows built once. What the FINISHED objects cost.
 //   incl  — construction and a full read, every rep.
 //
-//   node bench/addprop.js <variant> <n> <build|excl|incl> <reps> <seed>
+//   node bench/addprop.ts <variant> <n> <build|excl|incl> <reps> <seed>
 
-import { args, emit, mulberry32 as rng } from './kernel.js';
+import { args, emit, mulberry32 as rng } from './kernel.ts';
 
 const { variant, n, mode, reps, seed } = args();
 
-const FAMILY = {
+// One row type for every family. The added fields are optional because being
+// added after construction is the phenomenon under test; the index signature
+// carries the k0..k15 families. Where a family guarantees a field by
+// construction, its READ asserts it non-null rather than reading a wider type.
+type Row = { x: number; y?: number; z?: number; [k: string]: number | undefined };
+
+const FAMILY: Record<string, 'full' | 'opt' | 'late' | 'many' | undefined> = {
   literal: 'full',
   added: 'full',
   added2: 'full',
@@ -86,10 +92,10 @@ const KEYS = ['k0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9', 'k10',
 // One function per variant, resolved ONCE below. A `switch` on the variant
 // inside the timed region put a string comparison in every rep and TurboFan
 // miscompiled it — a rule of the repo, and the reason this is a table.
-const BUILD = {
+const BUILD: Record<string, (() => Row[]) | undefined> = {
   literal: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) {
       const x = r();
       const y = r();
@@ -102,11 +108,11 @@ const BUILD = {
   // of them share one final map and the sweep below is monomorphic.
   added: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) {
       const x = r();
       const y = r();
-      const o = { x, y };
+      const o: Row = { x, y };
       o.z = r();
       rows[i] = o;
     }
@@ -118,11 +124,11 @@ const BUILD = {
   // `added` does — only one more transition.
   added2: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) {
       const x = r();
       const y = r();
-      const o = { x };
+      const o: Row = { x };
       o.y = y;
       o.z = r();
       rows[i] = o;
@@ -134,18 +140,18 @@ const BUILD = {
   // so the sweep really does see two.
   diverge: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) {
       const x = r();
       const y = r();
       const z = r();
       if (i % 2 === 0) {
-        const o = { x };
+        const o: Row = { x };
         o.y = y;
         o.z = z;
         rows[i] = o;
       } else {
-        const o = { x };
+        const o: Row = { x };
         o.z = z;
         o.y = y;
         rows[i] = o;
@@ -156,7 +162,7 @@ const BUILD = {
 
   optbase: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) {
       const x = r();
       rows[i] = { x, y: r() };
@@ -168,7 +174,7 @@ const BUILD = {
   // three quarters of the literals.
   optmissing: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) {
       const x = r();
       const y = r();
@@ -180,11 +186,11 @@ const BUILD = {
   // The same two shapes, reached by assignment instead of by a second literal.
   optadded: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) {
       const x = r();
       const y = r();
-      const o = { x };
+      const o: Row = { x };
       if (i % 4 !== 0) o.y = y;
       rows[i] = o;
     }
@@ -193,7 +199,7 @@ const BUILD = {
 
   lit12: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) {
       const v = r();
       rows[i] = { x: v, k0: v + 1, k1: v + 2, k2: v + 3, k3: v + 4, k4: v + 5,
@@ -207,10 +213,10 @@ const BUILD = {
   // is never consulted and the object stays in fast properties.
   keyed12: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) {
       const v = r();
-      const o = { x: v };
+      const o: Row = { x: v };
       for (let j = 0; j < 12; j++) o[KEYS[j]] = v + j + 1;
       rows[i] = o;
     }
@@ -219,7 +225,7 @@ const BUILD = {
 
   lit16: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) {
       const v = r();
       rows[i] = { x: v, k0: v + 1, k1: v + 2, k2: v + 3, k3: v + 4, k4: v + 5,
@@ -233,10 +239,10 @@ const BUILD = {
   // that is not a keyed store, so this one stays fast whatever the count.
   named16: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) {
       const v = r();
-      const o = { x: v };
+      const o: Row = { x: v };
       o.k0 = v + 1; o.k1 = v + 2; o.k2 = v + 3; o.k3 = v + 4;
       o.k4 = v + 5; o.k5 = v + 6; o.k6 = v + 7; o.k7 = v + 8;
       o.k8 = v + 9; o.k9 = v + 10; o.k10 = v + 11; o.k11 = v + 12;
@@ -251,10 +257,10 @@ const BUILD = {
   // goes to dictionary mode. Probed at exactly 16, cold and after 20k builds.
   keyed16: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) {
       const v = r();
-      const o = { x: v };
+      const o: Row = { x: v };
       for (let j = 0; j < 16; j++) o[KEYS[j]] = v + j + 1;
       rows[i] = o;
     }
@@ -268,10 +274,10 @@ BUILD.latefresh = BUILD.added;
 // final map — so the checksum can be taken without repeating the warm phase.
 BUILD.late = BUILD.added;
 
-const READ = {
+const READ: Record<'full' | 'opt' | 'late' | 'many', (rows: Row[]) => number> = {
   full: (rows) => {
     let s = 0;
-    for (let i = 0; i < rows.length; i++) s += rows[i].x + rows[i].y + rows[i].z;
+    for (let i = 0; i < rows.length; i++) s += rows[i].x + rows[i].y! + rows[i].z!;
     return s;
   },
   // Only the property both shapes have. A sweep that read the optional one
@@ -286,12 +292,12 @@ const READ = {
   // warm phase and the timed phase read the same site for the same property.
   late: (rows) => {
     let s = 0;
-    for (let i = 0; i < rows.length; i++) s += rows[i].x + rows[i].y;
+    for (let i = 0; i < rows.length; i++) s += rows[i].x + rows[i].y!;
     return s;
   },
   many: (rows) => {
     let s = 0;
-    for (let i = 0; i < rows.length; i++) s += rows[i].x + rows[i].k0 + rows[i].k11;
+    for (let i = 0; i < rows.length; i++) s += rows[i].x + rows[i].k0! + rows[i].k11!;
     return s;
   },
 };
@@ -305,7 +311,7 @@ let sink = 0;
 // Enough sweeps to put the read site past invocation_count_for_turbofan at
 // small n, and enough loop iterations for OSR to reach it at large n.
 const WARMS = Math.max(4, Math.ceil(2e6 / n));
-const warm = (rows) => {
+const warm = (rows: Row[]) => {
   for (let w = 0; w < WARMS; w++) sink += read(rows);
 };
 
@@ -313,9 +319,9 @@ const warm = (rows) => {
 // so it is the only one that cannot be built by a function the driver may call
 // once per rep. It is excl-only, and asking for another mode is a wrong
 // measurement rather than a slow one.
-function buildLate() {
+function buildLate(): Row[] {
   const r = rng(seed);
-  const rows = new Array(n);
+  const rows: Row[] = new Array(n);
   for (let i = 0; i < n; i++) {
     const x = r();
     const y = r();
@@ -332,8 +338,8 @@ function buildLate() {
   return rows;
 }
 
-let t0;
-let t1;
+let t0: bigint;
+let t1: bigint;
 
 if (variant === 'late') {
   if (mode !== 'excl') throw new Error('late is excl-only: the timing point is the mutation');

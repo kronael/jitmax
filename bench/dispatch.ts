@@ -5,13 +5,13 @@
 // parameter with a method called on it is far more common in real TypeScript
 // than an array of a five-way union.
 //
-//   node bench/dispatch.js <variant> <n> <excl|incl> <reps> <seed>
+//   node bench/dispatch.ts <variant> <n> <excl|incl> <reps> <seed>
 //
 // A call site has TWO things that can diverge, and the folklore rolls them
 // into one: the receiver's MAP, which decides where `step` is found, and the
 // call TARGET, which decides what runs. Four families separate them, and the
 // answers below were read out of V8 with --allow-natives-syntax before any
-// cell ran (bench/dispatch-probe.js):
+// cell ran (bench/dispatch-probe.ts):
 //
 //   cls   K classes                     K maps, K targets, method on the
 //                                       prototype — the TypeScript union of
@@ -38,7 +38,7 @@
 //   incl — construction and a full read, every rep.
 'use strict';
 
-import { args, emit, mulberry32 as rng } from './kernel.js';
+import { args, emit, mulberry32 as rng } from './kernel.ts';
 
 const { variant, n, mode, reps, seed } = args();
 
@@ -54,26 +54,29 @@ const k = Number(parsed[2]);
 // supposed to measure. Six source positions are six SFIs. The bodies are
 // identical on purpose: the driver compares checksums inside every pair, so a
 // variant that computes something else is a failed run, not a fast one.
-class C0 { constructor(v) { this.v = v; } step() { return this.v * 2 + 1; } }
-class C1 { constructor(v) { this.v = v; } step() { return this.v * 2 + 1; } }
-class C2 { constructor(v) { this.v = v; } step() { return this.v * 2 + 1; } }
-class C3 { constructor(v) { this.v = v; } step() { return this.v * 2 + 1; } }
-class C4 { constructor(v) { this.v = v; } step() { return this.v * 2 + 1; } }
-class C5 { constructor(v) { this.v = v; } step() { return this.v * 2 + 1; } }
+class C0 { declare v: number; constructor(v: number) { this.v = v; } step() { return this.v * 2 + 1; } }
+class C1 { declare v: number; constructor(v: number) { this.v = v; } step() { return this.v * 2 + 1; } }
+class C2 { declare v: number; constructor(v: number) { this.v = v; } step() { return this.v * 2 + 1; } }
+class C3 { declare v: number; constructor(v: number) { this.v = v; } step() { return this.v * 2 + 1; } }
+class C4 { declare v: number; constructor(v: number) { this.v = v; } step() { return this.v * 2 + 1; } }
+class C5 { declare v: number; constructor(v: number) { this.v = v; } step() { return this.v * 2 + 1; } }
 const CLASSES = [C0, C1, C2, C3, C4, C5];
 
-function step0() { return this.v * 2 + 1; }
-function step1() { return this.v * 2 + 1; }
-function step2() { return this.v * 2 + 1; }
-function step3() { return this.v * 2 + 1; }
-function step4() { return this.v * 2 + 1; }
-function step5() { return this.v * 2 + 1; }
+function step0(this: { v: number }) { return this.v * 2 + 1; }
+function step1(this: { v: number }) { return this.v * 2 + 1; }
+function step2(this: { v: number }) { return this.v * 2 + 1; }
+function step3(this: { v: number }) { return this.v * 2 + 1; }
+function step4(this: { v: number }) { return this.v * 2 + 1; }
+function step5(this: { v: number }) { return this.v * 2 + 1; }
 const STEPS = [step0, step1, step2, step3, step4, step5];
 
 // Six key orders of the same three fields: same object size, same values, six
-// maps. This is the shape sweep's own device (bench/shapes.js), so the only
+// maps. This is the shape sweep's own device (bench/shapes.ts), so the only
 // thing that varies across the variants of a family is the count.
-const SHAPES = [
+type StepFn = (this: { v: number }) => number;
+type Row = { v: number; w?: number; step: StepFn };
+
+const SHAPES: ((v: number, w: number, f: StepFn) => Row)[] = [
   (v, w, f) => ({ v, w, step: f }),
   (v, w, f) => ({ v, step: f, w }),
   (v, w, f) => ({ w, v, step: f }),
@@ -85,16 +88,16 @@ const SHAPES = [
 // One function per family, resolved ONCE below. A `switch` on the variant
 // inside the timed region put a string comparison in every rep and TurboFan
 // miscompiled it — a rule of the repo, and the reason this is a table.
-const BUILD = {
+const BUILD: Record<string, () => Row[]> = {
   cls: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) rows[i] = new CLASSES[i % k](r());
     return rows;
   },
   lit: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) {
       const v = r();
       rows[i] = SHAPES[i % k](v, r(), STEPS[i % k]);
@@ -103,7 +106,7 @@ const BUILD = {
   },
   tgt: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) {
       const v = r();
       rows[i] = SHAPES[0](v, r(), STEPS[i % k]);
@@ -112,7 +115,7 @@ const BUILD = {
   },
   shr: () => {
     const r = rng(seed);
-    const rows = new Array(n);
+    const rows: Row[] = new Array(n);
     for (let i = 0; i < n; i++) {
       const v = r();
       rows[i] = SHAPES[i % k](v, r(), STEPS[0]);
@@ -124,7 +127,7 @@ const BUILD = {
 const build = BUILD[family];
 
 // The one call site the whole sweep is about.
-function read(rows) {
+function read(rows: Row[]): number {
   let s = 0;
   for (let i = 0; i < rows.length; i++) s += rows[i].step();
   return s;
@@ -138,8 +141,8 @@ let sink = 0;
 // the warmup.
 const WARMS = Math.max(3, Math.ceil(2e6 / n));
 
-let t0;
-let t1;
+let t0: bigint;
+let t1: bigint;
 if (mode === 'excl') {
   const rows = build();
   for (let w = 0; w < WARMS; w++) sink += read(rows);

@@ -11,8 +11,14 @@
 // written into all thirteen would be thirteen copies of a timed region that is
 // not the timed region being measured.
 //
-//   node --trace-opt --trace-deopt --require bench/region-marker.cjs \
-//        bench/spread.js spread 10000 incl 2 1
+// TypeScript, loaded with --import. It was CommonJS because --require cannot
+// load ESM; --import can, node 20.6 added it and this repo requires >= 22.18,
+// and the tier tokens it produces were compared before and after the switch.
+//
+//   node --trace-opt --trace-deopt --import bench/region-marker.ts \
+//        bench/spread.ts spread 10000 incl 2 1
+export {};
+
 let calls = 0;
 const real = process.hrtime.bigint;
 process.hrtime.bigint = function () {

@@ -19,13 +19,13 @@
 // is what says so.
 // The checksum is compared inside every pair, so a variant that builds a
 // different value is a failed run rather than a fast one.
-//   node bench/chained.js <variant> <n> <mode> <reps> <seed>
+//   node bench/chained.ts <variant> <n> <mode> <reps> <seed>
 
-import { args, emit, lcg } from './kernel.js';
+import { args, emit, lcg } from './kernel.ts';
 
 const { variant, n, mode, reps, seed } = args();
 
-const FAMILY = {
+const FAMILY: Record<string, string | undefined> = {
   fused: 'mapfilter',
   chained: 'mapfilter',
   scanned: 'splitjoin',
@@ -45,7 +45,11 @@ const rand = lcg(seed);
 const nums = () => Array.from({ length: n }, () => Math.floor(rand() * 1000));
 
 // One source per family, built from the same seed on both sides of a pair.
-let source;
+// The declared type is the union over the families; each builder below reads
+// it through the member its FAMILY row guarantees, asserted inline because a
+// closure cannot see the narrowing and a local copy would put a load in the
+// timed region.
+let source: number[] | string | Record<string, number>;
 if (family === 'splitjoin') {
   source = nums().join(',');
 } else if (family === 'object') {
@@ -67,12 +71,12 @@ const COMMA = 44;
 // run in four above ~150 reps and never with --no-opt or --no-turbofan.
 // Hoisting the lookup out of the timed loop is the right benchmark design on
 // its own; that it also steps around the miscompile is the smaller reason.
-const BUILD = {
-  chained: () => source.map((v) => v * 3 + 1).filter((v) => v % 2 === 0),
+const BUILD: Record<string, (() => number[] | string) | undefined> = {
+  chained: () => (source as number[]).map((v) => v * 3 + 1).filter((v) => v % 2 === 0),
 
   fused: () => {
-    const out = [];
-    for (const v of source) {
+    const out: number[] = [];
+    for (const v of source as number[]) {
       const w = v * 3 + 1;
       if (w % 2 === 0) out.push(w);
     }
@@ -80,7 +84,7 @@ const BUILD = {
   },
 
   splitjoin: () =>
-    source
+    (source as string)
       .split(',')
       .map((t) => String(Number(t) * 3 + 1))
       .join(','),
@@ -90,10 +94,10 @@ const BUILD = {
   scanned: () => {
     let out = '';
     let start = 0;
-    for (let i = 0; i <= source.length; i++) {
-      if (i === source.length || source.charCodeAt(i) === COMMA) {
+    for (let i = 0; i <= (source as string).length; i++) {
+      if (i === (source as string).length || (source as string).charCodeAt(i) === COMMA) {
         if (start > 0) out += ',';
-        out += String(Number(source.slice(start, i)) * 3 + 1);
+        out += String(Number((source as string).slice(start, i)) * 3 + 1);
         start = i + 1;
       }
     }
@@ -103,32 +107,32 @@ const BUILD = {
   // One pass, one array: split's array never exists, and join still builds the
   // result in one go.
   packed: () => {
-    const parts = [];
+    const parts: string[] = [];
     let start = 0;
-    for (let i = 0; i <= source.length; i++) {
-      if (i === source.length || source.charCodeAt(i) === COMMA) {
-        parts.push(String(Number(source.slice(start, i)) * 3 + 1));
+    for (let i = 0; i <= (source as string).length; i++) {
+      if (i === (source as string).length || (source as string).charCodeAt(i) === COMMA) {
+        parts.push(String(Number((source as string).slice(start, i)) * 3 + 1));
         start = i + 1;
       }
     }
     return parts.join(',');
   },
 
-  entriesmap: () => Object.entries(source).map(([, v]) => v * 3 + 1),
+  entriesmap: () => Object.entries(source as Record<string, number>).map(([, v]) => v * 3 + 1),
 
-  keysmap: () => Object.keys(source).map((k) => source[k] * 3 + 1),
+  keysmap: () => Object.keys(source).map((k) => (source as Record<string, number>)[k] * 3 + 1),
 
   walked: () => {
-    const out = [];
-    for (const k in source) out.push(source[k] * 3 + 1);
+    const out: number[] = [];
+    for (const k in source as Record<string, number>) out.push((source as Record<string, number>)[k] * 3 + 1);
     return out;
   },
 
-  chainedsort: () => source.map((v) => v * 3 + 1).sort((a, b) => a - b),
+  chainedsort: () => (source as number[]).map((v) => v * 3 + 1).sort((a, b) => a - b),
 
   sorted: () => {
-    const out = [];
-    for (const v of source) out.push(v * 3 + 1);
+    const out: number[] = [];
+    for (const v of source as number[]) out.push(v * 3 + 1);
     out.sort((a, b) => a - b);
     return out;
   },
@@ -137,7 +141,7 @@ const BUILD = {
 const build = BUILD[variant];
 if (!build) throw new Error(`unknown variant ${variant}`);
 
-const sum = (a) => {
+const sum = (a: number[]): number => {
   let t = 0;
   for (const v of a) t += v;
   return t;
@@ -146,17 +150,17 @@ const sum = (a) => {
 // The splitjoin family ends on a string. Walking every character is the read
 // that matches sum over an array, and it also forces the appended result out of
 // its cons-string representation before the timed region.
-const hash = (str) => {
+const hash = (str: string): number => {
   let t = 0;
   for (let i = 0; i < str.length; i++) t = (t * 31 + str.charCodeAt(i)) % 1000000007;
   return t;
 };
 
-const read = family === 'splitjoin' ? hash : sum;
+const read = (family === 'splitjoin' ? hash : sum) as (v: string | number[]) => number;
 
 let sink = 0;
-let t0;
-let t1;
+let t0: bigint;
+let t1: bigint;
 
 // 'excl' times the read over a value built once; 'incl' times construction as
 // well. Every rule benchmark runs both halves — measuring one half reversed two

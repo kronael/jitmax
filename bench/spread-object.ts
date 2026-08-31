@@ -13,9 +13,9 @@
 // All three build the identical object; the checksum is the sum of its values
 // and is compared inside every pair.
 //
-//   node bench/spread-object.js <assign|spread|assign-copy> <n> <mode> <reps> <seed>
+//   node bench/spread-object.ts <assign|spread|assign-copy> <n> <mode> <reps> <seed>
 
-import { args, emit, lcg } from './kernel.js';
+import { args, emit, lcg } from './kernel.ts';
 
 const { variant, n, mode, reps, seed } = args();
 
@@ -24,8 +24,8 @@ const rand = lcg(seed);
 const keys = Array.from({ length: n }, (_, i) => `k${i}`);
 const values = Array.from({ length: n }, () => Math.floor(rand() * 1000));
 
-function build() {
-  let acc = {};
+function build(): Record<string, number> {
+  let acc: Record<string, number> = {};
   if (variant === 'spread') {
     for (let i = 0; i < n; i++) acc = { ...acc, [keys[i]]: values[i] };
   } else if (variant === 'assign-copy') {
@@ -36,15 +36,15 @@ function build() {
   return acc;
 }
 
-const total = (o) => {
+const total = (o: Record<string, number>): number => {
   let t = 0;
   for (const k in o) t += o[k];
   return t;
 };
 
 let sink = 0;
-let t0;
-let t1;
+let t0: bigint;
+let t1: bigint;
 
 if (mode === 'excl') {
   const acc = build();

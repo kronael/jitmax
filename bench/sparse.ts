@@ -16,9 +16,9 @@
 // the same instructions over three different backing stores — the difference
 // measured is the store and not the arithmetic.
 //
-//   node bench/sparse.js <packed|holey|dict> <n> <mode> <reps> <seed>
+//   node bench/sparse.ts <packed|holey|dict> <n> <mode> <reps> <seed>
 
-import { args, emit, lcg } from './kernel.js';
+import { args, emit, lcg } from './kernel.ts';
 
 const { variant, n, mode, reps, seed } = args();
 
@@ -30,26 +30,27 @@ const values = Array.from({ length: n }, () => Math.floor(rand() * 1000));
 const STRIDE = 4096;
 const stride = variant === 'dict' ? STRIDE : 1;
 
-const build = {
+const BUILD: Record<string, (() => number[]) | undefined> = {
   packed: () => {
-    const arr = [];
+    const arr: number[] = [];
     for (let i = 0; i < n; i++) arr.push(values[i]);
     return arr;
   },
   holey: () => {
-    const arr = new Array(n);
+    const arr: number[] = new Array(n);
     for (let i = 0; i < n; i++) arr[i] = values[i];
     return arr;
   },
   dict: () => {
-    const arr = [];
+    const arr: number[] = [];
     for (let i = 0; i < n; i++) arr[i * STRIDE] = values[i];
     return arr;
   },
-}[variant];
+};
+const build = BUILD[variant];
 if (!build) throw new Error(`unknown variant ${variant}`);
 
-const read = (arr) => {
+const read = (arr: number[]): number => {
   let t = 0;
   for (let i = 0; i < n; i++) t += arr[i * stride];
   return t;
@@ -58,7 +59,7 @@ const read = (arr) => {
 // 'excl' reads a finished array; 'incl' builds it too. Both halves, always —
 // the transition costs something to enter and something to live with, and
 // measuring one has reversed a verdict twice in this project.
-const sweep = mode === 'incl' ? () => read(build()) : ((arr) => () => read(arr))(build());
+const sweep = mode === 'incl' ? () => read(build()) : ((arr: number[]) => () => read(arr))(build());
 
 let sink = 0;
 for (let w = 0; w < 3; w++) sink += sweep();

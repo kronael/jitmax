@@ -22,9 +22,9 @@
 // PACKED_DOUBLE_ELEMENTS — the same array `double` builds. This variant exists
 // to measure that rather than assert it. `mode=kinds` prints the kind V8 chose.
 //
-//   node bench/arrays.js <variant> <n> <excl|incl|kinds> <reps> <seed>
+//   node bench/arrays.ts <variant> <n> <excl|incl|kinds> <reps> <seed>
 
-import { args, emit, mulberry32 as rng } from './kernel.js';
+import { args, emit, mulberry32 as rng } from './kernel.ts';
 
 const { variant, n, mode, reps, seed } = args();
 
@@ -35,12 +35,12 @@ const { variant, n, mode, reps, seed } = args();
 // exists, and the claim under test is about what V8 does with a store it cannot
 // prove is a double.
 const STRINGY = seed < 0;
-const maybeString = (v) => (STRINGY ? String(v) : v);
+const maybeString = (v: number): number | string => (STRINGY ? String(v) : v);
 
 // One function per variant, resolved ONCE below. A `switch` on the variant
 // inside the timed region put a string comparison in every rep and TurboFan
 // miscompiled it — a rule of the repo, and the reason this is a table.
-const BUILD = {
+const BUILD: Record<string, (() => ArrayLike<number | string>) | undefined> = {
   double: () => {
     const r = rng(seed);
     const a = [r()];
@@ -53,7 +53,7 @@ const BUILD = {
   // so every double stored afterwards is boxed into a HeapNumber.
   boxed: () => {
     const r = rng(seed);
-    const a = ['boxed'];
+    const a: (number | string)[] = ['boxed'];
     a[0] = r();
     for (let i = 1; i < n; i++) a.push(r());
     return a;
@@ -64,7 +64,7 @@ const BUILD = {
   // result array, and a kind that never goes back to packed.
   holey: () => {
     const r = rng(seed);
-    const a = new Array(n);
+    const a: number[] = new Array(n);
     for (let i = 0; i < n; i++) a[i] = r();
     return a;
   },
@@ -87,9 +87,11 @@ const BUILD = {
 const build = BUILD[variant];
 if (!build) throw new Error(`unknown variant ${variant}`);
 
-const sum = (a) => {
+// The union's string branch is dead at runtime — that is the claim under
+// test — so the sum reads every element as the number it always is.
+const sum = (a: ArrayLike<number | string>): number => {
   let s = 0;
-  for (let i = 0; i < a.length; i++) s += a[i];
+  for (let i = 0; i < a.length; i++) s += a[i] as number;
   return s;
 };
 
@@ -97,10 +99,10 @@ const sum = (a) => {
 // --allow-natives-syntax, which protocol rule 8 forbids in a measured process.
 // The
 // natives go through a direct eval so this file still parses without the flag.
-//   node --allow-natives-syntax bench/arrays.js unionnum 8 kinds 1 1
+//   node --allow-natives-syntax bench/arrays.ts unionnum 8 kinds 1 1
 if (mode === 'kinds') {
   const a = build();
-  const ask = (expr) => {
+  const ask = (expr: string): unknown => {
     try {
       return eval(expr);
     } catch {

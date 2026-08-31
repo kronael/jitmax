@@ -17,9 +17,9 @@
 // Both variants scan the same partition of the same values and return the same
 // sum of minima; the checksum is compared inside every pair.
 //
-//   node bench/select.js <compare|select> <n> <heap|local|number> <reps> <seed>
+//   node bench/select.ts <compare|select> <n> <heap|local|number> <reps> <seed>
 
-import { args, emit, lcg } from './kernel.js';
+import { args, emit, lcg } from './kernel.ts';
 
 const { variant, n, mode, reps, seed } = args();
 
@@ -28,13 +28,14 @@ const rand = lcg(seed);
 // A boxed number with a comparison and an allocating selector: decimal.js,
 // Big.js, Temporal and every other immutable value type have this pair.
 class Box {
-  constructor(v) {
+  declare v: number;
+  constructor(v: number) {
     this.v = v;
   }
-  lt(o) {
+  lt(o: Box): boolean {
     return this.v < o.v;
   }
-  static min(a, b) {
+  static min(a: Box, b: Box): Box {
     return new Box(a.v <= b.v ? a.v : b.v);
   }
 }
@@ -44,11 +45,11 @@ const MASK = BUCKETS - 1;
 
 // Rising values, the shape of anything keyed by time: within a bucket the first
 // item is the minimum and nothing later displaces it.
-const items = new Array(n);
+const items: Box[] = new Array(n);
 for (let i = 0; i < n; i++) items[i] = new Box(i + rand() * 10);
 
-function scanHeap() {
-  const buckets = new Array(BUCKETS);
+function scanHeap(): number {
+  const buckets: { lo: Box }[] = new Array(BUCKETS);
   for (let b = 0; b < BUCKETS; b++) buckets[b] = { lo: items[b] };
   if (variant === 'select') {
     for (let i = 0; i < n; i++) {
@@ -67,7 +68,7 @@ function scanHeap() {
   return t;
 }
 
-function minOf(b) {
+function minOf(b: number): number {
   let lo = items[b];
   if (variant === 'select') {
     for (let i = b; i < n; i += BUCKETS) lo = Box.min(lo, items[i]);
@@ -80,7 +81,7 @@ function minOf(b) {
   return lo.v;
 }
 
-function scanLocal() {
+function scanLocal(): number {
   let t = 0;
   for (let b = 0; b < BUCKETS; b++) t += minOf(b);
   return t;
@@ -89,8 +90,8 @@ function scanLocal() {
 // The same two loops with nothing boxed. Math.min on numbers allocates nothing
 // and TurboFan lowers it to a machine instruction, so the branch has nothing
 // left to save.
-function scanNumber() {
-  const buckets = new Array(BUCKETS);
+function scanNumber(): number {
+  const buckets: { lo: number }[] = new Array(BUCKETS);
   for (let b = 0; b < BUCKETS; b++) buckets[b] = { lo: items[b].v };
   if (variant === 'select') {
     for (let i = 0; i < n; i++) {

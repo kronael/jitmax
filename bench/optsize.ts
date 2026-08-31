@@ -1,24 +1,32 @@
 // Does a function above max_optimized_bytecode_size (60 KB) ever reach
 // TurboFan? V8's flag says no; this asks V8 directly, then times the gap.
-//   node --allow-natives-syntax bench/optsize.js
-const BITS = [
+//   node --allow-natives-syntax bench/optsize.ts
+//
+// The natives call is in bench/natives.js — the one file here that cannot be
+// TypeScript. The logic is here.
+import { optimizationStatus } from './natives.js';
+
+const BITS: Array<[number, string]> = [
   [1, 'IsFunction'], [1 << 1, 'NeverOptimize'], [1 << 3, 'Optimized'],
   [1 << 4, 'Maglevved'], [1 << 5, 'TurboFanned'], [1 << 6, 'Interpreted'],
   [1 << 14, 'Baseline'], [1 << 15, 'TopFrameInterpreted'],
 ];
 
-const make = (statements) =>
+type Kernel = (a: number) => number;
+
+const make = (statements: number): Kernel =>
   new Function('a', `let s = 0;\n${
     Array.from({ length: statements }, (_, i) => `s += a * ${i % 97};`).join('\n')
-  }\nreturn s;`);
+  }\nreturn s;`) as Kernel;
 
-function tierOf(fn) {
+function tierOf(fn: Kernel): string {
   for (let i = 0; i < 30000; i++) fn(1);
-  const st = %GetOptimizationStatus(fn);
+  const st = optimizationStatus(fn);
   return BITS.filter(([b]) => st & b).map(([, n]) => n).join(',');
 }
 
-const optimizes = (n) => /Maglevved|TurboFanned|Optimized/.test(tierOf(make(n)));
+const optimizes = (n: number): boolean =>
+  /Maglevved|TurboFanned|Optimized/.test(tierOf(make(n)));
 
 let lo = 1, hi = 8000;
 while (hi - lo > 1) {

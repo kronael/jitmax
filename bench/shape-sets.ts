@@ -1,4 +1,4 @@
-// The shape sweep the RULE detects, as opposed to the one `bench/shapes.js`
+// The shape sweep the RULE detects, as opposed to the one `bench/shapes.ts`
 // measures. `shapes.js` varies key ORDER: five builders, same three keys, five
 // V8 maps — and one TypeScript type, because key order is not part of a type.
 // So `megamorphic-elements`, which counts union members, is silent on the exact
@@ -10,15 +10,17 @@
 // offset in all five maps and object size is constant: shape COUNT is again the
 // only thing that varies, and the map identity is now reachable from the type.
 //
-//   node bench/shape-sets.js <shapes> <n> <excl|incl> <reps> <seed>
+//   node bench/shape-sets.ts <shapes> <n> <excl|incl> <reps> <seed>
 'use strict';
 
-import { args, emit, mulberry32 as rng } from './kernel.js';
+import { args, emit, mulberry32 as rng } from './kernel.ts';
 
 const { variant, n, mode, reps, seed } = args();
 const shapes = Number(variant);
 
-const BUILD = [
+type Row = { x: number; y: number; z?: number; a?: number; b?: number; c?: number; d?: number };
+
+const BUILD: ((x: number, y: number, z: number) => Row)[] = [
   (x, y, z) => ({ x, y, z }),
   (x, y, z) => ({ x, y, a: z }),
   (x, y, z) => ({ x, y, b: z }),
@@ -26,9 +28,9 @@ const BUILD = [
   (x, y, z) => ({ x, y, d: z }),
 ];
 
-function build() {
+function build(): Row[] {
   const r = rng(seed);
-  const rows = new Array(n);
+  const rows: Row[] = new Array(n);
   for (let i = 0; i < n; i++) {
     // x and y come off the stream first, so every variant sees identical
     // values at identical indices and the checksums must match.
@@ -39,14 +41,14 @@ function build() {
   return rows;
 }
 
-function sweep(rows) {
+function sweep(rows: Row[]): number {
   let s = 0;
   for (let i = 0; i < rows.length; i++) s += rows[i].x + rows[i].y;
   return s;
 }
 
 let sink = 0;
-let t0, t1;
+let t0: bigint, t1: bigint;
 if (mode === 'excl') {
   const rows = build();
   for (let w = 0; w < 3; w++) sink += sweep(rows);

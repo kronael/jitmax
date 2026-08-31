@@ -6,9 +6,9 @@
 //                                  call, with the accumulator as the receiver
 // The checksum is compared inside every pair, so a variant that builds a
 // different array is a failed run rather than a fast one.
-//   node bench/spread.js <push|spread|concat> <n> <mode> <reps> <seed>
+//   node bench/spread.ts <push|spread|concat> <n> <mode> <reps> <seed>
 
-import { args, emit, lcg } from './kernel.js';
+import { args, emit, lcg } from './kernel.ts';
 
 const { variant, n, mode, reps, seed } = args();
 
@@ -16,8 +16,8 @@ const rand = lcg(seed);
 
 const source = Array.from({ length: n }, () => Math.floor(rand() * 1000));
 
-function build() {
-  let acc = [];
+function build(): number[] {
+  let acc: number[] = [];
   if (variant === 'spread') {
     for (const v of source) acc = [...acc, v];
   } else if (variant === 'concat') {
@@ -31,15 +31,15 @@ function build() {
   return acc;
 }
 
-const sum = (a) => {
+const sum = (a: number[]): number => {
   let t = 0;
   for (const v of a) t += v;
   return t;
 };
 
 let sink = 0;
-let t0;
-let t1;
+let t0: bigint;
+let t1: bigint;
 
 // 'excl' times the sum over an array built once; 'incl' times construction as
 // well. Every rule benchmark runs both halves — measuring one half reversed two

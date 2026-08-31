@@ -4,7 +4,7 @@
 # before the drift assertions would leave them comparing fresh against fresh,
 # and a stale committed artifact could never fail again.
 .DEFAULT_GOAL := all
-.PHONY: all build builtins test lint check v8-check numbers bench bench-all bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-dispatch bench-delete bench-arrays bench-tc11 tiers example demo meme publish clean
+.PHONY: all build builtins test lint check v8-check numbers bench bench-all bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-arguments bench-sparse bench-dispatch bench-delete bench-arrays bench-tc11 tiers example demo meme publish clean
 
 all: lint test check
 

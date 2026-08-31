@@ -1,14 +1,48 @@
-// Every sweep this project runs, as data. `bench/run.js` is the runner around
-// this table and `bench/tiers.js` reads the same cells, so there is ONE place a
+// Every sweep this project runs, as data. `bench/run.ts` is the runner around
+// this table and `bench/tiers.ts` reads the same cells, so there is ONE place a
 // cell shape is declared and no second list to drift from it.
 //
 // A benchmark declares only what is particular to it — which kernel to spawn,
 // which cells to sweep, which .jl to append to, and whether a cell is run once
-// or three times over. Everything else is bench/driver.js, which is where the
+// or three times over. Everything else is bench/driver.ts, which is where the
 // measurement protocol lives and the only place it may live.
 
 import path from 'node:path';
-import { workload } from './driver.js';
+import { workload } from './driver.ts';
+
+// A sweep's cell table, as declared below: a cell says what is particular to
+// it and inherits the rest from its benchmark.
+export interface CellDecl {
+  script?: string;
+  out?: string;
+  baseline: string;
+  variant: string;
+  sizes?: number[] | Record<string, number>;
+  modes?: string[];
+  extra?: Record<string, string | number>;
+  recordBaseline?: boolean;
+}
+
+export interface Bench {
+  what: string;
+  script?: string;
+  out?: string;
+  modes?: string[];
+  sizes?: number[] | Record<string, number>;
+  extra?: Record<string, string | number>;
+  recordBaseline?: boolean;
+  replicated?: boolean;
+  cells: CellDecl[];
+}
+
+// What `plan` hands the runner: the workload to spawn, the .jl to append to,
+// the cell options the driver measures, and the row fields that travel along.
+export interface SweepOpts {
+  baseline: string;
+  variant: string;
+  n: number;
+  mode: string;
+}
 
 // Three sizes span L1 to RAM, because a cost that is about memory and a cost
 // that is about work look identical at one size (protocol rule 12).
@@ -20,32 +54,32 @@ const NARROW = [256, 16384];
 const NAMED = { L1: 256, L2: 16384, L3: 262144 };
 const NAMED_SMALL = { L1: 256, L2: 16384 };
 
-const KERNEL = { kernel: 'dispatch-table' };
+const KERNEL: Record<string, string> = { kernel: 'dispatch-table' };
 
 // Which workload writes which `.jl`, and the row fields that travel with every
 // cell of that sweep. Written once because `tc11` re-runs cells of these same
 // sweeps and MUST append to the same files: a re-run that lands in the wrong
 // `.jl` is a superseded sweep silently mixed into a live one, which is the
 // failure the never-overwrite rule exists to prevent.
-const SWEEP = {
-  shapes: { script: 'shapes.js', out: 'shapes-calibrated.jl' },
-  shapeSets: { script: 'shape-sets.js', out: 'shape-sets.jl' },
-  spread: { script: 'spread.js', out: 'spread.jl' },
-  spreadObject: { script: 'spread-object.js', out: 'spread-object.jl' },
-  strings: { script: 'strings.js', out: 'strings.jl', recordBaseline: true, extra: KERNEL },
-  select: { script: 'select.js', out: 'select.jl' },
-  chained: { script: 'chained.js', out: 'chained.jl', recordBaseline: true, extra: KERNEL },
-  inline: { script: 'inline.js', out: 'inline.jl' },
-  addprop: { script: 'addprop.js', out: 'addprop.jl', recordBaseline: true, extra: KERNEL },
-  dispatch: { script: 'dispatch.js', out: 'dispatch.jl', recordBaseline: true, extra: KERNEL },
-  delete: { script: 'delete.js', out: 'delete.jl', recordBaseline: true, extra: KERNEL },
-  arrays: { script: 'arrays.js', out: 'arrays.jl', recordBaseline: true, extra: KERNEL },
-  example: { script: 'example.js', out: 'example.jl', recordBaseline: true },
-  arguments: { script: 'arguments.js', out: 'arguments.jl', recordBaseline: true },
-  sparse: { script: 'sparse.js', out: 'sparse.jl', recordBaseline: true },
+const SWEEP: Record<string, { script: string; out: string; recordBaseline?: boolean; extra?: Record<string, string | number> }> = {
+  shapes: { script: 'shapes.ts', out: 'shapes-calibrated.jl' },
+  shapeSets: { script: 'shape-sets.ts', out: 'shape-sets.jl' },
+  spread: { script: 'spread.ts', out: 'spread.jl' },
+  spreadObject: { script: 'spread-object.ts', out: 'spread-object.jl' },
+  strings: { script: 'strings.ts', out: 'strings.jl', recordBaseline: true, extra: KERNEL },
+  select: { script: 'select.ts', out: 'select.jl' },
+  chained: { script: 'chained.ts', out: 'chained.jl', recordBaseline: true, extra: KERNEL },
+  inline: { script: 'inline.ts', out: 'inline.jl' },
+  addprop: { script: 'addprop.ts', out: 'addprop.jl', recordBaseline: true, extra: KERNEL },
+  dispatch: { script: 'dispatch.ts', out: 'dispatch.jl', recordBaseline: true, extra: KERNEL },
+  delete: { script: 'delete.ts', out: 'delete.jl', recordBaseline: true, extra: KERNEL },
+  arrays: { script: 'arrays.ts', out: 'arrays.jl', recordBaseline: true, extra: KERNEL },
+  example: { script: 'example.ts', out: 'example.jl', recordBaseline: true },
+  arguments: { script: 'arguments.ts', out: 'arguments.jl', recordBaseline: true },
+  sparse: { script: 'sparse.ts', out: 'sparse.jl', recordBaseline: true },
 };
 
-export const BENCHMARKS = {
+export const BENCHMARKS: Record<string, Bench | undefined> = {
   // The object-shape sweep behind megamorphic-elements. The two earlier sweeps
   // stay on disk under their own names: they were measured before the
   // calibration loop existed and are not comparable cell for cell with this
@@ -306,7 +340,7 @@ export const BENCHMARKS = {
   //                    picks the elements kind from the values stored, so a
   //                    `(number | string)[]` holding only numbers is the same
   //                    array. Checkable with
-  //                    `node --allow-natives-syntax bench/arrays.js unionnum 8
+  //                    `node --allow-natives-syntax bench/arrays.ts unionnum 8
   //                    kinds 1 1`, which reports PACKED_DOUBLE for both.
   //   holey/double     control, published refuted.
   //   f64/double       control, refuted on reads and faster to construct — the
@@ -427,22 +461,27 @@ export const BENCHMARKS = {
 // A cell declares modes and sizes, or inherits the benchmark's. Named sizes
 // travel into the row as `size`, because that is the field the sweeps that use
 // them have always published.
-export function* plan(bench) {
+export function* plan(bench: Bench): Generator<{
+  script: string;
+  out: string;
+  opts: SweepOpts;
+  extra: Record<string, string | number>;
+}> {
   for (const cell of bench.cells) {
-    const sizes = cell.sizes ?? bench.sizes;
+    const sizes = (cell.sizes ?? bench.sizes)!;
     const named = !Array.isArray(sizes);
-    for (const mode of cell.modes ?? bench.modes) {
-      for (const [size, n] of named ? Object.entries(sizes) : sizes.map((v) => [null, v])) {
+    for (const mode of (cell.modes ?? bench.modes)!) {
+      for (const [size, n] of named ? Object.entries(sizes) : sizes.map<[null, number]>((v) => [null, v])) {
         const opts = { baseline: cell.baseline, variant: cell.variant, n, mode };
         const extra = {
           ...bench.extra,
           ...cell.extra,
-          ...(named ? { size } : {}),
+          ...(named ? { size: size! } : {}),
           ...((cell.recordBaseline ?? bench.recordBaseline) ? { baseline: cell.baseline } : {}),
         };
         yield {
-          script: workload(cell.script ?? bench.script),
-          out: path.join(import.meta.dirname, cell.out ?? bench.out),
+          script: workload((cell.script ?? bench.script)!),
+          out: path.join(import.meta.dirname, (cell.out ?? bench.out)!),
           opts,
           extra,
         };
@@ -451,14 +490,5 @@ export function* plan(bench) {
   }
 }
 
-export const label = (o) =>
+export const label = (o: SweepOpts): string =>
   `${o.mode.padEnd(5)} n=${String(o.n).padEnd(6)} ${o.variant}/${o.baseline}`.padEnd(38);
-
-// A void cell is recorded and printed, never silently dropped: a cell that
-// misses its timed region is a different measurement, not a slow one.
-const line = (r) =>
-  r.void
-    ? `VOID  ${r.error}`
-    : `${r.ratio.toFixed(2)}x  CI ${r.lo.toFixed(2)}-${r.hi.toFixed(2)}` +
-      `${r.lo <= 1 && r.hi >= 1 ? ' REJ' : ''}  ` +
-      `reps ${r.repsBase}/${r.repsTest}  region ${r.msBase}/${r.msTest} ms`;

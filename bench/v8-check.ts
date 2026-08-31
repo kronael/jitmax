@@ -1,6 +1,6 @@
 // Verify every V8 citation in README.md against the checkout in v8src/, so the
 // second kind of evidence rots as loudly as the first.
-//   node bench/v8-check.js
+//   node bench/v8-check.ts
 //
 // README's table is the source of truth. A citation is `src/path:line` followed
 // by `→ token`, and the check is that the token is still on that line at the
@@ -13,65 +13,46 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+// The pin block and the pinned checkout, read from ONE place. This file read
+// the block with its own regex and its own key list, and carried its own copy
+// of the clone instructions and the head-versus-pin guard, all of which
+// lib/derive-builtins.ts also had: two readers of one source of truth.
+import { v8Checkout } from '../lib/derive-builtins.ts';
 
 const root = path.join(import.meta.dirname, '..');
 const docPath = path.join(root, 'README.md');
-const v8root = path.join(root, 'v8src');
 
 const doc = fs.readFileSync(docPath, 'utf8').split('\n');
 
-const fail = (msg) => {
+const fail = (msg: string): never => {
   process.stdout.write(`${msg}\n`);
   process.exit(2);
 };
 
-const pin = {};
-{
-  const start = doc.findIndex((l) => l.trim() === '```pin');
-  if (start === -1) fail('README.md has no ```pin block; nothing to pin the citations to');
-  for (let i = start + 1; i < doc.length && doc[i].trim() !== '```'; i++) {
-    const m = /^(\w+)\s*=\s*(\S+)$/.exec(doc[i].trim());
-    if (m) pin[m[1]] = m[2];
+const againstHead = process.argv.includes('--against-head');
+const { v8root, head, pin } = ((): ReturnType<typeof v8Checkout> => {
+  try {
+    return v8Checkout(root, againstHead);
+  } catch (err) {
+    return fail(`v8-check: ${(err as Error).message}`);
   }
-}
-for (const k of ['revision', 'version']) {
-  if (!pin[k]) fail(`README.md's pin block has no ${k}`);
-}
-
-if (!fs.existsSync(v8root)) {
-  fail(
-    `v8-check: v8src/ is missing, so the citations cannot be checked.\n` +
-      `  git clone --filter=blob:none --sparse https://github.com/v8/v8 v8src\n` +
-      `  git -C v8src sparse-checkout set src include\n` +
-      `  git -C v8src checkout ${pin.revision}`
-  );
-}
-
-// The pin is a claim about which V8 the line numbers refer to. Check it, or
-// every citation below is verified against the wrong source.
-{
-  const head = execFileSync('git', ['-C', v8root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  if (head !== pin.revision) {
-    fail(`v8-check: v8src/ is at ${head.slice(0, 10)}, the pin says ${pin.revision.slice(0, 10)}`);
-  }
-}
+})();
 
 // `src/ic/ic.cc:798` → `number_of_maps`
 const CITATION = /`(src\/[^`:]+):(\d+)`\s*(?:→|->)\s*`([^`]+)`/g;
 
-const cache = new Map();
-const linesOf = (rel) => {
+const cache = new Map<string, string[]>();
+const linesOf = (rel: string): string[] => {
   if (!cache.has(rel)) {
     const p = path.join(v8root, rel);
     if (!fs.existsSync(p)) fail(`v8-check: ${rel} does not exist at the pinned revision`);
     cache.set(rel, fs.readFileSync(p, 'utf8').split('\n'));
   }
-  return cache.get(rel);
+  return cache.get(rel)!;
 };
 
 let checked = 0;
-const drifted = [];
+const drifted: string[] = [];
 for (const line of doc) {
   for (const [, rel, lineNo, token] of line.matchAll(CITATION)) {
     const src = linesOf(rel);
@@ -96,5 +77,8 @@ if (drifted.length) {
 }
 
 process.stdout.write(
-  `v8-check: ${checked} citations match V8 ${pin.version} @ ${pin.revision.slice(0, 10)}\n`
+  againstHead
+    ? `v8-check: ${checked} citations still match at ${head.slice(0, 10)} ` +
+      `(the pin is ${pin.revision.slice(0, 10)})\n`
+    : `v8-check: ${checked} citations match V8 ${pin.version} @ ${pin.revision.slice(0, 10)}\n`
 );

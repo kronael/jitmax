@@ -25,9 +25,9 @@
 //
 // The checksum is compared inside every pair, so a variant that builds a
 // different string is a failed run rather than a fast one.
-//   node bench/strings.js <joined|plus|pluseq|concat> <n> <mode> <reps> <seed>
+//   node bench/strings.ts <joined|plus|pluseq|concat> <n> <mode> <reps> <seed>
 
-import { args, emit, lcg } from './kernel.js';
+import { args, emit, lcg } from './kernel.ts';
 
 const { variant, n, mode, reps, seed } = args();
 
@@ -43,9 +43,9 @@ const source = Array.from({ length: n }, () =>
 // One function per variant, and the variant is resolved ONCE below. A `switch`
 // on the variant inside the timed region put a string comparison in every rep
 // and TurboFan miscompiled it — a rule of the repo, and why this is a table.
-const BUILD = {
+const BUILD: Record<string, (() => string) | undefined> = {
   joined: () => {
-    const parts = [];
+    const parts: string[] = [];
     for (const v of source) parts.push(v);
     return parts.join('');
   },
@@ -74,15 +74,15 @@ if (!build) throw new Error(`unknown variant ${variant}`);
 
 // Walking every character is the read that matches summing an array, and it is
 // what drags a cons-string into a flat representation.
-const hash = (str) => {
+const hash = (str: string): number => {
   let t = 0;
   for (let i = 0; i < str.length; i++) t = (t * 31 + str.charCodeAt(i)) % 1000000007;
   return t;
 };
 
 let sink = 0;
-let t0;
-let t1;
+let t0: bigint;
+let t1: bigint;
 
 if (mode === 'excl') {
   const acc = build();

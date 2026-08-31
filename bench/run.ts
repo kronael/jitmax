@@ -38,7 +38,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { cellOrVoid, replicate, replicates } from './driver.ts';
+import { cellOrVoid, replicate, replicates, spans1, RUNNER } from './driver.ts';
 import type { CellResult, Replicated } from './driver.ts';
 import { BENCHMARKS, plan, label } from './sweeps.ts';
 import type { Bench } from './sweeps.ts';
@@ -52,16 +52,6 @@ type RunEnv = Environment & { runnableStart: number };
 // A row as `key` and `done` see it: parsed back off a .jl line, every field
 // the runner may have written, nothing guaranteed.
 type JlRow = Record<string, unknown>;
-
-// The marker that says a row came from this runner: it carries the environment
-// and what the machine was doing as the row was written. `protocol` keeps
-// meaning what it has always meant — whether the cell was replicated — so the
-// queries in lib/derive.ts that select on it keep selecting the same rows.
-// Resume reads this field and nothing else. Still `r2` through the TC-46
-// rework: what the measured processes run has not changed, and a new marker
-// would orphan every published citation that selects on this one. A row from
-// the reworked runner is the one carrying `runnable`.
-const RUNNER = 'r2';
 
 // Every sweep, in the order `--all` runs them. Declared rather than taken from
 // Object.keys(BENCHMARKS) so adding a sweep to the table is not silently also a
@@ -136,7 +126,7 @@ const line = (r: CellResult | Replicated) =>
   r.void
     ? `VOID  ${r.error}`
     : `${r.ratio.toFixed(2)}x  CI ${r.lo.toFixed(2)}-${r.hi.toFixed(2)}` +
-      `${r.lo <= 1 && r.hi >= 1 ? ' REJ' : ''}  ` +
+      `${spans1(r) ? ' REJ' : ''}  ` +
       `reps ${r.repsBase}/${r.repsTest}  region ${r.msBase}/${r.msTest} ms`;
 
 // The identity of a cell inside its `.jl`. Resume compares this, so it has to
