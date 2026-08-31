@@ -989,3 +989,123 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
 
   return { receiver };
 }
+
+// Which parameter of an array callback holds an ELEMENT. Not shared.ts's
+// `ITERATION`, which answers a different question — whether the callback is a
+// loop body — and under that answer `reduce`'s first parameter belongs on the
+// list, while the value it holds never came out of the array.
+const ELEMENT_PARAM = new Map<string, readonly number[]>([
+  ['forEach', [0]],
+  ['map', [0]],
+  ['flatMap', [0]],
+  ['filter', [0]],
+  ['some', [0]],
+  ['every', [0]],
+  ['find', [0]],
+  ['findIndex', [0]],
+  ['findLast', [0]],
+  ['findLastIndex', [0]],
+  ['sort', [0, 1]],
+  ['reduce', [1]],
+  ['reduceRight', [1]],
+]);
+
+// Whether a value came OUT of one named collection. This is the second
+// question this module answers and it is deliberately not `receiver`'s walk:
+// `valueOf` above resolves a value to its ALLOCATION sites, and two values
+// with the same origins are two values V8 gives the same maps — the question
+// `interface-dispatch` asks. `megamorphic-elements` asks a different one, and
+// the origin lattice cannot answer it: in `collect(src: U[], probe: U)` an
+// exported function has no visible caller, so the origins of `src`'s elements
+// and of `probe` are both the empty set plus one unknown, and nothing there
+// separates a load off this array from a load off an unrelated parameter that
+// merely shares its type. The rule compared TYPES instead and billed two
+// collections nothing reads (BUGS TC-101, TC-94).
+//
+// So: the same hops as the walk above — an identifier to its declaration, a
+// `for...of` binding to the iterated expression, an index to its base — run
+// against a declaration instead of against an origin set. It errs the same way
+// too. A value whose path here cannot be followed is NOT an element, so the
+// rule loses loads it could have charged for and never invents one.
+export interface ElementFlow {
+  // An expression that holds an element of the collection.
+  value(e: TS.Expression): boolean;
+  // The same, for a declaration bound to one: a destructuring pattern's source
+  // is a declaration rather than an expression.
+  binding(d: TS.Node): boolean;
+}
+
+export function elementFlow(
+  ts: Ts,
+  checker: TS.TypeChecker,
+  collection: TS.ParameterDeclaration | TS.VariableDeclaration
+): ElementFlow {
+  // Cleared per query, not kept. It exists to cut a cycle, and a cut is a
+  // reason to answer "not an element" HERE — never an answer to remember for
+  // the next read, which may reach the same declaration by a path that ends.
+  const seen = new Set<TS.Node>();
+
+  const declarations = (id: TS.Identifier): readonly TS.Declaration[] =>
+    symbolOf(ts, checker, id)?.getDeclarations() ?? [];
+
+  // The collection itself, through aliases: `const rs = rows` holds the same
+  // array, so `rs[i]` indexes the same elements.
+  function isCollection(e: TS.Expression): boolean {
+    const u = unwrap(ts, e);
+    if (!ts.isIdentifier(u) || seen.has(u)) return false;
+    seen.add(u);
+    return declarations(u).some(
+      (d) =>
+        d === collection ||
+        (ts.isVariableDeclaration(d) && d.initializer !== undefined && isCollection(d.initializer))
+    );
+  }
+
+  // The element parameter of a callback the collection is iterated with. The
+  // callback has to be the argument of that very call: a named function passed
+  // to `xs.map(f)` is reached from every other call of `f` as well, and this
+  // walk answers about one collection, so it stops rather than guesses.
+  function callbackElement(param: TS.ParameterDeclaration): boolean {
+    const fn = param.parent;
+    if (!ts.isArrowFunction(fn) && !ts.isFunctionExpression(fn)) return false;
+    const call = fn.parent;
+    if (!ts.isCallExpression(call) || !call.arguments.includes(fn)) return false;
+    const callee = unwrap(ts, call.expression);
+    if (!ts.isPropertyAccessExpression(callee)) return false;
+    const holds = ELEMENT_PARAM.get(callee.name.text);
+    if (!holds || !holds.includes(fn.parameters.indexOf(param))) return false;
+    return isCollection(callee.expression);
+  }
+
+  // A declaration bound to one element: the `for...of` variable, a callback's
+  // element parameter, or a local initialized from either.
+  function bound(d: TS.Node): boolean {
+    if (seen.has(d)) return false;
+    seen.add(d);
+    if (ts.isParameter(d)) return callbackElement(d);
+    if (!ts.isVariableDeclaration(d)) return false;
+    const list = d.parent;
+    if (ts.isVariableDeclarationList(list) && ts.isForOfStatement(list.parent)) {
+      return isCollection(list.parent.expression);
+    }
+    return d.initializer !== undefined && isElement(d.initializer);
+  }
+
+  function isElement(e: TS.Expression): boolean {
+    const u = unwrap(ts, e);
+    if (ts.isElementAccessExpression(u)) return isCollection(u.expression);
+    if (!ts.isIdentifier(u)) return false;
+    return declarations(u).some(bound);
+  }
+
+  return {
+    value: (e) => {
+      seen.clear();
+      return isElement(e);
+    },
+    binding: (d) => {
+      seen.clear();
+      return bound(d);
+    },
+  };
+}

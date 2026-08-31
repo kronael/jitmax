@@ -1,6 +1,7 @@
 import type * as TS from 'typescript';
 import type { Ts } from '../ts.ts';
 import { at, isFunctionLike, unwrap, type Body } from '../scan.ts';
+import { elementFlow } from '../flow.ts';
 import { N } from '../numbers.ts';
 import {
   arrayValues,
@@ -72,19 +73,31 @@ const evidence: Evidence = {
 // an unrelated function. A parameter's owner IS the body, so the shape
 // bench/shape-sets.jl measured is untouched (BUGS TC-119, the case TC-94's fix
 // did not cover).
+//
+// The value under the load has to have come OUT of this collection, and that
+// is a question about provenance, not about types. This asked `t === element`,
+// which is type IDENTITY: wherever the element type is a union the program uses
+// widely, any value of that type anywhere in the scope satisfied the check for
+// every collection in it. `collect(src: U[], probe: U)` reported two errors on
+// two arrays whose elements are never read, off the single load `(probe as A).a`
+// (BUGS TC-101), and `sibling(spare: U[], items: U[])` billed `spare` for a read
+// of `items` (BUGS TC-94, the half its own fix did not reach — narrowing the
+// receiver to the element type catches `fallback: A` and nothing whose
+// annotation IS the union). `lib/flow.ts`'s `elementFlow` follows the values
+// instead: a `for...of` binding, an element callback's parameter, an index, or
+// a local assigned from one of those. It under-counts and never invents a load,
+// which is the direction this rule's severity demands.
 function readsFromElement(
   ts: Ts,
   checker: TS.TypeChecker,
   scope: TS.Node,
+  collection: TS.ParameterDeclaration | TS.VariableDeclaration,
   element: TS.Type
 ): boolean {
-  // The receiver's type has to BE the element type. Accepting any member of it
-  // counted a read off an unrelated value that happens to share a member —
-  // `count(rows: S5[], fallback: A) { return rows.length + fallback.a }` reported
-  // megamorphic loads on `rows` because of `fallback.a`, a monomorphic load off
-  // a different parameter. A read narrowed by a guard to one member matched for
-  // the same reason, and that site is monomorphic too. TC-8 made this rule
-  // require a load; this makes it require the load be off the array (TC-94).
+  const from = elementFlow(ts, checker, collection);
+  // Provenance says the value is an element; the type says it is still the
+  // WHOLE element type at this site. A read a guard has narrowed to one member
+  // sees one map and is monomorphic, and the rule stays off it (TC-94).
   const isElement = (t: TS.Type): boolean => t === element;
   // `r.x = v` writes and never reads. `r.x += v` and `r.x++` read first, so
   // only the plain assignment is excluded — and a destructuring assignment is
@@ -117,13 +130,18 @@ function readsFromElement(
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
       if (
         !isStoreTarget(node) &&
-        isElement(checker.getTypeAtLocation(unwrap(ts, node.expression)))
+        isElement(checker.getTypeAtLocation(unwrap(ts, node.expression))) &&
+        from.value(node.expression)
       ) {
         found = true;
       }
       return;
     }
-    if (ts.isObjectBindingPattern(node) && isElement(checker.getTypeAtLocation(node))) {
+    if (
+      ts.isObjectBindingPattern(node) &&
+      isElement(checker.getTypeAtLocation(node)) &&
+      from.binding(node.parent)
+    ) {
       found = true;
     }
   });
@@ -157,7 +175,7 @@ const detect: Rule = (ts, checker, body, add) => {
     // off an element there is no site to go megamorphic, and the annotation
     // cannot rescue it, because hot code that never reads a property still
     // never reads a property (BUGS TC-8).
-    if (!readsFromElement(ts, checker, scopeOf(ts, p, body), element)) continue;
+    if (!readsFromElement(ts, checker, scopeOf(ts, p, body), p, element)) continue;
     add({
       ...at(body.sf, p),
       rule: NAME,

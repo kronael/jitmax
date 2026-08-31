@@ -152,7 +152,7 @@ are withdrawn" while the register the same sentence points the reader at listed
 the rule register and to the withdrawn register. **The first version of that
 guard was itself too narrow and missed two more — see TC-125.**
 
-## TC-101 — megamorphic-elements fires on a collection nothing ever reads (2026-08-30, open)
+## TC-101 — megamorphic-elements fires on a collection nothing ever reads (2026-08-30, FIXED 2026-08-31)
 
 TC-8 made the rule require a property load off an element. TC-94 made that load
 have to be off a value whose type *is* the element type. Neither makes the load
@@ -224,6 +224,39 @@ parameter of a method called on it — not off any value that shares its type. T
 dataflow this needs is the walk `lib/flow.ts` already does for receivers, run
 forward from the collection instead of backward from the call. Until then the
 honest form of this rule is a `warn`: it cannot show the load it charges for.
+
+**FIXED 2026-08-31.** The load is bound to the collection by PROVENANCE, and
+`t === element` is no longer what binds it. `lib/flow.ts` gained `elementFlow`,
+a second query beside `receiver` over the same hops: an identifier to its
+declaration, a `for...of` binding to the expression it iterates, an element
+callback's parameter to the receiver of the call it was passed to, an index to
+its base, and a local to what it was assigned from. A read counts when the value
+under it came out of THIS array; a value whose path the walk cannot follow is
+not an element, so the rule loses loads it could have charged for and never
+invents one — the direction an `error` requires.
+
+It is not `receiver`'s walk, and the proposal above was wrong that it could be.
+`valueOf` resolves a value to its ALLOCATION sites, and here both sides of the
+question are empty: an exported function has no visible caller, so `src`'s
+elements and `probe` come back as the same one unknown, and nothing in the
+origin lattice separates a load off this array from a load off an unrelated
+parameter that shares its type. The two queries share the module, the helpers
+and the under-count discipline; they do not share the lattice, and putting the
+new one anywhere but beside the old one would have been the second dataflow
+path this repo forbids.
+
+`test/fixtures/shapes/shapes.ts` gains `collect`, the repro above: six annotated
+functions, **seven** errors before and **four** after — `fromLocal`, `branded`,
+`nestedScopes` and `sibling`, every one of them a program the sweep measured.
+zod's `prefixIssues`, the one true positive twelve libraries contain, still
+fires; `make reality` is unchanged.
+
+Deliberately under-counted, each of them silence and not a wrong finding:
+`.at(i)`, what `.find()` RETURNS, `.pop()` and `.shift()` are element reads this
+walk does not follow; nor is array destructuring (`const [first] = rows`); nor a
+callback passed by NAME (`rows.map(f)`), because `f`'s parameter is reached from
+every other call of `f` as well and this walk answers about one collection; nor
+a collection reached through a reassigned `let`.
 
 ## TC-102 — a profile whose sampled time is all `node:` builtins passes the gate clean (2026-08-30, open)
 
@@ -1212,7 +1245,7 @@ Also confirmed and worth stating plainly: `bench/shape-sets.ts`'s own kernel,
 pasted into a file with its own `Row` type, comes back clean. The rule is
 silent on the source program of its own benchmark.
 
-## TC-94 — megamorphic-elements counts a read off any value whose type coincides with a union member (2026-08-29, open)
+## TC-94 — megamorphic-elements counts a read off any value whose type coincides with a union member (2026-08-29, FIXED 2026-08-31)
 
 TC-8 made the rule require a LOAD off the element rather than inferring one
 from a parameter's type. The check it shipped accepts a read off any value
@@ -1230,6 +1263,19 @@ fires for the same reason, and that site is monomorphic too.
 The `members(element).includes(t)` arm is what does it; `t === element` keeps
 every union-typed receiver including the zod cast the rule exists for. TC-8's
 FIXED status is refuted in part.
+
+**FIXED 2026-08-31.** One root cause with TC-101, one fix. The narrowing to
+`t === element` shipped on 2026-08-29 and caught this entry's own repro —
+`fallback: A` is a MEMBER, not the union — while leaving the half that matters:
+type identity binds a read to every collection of that element type in scope,
+not to the one the value came from. `sibling(spare: Five[], items: Five[])`,
+where only `items` is iterated and read, reported both arrays. `lib/flow.ts`'s
+`elementFlow` decides it by provenance now and `spare` is silent.
+
+`t === element` stays, as the second conjunct rather than the binding one: a
+read a guard has narrowed to one member sees one map, which is what this entry
+says about it. `test/fixtures/shapes/shapes.ts` gains `sibling` beside
+`otherReceiver`, so both halves are covered by a test.
 
 ## TC-93 — closed-world fires inside its own silent clause on every finding (2026-08-29, split SHIPPED 2026-08-29; the clause gap stands)
 

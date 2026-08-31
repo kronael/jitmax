@@ -999,18 +999,23 @@ test('a reduce accumulator is a loop body, and only on an array', () => {
   assert.strictEqual(run.status, 1);
 });
 
+// One run of the shapes fixture, three questions of it. Every defect below is
+// megamorphic-elements binding a load to the wrong array, so they share the
+// fixture directory and there is no reason to spawn the tool three times.
+const shapesRun = spawnSync(
+  process.execPath,
+  [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'shapes')],
+  { cwd: root, encoding: 'utf8' }
+);
+
 // Three shape defects at once. The rule required the union array to ARRIVE as
 // a parameter, so one built locally was invisible; it filtered intersections
 // out of the shape count, so five branded types counted as none; and it
 // accepted a load off any value whose type is a MEMBER of the union, so a
 // monomorphic read off an unrelated parameter billed the array.
 test('a local union array counts, a branded one counts, an unrelated read does not', () => {
-  const run = spawnSync(
-    process.execPath,
-    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'shapes')],
-    { cwd: root, encoding: 'utf8' }
-  );
-  assert.match(run.stdout, /4 annotated functions, 3 errors/);
+  const run = shapesRun;
+  assert.match(run.stdout, /6 annotated functions, 4 errors/);
   assert.match(run.stdout, /fromLocal\(\)/);
   assert.match(run.stdout, /branded\(\)/);
   assert.ok(!run.stdout.includes('otherReceiver'), 'a read off an unrelated value billed the array');
@@ -1025,6 +1030,29 @@ test('a local union array counts, a branded one counts, an unrelated read does n
     `an array its own function never loads from was billed:\n${run.stdout}`
   );
   assert.strictEqual(run.status, 1);
+});
+
+// Type identity is not value provenance. `probe` is annotated with the whole
+// element union, so `(probe as A).a` — the one load in `collect` — satisfied a
+// `t === element` test for both arrays in scope, neither of which is ever read.
+// Ten of the twenty-nine findings this rule has ever produced on real code were
+// this: a collection reported for a load off something else (BUGS TC-101).
+test('a collection nothing reads is not billed for a load off a value of its type', () => {
+  const run = shapesRun;
+  for (const quiet of ['collect()', 'src reaches this line', 'out reaches this line']) {
+    assert.ok(!run.stdout.includes(quiet), `${quiet}: an unread collection was billed:\n${run.stdout}`);
+  }
+});
+
+// The same defect between two collections of one element type. The read is off
+// an element of `items`, and only `items` pays for it (BUGS TC-94).
+test('a read off one collection does not bill its same-typed sibling', () => {
+  const run = shapesRun;
+  assert.match(run.stdout, /items reaches this line as 5 distinct property sets/);
+  assert.ok(
+    !run.stdout.includes('spare reaches this line'),
+    `an array with no read of its own was billed:\n${run.stdout}`
+  );
 });
 
 // A `delete` on something with no hidden class to demote is not this rule's

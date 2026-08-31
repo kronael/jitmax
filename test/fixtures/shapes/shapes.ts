@@ -67,3 +67,25 @@ export function nestedScopes(): number {
   }
   return collect() + sum([...as, ...bs, ...cs, ...ds, ...es]);
 }
+
+// The load has to come OUT of this collection. `probe` is annotated with the
+// whole union, so a type-identity test made `(probe as A).a` a read off every
+// array in scope — and neither of these is read at all: `src` is iterated into
+// `out`, `out` is pushed to and returned. Two errors, on the one function whose
+// only load is off a third value (BUGS TC-101).
+/** @jitmax */
+export function collect(src: Five[], probe: Five): Five[] {
+  const out: Five[] = [];
+  for (const s of src) out.push(s);
+  return (probe as A).a > 0 ? out : [];
+}
+
+// The same defect between two collections. `items` is iterated and read,
+// `spare` is not, and the two share ONE element type — which is what the check
+// compared. `items` is the finding; `spare` is silent (BUGS TC-94).
+/** @jitmax */
+export function sibling(spare: Five[], items: Five[]): number {
+  let n = 0;
+  for (const r of items) n += r.kind.length;
+  return n + spare.length;
+}
