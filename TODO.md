@@ -33,36 +33,11 @@ saying plainly that it guessed and how. Never silently.
 Profile mode is the honest version and already exists. Auto mode is the
 convenience, and it is worth having only if it can be held to the same standard.
 
-## Next — `lib/flow.ts`: closures become functions, because they are testable then
-
-`createFlow` is ONE function of 955 lines holding 51 closures. Nothing inside it
-can be tested in isolation, which is why both provenance bugs (TC-94, TC-101)
-lived in it undetected and why `elementFlow` had to be added BESIDE it rather
-than inside it.
-
-Measured, not guessed — 27 of the 51 units, **556 lines, are already pure**.
-They capture only `ts`, `checker` or `program`, which are module handles and
-not state:
-
-`compute` 64, `paramFlow` 64, `symbolFlow` 44, `memberValueInner` 42,
-`ctorArgFlow` 39, `readProperty` 34, `literalPropertyInner` 32, `elementsOf` 28,
-`thisFlow` 23, `originOf` 21, `argAt` 19, `bindingFlow` 19, `childrenOf` 18,
-`subclassesOf` 18, `carries` 15, `merge` 12, `declsOf` 9, `emptyRes` 9,
-`literalShape` 8, `where` 7, `sameProperty` 6, `propRead` 6, `unknown` 5,
-`hasSpread` 5, `bodyOf` 5, `strip` 2, `className` 2.
-
-The other 24 units (399 lines) hold real state: ten cache/function pairs plus
-`index`.
-
-**Two moves. The first is mechanical and nearly risk-free.**
-
-1. **Hoist the 27 pure units to module scope**, taking `ts` / `checker` /
-   `program` as explicit parameters. Behaviour-identical. It makes 556 lines
-   unit-testable, including every walker that has produced a bug.
-2. **Make each cache pair a small factory** — `makeTargets(ts, checker)` returns
-   the memoized function — so each is constructible in a test. `createFlow`
-   shrinks to wiring.
-
-The point is not tidiness. A pure function that cannot be called from a test is
-a function whose behaviour is only ever observed through the whole pipeline, and
-that is exactly how `isElement` shipped as `t === element` for months.
+The first-run form of this work is a **suggestion**, not an automatic clean or
+fail verdict. `examples/annotate.js` already supplies one stated selector:
+outermost functions whose bodies contain a loop or array iterator. Before that
+selector reaches the CLI, compare its shortlist with real CPU profiles from a
+held-out corpus and publish what it misses. The CLI can then list a small set of
+unmeasured starting points without editing the repository. It must never call
+those functions hot, and it must never use the guess to silence a measured
+finding.

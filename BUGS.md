@@ -26,6 +26,33 @@ Review queue. Found during audits, fixed only when the owner asks.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
+## TC-132 — profile mode treats dependency time as stale project code (2026-08-31, proposed)
+
+Profiling jitmax while it checked Valibot, then giving that profile back to
+jitmax, produced 375 unmatched frames at a 0.05% threshold. Most are the
+TypeScript compiler in `node_modules/typescript/lib/typescript.js`. The report
+calls all of them source positions that a transform moved or a stale profile
+left behind. Neither diagnosis fits: the profile is current and those frames
+belong to a dependency this run was never asked to check.
+
+The result is 305 lines for 11 project functions and 46 errors. At the default
+1% threshold no frame survives and the useful project code reads as zero hot
+functions. This is the real-use form of TC-102: the threshold uses total process
+self time, while the user asks which functions are hot inside the program under
+review.
+
+**Proposal:** port frames through source maps first, partition them into program,
+dependency, and runtime time, and apply `min_self_pct` to program-owned self
+time. Report the other two shares once; do not list dependency frames as stale.
+An unrelated profile with zero program time must still fail as unchecked.
+
+- **Severity:** high
+- **Scope:** profile selection and report
+- **Affected:** `lib/profile.ts`, `bin/jitmax.ts`, `lib/report.ts`
+- **Source:** `tmp/eval/profile-005-v012.log`
+- **Status:** proposed (redesign, needs sign-off)
+- **Fix:**
+
 ## TC-128 — the key-order false negative is invisible at the CLI (2026-08-31, open)
 
 Found by an adversarial audit today. `megamorphic-elements` records this gap
@@ -94,7 +121,7 @@ against it is the argument against every unconditional line: the report already
 prints four counters, and a fifth that fires on every run with an array read in
 it may be the line that makes people stop reading the others.
 
-## TC-102 — a profile whose sampled time is all `node:` builtins passes the gate clean (2026-08-30, open)
+## ✅ FIXED 2026-08-31 — TC-102 — a profile whose sampled time is all `node:` builtins passes the gate clean (2026-08-30)
 
 Profile mode calls a run clean when the profiled workload never ran. `hotFrames`
 keeps a frame only if its url starts with `file://` (`lib/profile.ts:74`). The
@@ -135,8 +162,8 @@ startup.
 - **Scope:** profile mode
 - **Affected:** `lib/profile.ts` `hotFrames`
 - **Source:** `lib/profile.ts:74`
-- **Status:** open
-- **Fix:**
+- **Status:** resolved-not-yet-removed
+- **Fix:** `d83fc9c`, `932f1b9`
 
 Proposal: count what the filter drops. A profile whose surviving `file://` self
 time is a small fraction of its total sampled time has not measured this
@@ -150,6 +177,12 @@ function in the program is exit `2`". TC-89 deliberately replaced that with exit
 1, and `bin/jitmax.ts` says so in a comment. An unrelated profile against
 pixi.js exits 1. TC-89's documentation pass fixed the exit-code section and
 missed this sentence.
+
+Fixed in two parts. `d83fc9c` made every zero-function run exit 1 and stopped
+the clean verdict. `932f1b9` tells the user to confirm that the workload reached
+their code or lower `min_self_pct`; its runtime-only profile test holds both the
+message and exit code. TC-132 records the separate redesign needed to partition
+project, dependency, and runtime time.
 
 ## TC-104 — megamorphism is modelled as a TypeScript union, and nobody writes polymorphism that way (2026-08-30, open)
 
@@ -858,7 +891,7 @@ arguments varies across calls. If it does not separate, publish the null.
 
 Found 2026-08-29 in the TC-75 trial.
 
-## TC-76 — the documented invocation is the degraded one (2026-08-29, open)
+## TC-76 — the documented invocation is the degraded one (2026-08-29, partial 2026-08-31)
 
 `jitmax src` — the form the README leads with under "Use it" — does NOT read
 `tsconfig.json`. Bare `jitmax`, run from the project root, does. On a repository
@@ -878,6 +911,10 @@ argument. The blindness is already detected and already reported; only the
 sentence that makes it actionable is missing.
 
 Found 2026-08-29 in the TC-75 trial.
+
+Partial 2026-08-31 in `932f1b9`: README and the site now lead with bare
+`jitmax` from the repository root, so the first run reads `tsconfig.json`.
+The proposed diagnostic for a user who explicitly supplies a path remains open.
 
 ## TC-75 — first-contact trial: three users, README only, no other help (2026-08-29, open, data)
 
