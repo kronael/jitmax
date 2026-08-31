@@ -9,7 +9,8 @@
 > • `interface-dispatch` — 96.7% of survey findings leave `closed-world`, and each rule is suppressible on its own.
 > • Findings name the implementations that reach a receiver, traced by dataflow, instead of guessing from the type.
 > • A run that could not read every module exits 1 — a blind run never reports clean again.
-> • Eight rules, 123 tests, and two crashes on legal source fixed.
+> • An annotation on an overload signature checked nothing and reported clean — it checks the implementation now.
+> • Eight rules, 126 tests, and `make reality` runs the release gate instead of a paragraph asking someone to.
 > • CI runs `make all` and `make v8-check` against the pinned V8 on every push.
 >
 > Full notes: https://github.com/kronael/jitmax/blob/main/CHANGELOG.md
@@ -28,9 +29,13 @@
 - CI: `ci` runs `make all` and `make v8-check` at the pinned V8 revision, never
   at main. `v8-drift` asks weekly whether the 14 citations and the
   lowered-builtin list still hold at main, and gates nothing.
-- `make test` holds both published surfaces to `package.json`'s version and to
-  the rule register — README already claimed seven rules in one sentence and
-  eight in another.
+- `make reality` runs the release gate: the tool against a radash checkout,
+  where the one error must be `accumulating-spread` on `assign`. A missing
+  checkout exits 2 and says how to clone it. CI runs it on every push at a
+  pinned radash revision, and `make verify` chains every gate.
+- `make test` holds both published surfaces to `package.json`'s version, to the
+  rule register and to the test count — README claimed seven rules in one
+  sentence and eight in another, and 67 unit tests against a real 126.
 
 ### Changed
 
@@ -46,6 +51,11 @@
 
 ### Fixed
 
+- **An annotation on a declaration with no body checked nothing and reported
+  clean at exit 0.** JSDoc above the first overload — where JSDoc for an
+  overload set conventionally goes — left the implementation unwalked. The mark
+  binds to the implementation now; when no declaration has a body anywhere, the
+  run says so and never reports clean.
 - A run that could not see everything exited 0. An unresolved module, an
   unmatched hot frame and a truncated walk now all exit 1.
 - Two exit-2 crashes on legal source, and the walk enters constructors.
@@ -58,6 +68,9 @@
   allocation site, an origin lacking the method is not counted, and an `any`
   receiver is no longer counted as declared. Across the survey that is 54
   findings down to 1 on valibot, 21 to 0 on es-toolkit, and 21 to 10 on vue.
+- The landing page listed six of the eight rules — `megamorphic-dispatch` and
+  `interface-dispatch` were absent — and credited one rule with a finding share
+  that belongs to three.
 
 ### Data
 
