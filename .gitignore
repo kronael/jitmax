@@ -7,3 +7,5 @@ bench/scratch.jl
 demo/meme/rig.html
 demo/meme/fine.png
 .ship/
+# a parallel session's first-contact audit workspace, 8.4MB, not this repo
+.first-run/
