@@ -1930,6 +1930,17 @@ from intuition — and on the first real codebase it met, it failed closed.
 
 Found 2026-08-29 in the TC-75 trial.
 
+**SIGNED OFF 2026-08-31 — read the source map and port the positions.** The
+owner's decision on the contract question this entry raises: transforming is
+fine, but the tool must back-link. A frame's position is translated through the
+source map back to the ORIGINAL source location before it is matched, so a
+finding still names the line the author wrote. Both halves of the proposal
+above ship: the diagnostic that distinguishes a transform from a stale profile,
+and the source-map read that makes the match work in the first place. A profile
+whose source map is absent keeps the diagnostic and stops there — a position
+this tool cannot map is a position it must not guess at, which is the same rule
+the walk follows everywhere else.
+
 ## TC-76 — the documented invocation is the degraded one (2026-08-29, open)
 
 `jitmax src` — the form the README leads with under "Use it" — does NOT read
