@@ -4,7 +4,7 @@
 # before the drift assertions would leave them comparing fresh against fresh,
 # and a stale committed artifact could never fail again.
 .DEFAULT_GOAL := all
-.PHONY: all verify build builtins test lint check v8-check reality numbers bench bench-all bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-arguments bench-sparse bench-dispatch bench-delete bench-arrays bench-tc11 tiers example demo meme publish clean
+.PHONY: all verify build builtins test lint check v8-check reality numbers bench bench-all bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-arguments bench-sparse bench-dispatch bench-delete bench-arrays bench-tc11 tiers example demo card publish clean
 
 all: lint test check
 
@@ -179,44 +179,31 @@ demo/demo.mp4: demo/demo.gif
 
 demo: demo/demo.mp4
 
-# The film: the meme panel, the real terminal recording, and the payoff.
-# Two source images, both somebody else's and NEITHER committed here — the V8
-# mark and the "This Is Fine" panel are fetched into tmp/. See BUGS TC-30.
-tmp/v8-outline.svg:
-	mkdir -p tmp
-	curl -sSfL -o $@ https://v8.dev/_img/v8-outline.svg
+# The social card is a real FRAME of the recording, cut by the same target that
+# makes it. There is no separate film any more: it had a borrowed comic panel in
+# front and Google's V8 mark behind, neither cleared, and the recording in the
+# middle was the only part making a claim (BUGS TC-30).
+demo/card.png: demo/demo.mp4
+	ffmpeg -y -loglevel error -ss $(CARD_AT) -i $< -frames:v 1 \
+	    -vf "scale=1028:-1,pad=1200:630:(1200-iw)/2:(630-ih)/2:0x0a0a0a" $@
+# 82% in: the finding is on screen and the exit code has printed under it.
+CARD_AT = 20.57
 
-tmp/thisisfine.jpg:
-	mkdir -p tmp
-	curl -sSfL -o $@ https://i.imgflip.com/wxica.jpg
-
-demo/meme/fine.png: demo/meme/asset.py tmp/thisisfine.jpg
-	python3 demo/meme/asset.py
-
-demo/meme/rig.html: demo/meme/rig.template.html demo/meme/recolour.py tmp/v8-outline.svg
-	python3 demo/meme/recolour.py
-
-# Depends on demo/demo.mp4: act two IS that recording, so a change to what the
-# checker prints re-cuts the film rather than leaving it quoting an old run.
-demo/meme/jitmax.mp4: demo/meme/rig.html demo/meme/fine.png demo/meme/capture.js \
-                     demo/meme/compose.sh demo/demo.mp4
-	bash demo/meme/compose.sh
-
-meme: demo/meme/jitmax.mp4
+card: demo/card.png
 
 # `lib/numbers.ts` is generated too but is tracked and imported, so it is not a
 # clean target — deleting it breaks the build until `make numbers` runs.
 # `tmp/probe.cjs` used to be listed here and no target has ever written it: a
 # hand-run scratch file clean had no business deleting.
 clean:
-	rm -f demo/meme/rig.html demo/meme/fine.png demo/meme/jitmax.mp4 demo/meme/jitmax.gif demo/meme/jitmax-card.png
+	rm -f tmp/demo.cast tmp/card.png
 
 # site/index.html is the page's ONE source. Editing the copy under the webroot
 # instead leaves two versions of the same page and no way to tell which is
 # current — which happened, and is why this comment is here.
-publish: demo meme
+publish: demo card
 	cp site/index.html $(WEB)/index.html
-	cp demo/meme/jitmax.mp4 demo/meme/jitmax.gif demo/meme/jitmax-card.png $(WEB)/
+	cp demo/demo.mp4 demo/demo.gif demo/card.png $(WEB)/
 
 WEB = /srv/data/arizuko_krons/web/pub/jitmax
 space := $(subst ,, )

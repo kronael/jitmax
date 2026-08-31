@@ -1949,7 +1949,7 @@ This is the same failure TC-7 fixed for the walk cap and TC-10 records for
 constructors: the walk has a third way of stopping silently.
 
 
-## TC-30 — the launch loop uses Google's V8 mark, and nobody has cleared that (2026-08-16, open, proposal)
+## TC-30 — the launch loop uses Google's V8 mark, and nobody has cleared that (2026-08-16, FIXED 2026-08-31)
 
 > **2026-08-19, researched.** "V8" is not on Google's published trademark list
 > (0 hits across 514 marks) and `v8.dev/logo` offers the SVG with no terms — but
@@ -1994,6 +1994,19 @@ and it is the owner's.** Three ways out, in order of how much they cost:
 
 Until then the fetch stays a build step, so the question stays visible in the
 Makefile rather than buried in a committed binary.
+
+**FIXED 2026-08-31 by deleting the film, not by clearing the mark.** The
+research above named the cheapest complete fix as "keep the word V8 everywhere
+in the text, drop the mark from the film". Applied, and one step further: the
+film's other borrowed asset was the "This Is Fine" panel fetched from imgflip,
+somebody else's cartoon and equally uncleared, so BOTH bracketing acts are gone.
+
+What is left is what was making the claim all along — act two, the real
+asciinema recording of the checker against a function radash ships. It is the
+hero on the page, and the social card is a real FRAME of it cut by `make card`.
+Deleted with the acts: `asset.py`, `recolour.py`, `capture.js`, `compose.sh`,
+`rig.template.html`, the generated `rig.html` and `fine.png`, both `curl`
+targets, and the `meme` target. The README trademark line stays.
 
 ## TC-24 — eighteen `select` rows predate the field they should carry (2026-08-15, open)
 
