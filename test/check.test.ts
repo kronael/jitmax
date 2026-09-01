@@ -76,9 +76,22 @@ const DOCS = [
   path.join('examples', 'README.md'),
 ];
 const doc = (file: string): string => fs.readFileSync(path.join(root, file), 'utf8');
-// Every doc file end to end, with the generated block cut out of the one that
-// carries it: the block would otherwise only ever be matching itself.
-const docProse = (): string => withoutBlock(DOCS.map(doc).join('\n'));
+// The example pairs are published prose too. The header comment on each is what
+// a reader gets when they `diff` a `.before.ts` against its `.after.ts`, and
+// every one of them quotes what the fix was worth — which is the whole point of
+// the pair. They are not doc files, so they are not in DOCS; they are read here
+// because they are the surface where a ratio could go stale in silence, and
+// four of them had (BUGS TC-38). Discovered rather than listed: a fifth example
+// pair must not be able to arrive unchecked.
+const examplePairs = (): string[] =>
+  fs
+    .readdirSync(path.join(root, 'examples'))
+    .filter((f) => f.endsWith('.before.ts') || f.endsWith('.after.ts'))
+    .sort()
+    .map((f) => path.join('examples', f));
+// Every published file end to end, with the generated block cut out of the one
+// that carries it: the block would otherwise only ever be matching itself.
+const docProse = (): string => withoutBlock([...DOCS, ...examplePairs()].map(doc).join('\n'));
 
 function findingsByFunction(dir: string): Map<string, ReturnType<typeof check>> {
   const { checker, marks } = scan(ts, program(ts, root, [path.join(root, dir)]));

@@ -28,7 +28,7 @@
 //
 // The cost this rule reports is paid by the CALLER, not inside `omit`: once the
 // returned object is in dictionary mode, every property load on it costs
-// 12.6-17.1x (bench/delete.jl). So the workload has to read the result, and it
+// 12.3-13.6x (bench/delete.jl). So the workload has to read the result, and it
 // does — see examples/workloads.ts.
 //
 // THE INPUT: `omit(user, ['password', 'token'])`, the canonical use — strip two

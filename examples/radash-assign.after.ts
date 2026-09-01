@@ -7,22 +7,23 @@
 //
 // The fix line warns that filling an object key by key can normalize it and
 // cost the caller's reads (BUGS TC-16). Here it did not: the reads got FASTER,
-// 1.93-2.08x and 1.58-1.71x. Both halves of that clause are in this directory,
-// which is why it is a condition to check and not a rule to apply.
+// 1.57-2.06x over the two sizes. Both halves of that clause are in this
+// directory, which is why it is a condition to check and not a rule to apply.
 //
 // Everything else is left as radash ships it, including the IIFE, the commented
 // -out line, and the outer `{ ...initial, ...override }` — that one is a single
 // copy outside any loop, so the rule did not report it and improving it here
 // would make the comparison a different question.
 //
-// WHAT IT WAS WORTH. The whole call is 3.15-3.30x faster on a 16-key config and
-// 4.32-4.88x on a 128-key one, three sweeps each. The caller's reads on the
-// merged object are 1.93-2.08x and 1.58-1.71x faster — a second, smaller win the
-// rule never claims: `%HaveSameMap` says two results of the shipped version do
-// NOT share a map, and two results of this one do, so the shipped version leaves
-// the caller's load site polymorphic.
+// WHAT IT WAS WORTH. The whole call is 3.22-4.65x faster over the two sizes,
+// three sweeps each — the low end on a 16-key config and the high end on a
+// 128-key one; examples/README.md prints every sweep and every agreement. The
+// caller's reads on the merged object are 1.57-2.06x faster — a second, smaller
+// win the rule never claims: `%HaveSameMap` says two results of the shipped
+// version do NOT share a map, and two results of this one do, so the shipped
+// version leaves the caller's load site polymorphic.
 //
-// Against the 188-203x that `accumulating-spread` cites for an object spread at
+// Against the 186-200x that `accumulating-spread` cites for an object spread at
 // n=500. The rule is about one line; the function around it allocates, recurses
 // and branches, and that is the whole gap.
 

@@ -9,15 +9,19 @@
 // so the result is the same object with the same insertion order. The project's
 // own evidence names this form as the fix rather than the defect: bench
 // /spread-object.jl measures `Object.assign(acc, …)` mutating in place as the
-// baseline that `{ ...acc }` is 188-203x slower than at n=500.
+// baseline that `{ ...acc }` is 186-200x slower than at n=500.
 //
 // `let` is left as `let` so the diff is one line.
 //
 // WHAT IT WAS WORTH, and this is the result of the whole exercise. Building is
-// faster: 1.31-1.36x at n=8, and at n=64 three sweeps read 17.34x, 19.34x and
-// 20.10x with no value common to all three intervals, so under protocol rule 13
-// that cell is not a number. READING the result is 8x SLOWER, 0.11-0.12x at
-// both sizes and in all six sweeps.
+// faster: 1.36-1.38x at n=8 and 18.78-20.87x at n=64. That second cell first
+// read 17.34x, 19.34x and 20.10x with no value common to all three intervals,
+// which protocol rule 13 refuses; it was re-swept whole and the fresh triple
+// does agree. Six sweeps scattered over one range with only the second three
+// sharing a value is a cell whose spread outruns its intervals, so
+// examples/README.md still lists it as one rule 13 caught rather than as a
+// promotion. READING the result is 8x SLOWER, 0.11-0.12x at both sizes and in
+// all six sweeps.
 //
 // The reason is in this file. `%DebugPrint` on the object this version returns
 // says `[DictionaryProperties]`; on the object the shipped version returns it

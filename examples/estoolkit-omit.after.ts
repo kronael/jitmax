@@ -23,12 +23,13 @@
 // and examples/workloads.ts checksums over `Reflect.ownKeys` so that a dropped
 // symbol would void the cell instead of reading as a speedup.
 //
-// WHAT IT WAS WORTH. The whole call is 1.64-1.79x faster on a 12-key record and
-// 3.24-3.36x on a 48-key one. The caller's reads on the result are 10.95-11.86x
-// faster at 12 keys — the rule's 12.6-17.1x, landing almost intact in a real
-// function, because this is exactly the load the rule is about.
+// WHAT IT WAS WORTH. The whole call is 1.62-3.32x faster across the two sizes,
+// the smaller ratio on the 12-key record and the larger on the 48-key one. The
+// caller's reads on the result are 11.2-11.6x faster at 12 keys — the rule's
+// 12.3-13.6x, landing almost intact in a real function, because this is exactly
+// the load the rule is about.
 //
-// At 48 keys that read advantage is GONE: 0.94-1.02x, an interval spanning 1.0
+// At 48 keys that read advantage is GONE: 0.97-1.04x, an interval spanning 1.0
 // in all three sweeps, so the cell is rejected. `%HasFastProperties` says why —
 // false on both sides. Building a 46-key object one key at a time normalizes it
 // too, so the fix stops fixing the read somewhere between 12 keys and 48. The
