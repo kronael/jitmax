@@ -6,3 +6,7 @@ tmp/
 bench/scratch.jl
 demo/meme/fine.png
 .ship/
+.fixA/
+.fixB/
+.fixC/
+.fixD/
