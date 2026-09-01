@@ -2112,11 +2112,20 @@ test('every rule reports as an error, and the unmeasured triggers still carry TC
 function bugEntries(): Array<{ id: string; text: string; status: string }> {
   const src = fs.readFileSync(path.join(root, 'BUGS.md'), 'utf8');
   const out: Array<{ id: string; text: string; status: string }> = [];
+  const missed: string[] = [];
   for (const line of src.split('\n')) {
     const m = /^## (TC-\d+) — (.+) \(([^()]*)\)\s*$/.exec(line);
     if (m) out.push({ id: m[1]!, text: m[2]!, status: m[3]! });
+    else if (line.startsWith('## TC-')) missed.push(line);
   }
-  assert.ok(out.length > 50, 'the heading pattern no longer matches BUGS.md');
+  // Every `## TC-` heading has to parse. This used to be `out.length > 50`,
+  // a canary for a regex that stopped matching — but a count is the wrong
+  // invariant twice over: it fires when the queue is legitimately pruned (63
+  // entries to 46, and it did fire), and it stays quiet when the pattern
+  // misses half of what is there. A heading the pattern cannot read is the
+  // actual failure, so that is what is asserted.
+  assert.deepStrictEqual(missed, [], 'BUGS.md has a `## TC-` heading this pattern cannot read');
+  assert.ok(out.length > 0, 'the heading pattern no longer matches BUGS.md');
   return out;
 }
 
