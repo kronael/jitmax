@@ -287,113 +287,6 @@ union members. A union type keeps its current answer as one source among
 several. `subclassesOf` already walks `extends` edges; the missing half is
 counting them as element shapes rather than only as call targets.
 
-## TC-105 — delete-property has no null-prototype guard, and fires on objects V8 never made fast (2026-08-30, open)
-
-**Amended 2026-08-30 — a null prototype is one of two ways in, and the other is
-more common.** Enough dynamic string keys demotes a plain object on its own:
-
-```
-$ node --allow-natives-syntax -e "const c={};for(let i=0;i<40;i++)c['https://x/a'+i+'.png']=i;console.log(%HasFastProperties(c))"
-false
-$ node --allow-natives-syntax -e "const c={};for(let i=0;i<8;i++)c['k'+i]=i;console.log(%HasFastProperties(c))"
-true
-```
-
-So a URL-keyed or id-keyed cache is already in dictionary mode by the time
-anything deletes from it. pixi `src/rendering/renderers/shared/texture/sources/../parsers/textures/utils/createTexture.ts:28`
-is that object: `delete loader.promiseCache[url]` on a `Record<string, ...>`
-holding one entry per loaded asset. The rule charges the transition to a
-transition that already happened, and its printed fix — assign undefined —
-turns an eviction into a leak.
-
-A third shape in the same family, from the same run: pixi
-`shared/texture/CubeTexture.ts:30` deletes from `{ ...options }`, a throwaway
-copy read once by `Object.keys` on the next line and then discarded. Dictionary
-mode on an object read once costs nothing.
-
-The single root cause under all three is that the rule has no model of the
-receiver's mode. It charges the demotion without checking whether the object was
-ever fast.
-
-
-`Object.create(null)` returns an object that is **already** in dictionary mode.
-V8's `factory.cc` builds it from `slow_object_with_null_prototype_map`, and
-`%HasFastProperties` says so:
-
-```
-$ node --allow-natives-syntax -e "console.log(%HasFastProperties(Object.create(null)), %HasFastProperties({}))"
-false true
-```
-
-`delete` on such an object cannot demote what is already demoted, so the rule's
-cost does not exist there. `lib/rules/delete-property.ts` excludes arrays and
-host objects and has no test for a null prototype.
-
-mathjs `src/utils/lruQueue.js` is the case in the field. Lines 8 and 9 are
-`let queue = Object.create(null)` and `let map = Object.create(null)`; lines 14,
-15 and 38 delete from them and are three of the ten errors mathjs reports. The
-same file is where the rule's printed fix does real damage — see the TC-79
-amendment below.
-
-- **Severity:** medium
-- **Scope:** rules
-- **Affected:** `delete-property`
-- **Source:** `lib/rules/delete-property.ts`; `n_mathjs/src/utils/lruQueue.js:8`
-- **Status:** open
-- **Fix:**
-
-Proposal: treat a receiver whose declaration is `Object.create(null)`, or whose
-type has a null prototype, the way arrays and host objects are already treated —
-the rule stays quiet. The narrow version costs one initializer check.
-
-## TC-106 — closed-world walks into abstract stubs and reports the `throw` as a hot unchecked call (2026-08-30, open)
-
-The receiver walk finds implementations through `extends` edges only. All three
-heritage-clause reads in `lib/flow.ts` (lines 170, 574, 765) begin
-`if (h.token !== ts.SyntaxKind.ExtendsKeyword) continue;`, and nothing in the
-file mentions `implements` or an interface declaration. A class that conforms
-structurally, or that is written `class X implements I`, contributes no
-implementation to the count.
-
-yjs is the case in the field. `AbstractContent` (`src/structs/Item.js:513`) has
-nine implementations in the program — `ContentAny`, `ContentBinary`,
-`ContentDeleted`, `ContentDoc`, `ContentEmbed`, `ContentFormat`, `ContentJSON`,
-`ContentString`, `ContentType` — and `grep -rn "extends AbstractContent" src/`
-returns nothing; they conform structurally. So the walk resolves
-`this.content.getLength()` to the abstract stub, and reports:
-
-```
-warn  closed-world
-  src/structs/Item.js:519 - reached by 63 annotated functions
-  calls error.methodUnimplemented, which we have no body for; the promise stops here
-  fix: inline what you need from error.methodUnimplemented, or accept that this call is unchecked
-```
-
-`Item.js:519` is the body of `getLength()`, which is `throw
-error.methodUnimplemented()`. It runs only if the program is broken. Nine such
-warnings sit in the yjs report (`Item.js:519, 526, 539, 546, 554, 570, 577,
-584, 600`), and the run header says "72 interface calls resolved to the one
-implementation this program builds, and followed — sound only for a closed
-program". The program builds nine.
-
-Two costs, and the second is worse. The noise is nine warnings pointing at
-unreachable code. The silence is that the one many-implementation hierarchy in
-the corpus produced no dispatch finding at all.
-
-- **Severity:** high
-- **Scope:** flow walk
-- **Affected:** `closed-world`, `interface-dispatch`, `megamorphic-dispatch`
-- **Source:** `lib/flow.ts:170`, `lib/flow.ts:574`, `lib/flow.ts:765`; `n_yjs/src/structs/Item.js:513`
-- **Status:** open
-- **Fix:**
-
-Proposal: a method whose only body throws is not a followable implementation —
-skip it and report the receiver as unresolved rather than as resolved-to-one.
-Separately, add `implements` edges to `childrenOf`, and for a receiver typed by
-an interface or an abstract class, count the classes assignable to it as
-candidate implementations the way `subclassesOf` counts `extends`. The
-structural case needs the assignability check the checker already offers.
-
 ## TC-107 — code that runs once per process is priced as if it ran per call, and that is most of the error tier (2026-08-30, open)
 
 The walk follows a call edge and never asks how often the edge is taken. A body
@@ -458,92 +351,6 @@ not at all. This is the static half of what TC-57's profile mode does by
 measurement, and unlike static hotness inference it is a soundness question the
 walk can answer: not "is this hot" but "can this run more than once per
 process".
-
-## TC-108 — a platform call through a computed member is reported as an unchecked user call (2026-08-30, open)
-
-`isPlatform` (`lib/scan.ts:414`) tests the declaration's source file, and the
-walk reaches it through a property access. A call written `obj[name]()` resolves
-to the same declaration and is not recognised. Seven lines:
-
-```ts
-/** @jitmax */
-export function draw(gl: WebGL2RenderingContext, name: 'texParameteri'): void {
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl[name](gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-}
-```
-
-```
-jitmax - 1 annotated function, 0 errors, 1 warning
-  3 calls into the platform, not listed: the body is native
-
-  src/a.ts:2  draw()
-    warn  closed-world
-      src/a.ts:4
-      calls gl[name], which we have no body for; the promise stops here
-      fix: inline what you need from gl[name], or accept that this call is unchecked
-```
-
-The same method on the same object, resolved by the checker to the same
-declaration in the same `.d.ts`, counted as platform on line 3 and reported as
-an unchecked user call on line 4. The printed fix asks the reader to inline a
-native WebGL method.
-
-In pixi this is ten warnings: `grep -c "calls gl\." r_pixijs.log` is 0 and
-`grep -c "calls gl\["` is 10.
-
-- **Severity:** medium
-- **Scope:** rules
-- **Affected:** `closed-world`
-- **Source:** `lib/scan.ts:414`; repro above; `n_pixijs/src/rendering/renderers/gl/texture/utils/applyStyleParams.ts:58`
-- **Status:** open
-- **Fix:**
-
-Proposal: resolve the callee's declaration for an element access the same way as
-for a property access before asking `isPlatform`, and reuse the answer. The
-checker already gives the declaration; only the walk's shape test excludes it.
-
-## TC-109 — closed-world says it has no body while printing the file and line of two bodies (2026-08-30, open)
-
-One sentence, both halves, from the pixi run:
-
-```
-warn  closed-world
-  src/unsafe-eval/ubo/generateUboSyncPolyfill.ts:124 - reached by 3 annotated functions
-  calls arrayUploadFunction, which we have no body for; 2 implementations reach
-  this receiver (function (generateUboSyncPolyfill.ts:20), function
-  (generateUboSyncPolyfill.ts:55)) - inside V8's four-map budget; the promise
-  stops here
-  fix: inline what you need from arrayUploadFunction, or accept that this call is unchecked
-```
-
-Both named functions are in the same file, in this checkout, readable. The walk
-found them — it printed their positions — and then reported the call as
-bodiless and stopped.
-
-The run header says "N interface calls resolved to the one implementation this
-program builds, and followed", so the walk follows at one implementation and
-stops at two. Stopping is defensible; describing it as "we have no body for" is
-not, and neither is a fix line asking the reader to inline a callee the tool
-just located.
-
-Two costs. The message is false where it is loudest — `closed-world` is 86% of
-every finding across the six-corpus run below. And the sites inside those two
-bodies go unchecked, which is the blindness the exit code is supposed to
-represent, arriving here as a warning rather than as coverage.
-
-- **Severity:** medium
-- **Scope:** rules, walk
-- **Affected:** `closed-world`
-- **Source:** `r_pixijs.log`; `n_pixijs/src/unsafe-eval/ubo/generateUboSyncPolyfill.ts:20,55,124`
-- **Status:** open
-- **Fix:**
-
-Proposal: where 2 to 4 implementations reach a receiver and all their bodies are
-readable, follow all of them and union the findings — that is what a
-closed-world walk is for, and the count is already inside V8's four-map budget
-so no dispatch rule fires. Reserve the "no body" sentence for a receiver whose
-implementations the walk could not locate.
 
 ## TC-122 — three deletes on one object are three build-failing errors for one demotion (2026-08-30, open)
 
@@ -622,29 +429,6 @@ Also confirmed and worth stating plainly: `bench/shape-sets.ts`'s own kernel,
 pasted into a file with its own `Row` type, comes back clean. The rule is
 silent on the source program of its own benchmark.
 
-## TC-91 — a cell with a contaminated row is never re-measured, because the runner counts rows (2026-08-29, open)
-
-`bench/run.ts` resumes by counting how many rows a cell already has under the
-current protocol — `have 3 runs under r2, skipping`. It counts ROWS, not rows
-within their gate. So a cell that recorded three runs, two of them above the
-load gate, is complete as far as the runner is concerned and will never
-re-measure itself however many times the sweep is re-run.
-
-Observed 2026-08-29 on `sparse`: `dict/excl/16384` wrote three rows, two at
-`runnable: 4`. The only way to re-measure it was to set the whole file aside as
-`sparse-busy4.jl` and sweep all twelve cells again, discarding nine cells of
-good measurement to fix one.
-
-Two other facts from the same run, both worth recording beside it. The gate
-refuses a cell at its START and is not re-checked during it (TC-74), so
-`runnableStart: 0, runnable: 6` is a row that passed the gate and was then
-measured under load. And a sweep re-invoked in a shell loop is contaminated by
-its own invocations: the runner refused cells 9 through 12 for "3 runnable
-outside the harness" while the only thing running was the loop starting it.
-
-**Proposal:** count rows within their own gate when deciding to skip a cell.
-A cell with three rows of which two are over gate has one good run, not three.
-
 ## TC-88 — twenty of seventy-three citations are exact twins (2026-08-29, open, proposal)
 
 `lib/derive.ts` is 983 lines, 556 of them citation literals. Ten pairs differ
@@ -660,18 +444,6 @@ keys `k` and `k.ci`) removes about 70 lines and the class of defect where a
 twin's `pick` is edited and its partner is not. No other duplication in
 `derive.ts` is worth touching: `replicating`, `unreplicable`, `overGate` and
 `render` each have one caller-facing job and no second copy.
-
-## TC-87 — sixty-four published measurements no test can see (2026-08-29, open)
-
-`README.md`'s two end-to-end tables print all sixteen cells' three per-sweep
-ratios and their agreement intervals as bare decimals — `3.22 / 3.25 / 3.46`,
-`**3.13-3.38**` — with no trailing `x`. The `RATIO` regex in the drift test
-matches only numbers ending in `x`, so the HISTORICAL register never covered
-them and `make test` stayed green whatever they said.
-
-All sixty-four are correct against `bench/example.jl` today. A re-sweep could
-move every one of them with the suite still passing. This is the largest block
-of unguarded numbers on the page and it is the drift test's own blind spot.
 
 ## TC-50 — the two rules with evidence are already shipped, on no evidence (2026-08-19, open, owner decision)
 
@@ -801,82 +573,6 @@ Still open from this entry: the `suggest` mode for the writing consumer, and
 `min_self_pct` remains a constant nobody has measured — it is printed on every
 run and the TOML owns it, which is the disclosure and not the fix.
 
-## TC-83 — zod cleanEnum was swept twice, the sweeps straddle 1.0, and README publishes only the passing one (2026-08-29, open)
-
-`chained-allocation` produces **496 of the 1,044 errors** in the TC-64 survey —
-47.5%, more than any other rule — and ships at severity `error`, the severity
-that fails a build. Its only end-to-end validation on a real library function is
-zod `cleanEnum` in `bench/example.jl`. That cell was measured twice at n=256,
-three replicates each, and the two sweeps do not agree.
-
-**Sweep A** — ratios 1.018 / 1.010 / 1.048, replicate intervals
-[0.970, 1.074], [0.971, 1.072], [0.983, 1.134]. **All three span 1.0.** Agreed
-interval **0.983-1.072**.
-
-**Sweep B** — ratios 1.032 / 1.060 / 1.079, replicate intervals
-[0.969, 1.104], [0.970, 1.154], [1.033, 1.127]. Agreed interval **1.033-1.104**.
-
-`README.md` publishes Sweep B and only Sweep B: "zod `cleanEnum` — 256 —
-1.03 / 1.06 / 1.08 — **1.03-1.10**". Sweep A appears nowhere in the prose.
-
-**Protocol rule 6, from this project's own CLAUDE.md:** *"A cell whose 95%
-interval spans 1.0 is rejected. A rule ships only when the lower bound clears
-1.00x; a broad warning needs a point estimate at or above 1.10x and a lower
-bound above 1.05x."*
-
-Applied to this cell:
-
-- **Sweep A is rejected outright** — its agreed interval spans 1.0.
-- **Sweep B fails too, on the second clause.** `chained-allocation` is a broad
-  warning. It needs a point estimate at or above 1.10x and a lower bound above
-  1.05x. Sweep B gives roughly 1.06 and 1.033. Neither bar is met.
-
-So the rule that produces nearly half of all errors has no end-to-end validation
-that satisfies the standard this repository wrote for itself, and the
-disagreement between its two sweeps is not disclosed where the number is
-published.
-
-**This is not a claim that the mechanism is wrong.** The mechanism sweep
-replicates: fused against chained measures 1.44-1.52x, and
-`Object.entries().map()` 3.67-3.76x. What fails is the TRANSFER to a real
-library function, which is exactly the question an adopter is asking.
-
-**Two things to do, and the first is not optional.** Publish Sweep A beside
-Sweep B — this project's own house style elsewhere is to say "three cells
-disagree across sweeps and one is void, and all four are in the file", and this
-cell does not get that treatment. Then decide the rule's severity against rule
-6 honestly: a broad warning that cannot clear 1.05 on the one real function it
-was tried on should not be the tool's most common `error`.
-
-Found 2026-08-29 by the `cto-eval` panel (`.ship/critique-cto-20260829.md`),
-verified here against the raw rows in `bench/example.jl`.
-
-## TC-80 — a run with zero errors exits 1, contradicting the documented contract (2026-08-29, open)
-
-The README states the exit code is 0 for a clean run or warnings only. Every run
-in the third trial (TC-75) exited 1, including one reporting **0 errors and 40
-warnings**, because unresolved modules take an undocumented path: "modules could
-not be resolved ... this is not a clean run".
-
-The behaviour is defensible — a walk that could not see everything must not
-report success, which is this project's oldest and best rule (TC-7). The
-documentation is what is wrong: the exit-code section does not mention this path,
-and the user found the contract broken rather than qualified.
-
-**And the message misdiagnoses the cause.** It says `npm install, then run
-again`. In this repository the dependencies were fine; the imports use a
-`tsconfig.json` path alias. The user had to read `tsconfig.json` and grep the
-import style themselves to work out why. `npm install` is one cause of an
-unresolved module and the tool names it as if it were the only one.
-
-**Two fixes:** state the unresolved-modules path in the exit-code section, and
-make the message distinguish its causes — a specifier that resolves to nothing on
-disk is a missing install; a specifier that matches a `paths` entry in a
-`tsconfig.json` the run did not read is an alias, and should say so and name the
-file.
-
-Found 2026-08-29 in the TC-75 trial.
-
 ## TC-78 — the real cost in a hot loop was per-call closure churn, and no rule sees it (2026-08-29, open, proposal)
 
 From the `dinero.js` trial (TC-75). The user had a concrete complaint — repeated
@@ -911,31 +607,6 @@ function to a local factory that returns a closure, where nothing in the
 arguments varies across calls. If it does not separate, publish the null.
 
 Found 2026-08-29 in the TC-75 trial.
-
-## TC-76 — the documented invocation is the degraded one (2026-08-29, partial 2026-08-31)
-
-`jitmax src` — the form the README leads with under "Use it" — does NOT read
-`tsconfig.json`. Bare `jitmax`, run from the project root, does. On a repository
-using `moduleResolution: bundler` with extensionless imports, the documented form
-produced `14 modules could not be resolved`, which blinds every type-based rule
-on every file that imports them; the bare form resolved cleanly.
-
-The difference is documented, in the Requirements section, and not where the
-usage example is. A first-time user follows the example, gets a degraded run,
-and has no signal that a better one exists — the report says modules failed to
-resolve, but not that a different invocation would fix it.
-
-**Proposal:** when a run started with an explicit path and modules fail to
-resolve, and a `tsconfig.json` exists at the root, say so in the unresolved-
-modules block: name the file and tell the reader to run without the path
-argument. The blindness is already detected and already reported; only the
-sentence that makes it actionable is missing.
-
-Found 2026-08-29 in the TC-75 trial.
-
-Partial 2026-08-31 in `932f1b9`: README and the site now lead with bare
-`jitmax` from the repository root, so the first run reads `tsconfig.json`.
-The proposed diagnostic for a user who explicitly supplies a path remains open.
 
 ## TC-75 — first-contact trial: three users, README only, no other help (2026-08-29, open, data)
 
@@ -1056,6 +727,15 @@ way it stops when the start gate refuses, so a busy machine costs one cell and
 not a night.
 
 Found 2026-08-29, checking the environment on fresh rows before publishing them.
+
+**2026-09-01 — re-verified; the per-cell and between-sweep gates are now pinned
+by tests.** `fc17332` moved resume's in-gate rule — a row counts only when it
+is within its own gate — into `bench/resume.ts` and tests it directly, which is
+TC-91's half of this gap. `d8884b2` and `c0c9e62` gave every row its own
+reading instead of the sweep's, and named a raised gate explicitly, so what a
+row ran under is checked rather than merely recorded. The proposal above —
+re-reading `runnable` and voiding a cell DURING the measurement, not after —
+is still open.
 
 ## TC-73 — README prose can quote a ratio no data supports (2026-08-29, open, proposal)
 
@@ -1706,6 +1386,13 @@ above it rather than inferring it from the volume.
 
 Found by: running the tool on typescript-eslint, 2026-08-21.
 
+**2026-09-01 — re-verified, no code change.** The discrimination the original
+proposal treated as needing new checker work turns out to be cheap: `scan()`
+already names every unresolved module specifier (the 2026-08-29 amendment
+above), so telling a missing package from a genuinely opaque callee costs
+nothing beyond reading that list. The flood itself, and the `DEPENDENCIES
+MISSING` exit path, remain open.
+
 ## TC-49 — nothing binds a rule to its evidence or to a fixture (2026-08-19, open, proposal)
 
 `RULES` is an array of functions; `EVIDENCE` is a table keyed by rule name; no
@@ -1719,17 +1406,6 @@ cell where it must stay quiet. Nothing enforces the first half.
 
 **Proposal:** export the rule names beside `RULES` and assert set equality with
 `Object.keys(EVIDENCE)`, plus at least one demo fixture per rule.
-
-## TC-47 — every published `select` number rests on rows whose recorded load is false (2026-08-19, open)
-
-All 18 `runner: "r2"` rows in `bench/select.jl` carry no top-level `load1`. They
-carry `load1: 0.97` frozen inside `env` — the identical value on every row,
-which is the failure `bench/env.js` documents as fixed: *"a recorded environment
-that is false is worse than none"*. `RUNNER` was not bumped, so `lib/derive.ts`
-accepts them and `select.jl` sits in `REMEASURED`.
-
-`allocating-select`'s entire cost line rests on those rows. The fix is to
-re-measure the sweep; it is six cells.
 
 ## TC-45 — a call through an interface or a parameter is invisible twice (2026-08-19, open, proposal)
 
@@ -1855,45 +1531,6 @@ and rejects at 48, and `ex.omit.reads48` is a derived citation reading
 `0.99-1.05x` — the interval that spans 1.0 — so the rejection is on the page in
 the same column as the win. The k axis stays unswept and this entry stays open.
 
-## TC-38 — the tool passes its own fix as clean while that fix is 9x worse (2026-08-17, open — the fix line says so as of 2026-08-19)
-
-The sharpest defect in this round, because it defeats the exit code.
-
-    node bin/jitmax.ts examples/remeda-merge-all.before.ts   -> exit 1, 1 finding
-    node bin/jitmax.ts examples/remeda-merge-all.after.ts    -> exit 0, clean
-
-The `.after.ts` is the fix jitmax itself printed. `bench/example.jl`
-measures the caller's reads of the result it builds at ratio 0.106-0.123 across
-all twelve sweeps — the fixed object reads **8.15-9.47x SLOWER** than the one
-the defect built, because `Object.assign` in a loop leaves the object in
-`[DictionaryProperties]`.
-
-So the tool reports the strictly worse file as clean, and `CLAUDE.md` is
-explicit that a gate "reads only the second" — the exit code. Anyone who applies
-the advice and re-runs the checker to confirm gets a green run for a regression.
-
-The warning exists, but only in the `fix:` line of the file that still has the
-defect. It is gone at exactly the moment it becomes true.
-
-This is the same class as TC-7 and TC-31: the text and the exit code say
-different things. Unlike those, the text here is not even present.
-
-**Fixed 2026-08-19, in the half the evidence supports.** The object form's fix
-line is no longer an instruction. It states both measured outcomes — the build is
-`186-200x` faster, the reads are `0.11-0.12x` — names the condition that decides
-between them, and ends with the sentence the exit code cannot say: *no rule here
-detects a dictionary-mode object, so the mutating form checks CLEAN*. A reader
-who applies the change and re-runs the tool has been told in advance what the
-green run means.
-
-The other half — a rule that SEES the dictionary-mode object — stays open, and
-its blocker is on record: how many keys a loop adds is not knowable statically,
-`bench/addprop.jl` measured adding properties as free at small counts, and
-`demo/lib.ts` `growByKey` is a shipped silent case saying so. A rule that fired
-on every keyed store in a loop would contradict that measurement. What is
-missing is a sweep over the KEY COUNT at which V8 normalizes, which would give
-the rule a threshold instead of a guess.
-
 ## TC-33 — `closed-world`'s trigger and its benchmark measure different things (2026-08-17, open — the report says `bound` as of 2026-08-19)
 
 **Amended 2026-08-31 — the `warn` tier is gone, and this gap is now the only
@@ -1957,76 +1594,6 @@ check" — and stop attaching a cost to it, which is what it honestly is; or
 (b) keep the cost and gate it on something that actually predicts non-inlining.
 (a) is what the evidence supports.
 
-## TC-32 — the documented invocation discards the project's tsconfig (2026-08-17, open)
-
-`lib/ts.ts` loads `tsconfig.json` only when the caller passed no input paths:
-
-```ts
-if (configPath && inputs.length === 0) { … }
-```
-
-README's own instruction is `jitmax src`, which passes an input path, so
-the documented form never reads the config. It compiles under built-in
-ES2022/NodeNext options instead. Path aliases, JSX mode, `types`, `strict` and
-ambient declarations can all resolve differently from the project's real build —
-and every type-based rule and every call edge depends on that resolution.
-
-README claimed jitmax "sees the same code and types your build sees".
-**That sentence is corrected as of this entry**, because it was false.
-
-The fix is small and unambiguous: read the config's `options` whenever one is
-found, and use the caller's file list when they gave one. Recorded rather than
-applied only because it changes what every rule sees, which is a behaviour
-change on a released tool.
-
-## TC-31 — a call through a parameter is neither followed nor reported (2026-08-17, open)
-
-**Amended 2026-08-29 — fixed by TC-45's change, and this entry was stale.** The
-program in this entry IS reported now: the parameter declaration falls into
-`unchecked` and lands in `escapes`, and a test asserts the interface twin.
-
-```ts
-/** @jitmax */
-export function hot(cb: (x: number) => number): number { return cb(1); }
-```
-
-    jitmax — 1 annotated function, 0 findings
-      every annotated function is clean.
-
-`cb` has no body anywhere in the program. The walk resolves it to a parameter
-declaration, which is not followable and is not in a declaration file, so it
-falls through both branches: not walked, not counted as an escape, not listed.
-Calls through interface methods behave the same way.
-
-The tool's coverage promise is the thing that makes its exit code trustworthy —
-"a run that could not see everything is never a pass". Here it could not see
-into the call, said nothing, and exited 0. README's "every call with no readable
-body is listed by name" **is corrected as of this entry.**
-
-This is the same failure TC-7 fixed for the walk cap and TC-10 records for
-constructors: the walk has a third way of stopping silently.
-
-
-## TC-24 — eighteen `select` rows predate the field they should carry (2026-08-15, open)
-
-`bench/select.jl` holds 18 rows marked `runner: r2` that were written while the
-runner was still being built, before `load1` moved out of `env` and onto the
-row. They carry `env.load1` — one number for the whole sweep — where every row
-written since carries its own.
-
-They are not from a different protocol: three whole sweeps per cell, the same
-gate, the same driver, the same twenty pairs. `lib/derive.ts` reads them as
-current rows and is right to. What is missing is one provenance field on
-eighteen of them, which makes `select` the one sweep whose rows cannot be
-compared to another sweep's on when they were written.
-
-Two ways to close it, and the cheap one is not obviously worse: re-run the six
-cells under `--force`, which appends 18 rows carrying the field and leaves the
-old 18 as history in the same file, or leave them and let this entry be the
-record. Re-running was ranked below every sweep still on pre-`r2` rows, because
-those are the numbers the exercise exists to move, and the machine did not offer
-enough quiet time to reach both.
-
 ## TC-22 — three workloads still dispatch on the variant string inside the timed region (2026-08-15, open)
 
 The repo has a rule about this — *"Never dispatch on a variant string inside a
@@ -2054,6 +1621,13 @@ for TC-21's deopt storm and the cheaper of the two to eliminate.
 Not fixed, because fixing it changes measured code and every cell in
 `select.jl`, `spread.jl` and `spread-object.jl` would have to be re-measured to
 stay comparable.
+
+**2026-09-01 — re-verified, no code change.** `test/check.test.ts` now pins a
+`DISPATCHES_INSIDE` register (`select.ts: 3, spread-object.ts: 2, spread.ts:
+2`) and walks every workload the sweep table names for a read of `variant`
+inside a function, so a fourth file doing what these three do fails the build
+instead of going unnoticed for two weeks the way these three did. Converting
+the three stays a re-measurement, and the owner's call.
 
 ## TC-21 — nobody had checked which tier the measured code was in (2026-08-15, open, proposal)
 
@@ -2242,20 +1816,6 @@ changes the answer shows up as three sweeps that disagree, and a storm that does
 not change the answer was never a defect in the measurement. Proposals 1 and 3
 stand.
 
-## TC-20 — a development row reached a published `.jl` (2026-08-15, fixed)
-
-While the runner was being built, `node bench/run.js spread --max-load=99` was
-run to check that a flag parsed, on a machine at load 1.91, and it appended a
-real measured row to `bench/spread.jl`. `spread.array.reads` picks every
-`spread`/`excl` row in that file, so a number README publishes would have moved
-because of a row measured to test an argument parser.
-
-Reverted with `git checkout` before anything was derived from it. The fix is
-`--scratch`, which sends a run to `bench/scratch.jl` — gitignored, and read by
-nothing. The never-overwrite rule protects published sweeps from being replaced;
-it had nothing to say about a published file gaining a row that was never a
-sweep, and now the runner does.
-
 ## TC-19 — megamorphic-elements prints a fix nobody at the finding can apply (2026-08-15, open, proposal)
 
 Found while giving every rule an end-to-end example. `examples/` can only hold a
@@ -2296,68 +1856,6 @@ A change to the printed contract, so: **owner signs off before anything ships.**
 
 Reproduce: `node examples/annotate.js tmp/lib-zod/packages/zod/src/v4/core` then
 `node bin/jitmax.ts tmp/lib-zod/packages/zod/src/v4/core`.
-
-## TC-15 — the original entry (2026-08-14)
-
-`EVIDENCE['delete-property']` quotes **28-67x per property load**, sourced to
-"round 3b" of the product-design document — the probe appendix at the bottom of
-it: an ad-hoc median-of-runs on a noisy VM, taken before `bench/driver.js`
-existed. That document is gone; `bench/delete.jl` is the sweep that replaced it.
-
-It has none of the six things every other shipped number has: fresh process per
-observation, AB/BA randomization, 20 paired runs, a bootstrap interval, a
-recorded rep count, a per-pair checksum. There is no `bench/delete*.jl` and
-no `bench/delete*.js`, so `make bench-…` cannot re-run it and a skeptic cannot
-either. The README's "every rule includes the benchmark that earned it" is
-false for this rule in the same way it was false for `closed-world` before
-`bench/inline.js` was written.
-
-V8's source is *strongly* on the rule's side about the mechanism — every named
-`delete` on a fast object normalizes it unconditionally
-(`src/objects/lookup.cc:843`), a dictionary receiver loses inlined property
-access (`src/compiler/access-info.cc:57`), and nothing in normal execution puts
-it back (`src/objects/js-objects.cc:5097` is the only automatic caller of
-`MigrateSlowToFast`, and it is for prototypes). See the V8 table in `README.md`.
-
-That makes this a provenance defect, not a refutation: the mechanism is real and
-the magnitude is unverified. Closing it means writing `bench/delete.js` with
-both populations the old probe measured — singleton (0x, dictionary up to 10%
-*faster*) and per-row over 100k objects (28-67x) — and re-deriving the EVIDENCE
-string from the `.jl`. Until then the number should be read as a decorated
-memory of a probe, not as this project's evidence standard. Related: TC-9,
-which is about the rule firing on the singleton case regardless.
-
-## TC-14 — the original entry (2026-08-14)
-
-Two defects in one rule, both found while tracing mechanisms to V8's source.
-
-**The benchmark is not in the repository.** `EVIDENCE['boxed-elements']` cites
-"round 2, suite A" of a benchmark write-up for 1.45-1.89x on reads and
-2.36-3.28x with construction. That write-up's §Results says, in full:
-*"(filled in after the runs; raw observations in `bench/results.jsonl`)"*. There
-is no `bench/results.jsonl`, and the kernels it names — `bench/arrays_kind.js`,
-`bench/arrays_obj.js` — do not exist either. The numbers survive only as a table
-in the spec. This is the project's central claim ("a rerunnable benchmark per
-rule") failing for the rule with the weakest number: one sweep, unreplicated,
-inside the 1.0-1.7x band this harness has twice failed to resolve. Both
-documents are gone; `bench/arrays.jl` is the sweep that replaced them.
-
-**And V8's source does not support the trigger.** The elements kind is decided
-by the values actually stored — `Object::OptimalElementsKind`
-(`src/objects/objects-inl.h:700`) is called per store from
-`LookupIterator::PrepareForDataProperty` (`src/objects/lookup.cc:449`). The rule
-fires on the *declared* element type. A `(number | string)[]` that only ever
-holds numbers stays `PACKED_DOUBLE_ELEMENTS` and pays nothing, exactly as a
-five-member union can reach a load site as one map. That is TC-2 in a second
-rule, and the mechanism citation makes it concrete rather than theoretical.
-
-Not fixed, and the two halves have different remedies: the first needs a
-`bench/arrays.js` sweep written and run (and the rule's numbers re-derived or
-withdrawn); the second is unfixable statically and belongs to a runtime half
-this project does not have — one that asks V8 for the elements kind instead of
-inferring it from a declared type.
-
-Full write-up in the V8 table in `README.md`.
 
 ## TC-13 — a method in a field has no four-map budget (2026-08-14, open, proposal)
 
