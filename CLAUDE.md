@@ -44,11 +44,13 @@ bench/        README.md (every published number, the protocol, the V8 citation
               table and the pin), driver.ts (the protocol), sweeps.ts (every
               sweep's cells, one table),
               run.ts (the runner around the measurement — selection, the load
-              gate, resume, progress, the manifest), env.ts (what a row records
-              about the machine), kernel.ts (the argv/PRNG/result contract a
-              workload meets), tiers.ts + region-marker.ts (the tier
-              diagnostic), natives.js + natives.d.ts (the only V8 natives
-              syntax in the repo, three wrappers the two probes import),
+              gate, progress, the manifest), resume.ts (which cells this
+              protocol has already measured), env.ts (what a row records
+              about the machine, and the reading it takes as it writes one),
+              kernel.ts (the argv/PRNG/result contract a workload meets),
+              tiers.ts + region-marker.ts (the tier diagnostic), natives.js +
+              natives.d.ts (the only V8 natives syntax in the repo, three
+              wrappers the two probes import),
               one workload + one .jl per measured claim
 docs/         rules.md (what each rule detects, its trigger and its fix) and
               limits.md (where the tool does not work)
