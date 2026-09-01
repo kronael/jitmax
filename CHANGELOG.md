@@ -1,5 +1,69 @@
 # Changelog
 
+## [v0.13.0] — 20260901
+
+> jitmax v0.13.0 — thirteen defects closed, and the page stops selling a rejection
+>
+> Four parallel audits of the checker, the report, the benchmark harness and the published evidence. Seventeen queue entries retired; two of them had been closed for weeks and nobody had noticed.
+>
+> • `jitmax` and `jitmax .` gave different verdicts on the same project. A path argument now chooses the file list and nothing else.
+> • Fourteen ratios typed into `examples/*.ts` had drifted from the data. That surface is now checked prose.
+> • The page sold a cell the protocol rejects as "three to twelve percent". It says rejected.
+>
+> Full notes: https://github.com/kronael/jitmax/blob/main/CHANGELOG.md
+
+### Fixed
+
+- **The two invocations disagreed about the same project, in both directions.**
+  `lib/ts.ts` spread the project's options over built-in NodeNext defaults, so
+  every option a project left unset kept the tool's: `jitmax` exited 0 and
+  `jitmax .` exited 1 on the same files. The defaults now apply only when no
+  tsconfig was found (TC-32). A review of that fix found the other half — the
+  bare run passed `parsed.options` alone, without the `allowJs` the path run
+  adds, so a tsconfig leaving `allowJs` unset had its `.js` helpers read by
+  `jitmax .` and reported unresolved by `jitmax`, with "check the path" printed
+  about a file that is on disk. A path argument now chooses the file list and
+  nothing else, which is what the sentence had been claiming.
+- **An unresolved bare import said `npm install` for both its causes.** It now
+  tells a declared `paths` alias with a missing target from a missing package,
+  and names the tsconfig that was in force (TC-80). A run launched elsewhere
+  names the tsconfig sitting beside the path it was given (TC-76).
+- **`delete` on a null-prototype object was reported.** `Object.create(null)` is
+  already dictionary mode, so nothing demotes. The guard reads the receiver's
+  initializer, because `Object.create` returns `any` (TC-105).
+- **A method whose whole body throws was followed as an implementation.** It is
+  `abstract m(): T;` written in a language without `abstract`. Refusing it also
+  let the dataflow walk reach a real body it had been missing (TC-106).
+- **A finding said it had no body while printing two.** `Dispatch` carries
+  `located`; the no-body sentence is reserved for `located === 0` (TC-109).
+- **`o[k]()` with a literal key was reported as unreadable user code** one line
+  under `o.k()` counted as a platform call (TC-108).
+- **Fourteen ratios in `examples/*.ts` headers had drifted** from what
+  `lib/derive.ts` derives — one published a cell rule 13 refuses. The example
+  pairs are now read as checked prose, discovered from the directory (TC-38).
+- **The page sold a rejected cell as a win.** zod `cleanEnum` at 256 members
+  measured 1.03-1.10x, clearing neither half of rule 6's broad-warning bar. The
+  page said "three to twelve percent, neither interval spanning 1", which is
+  rule 5 only. It now prints the rejection (TC-83).
+- **`docs/rules.md` claimed a silence the rule never had** — closed-world
+  consults no size and nothing could (TC-33's second order), and claimed every
+  rule ships a benchmark while `interface-dispatch` says it has none (TC-15).
+- **Boxed-elements' three figures were typed** with their rows sitting in
+  `bench/arrays.jl`. They are derived (TC-14).
+
+### Changed
+
+- **A row's reading of the machine is taken as that row is written**, and a
+  sweep record carrying a frozen one kills the run. Eighteen `select.jl` rows
+  carry one identical reading stamped across an evening; they are pinned in a
+  register so they cannot be forgotten (TC-24, TC-47).
+- `--plan` names the file the run would write, and a raised gate is named in the
+  row it governed (TC-20). Resume's in-gate rule moved to `bench/resume.ts`
+  where a test can ask it (TC-91).
+- `bugEntries()` asserted the queue held more than 50 entries as a canary for a
+  broken heading pattern. Pruning the queue tripped it. Every `## TC-` heading
+  must now parse, which is the failure the canary was reaching for.
+
 ## [v0.12.3] — 20260901
 
 > jitmax v0.12.3 — one question per file
