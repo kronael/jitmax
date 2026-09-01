@@ -13,6 +13,7 @@ import {
   frozenReading,
   markdown,
   overGate,
+  raisedGate,
   rows,
   type Row,
   unreplicable,
@@ -2708,6 +2709,41 @@ test('a row cannot be written with the reading frozen into its environment', () 
   const now = reading({ ...env, runnableStart: 0 });
   assert.ok(Number.isFinite(now.load1) && Number.isFinite(now.runnable), 'no reading was taken');
   assert.strictEqual(now.env.runnableStart, 0);
+});
+
+// The other way a row that was never a sweep reaches a published file: not by
+// being written to the wrong file, but by being measured under a gate somebody
+// raised for the afternoon. `overGate` above asks whether a row was over ITS
+// OWN recorded gate, so a row written under `--max-load=99` answers no whatever
+// the machine was doing — which is precisely the row TC-20 is about, produced
+// at load 1.91 to check that a flag parsed. The override is documented and
+// recorded; this is what makes it visible.
+test('no published row was measured under a gate somebody raised', () => {
+  const raised = SWEPT.flatMap((f) => raisedGate(root, f).map((r) => `${f} ${r}`));
+  assert.deepStrictEqual(
+    raised,
+    [],
+    'a published row records a load gate above the one its own core count derives — ' +
+      'a --max-load run belongs in bench/scratch.jl, not in a sweep numbers are read from'
+  );
+});
+
+// `--plan` is the command that answers "where will four hours of measurement
+// land?", and it answered with the sweep's own file whatever `--scratch` said.
+// A run started from a plan that names the wrong destination is how the TC-20
+// row happened; both now read the same `destination`.
+test('--plan names the file a run would actually write', () => {
+  const run = (...args: string[]) =>
+    spawnSync(process.execPath, [path.join(root, 'bench', 'run.ts'), ...args], { encoding: 'utf8' });
+
+  const planned = run('spread', '--plan');
+  assert.strictEqual(planned.status, 0, planned.stderr);
+  const dests = (o: string) => [...new Set(o.trim().split('\n').map((l) => l.split(' -> ')[1]?.split(' ')[0]))];
+  assert.deepStrictEqual(dests(planned.stdout), ['spread.jl']);
+
+  const scratch = run('spread', '--plan', '--scratch');
+  assert.strictEqual(scratch.status, 0, scratch.stderr);
+  assert.deepStrictEqual(dests(scratch.stdout), ['scratch.jl']);
 });
 
 // docs/limits.md tells a reader the corpus number; this register IS the corpus

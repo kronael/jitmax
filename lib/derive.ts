@@ -30,6 +30,10 @@ import path from 'node:path';
 // definition, in the file that runs the sweeps, and the gate below is the
 // second caller it should always have had (BUGS TC-37).
 import { replicates, RUNNER } from '../bench/driver.ts';
+// Rule 9's gate as a function of the core count, imported for the same reason:
+// a row is judged against the gate its own machine derives, and the model has
+// one home (bench/env.ts).
+import { gateFor } from '../bench/env.ts';
 
 export interface Row {
   runner?: string;
@@ -57,7 +61,7 @@ export interface Row {
   load1?: number;
   runnable?: number;
   // Eighteen select rows record their reading INSIDE env rather than beside it.
-  env?: { maxLoad?: number; maxRunnable?: number; load1?: number };
+  env?: { maxLoad?: number; maxRunnable?: number; load1?: number; cores?: number };
 }
 
 interface Citation {
@@ -1073,6 +1077,26 @@ export function overGate(root: string, file: string): { over: number; judged: nu
 // bench/env.ts refuses to write another; this is what sees the ones there are.
 export function frozenReading(root: string, file: string): number {
   return rows(root, file).filter((r) => r.env?.load1 !== undefined).length;
+}
+
+// The rows whose gate was RAISED — a recorded limit above the one their own
+// core count derives, which is `--max-load`. The flag is documented and the
+// override is recorded, so this withdraws nothing; what it does is make the
+// override visible, because `overGate` cannot see it. That query asks whether a
+// row was over ITS OWN recorded gate, and a row measured under `--max-load=99`
+// answers no however loaded the machine was. The row that started TC-20 was
+// exactly that: `--max-load=99` at load 1.91, run to check that a flag parsed,
+// appended to a published sweep. `--scratch` is where such a run belongs now;
+// this is what says so when it did not.
+export function raisedGate(root: string, file: string): string[] {
+  const raised: string[] = [];
+  for (const [i, r] of rows(root, file).entries()) {
+    const cores = r.env?.cores;
+    const limit = r.env?.maxRunnable ?? r.env?.maxLoad;
+    if (cores === undefined || limit === undefined) continue;
+    if (limit > gateFor(cores)) raised.push(`line ${i + 1}: gate ${limit} on ${cores} cores`);
+  }
+  return raised;
 }
 
 export function rows(root: string, file: string): Row[] {

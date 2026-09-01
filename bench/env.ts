@@ -34,7 +34,12 @@ export const CORES = os.availableParallelism();
 // next cell; the per-row `runnable`, read as each row is written, is where
 // that tenant shows up after the fact. `--max-load` overrides the gate and
 // whatever value was in force is written into every row.
-export const MAX_RUNNABLE = CORES - 1;
+// A function of the core count, not a constant, because a published row
+// carries the core count of the machine that wrote it: judging that row means
+// asking what the gate WOULD have been there, and a second spelling of
+// `cores - 1` in the file that judges is a model with two homes.
+export const gateFor = (cores: number): number => cores - 1;
+export const MAX_RUNNABLE = gateFor(CORES);
 
 export const load1 = (): number => +os.loadavg()[0].toFixed(2);
 

@@ -154,6 +154,12 @@ function done(file: string): Map<string, number> {
   return counts;
 }
 
+// Where a cell's rows go. One function, because `--plan` printing one
+// destination while the run writes to another is how a row measured to test an
+// argument parser reached a published sweep (TC-20): the plan is what a reader
+// checks before spending four hours, and it has to be checkable.
+const destination = (dest: string): string => (flags.has('scratch') ? SCRATCH : dest);
+
 function selected(bench: Bench) {
   const only = flags.get('only');
   const variant = flags.get('variant');
@@ -197,7 +203,7 @@ function sweep(name: string, env: RunEnv) {
   const seen = new Map<string, Map<string, number>>();
 
   for (const [i, { script, out: dest, opts, extra }] of cells.entries()) {
-    const file = flags.has('scratch') ? SCRATCH : dest;
+    const file = destination(dest);
     const already = seen.get(file) ?? done(file);
     seen.set(file, already);
 
@@ -316,13 +322,17 @@ const names = flags.has('all') ? ALL : rest;
 if (!names.length) die(usage());
 
 // `--plan` prints the cells and measures nothing. A sweep runs for hours, so
-// this is how a change to bench/sweeps.ts is checked before it is trusted.
+// this is how a change to bench/sweeps.ts is checked before it is trusted — and
+// what it prints is where the rows would land, through the same `destination`
+// the run uses. It printed the sweep's own file whatever the flags said, so the
+// one command that answers "where will this write?" answered it wrong for the
+// flag that exists to move the answer (TC-20).
 if (flags.has('plan')) {
   for (const name of names) {
     const bench = BENCHMARKS[name] ?? die(`unknown benchmark ${name}\n${usage()}`);
-    for (const { script, out: file, opts, extra } of selected(bench)) {
-      out(`${name} ${label(opts)} ${path.basename(script)} -> ${path.basename(file)} ` +
-        `${JSON.stringify(extra)}\n`);
+    for (const { script, out: dest, opts, extra } of selected(bench)) {
+      out(`${name} ${label(opts)} ${path.basename(script)} -> ` +
+        `${path.basename(destination(dest))} ${JSON.stringify(extra)}\n`);
     }
   }
   process.exit(0);
