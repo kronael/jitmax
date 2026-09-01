@@ -2006,52 +2006,6 @@ This is the same failure TC-7 fixed for the walk cap and TC-10 records for
 constructors: the walk has a third way of stopping silently.
 
 
-## TC-30 — the launch loop uses Google's V8 mark, and nobody has cleared that (2026-08-16, open, proposal)
-
-> **2026-08-19, researched.** "V8" is not on Google's published trademark list
-> (0 hits across 514 marks) and `v8.dev/logo` offers the SVG with no terms — but
-> `v8.dev/terms` says *"Google's trademarks and other brand features are not
-> included in this license"*, and Google's brand rules say *"Don't display any
-> Google Brand Feature as the most prominent element in your content"*, which
-> act three of the film does literally. *Toyota v. Tabari* (9th Cir. 2010) is the
-> shape of it: the word "Lexus" was nominative fair use, the logo was "more use
-> of the mark than necessary". **Cheapest complete fix:** keep the word V8
-> everywhere in the text, drop the mark from the film, and add one line to
-> README — *"V8 is a trademark of Google LLC. This project is not affiliated
-> with or endorsed by Google."* README names V8 eighteen times today with no
-> attribution line at all.
-
-`demo/meme/` builds the loop on the page at krons.fiu.wtf/pub/jitmax/ from
-`v8.dev/_img/v8-outline.svg` — Google's V8 logo, recoloured to the PH3 palette.
-`demo/meme/recolour.py` rewrites fill and stroke attributes only; every
-coordinate is upstream's, because a redrawn mark reads as a cheap imitation and
-a real one reads as the real thing.
-
-Two separate questions, and only the first is settled:
-
-1. **Copying.** The mark is NOT committed here. `make meme` fetches it into
-   `tmp/`, which is gitignored, so this repository redistributes no Google
-   asset. That was the TC-29 lesson applied before the fact rather than after.
-2. **Trademark, which is open.** Using someone's logo to refer to their product
-   is normally nominative use, and the loop does refer to V8 — it is about what
-   V8 does to code. But the loop is also promotional material for a different
-   product, it is published, and the mark is altered (recoloured, shaken, struck
-   by lightning). Altering a mark is the part that most often stops being
-   nominative use. Nobody at Google has been asked.
-
-**Not fixed, because there is no defect to fix — there is a decision to take,
-and it is the owner's.** Three ways out, in order of how much they cost:
-
-1. Ship as is. The tool is about V8 and says so; the loop is not passing itself
-   off as a Google product; the page names the tool, not V8, in its wordmark.
-2. Keep the composition and drop the mark for something generic — the cost is
-   that the loop stops being instantly readable as "this is about V8", which is
-   the whole reason the mark is in it.
-3. Ask. Slowest, and the only answer that is not a guess.
-
-Until then the fetch stays a build step, so the question stays visible in the
-Makefile rather than buried in a committed binary.
-
 ## TC-24 — eighteen `select` rows predate the field they should carry (2026-08-15, open)
 
 `bench/select.jl` holds 18 rows marked `runner: r2` that were written while the
