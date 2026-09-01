@@ -2285,6 +2285,41 @@ test('every ratio in the published prose is derived, or registered as history', 
   assert.deepStrictEqual(dead, [], `HISTORICAL still lists ${dead.join(', ')}, which the docs no longer need it for`);
 });
 
+// Rule 6's other verdict, and the one the page could swallow. `unreplicable`
+// citations announce themselves — the number they render IS three sweeps that
+// disagree, so a reader cannot miss what it is. A `rejected` one renders an
+// ordinary-looking interval, and the only thing saying the cell failed the bar
+// its rule ships under is a flag in lib/derive.ts. `chained-allocation` is the
+// one rule held to the broad-warning bar, its only end-to-end instance is
+// rejected at one of two sizes, and docs/rules.md pointed at the table and said
+// nothing (BUGS TC-83). The rule reference is where a reader goes to find out
+// what a rule costs, so the rejection is stated there, beside the cost.
+test('a cell published as a rule-6 rejection is named as one in the rule reference', () => {
+  const reference = doc(path.join('docs', 'rules.md')).replace(/[–—]/g, '-');
+  const table = N as Record<string, string>;
+  const flagged = Object.keys(CITATIONS).filter((k) => CITATIONS[k]!.rejected);
+  assert.ok(
+    flagged.length > 0,
+    'no citation is flagged `rejected` — this register has nothing left to hold'
+  );
+  for (const key of flagged) {
+    const value = table[key]!;
+    const at = [...reference.matchAll(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'))];
+    assert.ok(
+      at.length > 0,
+      `docs/rules.md does not quote ${key} = ${value}, which lib/derive.ts publishes as a rule-6 rejection`
+    );
+    for (const m of at) {
+      const around = reference.slice(Math.max(0, m.index - 400), m.index + 400);
+      assert.match(
+        around,
+        /reject/i,
+        `docs/rules.md quotes ${key} = ${value} without saying it is rejected under rule 6`
+      );
+    }
+  }
+});
+
 // examples/README.md's two end-to-end tables print every sweep of every example
 // cell and the interval each cell's three sweeps share. The register above
 // cannot see one of them: they are bare decimals with no trailing `x`, so

@@ -148,6 +148,16 @@ TC-9).
 3.67-3.76x for `Object.entries(o).map(f)` at n=1000, in `bench/chained.jl`.
 End to end: zod `cleanEnum` in `examples/README.md`.
 
+**And that end-to-end instance fails this rule's own bar at one of its two
+sizes.** This is the only rule held to rule 6's broad-warning threshold — a
+point estimate at or above 1.10x and a lower bound above 1.05x — and
+`cleanEnum` clears it at a 16-member enum, 1.10-1.12x, and does not at 256:
+1.03-1.10x, whose lower bound is under 1.05x and whose point estimate is under
+1.10x. `lib/derive.ts` publishes that cell as the rejection it is rather than as
+evidence. So the mechanism replicates in the microbenchmark and the transfer to
+the one real function this rule was tried on is worth three to twelve percent,
+with one of the two sizes rejected. `BUGS.md` TC-83.
+
 ## allocating-select
 
 **What it detects.** `x = Lib.min(x, y)` in a loop returns a new object every
