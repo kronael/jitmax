@@ -30,7 +30,8 @@ Review queue. Found during audits, fixed only when the owner asks.
 
 The package artifact works when packed, installed under `node_modules`, and run
 through npx or bunx. The public command is a different boundary:
-`npx github:kronael/jitmax` asks GitHub for the repository's HEAD. On 2026-08-31
+`bunx github:kronael/jitmax`, the advertised command, asks GitHub for the
+repository's HEAD, and the `npx` form asks for the same. On 2026-08-31
 `git ls-remote origin HEAD refs/tags/v0.12.1` returned no refs, and
 `git ls-remote --heads origin` exited 0 with empty output. A public GitHub search
 also found no repository. The README and site called that an immediate install.

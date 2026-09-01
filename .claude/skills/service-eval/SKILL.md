@@ -36,9 +36,10 @@ summary as evidence.
 6. Run `make v8-check 2>&1 | tee tmp/service-eval/v8-check.log`. Require exit 0
    and `14 citations match`. A missing `v8src/` is unavailable evidence, not a
    pass.
-7. If README or the site advertises `npx github:kronael/jitmax`, run
-   `git ls-remote origin HEAD`. Require one non-empty ref. An empty remote means
-   the package passed local tests but no public user can install it.
+7. If README or the site advertises `bunx github:kronael/jitmax` — or the `npx`
+   form — run `git ls-remote origin HEAD`. Require one non-empty ref. An empty
+   remote means the package passed local tests but no public user can install
+   it.
 
 ## Exact first-run commands
 

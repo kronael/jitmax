@@ -97,13 +97,15 @@ export function total(rows: Row[]): number { … }</code></pre>
 
 <p>Run it from the root of your TypeScript repository:</p>
 
-<pre><code>npx github:kronael/jitmax</code></pre>
+<pre><code>bunx github:kronael/jitmax</code></pre>
 
 <p>
   With no path argument it reads the repository's <code>tsconfig.json</code>.
-  Add <code>/** @jitmax */</code> above one hot function, then run it again. The
-  package is ready, but the GitHub remote has no published ref yet, so this
-  public install remains blocked by TC-133.
+  Add <code>/** @jitmax */</code> above one hot function, then run it again.
+  <code>npx</code> works too, through a compiled <code>dist/</code>, because
+  Node will not strip types under <code>node_modules</code>. The package is
+  ready, but the GitHub remote has no published ref yet, so this public install
+  remains blocked by TC-133.
 </p>
 
 <p>

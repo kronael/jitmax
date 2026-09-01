@@ -17,14 +17,18 @@ about part of your call tree is not a clean run.
 From the root of a TypeScript repository:
 
 ```sh
-npx github:kronael/jitmax
+bunx github:kronael/jitmax
 ```
 
-`bunx github:kronael/jitmax` does the same. With no path argument jitmax reads
-the repository's `tsconfig.json`, including its module resolution and file
-list. It is not on npm, so use the repository URL as the package name. The
-remote does not have a published Git ref yet, so this public install remains
-blocked by TC-133.
+`npx github:kronael/jitmax` does the same, and needs one more step to get
+there: Node refuses to strip types from any file under `node_modules`, so npm's
+`prepare` compiles `dist/` on install and the `bin` entry runs that. Bun reads
+TypeScript anywhere and runs the source. Prefer `bunx`.
+
+With no path argument jitmax reads the repository's `tsconfig.json`, including
+its module resolution and file list. It is not on npm, so use the repository
+URL as the package name. The remote does not have a published Git ref yet, so
+this public install remains blocked by TC-133.
 
 Mark the function you need fast:
 
