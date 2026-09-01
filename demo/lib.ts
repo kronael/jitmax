@@ -456,6 +456,20 @@ export function clearToken(): void {
   delete process.env.JITMAX_TOKEN;
 }
 
+// mathjs `src/utils/lruQueue.js` builds both its maps this way and deletes from
+// them on three lines, which were three of the ten errors it reported.
+const slots: Record<string, number> = Object.create(null);
+
+/** `delete` on an object built by `Object.create(null)`: silent. V8 builds that
+ * object from `slow_object_with_null_prototype_map`, so it is in dictionary
+ * mode before the first write and there is no fast map for the delete to
+ * demote. Same ground as `clearToken` above — the mechanism the finding names
+ * does not exist at the site (BUGS TC-105). */
+/** @jitmax */
+export function evictSlot(k: string): void {
+  delete slots[k];
+}
+
 /** A constructor is a body like any other, and allocation is what constructors
  * do. `new` is a NewExpression, not a CallExpression, so the walk used to step
  * over it: the chain below was never checked and the closed-world report said

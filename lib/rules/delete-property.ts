@@ -318,11 +318,49 @@ const detect: Rule = (ts, checker, body, add, mark) => {
     });
   };
 
+  // `Object.create(null)` returns an object that is ALREADY in dictionary mode.
+  // V8 builds it from `slow_object_with_null_prototype_map` in `factory.cc`, and
+  // `%HasFastProperties(Object.create(null))` is false the instant it exists. A
+  // `delete` cannot demote what was never promoted, so bench/delete.jl's
+  // per-property-load cost prices a transition that does not happen at this
+  // site — the same shape of defect as `process.env` above, and it arrives
+  // through the initializer rather than through the type, because TypeScript
+  // records no prototype (BUGS TC-105).
+  //
+  // The initializer and not the type: `Object.create` is declared to return
+  // `any`, so nothing about the checker's answer separates the null-prototype
+  // object from a plain one. What the rule reads is where the receiver was
+  // built — a `const`/`let` initializer or a class field's, which is every
+  // shape mathjs `lruQueue` uses.
+  const madeWithNullPrototype = (e: TS.Expression): boolean => {
+    const call = unwrap(ts, e);
+    if (!ts.isCallExpression(call) || !ts.isPropertyAccessExpression(call.expression)) return false;
+    const owner = unwrap(ts, call.expression.expression);
+    return (
+      call.expression.name.text === 'create' &&
+      ts.isIdentifier(owner) &&
+      owner.text === 'Object' &&
+      call.arguments.length === 1 &&
+      call.arguments[0]!.kind === ts.SyntaxKind.NullKeyword
+    );
+  };
+  const onNullPrototype = (node: TS.Expression): boolean => {
+    if (!ts.isElementAccessExpression(node) && !ts.isPropertyAccessExpression(node)) return false;
+    const sym = symAt(ts, checker, node.expression);
+    return (sym?.declarations ?? []).some(
+      (d) =>
+        (ts.isVariableDeclaration(d) || ts.isPropertyDeclaration(d)) &&
+        d.initializer !== undefined &&
+        madeWithNullPrototype(d.initializer)
+    );
+  };
+
   walk(ts, body.node, (node) => {
     if (
       ts.isDeleteExpression(node) &&
       !onArray(node.expression) &&
-      !onHostObject(node.expression)
+      !onHostObject(node.expression) &&
+      !onNullPrototype(node.expression)
     ) {
       // The rewrite half of the fix is conditional on the program, and the
       // tree is checked rather than caveated (BUGS TC-79): where the deleted

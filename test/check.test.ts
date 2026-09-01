@@ -147,6 +147,7 @@ test('a function is checked only where it is annotated', () => {
       'dropQuiet',
       'dropThenSpread',
       'entriesMap',
+      'evictSlot',
       'fiveShapes',
       'fiveShapesCast',
       'fiveShapesNoLoad',
@@ -437,6 +438,15 @@ test('delete on a host object stays silent: there is no map to demote', () => {
 
 test('delete on an array element stays silent: a different mechanism', () => {
   assert.deepStrictEqual(rules('dropElement'), []);
+});
+
+// `Object.create(null)` is already in dictionary mode before anything is
+// written to it — `%HasFastProperties` answers false on the empty object — so
+// the transition bench/delete.jl priced has happened before the delete runs.
+// mathjs `lruQueue` is the case in the field, and three of its ten errors were
+// this (BUGS TC-105).
+test('delete on a null-prototype object stays silent: it was never fast', () => {
+  assert.deepStrictEqual(rules('evictSlot'), []);
 });
 
 // The other half of TC-16, and the only place the width is stated: "build the
