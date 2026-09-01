@@ -48,6 +48,14 @@ export interface Dispatch {
   // up lets one kind of value reach. A megamorphic claim needs the check, so
   // the count is printed there and not acted on (BUGS TC-111).
   typed: boolean;
+  // How many of those origins the walk found a READABLE BODY for. `count` says
+  // how many implementations reach the receiver; this says how many of them the
+  // tool could go and look at, and the two are not the same number — a class
+  // origin whose method the member walk cannot resolve is counted and not
+  // located. It exists because `closed-world` printed "which we have no body
+  // for" in the same sentence as the file and line of two bodies it had just
+  // located, and offered to inline one of them (BUGS TC-109).
+  located: number;
 }
 
 export interface Call extends Site {
@@ -739,6 +747,7 @@ function reach(
                     viaInterface: decls.some(isDispatchDecl),
                     dispatch: {
                       count: r.origins.length,
+                      located: r.origins.filter((o) => o.follow !== undefined).length,
                       names: r.origins.map((o) => o.name).slice(0, 6),
                       unknown: r.unknown.slice(0, 2),
                       recv: prop ? prop.expression.getText(body.sf) : text,

@@ -69,11 +69,28 @@ const detect: EscapeRule = (mark, add) => {
       // has no body the callee walk can follow and two the dataflow walk can
       // see, and printing "we have no body for f" over both of them is a
       // coverage claim this rule exists to keep honest.
+      //
+      // So the sentence turns on `located` and not on the count: "we have no
+      // body for" is reserved for a receiver whose implementations the walk
+      // could not find. pixi's `arrayUploadFunction` got that sentence with the
+      // file and line of two located bodies printed inside it, and a fix line
+      // offering to inline a callee the tool had just pointed at (BUGS TC-109).
+      // Stopping at two is defensible — following them is the walk change the
+      // entry proposes and this rule does not make — but it has to say that it
+      // stopped, not that it could not look.
       message:
-        d.count >= 2
+        d.located > 0
+          ? `calls ${c.text}, and the walk does not pick between the bodies that reach ` +
+            `it${reached(d)}; those bodies are readable and are not walked, so the promise ` +
+            'stops here'
+          : d.count >= 2
           ? `calls ${c.text}, which we have no body for${reached(d)}; the promise stops here`
           : `calls ${c.text}, which we have no body for; the promise stops here`,
-      fix: `inline what you need from ${c.text}, or accept that this call is unchecked`,
+      fix:
+        d.located > 0
+          ? `read the ${d.located} implementations named above, or give this call one of ` +
+            'them — they are located, not missing, and what is inside them is unchecked'
+          : `inline what you need from ${c.text}, or accept that this call is unchecked`,
     });
   }
 };

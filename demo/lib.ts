@@ -503,6 +503,32 @@ export function slotSize(h: SlotHolder): number {
   return h.slot.size();
 }
 
+function uploadFloat(v: number[], out: number[]): void {
+  out[0] = v[0] ?? 0;
+}
+
+function uploadInt(v: number[], out: number[]): void {
+  out[0] = (v[0] ?? 0) | 0;
+}
+
+function pickUpload(kind: string): (v: number[], o: number[]) => void {
+  let upload;
+  if (kind === 'f32') upload = uploadFloat;
+  else upload = uploadInt;
+  return upload;
+}
+
+/** Two bodies reach this call and the walk locates both — it prints their file
+ * and line — and then follows neither. That is defensible; saying "we have no
+ * body for it" in the same sentence as their positions is not, and neither is a
+ * fix line offering to inline a callee the tool has just pointed at. pixi's
+ * `arrayUploadFunction` is the case in the field (BUGS TC-109). */
+/** @jitmax */
+export function syncUniforms(kind: string, v: number[], o: number[]): void {
+  const upload = pickUpload(kind);
+  upload(v, o);
+}
+
 /** A constructor is a body like any other, and allocation is what constructors
  * do. `new` is a NewExpression, not a CallExpression, so the walk used to step
  * over it: the chain below was never checked and the closed-world report said

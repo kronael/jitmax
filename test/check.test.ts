@@ -175,6 +175,7 @@ test('a function is checked only where it is annotated', () => {
       'sortedStages',
       'splitJoin',
       'storeByDestructuring',
+      'syncUniforms',
       'taggedShapes',
       'topTen',
       'total',
@@ -754,6 +755,19 @@ test('closed-world fires on the smallest callee it cannot read', () => {
 // stub is what let the dataflow walk find `OneSlot.size()` and follow it.
 test('a method whose whole body throws is a declaration, not an implementation', () => {
   assert.deepStrictEqual(rules('slotSize'), []);
+});
+
+// The walk located both bodies — it prints their positions — and followed
+// neither. Stopping is defensible; "which we have no body for" in the same
+// sentence as the file and line of two bodies is not, and neither is a fix line
+// offering to inline a callee the tool has just pointed at (BUGS TC-109).
+test('a call the walk located two bodies for is not reported as bodiless', () => {
+  assert.deepStrictEqual(rules('syncUniforms'), ['closed-world']);
+  const f = rawFindings('syncUniforms').find((x) => x.rule === 'closed-world');
+  assert.doesNotMatch(f?.message ?? '', /we have no body for/);
+  assert.match(f?.message ?? '', /uploadFloat\(\), uploadInt\(\)/);
+  assert.doesNotMatch(f?.fix ?? '', /^inline what you need/);
+  assert.match(f?.fix ?? '', /located, not missing/);
 });
 
 test('the object form of the accumulator fires', () => {
@@ -1843,9 +1857,12 @@ test('an unreadable callee still counts what reaches its receiver', () => {
     [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'escape')],
     { cwd: root, encoding: 'utf8' }
   );
+  // The sentence carrying that count is no longer "which we have no body for":
+  // the walk located both bodies and printed their names in the same breath, so
+  // it says that it did not pick between them (BUGS TC-109).
   assert.match(
     run.stdout,
-    /calls pickOne, which we have no body for; 2 implementations reach this receiver \(left\(\), right\(\)\)/
+    /calls pickOne, and the walk does not pick between the bodies that reach it; 2 implementations reach this receiver \(left\(\), right\(\)\)/
   );
   // Not megamorphic-dispatch's own body detector: P1 through P5 carry ONE
   // property set between them, so `objectShapes` counts 1 and that detector is
