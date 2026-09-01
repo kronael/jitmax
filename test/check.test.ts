@@ -21,7 +21,7 @@ import {
 } from '../lib/derive.ts';
 // Rule 6's REJ predicate lives with the protocol it belongs to, and both
 // bench/run.ts and this file read it from there.
-import { spans1 } from '../bench/driver.ts';
+import { replicate, spans1 } from '../bench/driver.ts';
 // Rule 9's per-row half: what a row records about the machine, and the refusal
 // that keeps a sweep-wide reading off a row (TC-24, TC-47).
 import { environment, reading } from '../bench/env.ts';
@@ -2663,6 +2663,48 @@ test('a file with no judgeable row is on record as unjudgeable, not as clean', (
     ['arrays.jl'],
     'a sweep gained or lost the ability to answer its own load gate'
   );
+});
+
+// Rule 9's gate, at the three places it is checked: before the sweep, before
+// every cell, and between the whole sweeps of a replicated cell. The third one
+// is bench/driver.ts's `between` hook, injected by the runner because the
+// driver measures and the runner gates — covering all three sweeps of a cell
+// with the check before the cell is what let 601 rows past (TC-46).
+//
+// What this also pins is the boundary: `between` is called ONCE per sweep, so
+// nothing reads the machine during one. A cell is forty processes and minutes,
+// and nine rows of bench/sparse.jl record a machine that was at 0 or 1 runnable
+// when their cell started and at 2 to 12 when the row was written (TC-74). The
+// runner writes those rows, prints OVER GATE, and the register above names
+// them; making the runner ACT on a reading taken during a sweep is a change to
+// what `void` means and is not shipped here.
+//
+// The workload exits with no output, so every sweep voids on its first
+// calibration probe: this measures nothing and spawns three processes that
+// print nothing.
+test('the gate runs between a cell\'s sweeps, and a busy machine stops the cell', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jitmax-gate-'));
+  const script = path.join(dir, 'silent.js');
+  fs.writeFileSync(script, 'process.exit(0);\n');
+  const opts = { script, baseline: 'a', variant: 'b', n: 1, mode: 'excl' };
+
+  const checked: number[] = [];
+  const runs = replicate(opts, () => {}, 3, undefined, (i) => checked.push(i));
+  assert.deepStrictEqual(checked, [2, 3], 'the gate is not checked between every pair of sweeps');
+  assert.strictEqual(runs.length, 3);
+  assert.ok(runs.every((r) => r.void), 'the silent workload was read as a measurement');
+
+  // A refusal stops the cell where it stands, and every sweep that finished has
+  // already been handed to `onRun` and written — a sweep lost to a gate refusal
+  // would be a measurement thrown away for being correct.
+  const written: number[] = [];
+  assert.throws(
+    () => replicate(opts, (r) => written.push(r.replicate), 3, undefined, (i) => {
+      if (i === 3) throw new Error('load gate: 6 runnable outside the harness > 1');
+    }),
+    /load gate/
+  );
+  assert.deepStrictEqual(written, [1, 2]);
 });
 
 // Resume, which is the other half of rule 9's gate: the gate refuses to START a
