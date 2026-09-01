@@ -917,7 +917,7 @@ make numbers # re-derive every published number from the .jl sweeps
 make check   # run the checker against demo/
 make example # the checker against examples/, then the end-to-end sweep
 make demo    # re-record demo/demo.gif — a real asciinema run, not a mock-up
-make card    # cut the social card from a frame of the recording
+make meme    # re-render the launch loop from demo/meme/
 ```
 
 `CLAUDE.md` holds the layout, the rules of this repo, and how to verify both
