@@ -456,6 +456,19 @@ export function clearToken(): void {
   delete process.env.JITMAX_TOKEN;
 }
 
+/** The same platform method reached through a computed key. `buf[name](i)`
+ * resolves to the declaration in `@types/node` that `buf.readUInt8(i)` resolves
+ * to — one property, one .d.ts, one native body — but the walk asked
+ * `getSymbolAtLocation` for it, which answers nothing on an element access, so
+ * the callee had no declaration and the platform test had nothing to look at.
+ * pixi calls WebGL this way ten times and got ten warnings telling it to inline
+ * a native method, on the lines between calls counted as the platform (BUGS
+ * TC-108). Silent. */
+/** @jitmax */
+export function byteAt(buf: Buffer, name: 'readUInt8', i: number): number {
+  return buf[name](i);
+}
+
 // mathjs `src/utils/lruQueue.js` builds both its maps this way and deletes from
 // them on three lines, which were three of the ten errors it reported.
 const slots: Record<string, number> = Object.create(null);

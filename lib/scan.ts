@@ -386,6 +386,32 @@ export function targetsOf(
   const sym = symbolOf(ts, checker, callee);
   const decls: TS.Node[] = [...(sym?.getDeclarations() ?? [])];
 
+  // `o[k]()` where k's type is a literal IS `o.k()` — the same property, the
+  // same declaration, in the same file. `getSymbolAtLocation` answers nothing
+  // for an element access, so the callee resolved to no declaration at all and
+  // every test downstream had none to look at: `gl[name]()` on a
+  // `WebGL2RenderingContext` was reported as somebody's code the reader should
+  // inline, one line under a `gl.texParameteri()` counted as the platform. Ten
+  // of those in pixi, and none of them a call the tool can do anything about
+  // (BUGS TC-108).
+  //
+  // Only where the ordinary resolution found nothing, and only for a key whose
+  // type is a literal: `o[k]` with `k: string` names no one property, and
+  // guessing at one would be a claim the checker did not make.
+  if (decls.length === 0 && ts.isElementAccessExpression(callee)) {
+    const recv = checker.getTypeAtLocation(unwrap(ts, callee.expression));
+    const key = checker.getTypeAtLocation(callee.argumentExpression);
+    for (const k of key.isUnion() ? key.types : [key]) {
+      const name = k.isStringLiteral()
+        ? k.value
+        : k.isNumberLiteral()
+        ? String(k.value)
+        : undefined;
+      if (name === undefined) continue;
+      decls.push(...(checker.getPropertyOfType(recv, name)?.getDeclarations() ?? []));
+    }
+  }
+
   // `const f = () => …` and `const g = f` both resolve to a VariableDeclaration,
   // not to the function the annotation sits on. Follow the initializer, or the
   // call is reported as leaving the annotated world when it never left.

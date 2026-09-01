@@ -134,6 +134,7 @@ test('a function is checked only where it is annotated', () => {
       'appendOnce',
       'areaOfFive',
       'areaOfFour',
+      'byteAt',
       'cheapest',
       'clearToken',
       'collect',
@@ -439,6 +440,15 @@ test('the same copy inside a forEach callback fires', () => {
 // ordinary object with a real map.
 test('delete on a host object stays silent: there is no map to demote', () => {
   assert.deepStrictEqual(rules('clearToken'), []);
+});
+
+// The same platform, one keystroke away. `o[k]()` where k's type is a literal
+// is `o.k()` — the same property, the same declaration, the same .d.ts — but
+// `getSymbolAtLocation` answers nothing on an element access, so the callee
+// resolved to no declaration and the platform test had none to read. pixi got
+// ten warnings telling it to inline a native WebGL method (BUGS TC-108).
+test('a platform call through a computed key is the platform', () => {
+  assert.deepStrictEqual(rules('byteAt'), []);
 });
 
 test('delete on an array element stays silent: a different mechanism', () => {
