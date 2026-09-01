@@ -30,7 +30,7 @@ import { done, key } from '../bench/resume.ts';
 // The sweep table and the two lists that partition it. bench/run.ts is a
 // script and runs a sweep on import; these live in sweeps.ts so they can be
 // read without measuring anything (BUGS TC-99).
-import { ALL as ALL_SWEEPS, BENCHMARKS, NOT_ALL } from '../bench/sweeps.ts';
+import { ALL as ALL_SWEEPS, BENCHMARKS, NOT_ALL, plan } from '../bench/sweeps.ts';
 import { deriveBuiltins, loweredCases } from '../lib/derive-builtins.ts';
 import { BUILTINS } from '../lib/builtins.ts';
 import { N } from '../lib/numbers.ts';
@@ -2050,6 +2050,76 @@ test('every declared sweep is either run by --all or excluded with a reason', ()
     'a sweep in the table and in neither list is one --all would skip without a word'
   );
   assert.strictEqual(new Set(ALL_SWEEPS).size, ALL_SWEEPS.length, 'a sweep is listed twice');
+});
+
+// "Never dispatch on a variant string inside a timed loop. Resolve the kernel
+// to a function once, before timing." The rule is in CLAUDE.md because a
+// `switch` in a timed region produced a wrong result here, and six workloads
+// were converted to a BUILD table of one function per variant. Three were not,
+// and nothing said so for two weeks (BUGS TC-22): `select.ts` compares inside
+// `scanHeap`, `scanNumber` and `minOf` — which `scanLocal` calls 32 times per
+// repetition — and `spread.ts` and `spread-object.ts` compare inside `build()`.
+//
+// A reference to `variant` inside ANY function of a workload is what this
+// reads, which is broader than "inside the timed region" and is the half a
+// parser can be sure of: the module-scope references are the resolution the
+// rule asks for, and every function in these files is called from a timed
+// region. The scripts come from the sweep table, so a new workload is read
+// without being added anywhere.
+//
+// The three are NOT fixed here. Converting them changes the code the published
+// cells of select.jl, spread.jl and spread-object.jl were measured against, and
+// a file that no longer is what was measured is worse than the untaken branch
+// in it — those are 66 rows and three rules' evidence. The register is what
+// keeps the three visible and a fourth impossible; closing it is a
+// re-measurement, and the owner's call.
+const DISPATCHES_INSIDE: Record<string, number> = {
+  'select.ts': 3,
+  'spread-object.ts': 2,
+  'spread.ts': 2,
+};
+
+test('no workload reads the variant string inside a function except the three on record', () => {
+  const scripts = new Set<string>();
+  for (const name of Object.keys(BENCHMARKS)) {
+    for (const c of plan(BENCHMARKS[name]!)) scripts.add(c.script);
+  }
+  assert.ok(scripts.size > 10, 'the sweep table no longer names its workloads');
+
+  const isFunction = (n: TS.Node): boolean =>
+    ts.isFunctionDeclaration(n) || ts.isFunctionExpression(n) || ts.isArrowFunction(n) ||
+    ts.isMethodDeclaration(n) || ts.isConstructorDeclaration(n) ||
+    ts.isGetAccessorDeclaration(n) || ts.isSetAccessorDeclaration(n);
+  // A declaration of the name, and a property key that merely spells it, are
+  // not reads of the module's `variant`. The shorthand `{ variant }` is.
+  const declares = (n: TS.Node): boolean => {
+    const p = n.parent as TS.NamedDeclaration | undefined;
+    if (!p) return false;
+    if (ts.isPropertyAssignment(p) && p.name === n) return true;
+    return (ts.isParameter(p) || ts.isVariableDeclaration(p) || ts.isBindingElement(p)) && p.name === n;
+  };
+
+  const found: Record<string, number> = {};
+  for (const script of [...scripts].sort()) {
+    const src = ts.createSourceFile(
+      script, fs.readFileSync(script, 'utf8'), ts.ScriptTarget.ESNext, true
+    );
+    let inside = 0;
+    const walk = (n: TS.Node, inFn: boolean): void => {
+      if (inFn && ts.isIdentifier(n) && n.text === 'variant' && !declares(n)) inside++;
+      n.forEachChild((c) => { walk(c, inFn || isFunction(n)); });
+    };
+    walk(src, false);
+    if (inside > 0) found[path.basename(script)] = inside;
+  }
+
+  assert.deepStrictEqual(
+    found,
+    DISPATCHES_INSIDE,
+    'a workload reads `variant` inside a function that a timed region calls. Resolve it to a ' +
+      'function once, before timing — or, if the three on record were converted, the cells they ' +
+      'were measured against have moved and the register goes with them'
+  );
 });
 
 // The end-to-end examples. Each `.before.ts` is a function a library ships and
