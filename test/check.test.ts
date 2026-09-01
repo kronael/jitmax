@@ -1628,6 +1628,31 @@ test('a path argument compiles the project the same way a bare run does', () => 
   }
 });
 
+// The other half of that agreement, and the half the fixture above cannot see
+// because it holds no JavaScript. `program()` gave the bare run `parsed.options`
+// alone and the path run `{ ...parsed.options, allowJs: true, noEmit: true }`,
+// so a project whose tsconfig leaves `allowJs` unset had its `.js` helpers read
+// on `jitmax .` and reported unresolved on `jitmax` — "check the path", about a
+// file that is on disk — and the loop inside the helper was a finding from one
+// invocation and invisible from the other. allowJs and noEmit are the tool's,
+// on both invocations, or a path argument chooses more than the file list.
+test('a bare run reads a .js callee the way a path run does', () => {
+  const dir = path.join(root, 'test', 'fixtures', 'allowjs');
+  const runs = [[], ['.']].map((args) =>
+    spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), ...args], {
+      cwd: dir,
+      encoding: 'utf8',
+    })
+  );
+  for (const [i, run] of runs.entries()) {
+    const how = i === 0 ? 'a bare run' : 'a run given a path';
+    assert.ok(!run.stdout.includes('could not be resolved'), `${how}:\n${run.stdout}`);
+    assert.match(run.stdout, /accumulating-spread/, `${how}:\n${run.stdout}`);
+    assert.match(run.stdout, /helper\.js:3/, `${how}:\n${run.stdout}`);
+    assert.strictEqual(run.status, 1, `${how}:\n${run.stdout}`);
+  }
+});
+
 // TC-76. A tsconfig is found from the WORKING DIRECTORY, never from the path
 // argument, so a run launched somewhere else reads a config that governs none
 // of the files it was pointed at — and every alias in them goes unresolved.

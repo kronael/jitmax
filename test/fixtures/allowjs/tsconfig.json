@@ -1,0 +1,4 @@
+{
+  "compilerOptions": { "strict": true },
+  "//": "No `allowJs`. The tool reads .js as readily as .ts and says so in lib/ts.ts, but the bare run took this file's options alone and never added it, so `./helper.js` resolved on `jitmax .` and was reported unresolved on `jitmax`."
+}

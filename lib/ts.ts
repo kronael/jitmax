@@ -77,7 +77,13 @@ export function program(ts: Ts, cwd: string, inputs: string[]): TS.Program {
     }
     parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(configPath));
   }
-  if (parsed && inputs.length === 0) return ts.createProgram(parsed.fileNames, parsed.options);
+  // The same two options the path run adds below, or the two invocations do
+  // not agree: this line passed `parsed.options` alone, so a tsconfig that left
+  // `allowJs` unset had its `.js` helpers read on `jitmax .` and reported
+  // unresolved on `jitmax` — "check the path", about a file that is on disk.
+  if (parsed && inputs.length === 0) {
+    return ts.createProgram(parsed.fileNames, { ...parsed.options, allowJs: true, noEmit: true });
+  }
 
   // Every extension the tool reads. `.cjs` and `.jsx` were missing, so those
   // files were skipped without a word and a directory of them reported `every
