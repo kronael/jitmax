@@ -43,6 +43,9 @@ import type { CellResult, Replicated } from './driver.ts';
 // `ALL` — the sweeps `--all` runs — is declared in sweeps.ts beside the table
 // it selects from, so a test can hold the two to each other. See the note there.
 import { ALL, BENCHMARKS, plan, label } from './sweeps.ts';
+// Resume: which cells this protocol has already measured, in a module of its
+// own so a test can ask without starting a sweep.
+import { done, key } from './resume.ts';
 import type { Bench } from './sweeps.ts';
 import { environment, gate, reading, MAX_RUNNABLE, CORES } from './env.ts';
 import type { Environment } from './env.ts';
@@ -50,10 +53,6 @@ import type { Environment } from './env.ts';
 // The environment as the runner stamps it into rows: bench/env.ts's record
 // plus what the gate let this sweep begin at.
 type RunEnv = Environment & { runnableStart: number };
-
-// A row as `key` and `done` see it: parsed back off a .jl line, every field
-// the runner may have written, nothing guaranteed.
-type JlRow = Record<string, unknown>;
 
 const MANIFEST = path.join(import.meta.dirname, 'manifest.jsonl');
 const SCRATCH = path.join(import.meta.dirname, 'scratch.jl');
@@ -120,39 +119,6 @@ const line = (r: CellResult | Replicated) =>
     : `${r.ratio.toFixed(2)}x  CI ${r.lo.toFixed(2)}-${r.hi.toFixed(2)}` +
       `${spans1(r) ? ' REJ' : ''}  ` +
       `reps ${r.repsBase}/${r.repsTest}  region ${r.msBase}/${r.msTest} ms`;
-
-// The identity of a cell inside its `.jl`. Resume compares this, so it has to
-// name every field two different cells of the same sweep can differ by.
-const key = (r: JlRow) =>
-  JSON.stringify([r.variant, r.baseline ?? null, r.mode, r.n, r.family ?? null, r.k ?? null,
-    r.shapes ?? null, r.example ?? null]);
-
-// What this protocol has already written into a file, so a sweep that died at
-// cell 60 of 80 does not start again at 1. Rows from earlier protocols are not
-// counted: they are the record of what was published and re-measuring them is
-// the point of the exercise.
-function done(file: string): Map<string, number> {
-  const counts = new Map<string, number>();
-  if (!fs.existsSync(file)) return counts;
-  for (const l of fs.readFileSync(file, 'utf8').split('\n')) {
-    if (!l) continue;
-    const r: JlRow = JSON.parse(l);
-    if (r.runner !== RUNNER) continue;
-    // Rows within their own gate only. Counting every row made a cell that
-    // recorded three runs, two of them over the gate, finished as far as resume
-    // is concerned — so it could never re-measure itself, and the only way to
-    // fix one bad cell was to set the whole file aside and sweep every cell
-    // again (BUGS TC-91). The gate is checked before a cell and not during it
-    // (BUGS TC-74), so a row CAN be written over it; this is what makes that
-    // damage self-healing instead of permanent.
-    const limit = r.env as { maxRunnable?: number } | undefined;
-    const seen = r.runnable as number | undefined;
-    if (limit?.maxRunnable !== undefined && seen !== undefined && seen > limit.maxRunnable) continue;
-    const k = key(r);
-    counts.set(k, (counts.get(k) ?? 0) + 1);
-  }
-  return counts;
-}
 
 // Where a cell's rows go. One function, because `--plan` printing one
 // destination while the run writes to another is how a row measured to test an

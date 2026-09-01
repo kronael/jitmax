@@ -25,6 +25,8 @@ import { spans1 } from '../bench/driver.ts';
 // Rule 9's per-row half: what a row records about the machine, and the refusal
 // that keeps a sweep-wide reading off a row (TC-24, TC-47).
 import { environment, reading } from '../bench/env.ts';
+// Resume's rule, in a module of its own so a test can ask it (BUGS TC-91).
+import { done, key } from '../bench/resume.ts';
 // The sweep table and the two lists that partition it. bench/run.ts is a
 // script and runs a sweep on import; these live in sweeps.ts so they can be
 // read without measuring anything (BUGS TC-99).
@@ -2661,6 +2663,38 @@ test('a file with no judgeable row is on record as unjudgeable, not as clean', (
     ['arrays.jl'],
     'a sweep gained or lost the ability to answer its own load gate'
   );
+});
+
+// Resume, which is the other half of rule 9's gate: the gate refuses to START a
+// cell on a busy machine, and `runnable` is read again as each row is written,
+// so a row over the gate is a row that says so. What resume does with it is
+// what decides whether the contamination is repairable — counting it as a run
+// made `sparse`'s dict/excl/16384 cell finished at three rows of which two were
+// measured at runnable 4, and the only way to re-measure that one cell was to
+// set the whole file aside and sweep all twelve again (BUGS TC-91).
+//
+// Rows, not the sweep: bench/resume.ts is a module because bench/run.ts starts
+// a sweep on import, and this asks the real function about a real file.
+test('resume counts a cell\'s runs within its gate, not its rows', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jitmax-resume-'));
+  const file = path.join(dir, 'sparse.jl');
+  const row = (over: boolean, rest: object = {}) => ({
+    runner: 'r2', variant: 'dict', baseline: 'packed', mode: 'excl', n: 16384,
+    replicate: 1, protocol: 'replicated', ratio: 1.5, lo: 1.4, hi: 1.6,
+    runnable: over ? 4 : 0, env: { maxRunnable: 1, cores: 2 }, ...rest,
+  });
+  const cell = key(row(false));
+
+  fs.writeFileSync(file, [row(false), row(true), row(true)].map((r) => `${JSON.stringify(r)}\n`).join(''));
+  assert.strictEqual(done(file).get(cell), 1, 'two over-gate rows counted as measured runs');
+
+  // A row this protocol did not write is not a run of anything, and a row
+  // carrying only the OLD pair — a one-minute average dominated by the sweep's
+  // own children, which cannot see a tenant behind the harness (TC-25, TC-46) —
+  // is not evidence of contamination and is deliberately still counted.
+  fs.appendFileSync(file, `${JSON.stringify(row(false, { runner: 'r1' }))}\n`);
+  fs.appendFileSync(file, `${JSON.stringify(row(false, { runnable: undefined, load1: 9, env: { maxLoad: 1, cores: 2 } }))}\n`);
+  assert.strictEqual(done(file).get(cell), 2);
 });
 
 // Rule 9 says the reading travels IN the row because a sweep runs for hours
