@@ -470,6 +470,39 @@ export function evictSlot(k: string): void {
   delete slots[k];
 }
 
+// yjs's `AbstractContent` is nine methods shaped exactly like `size()` below,
+// and nothing in that program extends it — the nine content classes conform
+// structurally. So the walk resolved every call on it to the stub, stepped into
+// the error path, and reported the throw's own callee as an unchecked hot call:
+// nine warnings on code that runs only if the program is broken (BUGS TC-106).
+declare function slotUnimplemented(): Error;
+
+class AbstractSlot {
+  size(): number {
+    throw slotUnimplemented();
+  }
+}
+
+class OneSlot extends AbstractSlot {
+  size(): number {
+    return 1;
+  }
+}
+
+class SlotHolder {
+  slot: AbstractSlot = new OneSlot();
+}
+
+/** A method whose whole body is one `throw` is `abstract size(): number;`
+ * written in a language with no `abstract`. It declares a contract and
+ * implements nothing, so the walk does not step into it and follows the one
+ * implementation this program builds instead. Silent: `OneSlot.size()` is
+ * clean, and the stub's callee is never priced (BUGS TC-106). */
+/** @jitmax */
+export function slotSize(h: SlotHolder): number {
+  return h.slot.size();
+}
+
 /** A constructor is a body like any other, and allocation is what constructors
  * do. `new` is a NewExpression, not a CallExpression, so the walk used to step
  * over it: the chain below was never checked and the closed-world report said

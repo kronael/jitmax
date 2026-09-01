@@ -399,8 +399,32 @@ export function targetsOf(
 function followable(ts: Ts, d: TS.Node): d is TS.SignatureDeclaration {
   if (!isFunctionLike(ts, d)) return false;
   if (!(d as TS.FunctionLikeDeclaration).body) return false;
+  if (isAbstractStub(ts, d)) return false;
   const sf = d.getSourceFile();
   return Boolean(sf) && !sf.isDeclarationFile;
+}
+
+// `abstract m(): number;` written in a language that has no `abstract`. A class
+// method whose whole body is one `throw` declares a contract and implements
+// nothing: it runs only if the program is broken, so following it walks the
+// error path and prices whatever the throw calls as if it were hot. yjs's
+// `AbstractContent` is nine of those, and the walk resolved
+// `this.content.getLength()` to the stub and reported the
+// `throw error.methodUnimplemented()` inside it as an unchecked hot callee —
+// nine warnings on unreachable code, while the one nine-implementation
+// hierarchy in the corpus produced no dispatch finding at all (BUGS TC-106).
+//
+// A METHOD, not any function. `function fail(msg): never { throw new Error(msg) }`
+// is an implementation — it is what the caller wanted to happen — and stays
+// followed. The stub is the shape `isDispatchDecl` already recognises when
+// TypeScript spells it `abstract`, so it is classified there too and the site
+// reads as dispatch rather than as a body nobody can find.
+function isAbstractStub(ts: Ts, d: TS.Node): boolean {
+  if (!ts.isMethodDeclaration(d)) return false;
+  const body = d.body;
+  return (
+    body !== undefined && body.statements.length === 1 && ts.isThrowStatement(body.statements[0]!)
+  );
 }
 
 // The annotated region is the whole call tree, not one function: a helper
@@ -503,7 +527,12 @@ function reach(
     (ts.isMethodSignature(d) ||
       ts.isPropertySignature(d) ||
       ((ts.isMethodDeclaration(d) || ts.isPropertyDeclaration(d)) &&
-        !(d as TS.FunctionLikeDeclaration).body)) &&
+        !(d as TS.FunctionLikeDeclaration).body) ||
+      // The same declaration spelled in JavaScript: a method whose whole body
+      // throws. `followable` refuses it above, and without this arm the site
+      // fell to `closed-world` and said "we have no body for" about a body it
+      // had just read (BUGS TC-106).
+      isAbstractStub(ts, d)) &&
     d.getSourceFile()?.isDeclarationFile === false;
 
   const reached: Body[] = [{ node: root.node, sf: root.sf, name: root.name }];

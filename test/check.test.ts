@@ -171,6 +171,7 @@ test('a function is checked only where it is annotated', () => {
       'runTrio',
       'scrub',
       'sliceUnknown',
+      'slotSize',
       'sortedStages',
       'splitJoin',
       'storeByDestructuring',
@@ -330,9 +331,12 @@ test('a followed interface call is counted, with the closed-program assumption s
     [path.join(root, 'bin', 'jitmax.ts'), 'demo'],
     { cwd: root, encoding: 'utf8' }
   );
+  // The COUNT is whatever demo/ holds — a fixture added for another rule can
+  // add a followed call, and pinning the integer here made this test a second
+  // register of demo/lib.ts's contents rather than a test of the sentence.
   assert.match(
     run.stdout,
-    /1 interface call resolved to the one implementation this program builds/
+    /[1-9]\d* interface calls? resolved to the one implementation this program builds/
   );
   assert.match(run.stdout, /sound only for a closed program/);
 });
@@ -737,6 +741,19 @@ test('closed-world fires on the smallest callee it cannot read', () => {
       'inline. The rule cannot see the size of a body it cannot read, and the fixture ' +
       'above is the counter-example'
   );
+});
+
+// A method whose whole body is one `throw` is `abstract m(): T;` written in a
+// language with no `abstract`: it declares a contract and implements nothing.
+// The walk followed it as an implementation, which put it on the error path and
+// priced the throw's own callee as a hot unchecked call — nine such warnings in
+// yjs, on code that runs only if the program is broken, while the one
+// nine-implementation hierarchy in that corpus produced no dispatch finding at
+// all (BUGS TC-106). The empty list here is both halves: no closed-world on
+// `slotUnimplemented`, and no interface-dispatch either, because refusing the
+// stub is what let the dataflow walk find `OneSlot.size()` and follow it.
+test('a method whose whole body throws is a declaration, not an implementation', () => {
+  assert.deepStrictEqual(rules('slotSize'), []);
 });
 
 test('the object form of the accumulator fires', () => {
