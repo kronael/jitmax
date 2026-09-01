@@ -1500,6 +1500,29 @@ test('a bare specifier that matches a `paths` entry is reported as an alias', ()
   assert.strictEqual(run.status, 1);
 });
 
+// TC-32, and TC-76 from the other end: the two invocations have to compile the
+// same project the same way. `program()` merged the project's options over
+// built-in ES2022/NodeNext defaults, so every option the project did NOT set
+// kept the tool's — and a tsconfig that leaves `moduleResolution` alone, which
+// is most of them, got NodeNext for a path run and its own default for a bare
+// one. Same files, same config, one exit 0 and one exit 1 over an alias that
+// resolves under the project's own build.
+test('a path argument compiles the project the same way a bare run does', () => {
+  const dir = path.join(root, 'test', 'fixtures', 'aliasok');
+  const runs = [[], ['.']].map((args) =>
+    spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), ...args], {
+      cwd: dir,
+      encoding: 'utf8',
+    })
+  );
+  for (const [i, run] of runs.entries()) {
+    const how = i === 0 ? 'a bare run' : 'a run given a path';
+    assert.ok(!run.stdout.includes('could not be resolved'), `${how}:\n${run.stdout}`);
+    assert.match(run.stdout, /every annotated function is clean/);
+    assert.strictEqual(run.status, 0, `${how}:\n${run.stdout}`);
+  }
+});
+
 // TC-76. A tsconfig is found from the WORKING DIRECTORY, never from the path
 // argument, so a run launched somewhere else reads a config that governs none
 // of the files it was pointed at — and every alias in them goes unresolved.

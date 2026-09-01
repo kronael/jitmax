@@ -1,0 +1,4 @@
+{
+  "compilerOptions": { "baseUrl": ".", "paths": { "@app/*": ["./*"] } },
+  "//": "The alias resolves ONLY if the run takes its options from here. A path argument used to skip this file and compile under built-in NodeNext, which knows nothing of `paths` (BUGS TC-32)."
+}

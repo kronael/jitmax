@@ -43,7 +43,9 @@ From a checkout, `npm install` once, then run it from your repository root:
 node /path/to/jitmax/bin/jitmax.ts
 ```
 
-Pass paths only when the repository has no usable `tsconfig.json`.
+Pass paths to narrow what is scanned. They choose the file list and nothing
+else: the compiler options still come from the `tsconfig.json` found from the
+directory you run in, so run from the root of the repository you are naming.
 
 **Turn a rule off** in a TOML file, given as the first positional argument and
 recognised by its `.toml` suffix. Neither layer is required — with no config
@@ -195,9 +197,11 @@ you where your code blocks it.
   anything reads the object afterwards, and its cost is per read. That is
   `BUGS.md` TC-9, and it is printed under every finding of the rules that
   carry it.
-- **You pass paths and expect your `tsconfig.json` to be read.** It is loaded
-  only for a bare `jitmax` with no arguments. Path aliases, JSX mode and
-  ambient types can resolve differently from your build (`BUGS.md` TC-32).
+- **You run from outside the repository whose paths you name.** The
+  `tsconfig.json` is found from the working directory and never from the path
+  argument, so `jitmax ../other/src` compiles `../other` under this directory's
+  options and its path aliases go unresolved. The run says so, and names the
+  config it should have read (`BUGS.md` TC-76).
 - **You want the two escape rules quiet by default.** `closed-world` and
   `interface-dispatch` were 96% of every finding across twelve libraries, and
   they are errors. Switch them off in `[rules]` if you disagree.

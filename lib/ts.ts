@@ -111,12 +111,21 @@ export function program(ts: Ts, cwd: string, inputs: string[]): TS.Program {
   // readily as .ts and never writes. Everything else — `paths`, the resolution
   // mode, the lib set — comes from the project so the walk resolves what the
   // project's own build resolves.
-  return ts.createProgram(files, {
-    target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.NodeNext,
-    moduleResolution: ts.ModuleResolutionKind.NodeNext,
-    ...parsed?.options,
-    allowJs: true,
-    noEmit: true,
-  });
+  //
+  // These three apply ONLY when no tsconfig was found, and they used to sit
+  // under the spread unconditionally, which reads as a default and is not one:
+  // every option the project left UNSET kept the tool's. A tsconfig that does
+  // not name `moduleResolution` — the common case, and the one TypeScript has
+  // its own default for — got NodeNext for a run given a path and its own
+  // default for a bare run, so the two invocations resolved the same project
+  // differently and one of them reported an alias unresolved. A path argument
+  // chooses the file LIST, and nothing else (BUGS TC-32, TC-76).
+  const fallback = parsed
+    ? {}
+    : {
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      };
+  return ts.createProgram(files, { ...fallback, ...parsed?.options, allowJs: true, noEmit: true });
 }

@@ -87,11 +87,11 @@ statement about the tool as it ships today.
   reported `optimized=true` throughout a 5x megamorphic slowdown. An earlier
   version used exactly that signal as a CI gate, an automated check that could
   block a change. That was wrong, so the gate was deleted.
-- It does **not** yet read your `tsconfig.json` when you pass it a path: the
-  config is loaded only for a bare `jitmax` with no arguments, and the
-  documented `jitmax src` form compiles under built-in ES2022/NodeNext options
-  instead. Path aliases, JSX mode and ambient types can therefore resolve
-  differently from your build (`BUGS.md` TC-32).
+- The `tsconfig.json` is found from the WORKING DIRECTORY and never from the
+  path argument. A path chooses the file list and nothing else, so
+  `jitmax ../other/src` compiles `../other` under this directory's options and
+  every path alias in it goes unresolved. The unresolved block says so and
+  names the config that sits over the files instead (`BUGS.md` TC-76).
 - A call through a parameter or an interface method is NOT listed in the
   coverage line: it resolves to a declaration that is neither followable nor a
   declaration file, and falls through both branches (`BUGS.md` TC-31). Read the
