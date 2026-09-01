@@ -180,21 +180,13 @@ demo/demo.mp4: demo/demo.gif
 demo: demo/demo.mp4
 
 # The film: the meme panel, the real terminal recording, and the payoff.
-# Two source images, both somebody else's and NEITHER committed here — the V8
-# mark and the "This Is Fine" panel are fetched into tmp/. See BUGS TC-30.
-tmp/v8-outline.svg:
-	mkdir -p tmp
-	curl -sSfL -o $@ https://v8.dev/_img/v8-outline.svg
-
+# The "This Is Fine" panel is fetched into tmp/ and is not committed.
 tmp/thisisfine.jpg:
 	mkdir -p tmp
 	curl -sSfL -o $@ https://i.imgflip.com/wxica.jpg
 
 demo/meme/fine.png: demo/meme/asset.py tmp/thisisfine.jpg
 	python3 demo/meme/asset.py
-
-demo/meme/rig.html: demo/meme/rig.template.html demo/meme/recolour.py tmp/v8-outline.svg
-	python3 demo/meme/recolour.py
 
 # Depends on demo/demo.mp4: act two IS that recording, so a change to what the
 # checker prints re-cuts the film rather than leaving it quoting an old run.
@@ -209,7 +201,7 @@ meme: demo/meme/jitmax.mp4
 # `tmp/probe.cjs` used to be listed here and no target has ever written it: a
 # hand-run scratch file clean had no business deleting.
 clean:
-	rm -f demo/meme/rig.html demo/meme/fine.png demo/meme/jitmax.mp4 demo/meme/jitmax.gif demo/meme/jitmax-card.png
+	rm -f demo/meme/fine.png demo/meme/jitmax.mp4 demo/meme/jitmax.gif demo/meme/jitmax-card.png
 
 # site/index.html is the page's ONE source. Editing the copy under the webroot
 # instead leaves two versions of the same page and no way to tell which is

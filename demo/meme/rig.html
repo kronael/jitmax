@@ -4,11 +4,7 @@
 <meta charset="utf-8">
 <title>jitmax — loop rig</title>
 <style>
-  /* PH3 palette, copied from /pub/krons/ph3/index.html — plus one deliberate
-     addition: --volt, the charge. PH3 has no colour that means "on", and a
-     piece called jitmax with no charge in it read as a grey smudge. Volt
-     is the mint of --white-p pushed to saturation, so it reads as white-p lit
-     rather than a second brand. */
+  /* PH3 palette plus --volt for the charge. */
   :root {
     --bg:      #0a0a0a;
     --muted:   #888888;
@@ -21,28 +17,18 @@
   html, body { background: var(--bg); }
   #stage {
     position: relative; width: 1200px; height: 630px; overflow: hidden;
-    /* A faint mint-charcoal pool behind the mark, so the card is not a flat
-       void on a dark timeline. It tops out at #131813 — PH3's near-black
-       floor survives it. */
     background:
       radial-gradient(620px 360px at 600px 240px, #131813 0%, rgba(19,24,19,0) 72%),
       var(--bg);
     font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'DejaVu Sans', sans-serif;
   }
-  /* No caption strip under the panel any more, so the plate gets the frame. */
-  /* A WINDOW onto the plate, not the plate. The width is animated: act one
-     opens on panel one alone and widens to reveal panel two, because "THIS IS
-     FINE." is the punchline and a punchline that is on screen from the first
-     frame is not one. The plate and the heat keep a FIXED width so the art
-     does not stretch as the window grows — only more of it becomes visible. */
+  /* The animated window reveals the second panel without stretching the art. */
   #panel {
     position: absolute; left: 50%; top: 86px; width: 940px; height: 457px;
     transform: translateX(-50%); opacity: 0; overflow: hidden;
   }
   #plate { width: 940px; display: block; }
-  /* The heat. The labels are what is burning, so the room gets hotter as they
-     arrive: a red-p wash on screen blend, which lifts the flames and leaves the
-     ink lines alone. */
+  /* Each rule name adds more red light to the room. */
   #heat {
     position: absolute; left: 0; top: 0; width: 940px; height: 457px;
     opacity: 0; pointer-events: none;
@@ -52,9 +38,7 @@
       radial-gradient(520px 320px at 92% 60%, rgba(204,41,54,0.85) 0%, rgba(204,41,54,0) 70%),
       radial-gradient(420px 260px at 52% 30%, rgba(255,107,107,0.55) 0%, rgba(255,107,107,0) 72%);
   }
-  /* The meme-label look: condensed, upper case, white with a hard black rim.
-     Liberation Sans Narrow is the metric twin of Arial Narrow and the nearest
-     thing on this machine to Impact, which is not installed. */
+  /* Liberation Sans Narrow is the closest installed font to Impact. */
   .lbl {
     position: absolute; font-family: 'Liberation Sans Narrow', Impact, sans-serif;
     font-weight: 700; text-transform: uppercase; letter-spacing: 0.005em;
@@ -62,11 +46,7 @@
     -webkit-text-stroke: 4px #0a0a0a; paint-order: stroke fill;
     text-shadow: 0 2px 6px rgba(10,10,10,0.85);
   }
-  /* The dog talks. The plate's own bubble is dark with light lettering —
-     asset.py feeds the ramp INVERTED luminance, so the comic's white bubble
-     lands on near-black — and a white bubble added next to it would read as a
-     sticker rather than as the same drawing. So: near-black fill, white-p
-     outline, the plate's own lettering weight. */
+  /* Match the dark speech bubble that asset.py produces. */
   .bub {
     position: absolute; opacity: 0;
     background: var(--bg); border: 5px solid var(--white-p);
@@ -78,10 +58,7 @@
     display: flex; align-items: center; justify-content: center;
     padding: 6px 16px;
   }
-  /* The tail, drawn as two stacked triangles: the outline, then the fill
-     inset over it, so the bubble's border reads as continuous around the
-     wedge. `--trot` aims it and CSS rotation is clockwise, so a tail leaning
-     RIGHT is a NEGATIVE angle. */
+  /* Two triangles form the speech bubble tail. */
   .bub::after, .bub::before {
     content: ''; position: absolute; width: 0; height: 0;
     transform: rotate(var(--trot)); transform-origin: 50% 0;
@@ -100,13 +77,12 @@
     position: absolute; left: 0; right: 0; top: 58px; height: 330px;
     display: flex; justify-content: center; align-items: center;
   }
-  #mark { width: 330px; height: 330px; display: block; }
-  .v8-body { fill: var(--body); }
-  .v8-chev { fill: var(--chev); }
-  .v8-wing { fill: var(--wing); }
-  /* Centred on the mark and falling off fast, so the corners keep PH3's
-     near-black. A full-frame white wash lifts the whole ground to mid-grey and
-     the piece stops being PH3 for the length of the strike. */
+  #mark {
+    color: var(--white-p);
+    font-family: 'Liberation Sans Narrow', 'DejaVu Sans', sans-serif;
+    font-size: 330px; font-weight: 700; letter-spacing: -0.09em;
+    line-height: 0.82; transform-origin: center;
+  }
   #flash {
     position: absolute; inset: 0; opacity: 0;
     background: radial-gradient(circle at 600px 224px,
@@ -129,11 +105,6 @@
   #caption .volt { color: var(--volt); }
   #caption .name { font-size: 76px; font-weight: 800; letter-spacing: -0.022em; line-height: 1.12; color: var(--white-p); }
   #caption .sub  { font-size: 37px; font-weight: 600; }
-  #caption .hit  { font-size: 54px; font-weight: 800; letter-spacing: -0.02em; }
-  /* Act one sets its own type: the panel owns the top of the frame, so the
-     caption has 170px rather than 210 and cannot use act three's sizes. */
-  /* The provenance line. The claim above it is only as good as its rows, and
-     naming the sweep file on the card is the whole thesis in nine words. */
   #caption .src  {
     display: block; margin-top: 20px;
     font-size: 20px; font-weight: 500; letter-spacing: 0.02em; color: var(--muted);
@@ -147,28 +118,15 @@
 </head>
 <body>
 <div id="stage">
-  <!-- Act one. The real "This Is Fine" panel, duotoned to PH3 by asset.py —
-       fetched, never committed here, and never redrawn. The joke has to be
-       about the SILENCE, because that is what the tool is actually for: the
-       code returns the right answer the whole time it is slow. -->
+  <!-- Act one: the fetched "This Is Fine" panel, duotoned by asset.py. -->
   <div id="panel">
     <img id="plate" src="fine.png" alt="">
     <div id="heat"></div>
-    <!-- The joke is IN the panel. A strip of explanation underneath is not a
-         meme, it is a slide with a picture on it, and it concedes that the
-         image did not land on its own. Labels are how this format has always
-         worked: name what is on fire. What is on fire is the rule list, and
-         capture.js injects the names straight out of lib/rules.ts so the room
-         cannot burn with a rule the tool no longer ships. -->
   </div>
   <div id="markwrap">
-    <!-- The V8 mark, fetched from v8.dev/_img/v8-outline.svg. Only the fill and
-         stroke attributes are rewritten, to carry the PH3 palette; every
-         coordinate is upstream's. See recolour.py. -->
-    <!--V8SVG-->
+    <div id="mark" aria-label="V8">V8</div>
   </div>
-  <!-- The bolt terminates ON the mark. A stroke that crosses the whole frame
-       reads as a scratch on the film and cuts the caption in half. -->
+  <!-- The bolt ends on V8 and does not cross the caption. -->
   <svg id="bolt" viewBox="0 0 1200 630"><path id="boltpath"
     d="M676 -20 L612 96 L668 112 L598 232"/></svg>
   <div id="flash"></div>
@@ -180,8 +138,7 @@
 // A frame is a pure function of t. No Math.random: the jitter is a seeded hash
 // of the frame index, so frame t renders identically on every capture.
 const S = {
-  bg: '#0a0a0a', whiteP: '#f0fff0', redP: '#cc2936', redLit: '#ff6b6b',
-  muted: '#888888', volt: '#52ffb8',
+  whiteP: '#f0fff0', redP: '#cc2936', muted: '#888888', volt: '#52ffb8',
 };
 
 const el = (id) => document.getElementById(id);
@@ -208,11 +165,6 @@ function mix(a, b, x) {
   const c = (u, v) => Math.round(u + (v - u) * clamp(x, 0, 1));
   return `rgb(${c(r1, r2)},${c(g1, g2)},${c(b1, b2)})`;
 }
-// The chevron reads as the mark's shadow side, the wings as its half-light:
-// the same hue as the body, driven toward the ground by different amounts, so
-// the V8 keeps upstream's three-tone layering at every colour.
-const shade = (c, k) => mix(c, S.bg, k);
-
 // The beats. The shortest caption holds 1.5s of an 8s loop. {key} is a lookup
 // into lib/numbers.ts — every published number is derived, never typed, and
 // the capture injects the table via setNumbers before the first frame. An
@@ -223,36 +175,12 @@ const shade = (c, k) => mix(c, S.bg, k);
 // [0, ACT_BREAK) and [ACT_BREAK, 1) and the cast sits between them.
 const ACT_BREAK = 0.42;
 
-// Where each label sits on the plate and when it lands. Coordinates are plate
-// pixels (940x457) and chosen to fall on flame rather than on a dog or a
-// speech bubble. The order is the order they arrive, and the last one lands
-// just before the cut — the room is still filling up when the film moves on.
-// These names are long — "megamorphic-elements" is 240px at this size — so the
-// scatter is laid out on rows that clear each other rather than by eye. Two
-// labels sharing a row overlapped in the first render and neither could be
-// read. Three regions are spoken for and nothing goes under them: the plate's
-// own bubble in panel two's top right corner, and the two the dog says in
-// panel one — the first two labels moved down to clear those.
-// What the dog says, and the only text in this film that is not derived from
-// a measurement — because it is a joke, not a claim. Both lines are in panel
-// ONE: panel two already carries the canonical "THIS IS FINE.", which is the
-// thing that makes the image readable at a glance, and painting over it would
-// throw away the reference the whole panel is quoting.
-//
-// The joke is the one every TypeScript reader already knows and does not say
-// out loud: the types are erased before V8 ever sees them. "Zero-cost
-// abstraction" is literally true of them and that is exactly the problem —
-// zero cost, and zero help. The dog doubles down while the room fills with the
-// rule names, which is the whole product in one panel.
-//
-// `at` is when it pops. The first lands before any flame is named, the second
-// after all four of panel one's, so the reader has read the room before the dog
-// explains that everything is fine — and before the camera pulls back.
+// The two speech bubbles stay in panel one. Panel two keeps its original text.
 const BUBBLES = [
   { at: 0.034, x:  18, y:   8, w: 268, h: 80, size: 30, tx: 176, rot: -14,
-    lines: ["it's strictly typed."] },
+    lines: ['TypeScript checks it.'] },
   { at: 0.172, x: 230, y:  96, w: 216, h: 94, size: 25, tx:  16, rot:  26,
-    lines: ['zero-cost', 'abstraction.'] },
+    lines: ['V8 sees', 'no types.'] },
 ];
 
 function buildBubbles() {
@@ -270,37 +198,19 @@ function buildBubbles() {
 }
 
 const LABELS = [
-  // Panel one, while the window is still closed on it — so these four must fit
-  // inside 465px, not 940 — and inside it AT THE TOP OF THE POP, which grows
-  // each label by 11% of its width on either side. `megamorphic-dispatch` is
-  // 275px at 24px and sets the margin for its row.
+  // These four labels must fit inside the closed 465px window.
   { at: 0.072, x:  34, y: 250, size: 24, rot: -6 },
   { at: 0.112, x: 150, y: 306, size: 24, rot:  4 },
   { at: 0.152, x:  30, y: 360, size: 25, rot:  3 },
   { at: 0.192, x: 210, y: 406, size: 24, rot: -3 },
-  // Panel two, and every one of these lands AFTER the reveal — a label that
-  // arrives while its half of the plate is cropped away arrives to nobody. The
-  // last one is the seventh rule and the film's final name, so it lands 0.046
-  // before the act-one fade rather than 0.001: at 0.394 it was still popping
-  // when the panel started to go, and `deleteproperty` was never once legible.
-  { at: 0.288, x: 500, y: 152, size: 25, rot:  5 },
-  { at: 0.322, x: 712, y: 216, size: 26, rot: -5 },
-  { at: 0.356, x: 556, y: 402, size: 27, rot:  4 },
+  // These four labels land after the second panel is visible.
+  { at: 0.282, x: 500, y: 152, size: 25, rot:  5 },
+  { at: 0.312, x: 712, y: 216, size: 26, rot: -5 },
+  { at: 0.342, x: 556, y: 402, size: 27, rot:  4 },
+  { at: 0.372, x: 650, y: 320, size: 24, rot: -4 },
 ];
 
-// The reveal. Panel one alone is 465 of the plate's 940 rendered pixels, so the
-// window opens there and runs out to the full width once the dog has said both
-// of its lines. Eased, and slow enough to read as a camera pulling back rather
-// than as a wipe.
-//
-// The window WIDENS and the camera PULLS BACK on the same eased t, because a
-// window that grows at a fixed scale is a wipe: panel two slides in and nothing
-// about the shot changed. Panel one is square and the frame is 2:1, so the shot
-// that reads is the one filling the frame's HEIGHT — 1.33x is 606 of 630 rows,
-// which puts a 24px label on screen at 32px. 1.24x is the largest scale at
-// which BOTH panels still fit 1200px wide, so that is where the pull stops. The
-// first cut ran the whole act at 1.045x: a 465px panel adrift in a 1200px frame,
-// with the rule names too small to read on a phone.
+// One eased value widens the window and pulls the camera back.
 const SHUT = 465;
 const OPEN = 940;
 const CLOSE = 1.33;
@@ -325,13 +235,11 @@ window.setRules = function (names) {
 };
 
 const BEATS = [
-  // Act one has no beat at all: the panel says it. See #panel.
-  // Act three: the mark takes the hit and comes back.
-  { at: 0.455, to: 0.590, text: '<span class="num red">{elem.reads} slower.</span><br><span class="sub">on the line you just read.</span>' },
+  { at: 0.455, to: 0.590, text: '<span class="num red">{elem.reads} slower</span><br><span class="sub">for that property read.</span>' },
   { at: 0.690, to: 0.975, lockup: true, text:
       '<span class="name">jitmax</span><br>' +
-      '<span class="sub">finds the line. <span class="volt">Measured: {elem.reads}.</span></span>' +
-      '<span class="src">five property sets, reads only, L1 through RAM &mdash; bench/shape-sets.jl</span>' },
+      '<span class="sub">finds the line. The cost is <span class="volt">{elem.reads}</span>.</span>' +
+      '<span class="src">5 property sets &middot; reads only &middot; L1 to RAM &middot; bench/shape-sets.jl</span>' },
 ];
 
 // The only transform on a number is typographic: the hyphen of a range becomes
@@ -360,7 +268,7 @@ window.renderFrame = function (t) {
   el('panel').style.transform =
     `translateX(-50%) scale(${(CLOSE + (WIDE - CLOSE) * pull).toFixed(4)})`;
   el('panel').style.width = `${(SHUT + (OPEN - SHUT) * pull).toFixed(1)}px`;
-  // The labels arrive one at a time. All seven at once is a diagram; arriving
+  // The labels arrive one at a time. All eight at once is a diagram; arriving
   // is the joke, because the list keeps going after you have stopped expecting
   // it to. Each one lands hot and settles.
   // The bubbles pop rather than fade: a speech bubble that dissolves in reads
@@ -396,26 +304,19 @@ window.renderFrame = function (t) {
   el('markwrap').style.opacity = marked ? '1' : '0';
   el('bolt').style.opacity = marked ? '1' : '0';
 
-  // Act three opens ALREADY broken: the panel and the terminal have both
-  // shown the damage by now, so replaying the healthy state would be the film
-  // telling the viewer something it has twice told them.
+  // Act three opens broken, then the strike restores and charges V8.
   const decay  = 1 - ease(span(t, 0.640, 0.690));
   const strike = ease(span(t, 0.640, 0.678));
   const charge = clamp(span(t, 0.640, 0.730), 0, 1);
 
-  // Colour: healthy white-p -> broken red-p -> charged volt -> exactly the
-  // opening state, because charge has drained to 0 by t=1.
+  // Colour: white-p to red-p to charged volt.
   let body = mix(S.whiteP, S.redP, decay);
   body = mix(body, S.whiteP, strike);
   body = mix(body, S.volt, 0.85 * charge);
 
-  const stage = el('stage');
-  stage.style.setProperty('--body', body);
-  stage.style.setProperty('--chev', shade(body, 0.60));
-  stage.style.setProperty('--wing', shade(body, 0.32));
+  el('mark').style.color = body;
 
-  // A drop-shadow glow rather than an SVG blur: it follows the element's alpha,
-  // so the mark keeps its silhouette instead of smearing. The glow is --volt.
+  // The drop shadow follows the text shape.
   el('mark').style.filter = charge > 0.01
     ? `drop-shadow(0 0 ${(22 * charge).toFixed(1)}px rgba(82,255,184,${(0.55 * charge).toFixed(2)}))`
     : 'none';
@@ -427,7 +328,7 @@ window.renderFrame = function (t) {
   const dx = (hash(f) - 0.5) * 2 * amt;
   const dy = (hash(f + 7919) - 0.5) * 2 * amt;
   const scale = 1 - 0.07 * decay * (1 - strike) + 0.15 * bump(span(t, 0.640, 0.800));
-  el('markwrap').style.transform =
+  el('mark').style.transform =
     `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px) scale(${scale.toFixed(4)})`;
 
   // The strike: two frames of bolt, and a flash that never washes the ground

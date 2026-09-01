@@ -3,29 +3,21 @@
 #
 #   act one   the meme panel — your function looks fine and nothing said otherwise
 #   act two   the REAL terminal recording, unaltered
-#   act three the V8 mark takes the hit and comes back, with the measured number
+#   act three the word V8 takes the hit and returns, with the measured number
 #
-# The middle act is the reason the other two are allowed to make a claim, so it
-# is never a mock-up: demo/demo.mp4 is asciinema driving demo/cast.sh. The two
-# rig acts are captured at different frame densities because act one is text to
-# read and act three is a strike — sampling one t-space uniformly starves the
-# first and pads the second.
-set -euo pipefail
-cd "$(dirname "$0")/../.."
+# Act two is the current demo/demo.mp4 recording. The rig acts use separate
+# frame counts because act one needs reading time and act three needs motion.
+set -Eeuo pipefail
 
 BG=0x0a0a0a          # --bg, the colour the terminal is padded out to
 FPS=24
-A1_FRAMES=204        # 8.5s — seven names arriving one at a time. 180 gave
+A1_FRAMES=204        # 8.5s — eight names arriving one at a time. 180 gave
                      # the last name 0.02s at full opacity before the fade.
 A3_FRAMES=120        # 5.0s — the strike and the lockup
 
 node demo/meme/capture.js "$A1_FRAMES" 0    0.42 meme-a1
 node demo/meme/capture.js "$A3_FRAMES" 0.42 1.0  meme-a3
 
-# One re-encode rather than three files and a concat demuxer: the segments come
-# from different sources (PNG sequences and a gif-derived mp4) and the demuxer
-# needs them already identical in codec, timebase and pixel format.
-#
 # The terminal is PADDED, never scaled. agg rendered it at 1028x548 and every
 # glyph is on a whole pixel; scaling it to the canvas would soften the one part
 # of the film that has to look like a real screen.
@@ -38,7 +30,7 @@ ffmpeg -y -loglevel error \
     [1]pad=1200:630:(ow-iw)/2:(oh-ih)/2:color=$BG,fps=$FPS,format=yuv420p[b]; \
     [2]fps=$FPS,format=yuv420p[c]; \
     [a][b][c]concat=n=3:v=1:a=0[v]" \
-  -map "[v]" -movflags faststart -pix_fmt yuv420p -crf 20 \
+  -map "[v]" -movflags faststart -crf 20 \
   demo/meme/jitmax.mp4
 
 # The gif is only the fallback for a browser that will not autoplay video, so
