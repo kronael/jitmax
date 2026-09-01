@@ -139,8 +139,9 @@ export const reassignedInLoop = (ts: Ts, node: TS.Node, inLoop: boolean): node i
   ts.isBinaryExpression(node) &&
   node.operatorToken.kind === ts.SyntaxKind.EqualsToken;
 
-// DEFAULT_MAX_POLYMORPHIC_MAP_COUNT, the constant README's V8 table cites. Both
-// megamorphic rules fire on the fifth map, from one threshold rather than two.
+// DEFAULT_MAX_POLYMORPHIC_MAP_COUNT, the constant bench/README.md's V8 table
+// cites. Both megamorphic rules fire on the fifth map, from one threshold
+// rather than two.
 export const MAX_CACHED_MAPS = 4;
 
 // What the fifth map costs, in one sentence. Three findings end with it —

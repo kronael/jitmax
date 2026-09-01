@@ -10,7 +10,7 @@
 // charges oxlint and Biome with shipping, and the hand-written `PRIMITIVES`
 // set in scan.ts was this project's own copy of the same mistake (BUGS TC-126).
 //
-// The list is version-specific. It is derived at the pin README.md's ```pin
+// The list is version-specific. It is derived at the pin bench/README.md's ```pin
 // block names — the same pin `bench/v8-check.ts` verifies citations against —
 // and the pin is recorded in the artifact so every claim made from the list
 // can say which V8 it is a fact about. `make test` fails when the committed
@@ -27,21 +27,22 @@ import { execFileSync } from 'node:child_process';
 
 const REDUCER = 'src/compiler/js-call-reducer.cc';
 
-// README's ```pin block, the one source of the pinned revision and version.
+// bench/README.md's ```pin block, the one source of the pinned revision and version.
 // `bench/v8-check.ts` imports this rather than reading the block the same way
 // with its own regex, its own key list and its own message, which is what it
 // did: the block is the source of truth and one reader is what makes that so.
 export function pin(root: string): { revision: string; version: string } {
-  const doc = fs.readFileSync(path.join(root, 'README.md'), 'utf8').split('\n');
+  const doc = fs.readFileSync(path.join(root, 'bench', 'README.md'), 'utf8').split('\n');
   const start = doc.findIndex((l) => l.trim() === '```pin');
-  if (start === -1) throw new Error('README.md has no ```pin block; nothing pins the derivation');
+  if (start === -1)
+    throw new Error('bench/README.md has no ```pin block; nothing pins the derivation');
   const found: Record<string, string> = {};
   for (let i = start + 1; i < doc.length && doc[i]!.trim() !== '```'; i++) {
     const m = /^(\w+)\s*=\s*(\S+)$/.exec(doc[i]!.trim());
     if (m) found[m[1]!] = m[2]!;
   }
   for (const k of ['revision', 'version']) {
-    if (!found[k]) throw new Error(`README.md's pin block has no ${k}`);
+    if (!found[k]) throw new Error(`bench/README.md's pin block has no ${k}`);
   }
   return { revision: found['revision']!, version: found['version']! };
 }
@@ -239,7 +240,7 @@ if (script && process.argv[2] === '--write') {
     for (const n of added) process.stdout.write(`  newly lowered: ${n}\n`);
     process.stdout.write(
       '\nV8 moved. Re-read the new source before re-pinning; the artifact changes only\n' +
-      'with its pin (`make build` after moving the pin in README.md).\n'
+      'with its pin (`make build` after moving the pin in bench/README.md).\n'
     );
     process.exit(1);
   }

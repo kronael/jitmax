@@ -15,12 +15,12 @@ jobs:
           # engines.node is the one statement of the required Node.
           node-version-file: package.json
       - run: npm ci
-      # README's ```pin block is the one source of the pinned revision;
+      # bench/README.md's ```pin block is the one source of the pinned revision;
       # bench/v8-check.ts and lib/derive-builtins.ts read the same block.
       - name: read the V8 pin
         id: pin
         run: |
-          rev=$(sed -n '/^```pin$/,/^```$/p' README.md | sed -n 's/^revision = //p')
+          rev=$(sed -n '/^```pin$/,/^```$/p' bench/README.md | sed -n 's/^revision = //p')
           test -n "$rev"
           echo "revision=$rev" >> "$GITHUB_OUTPUT"
       - name: restore the pinned v8src/
@@ -39,7 +39,7 @@ jobs:
       # Never `make build` first: regenerating here would leave the drift
       # assertions comparing fresh output against fresh output.
       - run: make all
-      # Every V8 citation in README against the pinned checkout.
+      # Every V8 citation in bench/README.md against the pinned checkout.
       - run: make v8-check
       # The tool against a real library. Pinned like v8src/ is: a gate that
       # follows a moving upstream reports that upstream changed, not that this

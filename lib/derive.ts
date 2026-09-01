@@ -6,7 +6,7 @@
 // A number used to be typed out three times — in `EVIDENCE`, in a table, and in
 // README prose — and the three drifted apart twice in one day. Now there is one
 // place a number comes from: the `.jl` file it was measured into. `EVIDENCE`
-// interpolates the generated strings, README quotes them, and `make test` fails
+// interpolates the generated strings, the docs quote them, and `make test` fails
 // when a quoted string is no longer what its rows say.
 //
 // `EVIDENCE.silent` used to be exempt, on the grounds that it is an argument
@@ -94,7 +94,7 @@ interface Citation {
   // Decimal places. The default scales with magnitude; an override is here
   // where the published string does not.
   dp?: number;
-  // Quoted verbatim in README as well as in EVIDENCE.
+  // Quoted verbatim in the published docs as well as in EVIDENCE.
   readme?: boolean;
   // What this citation's cells claim, which is the bar rule 6 holds them to —
   // stated on every citation, never inferred, so a new one cannot skip the
@@ -1259,10 +1259,10 @@ export function generate(root: string): string {
   return `${HEADER}\nexport const N = {\n${lines.join('\n')}\n};\n`;
 }
 
-// README carries the same numbers, so README gets them from here too. The block
-// between these markers is written by `make numbers` and asserted by `make
-// test`; the prose around it quotes the same strings, and the test checks the
-// ones it quotes.
+// bench/README.md carries the same numbers, so it gets them from here too. The
+// block between these markers is written by `make numbers` and asserted by `make
+// test`; the prose around it, and the prose in every other doc file, quotes the
+// same strings, and the test checks the ones it quotes.
 const BEGIN = '<!-- generated: numbers -->';
 const END = '<!-- /generated -->';
 
@@ -1284,18 +1284,18 @@ export function markdown(root: string): string {
   ].join('\n');
 }
 
-// README's prose with the generated block cut out of it. The prose quotes some
+// A doc file with the generated block cut out of it. The prose quotes some
 // of these numbers in sentences, and a check that the block contains them would
-// only ever be checking the block against itself.
-// README with the generated block cut out — which is `spliceReadme` splicing
-// nothing in. The two were the same four lines twice, missing marker message
-// included.
+// only ever be checking the block against itself. This is `spliceReadme`
+// splicing nothing in. The two were the same four lines twice, missing marker
+// message included.
 export const withoutBlock = (text: string): string => spliceReadme(text, '');
 
 export function spliceReadme(text: string, block: string): string {
   const from = text.indexOf(BEGIN);
   const to = text.indexOf(END);
-  if (from === -1 || to === -1) throw new Error('README.md has lost its generated-numbers markers');
+  if (from === -1 || to === -1)
+    throw new Error('bench/README.md has lost its generated-numbers markers');
   return text.slice(0, from) + block + text.slice(to + END.length);
 }
 
@@ -1308,12 +1308,12 @@ export function spliceReadme(text: string, block: string): string {
 if (process.argv[1] === import.meta.filename && process.argv[2] === '--write') {
   const root = path.join(import.meta.dirname, '..');
   fs.writeFileSync(path.join(root, 'lib', 'numbers.ts'), generate(root));
-  const readmePath = path.join(root, 'README.md');
+  const docPath = path.join(root, 'bench', 'README.md');
   fs.writeFileSync(
-    readmePath,
-    spliceReadme(fs.readFileSync(readmePath, 'utf8'), markdown(root))
+    docPath,
+    spliceReadme(fs.readFileSync(docPath, 'utf8'), markdown(root))
   );
   process.stdout.write(
-    `numbers: ${Object.keys(CITATIONS).length} citations -> lib/numbers.ts, README.md\n`
+    `numbers: ${Object.keys(CITATIONS).length} citations -> lib/numbers.ts, bench/README.md\n`
   );
 }

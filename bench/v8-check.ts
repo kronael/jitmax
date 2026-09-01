@@ -1,8 +1,8 @@
-// Verify every V8 citation in README.md against the checkout in v8src/, so the
+// Verify every V8 citation in bench/README.md against the checkout in v8src/, so the
 // second kind of evidence rots as loudly as the first.
 //   node bench/v8-check.ts
 //
-// README's table is the source of truth. A citation is `src/path:line` followed
+// That file's table is the source of truth. A citation is `src/path:line` followed
 // by `→ token`, and the check is that the token is still on that line at the
 // pinned revision. A citation whose token has moved is printed with the line V8
 // has there now, and the run fails.
@@ -20,7 +20,7 @@ import path from 'node:path';
 import { v8Checkout } from '../lib/derive-builtins.ts';
 
 const root = path.join(import.meta.dirname, '..');
-const docPath = path.join(root, 'README.md');
+const docPath = path.join(root, 'bench', 'README.md');
 
 const doc = fs.readFileSync(docPath, 'utf8').split('\n');
 
@@ -67,7 +67,8 @@ for (const line of doc) {
   }
 }
 
-if (!checked) fail('v8-check: README.md contains no citations; the table is the source of truth');
+if (!checked)
+  fail('v8-check: bench/README.md contains no citations; the table is the source of truth');
 
 if (drifted.length) {
   process.stdout.write(`v8-check: ${drifted.length} of ${checked} citations drifted\n`);

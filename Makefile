@@ -30,7 +30,7 @@ lint:
 check:
 	node bin/jitmax.ts demo; test $$? -eq 1
 
-# Every V8 citation in README.md against the pinned checkout. Exits
+# Every V8 citation in bench/README.md against the pinned checkout. Exits
 # non-zero when v8src/ is missing rather than passing quietly.
 v8-check:
 	node bench/v8-check.ts
@@ -71,7 +71,7 @@ reality:
 	@head -1 tmp/reality.log
 
 # Every published ratio, re-derived from the .jl sweeps into lib/numbers.ts and
-# README's generated block. `make test` fails when they are out of date.
+# bench/README.md's generated block. `make test` fails when they are out of date.
 numbers:
 	node lib/derive.ts --write
 

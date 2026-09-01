@@ -8,6 +8,11 @@
     "bin/",
     "dist/",
     "lib/",
+    "docs/",
+    "ARCHITECTURE.md",
+    "bench/README.md",
+    "test/README.md",
+    "examples/README.md",
     "README.md",
     "LICENSE"
   ],

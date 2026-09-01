@@ -2,7 +2,7 @@
 # run on push or pull_request and must not gate any PR: an upstream V8 commit
 # failing unrelated work would be noise, not signal. CI verifies against the
 # pin (see ci.yml); this run clones V8 at MAIN and asks two questions — do the
-# README citations still hold, and did the lowered-builtin list change. A
+# bench/README.md citations still hold, and did the lowered-builtin list change. A
 # failed run is the "V8 moved, someone look" signal; the answer is to re-read
 # the new source, correct the citations, move the pin, and `make build`.
 name: v8-drift

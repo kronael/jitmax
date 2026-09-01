@@ -281,7 +281,7 @@ export function render(
       // how large its data is. Printing one here states a cost at a site whose
       // size and shape the tool cannot see, which is the whole of BUGS TC-9.
       // `EVIDENCE` still binds each rule to its measurement; only the print
-      // site moved. The numbers are in README.md and in the file named here.
+      // site moved. The numbers are in bench/README.md and in the file named here.
       if (f.evidence) {
         const data = f.evidence.source.match(/bench\/[a-z-]+\.jl/g) ?? [];
         if (data.length > 0) out.push(`      measured in ${data.join(' and ')}`);
@@ -320,10 +320,10 @@ export function render(
       : all.length === 0 && partial.length > 0
       ? `  no findings, but ${plural(partial.length, 'walk')} truncated: this is not a clean run.`
       : '  No cost is printed beside a finding. Every rule is measured, and the\n' +
-        '  measurements are in README.md and in the bench/*.jl named above — but a\n' +
-        '  ratio is a property of the input, and being told a function is hot does\n' +
-        '  not say how large its data is. Each rule also records where its own\n' +
-        '  benchmark found nothing; README.md prints that beside the cost.'
+        '  measurements are in bench/README.md and in the bench/*.jl named above —\n' +
+        '  but a ratio is a property of the input, and being told a function is hot\n' +
+        '  does not say how large its data is. Each rule also records where its own\n' +
+        '  benchmark found nothing; docs/rules.md prints that beside the cost.'
   );
   if (nothingChecked) {
     out.push(

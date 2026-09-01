@@ -54,6 +54,25 @@ import type * as TS from 'typescript';
 const root = path.join(import.meta.dirname, '..');
 const ts = load(root);
 
+// The published prose, which is seven files since the split: each one answers a
+// different question and any of them may quote a measured number. Every check
+// below that used to read README.md alone reads this list, or the one file the
+// claim now lives in — a register that named only README would stop seeing a
+// number the day it moved out of it.
+const DOCS = [
+  'README.md',
+  'ARCHITECTURE.md',
+  path.join('docs', 'rules.md'),
+  path.join('docs', 'limits.md'),
+  path.join('bench', 'README.md'),
+  path.join('test', 'README.md'),
+  path.join('examples', 'README.md'),
+];
+const doc = (file: string): string => fs.readFileSync(path.join(root, file), 'utf8');
+// Every doc file end to end, with the generated block cut out of the one that
+// carries it: the block would otherwise only ever be matching itself.
+const docProse = (): string => withoutBlock(DOCS.map(doc).join('\n'));
+
 function findingsByFunction(dir: string): Map<string, ReturnType<typeof check>> {
   const { checker, marks } = scan(ts, program(ts, root, [path.join(root, dir)]));
   return new Map(marks.map((m) => [m.name, check(ts, checker, m)]));
@@ -430,16 +449,20 @@ test('the delete fix says where the rebuild stops paying, in the swept sizes', (
   );
 });
 
-// The same sentence is republished three times outside the rule — twice in
-// README and once in the example's header, which says it is quoting the run —
-// and all three typed the pair by hand, so a re-measurement moved the rule and
-// left the copies claiming the old sizes. Every copy is read here and held to
-// the derived pair (BUGS TC-48).
+// The same sentence is republished three times outside the rule — in README's
+// sample output, in examples/README.md, and in the example's header, which says
+// it is quoting the run — and all three typed the pair by hand, so a
+// re-measurement moved the rule and left the copies claiming the old sizes.
+// Every copy is read here and held to the derived pair (BUGS TC-48).
 test('every published copy of the delete fix quotes the swept sizes', () => {
   const sizes = N['ex.omit.sizes'];
   const typed: string[] = [];
   let copies = 0;
-  for (const file of ['README.md', path.join('examples', 'estoolkit-omit.before.ts')]) {
+  for (const file of [
+    'README.md',
+    path.join('examples', 'README.md'),
+    path.join('examples', 'estoolkit-omit.before.ts'),
+  ]) {
     // The sentence wraps across lines in prose and inside a `//` transcript, so
     // the file is flattened before it is matched.
     const flat = fs
@@ -801,22 +824,22 @@ test('a finding prints the defects its rule carries', () => {
 // table and into README prose, and the three contradicted each other twice in
 // one day. Now every one of them is derived from the `.jl` rows, and this test
 // is what makes that true rather than intended: re-derive from the data, and
-// fail if the generated module, the generated README block, or the prose that
-// quotes a number has fallen behind it. `make numbers` is the fix.
+// fail if the generated module, the generated block in bench/README.md, or the
+// prose that quotes a number has fallen behind it. `make numbers` is the fix.
 
 test('every published number is what its own data file says', () => {
   assert.deepStrictEqual(derive(root), N, 'lib/numbers.ts is stale — run `make numbers`');
 
-  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
   assert.ok(
-    readme.includes(markdown(root)),
-    "README.md's generated block is stale — run `make numbers`"
+    doc(path.join('bench', 'README.md')).includes(markdown(root)),
+    "bench/README.md's generated block is stale — run `make numbers`"
   );
 
-  // The prose quotes some of these in sentences. Checked with the generated
-  // block cut out, or the block would only be matching itself, and with the
-  // typographic dash normalised, because prose uses one and code does not.
-  const prose = withoutBlock(readme).replace(/[–—]/g, '-');
+  // The prose quotes some of these in sentences, and it is spread over seven
+  // files. Checked with the generated block cut out, or the block would only be
+  // matching itself, and with the typographic dash normalised, because prose
+  // uses one and code does not.
+  const prose = docProse().replace(/[–—]/g, '-');
   // `N` is a literal object now, so a citation key that does not exist is a
   // compile error at every USE site — which is the point. This loop walks
   // CITATIONS at runtime, so it is the one place the cast is honest: derive()
@@ -824,7 +847,7 @@ test('every published number is what its own data file says', () => {
   const table = N as Record<string, string>;
   for (const [key, c] of Object.entries(CITATIONS)) {
     if (!c.readme) continue;
-    assert.ok(prose.includes(table[key]!), `README prose no longer quotes ${key} = ${table[key]}`);
+    assert.ok(prose.includes(table[key]!), `the docs no longer quote ${key} = ${table[key]}`);
   }
 });
 
@@ -2024,7 +2047,7 @@ test('every vendored example is covered by the MIT notice, and the notice covers
 });
 
 // The published page is the surface most people read, and until this test it
-// was the only one where a number could go stale in silence. README's prose is
+// was the only one where a number could go stale in silence. The docs' prose is
 // checked above and `EVIDENCE` interpolates `N` directly; site/index.html had
 // six figures typed by hand. That is the defect TC-28 was, on the page rather
 // than in a clause.
@@ -2032,12 +2055,12 @@ test('every vendored example is covered by the MIT notice, and the notice covers
 // Every ratio on the page must BE a value in the derived table — not merely
 // look like one. A sweep that moves therefore breaks the build instead of
 // leaving the page quoting a measurement that no longer exists.
-// README narrates history, so the page's rule — every ratio must BE a derived
+// The docs narrate history, so the page's rule — every ratio must BE a derived
 // value — would fail on honest sentences: a superseded range quoted AS
 // superseded, a withdrawn rule's cost, the three sweeps of a cell rule 13
-// refuses. The register below is the shape that works. Every ratio in README
-// prose is either derived or listed here with the reason it is not, so a NEW
-// typed ratio fails the build while history stays sayable (BUGS TC-73).
+// refuses. The register below is the shape that works. Every ratio in the
+// published prose is either derived or listed here with the reason it is not,
+// so a NEW typed ratio fails the build while history stays sayable (TC-73).
 const HISTORICAL: Record<string, string> = {
   // Superseded ranges, quoted as superseded.
   '4.42-4.79x': 'closed-world before three replications, quoted as what it used to read',
@@ -2072,37 +2095,36 @@ const HISTORICAL: Record<string, string> = {
   '5x': 'an anecdote about what %GetOptimizationStatus reported during a slowdown',
 };
 
-test('every ratio in README prose is derived, or registered as history', () => {
-  const prose = withoutBlock(fs.readFileSync(path.join(root, 'README.md'), 'utf8'))
-    .replace(/[\u2013\u2014]/g, '-');
+test('every ratio in the published prose is derived, or registered as history', () => {
+  const prose = docProse().replace(/[\u2013\u2014]/g, '-');
   const RATIO = /\b\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?x\b/g;
   const values = new Set<string>(Object.values(N));
   for (const v of Object.values(N)) for (const m of v.matchAll(RATIO)) values.add(m[0]);
 
   const quoted = [...new Set([...prose.matchAll(RATIO)].map((m) => m[0]))];
-  assert.ok(quoted.length > 0, 'README quotes no ratios — the regex has stopped matching');
+  assert.ok(quoted.length > 0, 'the docs quote no ratios — the regex has stopped matching');
 
   const unexplained = quoted.filter((q) => !values.has(q) && !(q in HISTORICAL));
   assert.deepStrictEqual(
     unexplained,
     [],
-    `README prose quotes ${unexplained.join(', ')}, which is neither a derived number nor ` +
+    `the docs quote ${unexplained.join(', ')}, which is neither a derived number nor ` +
       'registered as history. Derive it, or add it to HISTORICAL with the reason it cannot be.'
   );
 
   // The register may not outlive what it explains: an entry that becomes a
   // derived value, or stops appearing, is a line nobody will notice is stale.
   const dead = Object.keys(HISTORICAL).filter((h) => !quoted.includes(h) || values.has(h));
-  assert.deepStrictEqual(dead, [], `HISTORICAL still lists ${dead.join(', ')}, which README no longer needs it for`);
+  assert.deepStrictEqual(dead, [], `HISTORICAL still lists ${dead.join(', ')}, which the docs no longer need it for`);
 });
 
-// README's two end-to-end tables print every sweep of every example cell and
-// the interval each cell's three sweeps share. The register above cannot see
-// one of them: they are bare decimals with no trailing `x`, so `RATIO` never
-// matched one, HISTORICAL never had to explain one, and `make test` stayed
-// green whatever they said. All of them were right the day they were typed and
-// nothing would ever have said otherwise again. This reads them back out of
-// README and re-derives each from the rows.
+// examples/README.md's two end-to-end tables print every sweep of every example
+// cell and the interval each cell's three sweeps share. The register above
+// cannot see one of them: they are bare decimals with no trailing `x`, so
+// `RATIO` never matched one, HISTORICAL never had to explain one, and
+// `make test` stayed green whatever they said. All of them were right the day
+// they were typed and nothing would ever have said otherwise again. This reads
+// them back out of that file and re-derives each from the rows.
 //
 // Read back rather than generated: the numbers are the half that drifts, and
 // the rest of a row is editorial — which finding fired, REJECTED, DISAGREES,
@@ -2110,8 +2132,8 @@ test('every ratio in README prose is derived, or registered as history', () => {
 // into lib/derive.ts and both tables into the one generated block, 120 lines
 // above the argument they belong to.
 //
-// README spells a library the way a reader says it and the sweep spells it the
-// way `examples/` names the fixture. Neither derives from the other, so the
+// The table spells a library the way a reader says it and the sweep spells it
+// the way `examples/` names the fixture. Neither derives from the other, so the
 // pairing is written down; a wrong pairing fails below on every number in the
 // row.
 const EXAMPLE: Record<string, string> = {
@@ -2122,9 +2144,7 @@ const EXAMPLE: Record<string, string> = {
 };
 
 test('every number in the end-to-end tables is what bench/example.jl says', () => {
-  const readme = fs
-    .readFileSync(path.join(root, 'README.md'), 'utf8')
-    .replace(/[\u2013\u2014]/g, '-');
+  const readme = doc(path.join('examples', 'README.md')).replace(/[\u2013\u2014]/g, '-');
 
   const cells = new Map<string, Row[]>();
   for (const r of rows(root, 'example.jl').filter(current)) {
@@ -2165,7 +2185,7 @@ test('every number in the end-to-end tables is what bench/example.jl says', () =
   ] as const;
   for (const [header, mode] of tables) {
     const at = readme.indexOf(header);
-    assert.notStrictEqual(at, -1, `README has lost the table headed ${header}`);
+    assert.notStrictEqual(at, -1, `examples/README.md has lost the table headed ${header}`);
     let read = 0;
     for (const line of readme.slice(at).split('\n').slice(2)) {
       if (!line.startsWith('|')) break;
@@ -2223,21 +2243,23 @@ test('every ratio on the published page is a derived number', () => {
   );
 });
 
-// The version and the rule count are stated in prose on both published
+// The version and the rule count are stated in prose on the published
 // surfaces and nowhere derived, which is how README came to say "seven rules"
 // on line 906 while line 681 said "all eight" — a rule had been added and one
 // of the two sentences moved. package.json is the one statement of the
-// version and `EVIDENCE` the one register of the rules; both surfaces are
-// held to them here (BUGS TC-123 is the same defect in the release gate).
+// version and `EVIDENCE` the one register of the rules; every surface that
+// claims a total is held to them here, and the split into seven doc files
+// added two more places a total can be claimed (BUGS TC-123 is the same defect
+// in the release gate).
 //
 // Each surface is matched at its OWN sentence rather than by scanning for
 // `vX.Y.Z`, because README quotes Node's version and V8's too, and a release
 // that bumped only one of the two surfaces is the drift this catches.
-test('both published surfaces state this version and this many rules', () => {
+test('every published surface states this version and this many rules', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as {
     version: string;
   };
-  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  const readme = doc('README.md');
   const page = fs.readFileSync(path.join(root, 'site', 'index.html'), 'utf8');
 
   const stated: [string, string, RegExp][] = [
@@ -2264,9 +2286,9 @@ test('both published surfaces state this version and this many rules', () => {
     /Status: v\d+\.\d+\.\d+, [^,]+, ([a-z]+) rules\b/g,
   ];
   for (const [name, text] of [
-    ['README.md', readme],
-    ['site/index.html', page],
-  ] as const) {
+    ...DOCS.map((f) => [f, doc(f)] as const),
+    ['site/index.html', page] as const,
+  ]) {
     const claimed = TOTALS.flatMap((re) => [...text.matchAll(re)].map((m) => m[1].toLowerCase()));
     if (claimed.length === 0) continue;
     const wrong = [...new Set(claimed)].filter((c) => c !== WORD[count]);
@@ -2277,18 +2299,19 @@ test('both published surfaces state this version and this many rules', () => {
     );
   }
 
-  // The test count README prints beside `make test`. It was 67 against a real
-  // 126 — the same hand-typed-figure defect, on the line a reader is most
-  // likely to check first (BUGS TC-125).
-  const claimedTests = readme.match(/make test\s+#\s*(\d+) unit tests/);
-  assert.ok(claimedTests, 'README.md no longer prints a test count beside `make test`');
+  // The test count test/README.md prints beside `make test`. It was 67 against
+  // a real 126 — the same hand-typed-figure defect, on the line a reader of the
+  // suite is most likely to check first (BUGS TC-125).
+  const suite = doc(path.join('test', 'README.md'));
+  const claimedTests = suite.match(/make test\s+#\s*(\d+) unit tests/);
+  assert.ok(claimedTests, 'test/README.md no longer prints a test count beside `make test`');
   const real =
     (fs.readFileSync(path.join(root, 'test', 'check.test.ts'), 'utf8').match(/^test\(/gm) ?? []).length +
     (fs.readFileSync(path.join(root, 'test', 'tiers.test.ts'), 'utf8').match(/^test\(/gm) ?? []).length;
   assert.strictEqual(
     Number(claimedTests[1]),
     real,
-    `README.md says ${claimedTests[1]} unit tests; the two test files define ${real}`
+    `test/README.md says ${claimedTests[1]} unit tests; the two test files define ${real}`
   );
 });
 
@@ -2475,7 +2498,7 @@ test('a single-sweep cell and a rejected interval cannot publish as live', () =>
   assert.strictEqual(d['chained.mapfilter']!.value, N['chained.mapfilter'], 'a planted cell moved the published range');
   assert.deepStrictEqual(d['chained.mapfilter']!.rejected, ['chained|fused|incl|555|dispatch-table']);
 
-  // The verdicts are output, not bookkeeping: the generated README block names
+  // The verdicts are output, not bookkeeping: the generated numbers block names
   // every planted cell with the rule that refused it.
   const block = markdown(tmp);
   assert.match(block, /withdrawn as unreplicable \(rule 13\): select\|compare\|heap\|555 \(1 sweep\)/);
@@ -2558,15 +2581,16 @@ test('a file with no judgeable row is on record as unjudgeable, not as clean', (
   );
 });
 
-// README tells a reader the corpus number; this register IS the corpus number.
-// Typing it into prose is the one way it can drift out of the rows, so the
-// prose is read back and compared against the sum.
-test('README quotes the over-gate register, not a number beside it', () => {
+// docs/limits.md tells a reader the corpus number; this register IS the corpus
+// number. Typing it into prose is the one way it can drift out of the rows, so
+// the prose is read back and compared against the sum.
+test('the limits page quotes the over-gate register, not a number beside it', () => {
   const total = Object.values(OVER_GATE).reduce((a, [over]) => a + over, 0);
-  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
   assert.ok(
-    readme.includes(`${total} published rows were measured under a load gate`),
-    `README no longer quotes the over-gate total of ${total} rows`
+    doc(path.join('docs', 'limits.md')).includes(
+      `${total} published rows were measured under a load gate`
+    ),
+    `docs/limits.md no longer quotes the over-gate total of ${total} rows`
   );
 });
 

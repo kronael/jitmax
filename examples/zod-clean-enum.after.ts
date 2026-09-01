@@ -15,9 +15,10 @@
 // The comment inside the predicate moves with the predicate. It is zod's, and
 // it still describes the line under it.
 //
-// WHAT IT WAS WORTH: see README's end-to-end table. The rule cites 7.89x for
-// map-then-filter at n=1000 in a microbenchmark; what a caller of this function
-// gets is in `bench/example.jl`, at the two enum sizes a caller actually has.
+// WHAT IT WAS WORTH: see the end-to-end table in examples/README.md. The rule
+// cites 7.89x for map-then-filter at n=1000 in a microbenchmark; what a caller
+// of this function gets is in `bench/example.jl`, at the two enum sizes a
+// caller actually has.
 
 export type EnumValue = string | number; // | bigint | boolean | symbol;
 
