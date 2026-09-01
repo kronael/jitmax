@@ -241,16 +241,27 @@ export function usesDependency(src: string): number {
 }
 ```
 
-**It is silent on** `usesHelper`, whose callee is in this program, and on a
-callee small enough to inline, which costs nothing. It is also silent on the
+**It is silent on** `usesHelper`, whose callee is in this program, and on the
 platform — `globalThis`, a V8 builtin, `@types/node` — which is counted in the
 report header and never named.
+
+**It is not silent on a small callee**, and this clause claimed it was until
+2026-09-01. Nothing in the rule consults a size and nothing could: a declaration
+file carries the signature and no way to size the JavaScript behind it, so a
+one-line callee V8 would inline without hesitating fires exactly like a large
+one — `test/fixtures/tiny` is that callee, and a test holds it. What was true is
+a fact about the *benchmark*: the sweep's small variant costs nothing. Written
+down as a silence, it was the bound described as the trigger, which is `BUGS.md`
+TC-33 in one sentence.
 
 **The fix it prints.** "inline what you need from *callee*, or accept that this
 call is unchecked".
 
 **The cost.** 4.64-4.95x for a callee past the inlining budget against the same
-callee under it, in `bench/inline.jl`.
+callee under it, in `bench/inline.jl`. That is a bound on what ONE unchecked
+call can cost, not a claim about the call it fired on: the sweep's callee is
+readable and padded, the rule's is unreadable and unsized. Every finding prints
+`known defect: TC-33` for that reason.
 
 ## interface-dispatch
 

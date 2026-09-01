@@ -703,6 +703,32 @@ test('a call into a typed dependency is where the promise stops', () => {
   assert.deepStrictEqual(rules('usesDependency'), ['closed-world']);
 });
 
+// TC-33 from the size end. The gap between this rule's trigger and its
+// benchmark is stated in the rule's own evidence and printed under every
+// finding it makes — and docs/rules.md had written the benchmark's bound down
+// as one of the rule's SILENCES: "it is silent on ... a callee small enough to
+// inline, which costs nothing". Nothing in `closed-world` consults a size and
+// nothing could. `test/fixtures/tiny` is a one-parameter callee declared in a
+// `.d.ts`, the smallest callee there is and one V8 would inline without
+// hesitating, and the rule fires on it. A silence a fixture refutes is the one
+// kind of claim this repo may not publish.
+test('closed-world fires on the smallest callee it cannot read', () => {
+  const tiny = rulesByFunction(path.join('test', 'fixtures', 'tiny'));
+  assert.deepStrictEqual(tiny.get('total'), ['closed-world']);
+
+  const reference = doc(path.join('docs', 'rules.md'));
+  const from = reference.indexOf('## closed-world');
+  const to = reference.indexOf('## interface-dispatch');
+  assert.ok(from !== -1 && to > from, 'docs/rules.md has lost its closed-world section');
+  assert.doesNotMatch(
+    reference.slice(from, to),
+    /silent on[\s\S]*?small enough to inline/,
+    "docs/rules.md's closed-world section claims a silence on a callee small enough to " +
+      'inline. The rule cannot see the size of a body it cannot read, and the fixture ' +
+      'above is the counter-example'
+  );
+});
+
 test('the object form of the accumulator fires', () => {
   assert.deepStrictEqual(rules('collectObject'), ['accumulating-spread']);
 });
