@@ -26,6 +26,58 @@ Review queue. Found during audits, fixed only when the owner asks.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
+## TC-135 — the dataflow walk steps into the throw-only stub the callee walk refuses (2026-09-01, open)
+
+`bb9ebbf` made a method whose whole body is one `throw` a declaration:
+`followable` in `lib/scan.ts` refuses it and `isDispatchDecl` reads the site as
+dispatch. That predicate is asked on the callee walk only. When the receiver's
+origins resolve to one class whose method IS the stub, `flow.receiver()` hands
+the stub back as `follow`, `reach` pushes it into `reached` without asking
+`followable`, and the run prints "1 interface call resolved to the one
+implementation this program builds, and followed" over the stub's `throw`, then
+a `closed-world` error on the throw's callee — the TC-106 symptom through the
+other door. Reproduced 2026-09-01:
+
+```ts
+declare function slotUnimplemented(): Error;
+class AbstractSlot { size(): number { throw slotUnimplemented(); } }
+class SlotHolder { slot: AbstractSlot = new AbstractSlot(); }
+/** @jitmax */
+export function slotSize(h: SlotHolder): number { return h.slot.size(); }
+```
+
+Two spellings of one predicate — "may the walk step into this body" — and they
+disagree. The fix is a sentence before it is a line: refusing the stub on the
+flow path leaves a receiver whose one located implementation declares and does
+not implement, and no finding says that today.
+
+- **Severity:** low
+- **Scope:** walk
+- **Affected:** `lib/scan.ts` `reach` (the `one.follow` push), `lib/flow.ts` `methodBody`
+- **Source:** the reproduction above, `node bin/jitmax.ts hot.ts`
+- **Status:** open
+- **Fix:** one predicate on both paths, and a finding for the stub-only receiver
+
+## TC-134 — `allocating-select`'s cost line rests on eighteen rows whose machine reading is one frozen number (2026-09-01, open, owner decision)
+
+TC-24 and TC-47 retired to `.diary/20260901.md` on 2026-09-01 with the cause
+closed — `reading()` in `bench/env.ts` refuses to write another such row — and
+the eighteen rows still in place. They are every `runner: r2` row of the six
+cells `select.jl` publishes, `env.load1: 0.97` stamped across an evening, so
+rule 9's per-row claim is unverifiable for the whole of what
+`allocating-select` cites. `frozenReading()` and the `FROZEN` register in
+`test/check.test.ts` pin the count at eighteen. What left the queue with the
+entries is the question the diary says is the owner's: re-measure the six cells
+under the current runner, or state beside the number that its rows carry no
+per-row reading.
+
+- **Severity:** medium
+- **Scope:** published evidence
+- **Affected:** `allocating-select` EVIDENCE, `bench/select.jl`, `docs/rules.md`
+- **Source:** `frozenReading('.', 'select.jl')` = 18; `.diary/20260901.md`, TC-24 and TC-47
+- **Status:** open, owner decision
+- **Fix:** `node bench/run.ts select` whole (six cells, three sweeps), or the limit stated beside the number
+
 ## TC-133 — the documented GitHub install has no remote ref to install (2026-08-31, open)
 
 The package artifact works when packed, installed under `node_modules`, and run
