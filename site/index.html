@@ -181,8 +181,11 @@ export function total(rows: Row[]): number { … }</code></pre>
           7.51x. No value sits inside all three intervals, so the cell is
           withdrawn and what is left is the size that replicates. On zod's
           <code>cleanEnum</code> the same fix is worth
-          <strong>three to twelve percent</strong> &mdash; 1.10&ndash;1.12x at
-          16 members and 1.03&ndash;1.10x at 256, neither interval spanning 1.</td>
+          <strong>1.10&ndash;1.12x at a 16-member enum, and nothing this
+          project will claim at 256</strong>: that cell measured 1.03&ndash;1.10x,
+          whose lower bound is under 1.05x and whose point estimate is under
+          1.10x, so it is <strong>rejected</strong> under the protocol's own
+          broad-warning bar and published as the rejection it is.</td>
     </tr>
     <tr>
       <td><code>x = Lib.min(x, y)</code> in a loop</td>
