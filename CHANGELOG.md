@@ -1,5 +1,39 @@
 # Changelog
 
+## [v0.12.2] — 20260901
+
+> jitmax v0.12.2 — the film keeps all three acts, and V8 is set as type
+>
+> v0.12.1 deleted the launch film to settle a trademark question. That was the wrong cut: the film is how the tool explains itself. It is back, whole, and the question is settled by typography instead.
+>
+> • Act three shows the word `V8` set as type. No shield, no chevron, no wings, and no fetched Google asset.
+> • `recolour.py` and the `tmp/v8-outline.svg` fetch are deleted; `rig.template.html` became the committed `rig.html` because no template step remains.
+> • The film pipeline falls from 679 to 503 lines across four files, and act two is re-cut against the current recording.
+>
+> Full notes: https://github.com/kronael/jitmax/blob/main/CHANGELOG.md
+
+### Changed
+
+- The three-act film is restored. v0.12.1 deleted it; this reverts that. The
+  page hero, the social card and `make meme` are back on `demo/meme/`.
+- Act three shows `V8` set at 330px in Liberation Sans Narrow rather than
+  Google's mark. TC-30's own research named this fix — keep the word in the
+  text, drop the mark from the film, carry the attribution line in README —
+  and the entry is closed on it.
+- `demo/meme/recolour.py` is deleted and `rig.template.html` is now the
+  committed `demo/meme/rig.html`: with no SVG to inline there is no template
+  step. `make clean` and `.gitignore` no longer name a generated rig.
+- The `tmp/v8-outline.svg` `curl` target is gone. One fetch is left, the comic
+  panel.
+- Act one now labels all eight rules. It was tuned for seven.
+- Act two is re-cut against the current `demo/demo.mp4`, which was recorded
+  after every rule became an error.
+
+### Removed
+
+- The `.first-run` worktree and its `.gitignore` entry. Its commits were
+  already ancestors of HEAD in content.
+
 ## [v0.12.1] — 20260831
 
 > jitmax v0.12.1 — the recording is the film

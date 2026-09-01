@@ -945,7 +945,7 @@ V8 is a trademark of Google LLC. This project is not affiliated with, endorsed
 by, or sponsored by Google, and every use of the name here is a reference to the
 engine the measurements were taken on.
 
-Status: v0.12.1, single machine, eight rules. Every sweep behind a published
+Status: v0.12.2, single machine, eight rules. Every sweep behind a published
 number is re-measured whole under the current runner: three sweeps per cell, and
 a cell whose three share no common value is withdrawn by `lib/derive.ts` before
 the number is written. 31 are withdrawn today, and `test/check.test.ts`
