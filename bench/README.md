@@ -117,6 +117,9 @@ prints, straight from the `.jl` files. Nothing here is typed twice, and
 | `20.4-40.1x` | `bench/sparse.jl` — the same with construction counted — 1 of 3 cells withdrawn as unreplicable (rule 13): dict|packed|incl|262144 |
 | `1.32-1.47x` | `bench/sparse.jl` — a holey array against a packed one, reads only — 1 of 3 cells withdrawn as unreplicable (rule 13): holey|packed|excl|262144 |
 | `0.28-0.68x` | `bench/sparse.jl` — the same with construction counted, where the holey array wins |
+| `1.39-1.66x` | `bench/arrays.jl` — a genuinely boxed array against a double one, reads only, every size — the older sweep, not re-measured under r2 |
+| `1.58-1.69x` | `bench/arrays.jl` — the same with construction counted, at RAM size — the older sweep, not re-measured under r2 |
+| `0.96-1.08x` | `bench/arrays.jl` — a union-typed array holding only numbers, both halves, every size — the older sweep, not re-measured under r2 |
 | `n=12 and n=48` | `bench/example.jl` — the key counts es-toolkit omit was swept at, which delete-property quotes in its fix |
 | `11.2-11.6x` | `bench/example.jl` — es-toolkit omit — the caller's reads of the result at 12 keys |
 | `0.97-1.04x` | `bench/example.jl` — the same at 48 keys, where the fix stops fixing the read — what its three sweeps agree on |

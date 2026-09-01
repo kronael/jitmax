@@ -840,6 +840,42 @@ export const CITATIONS: Record<string, Citation> = {
     agg: 'range',
     readme: true,
   },
+  // `boxed-elements`, the rule this project withdrew. TC-14 asked for the sweep
+  // that had never existed and for the rule's numbers to be re-derived or
+  // withdrawn; `bench/arrays.jl` answered the first half, the rule went, and
+  // the three numbers stayed typed into the docs and excused as history — the
+  // only published figures in the repo whose rows were sitting right here. A
+  // withdrawn rule's cost is still a measurement, and a measurement quoted by
+  // hand is the one thing this file exists to prevent. `arrays.jl` is not in
+  // REMEASURED, so these read the older rows and say so in their provenance.
+  'arrays.boxed.reads': {
+    claims: 'nothing',
+    file: 'arrays.jl',
+    cells: 'a genuinely boxed array against a double one, reads only, every size',
+    pick: (r) => r.variant === 'boxed' && r.mode === 'excl',
+    agg: 'range',
+    readme: true,
+  },
+  'arrays.boxed.build.ram': {
+    claims: 'nothing',
+    file: 'arrays.jl',
+    cells: 'the same with construction counted, at RAM size',
+    pick: (r) => r.variant === 'boxed' && r.mode === 'incl' && r.n === 262144,
+    agg: 'range',
+    readme: true,
+  },
+  // The case the rule actually FIRED on, which is the half that withdrew it: a
+  // `(number | string)[]` holding only numbers is the array `number[]` builds,
+  // because V8 picks the elements kind from the values stored and not from the
+  // declared type.
+  'arrays.union': {
+    claims: 'nothing',
+    file: 'arrays.jl',
+    cells: 'a union-typed array holding only numbers, both halves, every size',
+    pick: (r) => r.variant === 'unionnum',
+    agg: 'range',
+    readme: true,
+  },
   'ex.omit.sizes': {
     claims: 'nothing',
     file: 'example.jl',

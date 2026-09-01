@@ -2260,10 +2260,10 @@ const HISTORICAL: Record<string, string> = {
   '3.21-4.95x': 'closed-world before rule 13 withdrew its n=100000 cell',
   '6.48-7.51x': 'map-then-filter before rule 13 was enforced in lib/derive.ts',
   '1.00-1.15x': 'zod cleanEnum reads at 16 as they rejected before re-measurement',
-  // Rules this project withdrew. Their costs are real and ship nothing.
-  '1.39-1.66x': 'boxed-elements: a genuinely boxed array, the rule was withdrawn anyway',
-  '1.58-1.69x': 'boxed-elements, the build half of the same withdrawn rule',
-  '0.96-1.08x': 'the declared-type case boxed-elements fired on, which measured nothing',
+  // Rules this project withdrew. Their costs are real and ship nothing — and
+  // where the rows are still in the repo the cost is DERIVED like every other,
+  // withdrawn rule or not: `boxed-elements`' three figures read out of
+  // bench/arrays.jl and left this register on 2026-09-01 (BUGS TC-14).
   '1.21-1.34x': 'the post-construction property add, refuted and shipping no rule',
   '0x': 'the delete-on-a-singleton refutation this project published and then overturned',
   '6.17-6.34x': 'the 16-keyed-store dictionary effect: measured, no rule, BUGS TC-12',

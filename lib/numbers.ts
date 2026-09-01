@@ -151,6 +151,12 @@ export const N = {
   'sparse.holey.reads': '1.32-1.47x',
   // sparse.jl: the same with construction counted, where the holey array wins
   'sparse.holey.whole': '0.28-0.68x',
+  // arrays.jl: a genuinely boxed array against a double one, reads only, every size — the older sweep, not re-measured under r2
+  'arrays.boxed.reads': '1.39-1.66x',
+  // arrays.jl: the same with construction counted, at RAM size — the older sweep, not re-measured under r2
+  'arrays.boxed.build.ram': '1.58-1.69x',
+  // arrays.jl: a union-typed array holding only numbers, both halves, every size — the older sweep, not re-measured under r2
+  'arrays.union': '0.96-1.08x',
   // example.jl: the key counts es-toolkit omit was swept at, which delete-property quotes in its fix
   'ex.omit.sizes': 'n=12 and n=48',
   // example.jl: es-toolkit omit — the caller's reads of the result at 12 keys
