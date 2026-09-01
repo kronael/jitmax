@@ -1,0 +1,4 @@
+{
+  "compilerOptions": { "baseUrl": ".", "paths": { "@app/*": ["gone/*"] } },
+  "//": "The alias IS declared and its target is not on disk. `npm install` is the wrong advice here, and naming this file is what tells the two causes apart (BUGS TC-80)."
+}

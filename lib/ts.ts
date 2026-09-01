@@ -20,6 +20,33 @@ export function load(cwd: string): Ts {
   );
 }
 
+// Which tsconfig.json a run started in `cwd` reads, in one spelling. program()
+// takes its options from it, and the report names it when an import did not
+// resolve: a bare specifier is a missing package or an alias, and the reader
+// cannot tell which without knowing what config was in force (BUGS TC-80).
+export const tsconfigOf = (ts: Ts, cwd: string): string | undefined =>
+  ts.findConfigFile(cwd, ts.sys.fileExists, 'tsconfig.json');
+
+// Does a bare specifier match a `paths` entry? A TypeScript pattern holds at
+// most one `*`, and a specifier matches when the text either side of it does.
+// The answer separates the two causes of an unresolved bare import: a declared
+// alias whose target is not on disk is not fixed by installing anything.
+export function aliasedBy(paths: TS.MapLike<string[]> | undefined, spec: string): boolean {
+  for (const pattern of Object.keys(paths ?? {})) {
+    const star = pattern.indexOf('*');
+    if (star === -1) {
+      if (pattern === spec) return true;
+      continue;
+    }
+    const head = pattern.slice(0, star);
+    const tail = pattern.slice(star + 1);
+    if (spec.length >= head.length + tail.length && spec.startsWith(head) && spec.endsWith(tail)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // A Program gives us the type checker. Without a tsconfig we still build one,
 // over whatever sources the caller named, with checking relaxed: jitmax
 // reports its own findings, never the project's type errors.
@@ -31,7 +58,7 @@ export function load(cwd: string): Ts {
 // aliased import as unresolved and exited 1 where bare `jitmax` exited 0. The
 // documented invocation was the degraded one (BUGS TC-76).
 export function program(ts: Ts, cwd: string, inputs: string[]): TS.Program {
-  const configPath = ts.findConfigFile(cwd, ts.sys.fileExists, 'tsconfig.json');
+  const configPath = tsconfigOf(ts, cwd);
   // A tsconfig that does not read or does not parse fails the run. `.config ??
   // {}` dropped `.error`, so a truncated `tsconfig.json` silently produced
   // DEFAULT compiler options — a different program from the one the caller

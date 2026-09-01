@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import path from 'node:path';
 
-import { load, program } from '../lib/ts.ts';
+import { aliasedBy, load, program, tsconfigOf } from '../lib/ts.ts';
 import { marksFromProfile, scan } from '../lib/scan.ts';
 import { hotFrames } from '../lib/profile.ts';
 import { check, resolveDisabled } from '../lib/rules.ts';
@@ -64,6 +64,7 @@ try {
   // silent lie in a quieter place.
   resolveDisabled(configDisabled);
 
+  const configFile = tsconfigOf(ts, cwd);
   const p = program(ts, cwd, inputs);
   // A file that does not parse yields a garbage AST, every type-based rule
   // goes quiet on it, and the run reported `every annotated function is clean`
@@ -143,6 +144,12 @@ try {
     profile: profileCounts,
     bodyless: bodyless.map((b) => `${b.name} (${rel(cwd, b.file)}:${b.line}:${b.column})`),
     untyped: untyped.map((u) => `${u.name} (${rel(cwd, u.file)}:${u.line}:${u.column})`),
+    // Which config was in force, and which of the unresolved specifiers it
+    // declares an alias for. Without both, a bare specifier that did not
+    // resolve reads as a missing package and the report says `npm install` to
+    // somebody whose dependencies are fine (BUGS TC-80).
+    tsconfig: configFile === undefined ? undefined : rel(cwd, configFile),
+    aliased: unresolved.filter((m) => aliasedBy(p.getCompilerOptions().paths, m)),
   };
   const out = render(
     cwd,

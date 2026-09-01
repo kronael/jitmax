@@ -1463,6 +1463,43 @@ test('an unresolved module is named, and the run is never clean', () => {
   assert.strictEqual(run.status, 1);
 });
 
+// A bare specifier is a missing package OR an alias, and the two have opposite
+// fixes. The report offered `npm install` and "check that this run read the
+// tsconfig.json defining it" without ever saying WHICH tsconfig.json this run
+// read, so the user of TC-80 — whose imports were a `paths` alias and whose
+// dependencies were fine — had to read the config and grep the import style
+// themselves. Naming the file is what separates the two causes (BUGS TC-80).
+test('an unresolved bare specifier names the tsconfig this run read', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'unresolved')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /no-such-package-anywhere/);
+  // The config this run read, by name. `tsconfig.json` at the repository root
+  // declares no `paths`, so the specifier is not an alias it knows about.
+  assert.match(run.stdout, /tsconfig\.json/);
+  assert.match(run.stdout, /no `paths` entry/);
+  assert.strictEqual(run.status, 1);
+});
+
+// The other cause, and the one the entry was filed about: the alias IS declared
+// in the tsconfig the run read and its target is not on disk. `npm install`
+// installs nothing that would fix it (BUGS TC-80).
+test('a bare specifier that matches a `paths` entry is reported as an alias', () => {
+  const dir = path.join(root, 'test', 'fixtures', 'alias');
+  const run = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts')], {
+    cwd: dir,
+    encoding: 'utf8',
+  });
+  assert.match(run.stdout, /1 module could not be resolved/);
+  assert.match(run.stdout, /matches a `paths` entry in tsconfig\.json/);
+  assert.match(run.stdout, /@app\/row/);
+  // The wrong advice, gone: nothing here is fixed by installing a package.
+  assert.ok(!run.stdout.includes('npm install'), run.stdout);
+  assert.strictEqual(run.status, 1);
+});
+
 // TC-124. `isFunctionLike` tests the NODE KIND, and an overload signature and an
 // ambient `declare function` are both that kind with nothing inside them. The
 // walk had nothing to walk, found nothing, and the run printed "every annotated
