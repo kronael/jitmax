@@ -34,10 +34,15 @@ lib/          scan.ts (the recursive walk), report.ts, ts.ts
 bin/          jitmax.ts — exit 0 clean, 1 findings or a truncated walk,
               2 the tool failed
 demo/lib.ts   every rule's fixture, including the must-stay-silent ones
-examples/     real library functions, before and after the printed fix, MIT
-test/         one test per rule, plus one per silent case; fixtures/ holds the
-              config and the call chain longer than the walk's cap
-bench/        driver.ts (the protocol), sweeps.ts (every sweep's cells, one table),
+examples/     README.md (what a fix is worth on somebody else's code, and the
+              survey); real library functions, before and after the printed
+              fix, MIT
+test/         README.md (what the suite guards); one test per rule, plus one per
+              silent case; fixtures/ holds the config and the call chain longer
+              than the walk's cap
+bench/        README.md (every published number, the protocol, the V8 citation
+              table and the pin), driver.ts (the protocol), sweeps.ts (every
+              sweep's cells, one table),
               run.ts (the runner around the measurement — selection, the load
               gate, resume, progress, the manifest), env.ts (what a row records
               about the machine), kernel.ts (the argv/PRNG/result contract a
@@ -45,9 +50,22 @@ bench/        driver.ts (the protocol), sweeps.ts (every sweep's cells, one tabl
               diagnostic), natives.js + natives.d.ts (the only V8 natives
               syntax in the repo, three wrappers the two probes import),
               one workload + one .jl per measured claim
-README.md     how to use it, the rules, and the V8 citation table
+docs/         rules.md (what each rule detects, its trigger and its fix) and
+              limits.md (where the tool does not work)
+site/         index.html — the published page, its ONE source
+README.md     what it is, how to start, and which file answers what
+ARCHITECTURE.md how it is built inside
 BUGS.md       the review queue. Found during audits, fixed only when asked
 ```
+
+Documentation is split by the question a file answers, and the tooling follows
+the content: `bench/README.md` carries the generated numbers block, the V8
+pin block and the citation table, so `lib/derive.ts`, `bench/v8-check.ts`,
+`lib/derive-builtins.ts` and CI read that file. `examples/README.md` carries the
+two end-to-end tables, `docs/limits.md` the over-gate corpus number, and
+`test/README.md` the test count — each one read back by `make test`. Every doc
+file is in the `DOCS` register in `test/check.test.ts`; a new one goes there or
+its numbers are unchecked.
 
 ## Two evidences, and how to verify each
 
@@ -66,7 +84,8 @@ make bench-dispatch        # and bench-spread, -select, -chained, -strings, -add
 Nothing else may run on the machine during a sweep. These are timings.
 
 **Verify a V8 citation** — `make v8-check` re-reads every quoted line in
-README.md's V8 table and compares it against a local checkout of V8's source:
+`bench/README.md`'s V8 table and compares it against a local checkout of V8's
+source:
 
 ```sh
 git clone --filter=blob:none --sparse https://github.com/v8/v8 v8src
@@ -171,9 +190,10 @@ Results apply only to the engine and hardware tested.
   asserts the rule stays quiet there. A rule that fires in a case its
   measurement rejected fails `make test`.
 - **Every published number is derived, never typed.** `lib/derive.ts` holds one
-  query per number; `make numbers` writes `lib/numbers.ts` and README's
-  generated block from the `.jl` rows, `EVIDENCE` interpolates them, and
-  `make test` fails when a quoted number and its data disagree.
+  query per number; `make numbers` writes `lib/numbers.ts` and
+  `bench/README.md`'s generated block from the `.jl` rows, `EVIDENCE`
+  interpolates them, and `make test` fails when a quoted number and its data
+  disagree.
 - **Never overwrite a `.jl`.** Runners append. Superseded sweeps are kept
   under a suffix (`-precal`, `-oldcal`) so a reader can see what changed — and
   a superseded sweep is history, never a source for a published number.

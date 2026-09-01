@@ -1,17 +1,20 @@
 # jitmax
 
-Mark a TypeScript function with `/** @jitmax */`. jitmax reports the
-lines in it, and in every callee whose source it can read, that match patterns
-measured to push V8 off its fast path. Each finding carries the fix and names
-the sweep that priced the rule. The cost itself is in this file, not beside the
-finding: a ratio is a property of the input, and the annotation says the
-function is hot, not how large its data is.
+Mark a TypeScript function `/** @jitmax */` and jitmax tells you which lines in
+it, and in everything it calls, are patterns measured to push V8 off its fast
+path.
+
+The annotation is you saying "this function has to be fast". A finding is one
+line, the fix for it, and the benchmark that priced the rule. When the tool
+could not see everything — a call it cannot follow, a module that will not
+resolve — it says so and exits non-zero, because a run that proves nothing
+about part of your call tree is not a clean run.
 
 ![jitmax finding one line in a function radash ships](demo/demo.gif)
 
-## Use it
+## Quick start
 
-The package is ready for this command from the root of a TypeScript repository:
+From the root of a TypeScript repository:
 
 ```sh
 npx github:kronael/jitmax
@@ -23,12 +26,6 @@ list. It is not on npm, so use the repository URL as the package name. The
 remote does not have a published Git ref yet, so this public install remains
 blocked by TC-133.
 
-From an existing checkout, install its development dependencies:
-
-```sh
-cd /path/to/jitmax && npm install
-```
-
 Mark the function you need fast:
 
 ```ts
@@ -36,7 +33,7 @@ Mark the function you need fast:
 export function total(rows: Row[]): number { … }
 ```
 
-Then run it from the TypeScript repository root:
+From a checkout, `npm install` once, then run it from your repository root:
 
 ```sh
 node /path/to/jitmax/bin/jitmax.ts
@@ -44,33 +41,9 @@ node /path/to/jitmax/bin/jitmax.ts
 
 Pass paths only when the repository has no usable `tsconfig.json`.
 
-It exits 0 when every annotated function is clean, 1 when it has an error to
-report **or when it could not see everything** — a truncated walk, a module it
-could not resolve, or a hot frame from a profile that matched no function here —
-and 2 when the tool itself failed. A gate reads the exit code, so a run that
-could not see everything is never a pass. Warnings alone do not fail a run.
-
-**An installed copy runs compiled JavaScript; a checkout runs the TypeScript.**
-Node refuses to strip types from any file under `node_modules`, so the `bin`
-entry is a JavaScript shim: it prefers `dist/`, which npm's `prepare` compiles
-into every packed and every git-installed copy, and falls back to
-`bin/jitmax.ts` where there is no `dist/` — a checkout, or bun, which reads
-TypeScript anywhere. A checkout still needs no build step. `BUGS.md` TC-72.
-
-It loads *your* TypeScript, not a bundled copy — 5.x, because TypeScript 7 is
-the native rewrite and has neither `ts.sys` nor `ts.createProgram`, which is
-every API this tool is built on (`BUGS.md` TC-130).
-
-## Configure it
-
-Two optional layers turn a rule off. Neither is required — with no config and
-no overrides, jitmax behaves exactly as above.
-
-**A TOML config**, the first CLI positional, named by its `.toml` suffix:
-
-```sh
-jitmax jitmax.toml src
-```
+**Turn a rule off** in a TOML file, given as the first positional argument and
+recognised by its `.toml` suffix. Neither layer is required — with no config
+and no overrides, jitmax behaves exactly as above:
 
 ```toml
 [rules]
@@ -78,32 +51,19 @@ jitmax jitmax.toml src
 "TC-9" = false
 ```
 
-**A per-function override**, in the same comment as the promise:
+or per function, in the same comment as the annotation:
 
 ```ts
-/** @jitmax -megamorphic-elements */
-export function total(rows: Row[]): number { … }
-
-/** @jitmax -TC-2 -TC-9 */
+/** @jitmax -megamorphic-elements -TC-9 */
 export function other(rows: Row[]): number { … }
 ```
 
-which disables those rules for that function and everything its walk reaches,
-and nowhere else.
+A rule name switches off that rule; a defect code switches off every rule
+carrying it. Suppression is never silent — the report says how many findings
+were removed and by what. `docs/rules.md` has both layers in full.
 
-Both layers accept two forms of key: a rule name (`megamorphic-elements`)
-disables that rule; a defect code (`TC-9`) disables every rule that carries it
-— see the `known defect` line under a finding, or `BUGS.md`, for what a code
-names. An unknown name or code fails loudly with exit `2`, the same as a
-missing path. Suppression is never silent: the report always says how many
-findings were removed and by what, e.g.
-`3 findings suppressed (TC-9, megamorphic-elements)` — a clean run that is
-clean because rules were switched off says so.
-
-## Or let a profile decide what is hot
-
-The annotation is you asserting a function is hot. A profile is a measurement of
-it. Record one and hand it over as the second suffix-named positional:
+**Or let a profile decide what is hot.** The annotation is you asserting a
+function is hot; a profile is a measurement of it:
 
 ```sh
 node --cpu-prof --cpu-prof-dir=. your-workload.js
@@ -111,30 +71,33 @@ jitmax run.cpuprofile src
 ```
 
 Every function at or above `[profile] min_self_pct` of the profile's sampled
-self time is marked, and the report says what marked it:
+self time is marked, and the report says what marked it. Nothing else changes:
+the walk, the rules and the exit code cannot tell a profiled mark from an
+annotated one. `ARCHITECTURE.md` has the source-map handling.
 
-```
-  src/hash.ts:8  compress() — 58.6% of samples, run.cpuprofile
-```
+## The eight rules
 
-Nothing else changes: the walk, the rules and the exit code cannot tell a
-profiled mark from an annotated one. There is no static "hotness" mode and there
-will not be one — a loop with an unknown trip count and a high call-graph fan-in
-predict hotness weakly, and this tool prints "hotness is a property of the
-workload" under every run it makes.
+Eight rules ship. The first six check every function in the call tree; the last
+two report where the walk stopped. *Megamorphic* means one code location has
+seen many object shapes — V8 caches four per site, and the fifth costs you the
+cache. Every cost below is a microbenchmark on one machine, and it is a
+property of the input as much as of the code.
 
-A frame's position is a position in the file V8 **ran**, which is not the file
-you wrote as soon as anything transforms it — one `enum` is enough, because type
-stripping cannot run one. So a position is ported back through the source map
-beside the profiled file before it is matched, and the finding names the line you
-wrote. When the profiled file has no source map, nothing is guessed: the run
-prints how many frames matched, names the ones that did not with their file and
-line, and says a transform is the likelier cause than a stale profile — and it
-exits `1`, because unchecked measured time is not a clean run. `min_self_pct`
-defaults to 1 and is a constant nobody has measured, so the TOML owns it and
-every run prints the value it used.
+| Rule | What it looks for | Measured |
+|---|---|---|
+| [`megamorphic-elements`](docs/rules.md#megamorphic-elements) | the fifth distinct property set at a load site | 3.4-11.3x |
+| [`megamorphic-dispatch`](docs/rules.md#megamorphic-dispatch) | `x.step()` where `x` is one of five object types | 12.9-22.7x |
+| [`accumulating-spread`](docs/rules.md#accumulating-spread) | `[...acc, v]` or `{ ...acc, k: v }` in a loop — quadratic | 149-166x |
+| [`chained-allocation`](docs/rules.md#chained-allocation) | `.map().filter()` allocates a whole array between stages | 1.44-1.52x |
+| [`allocating-select`](docs/rules.md#allocating-select) | `x = Lib.min(x, y)` in a loop returns a new object every pass | 2.56-2.87x |
+| [`delete-property`](docs/rules.md#delete-property) | `delete` demotes an object to dictionary mode | 12.3-13.6x |
+| [`closed-world`](docs/rules.md#closed-world) | a callee with no readable body anywhere in the checkout | 4.64-4.95x |
+| [`interface-dispatch`](docs/rules.md#interface-dispatch) | a call whose body IS here but cannot be picked | no claim |
 
-## What you get
+No cost is printed beside a finding. The tool cannot see how big the data
+running through that line will be, and the ratio depends on it.
+
+## What a finding looks like
 
 ```
 jitmax — 59 annotated functions, 29 errors
@@ -153,74 +116,54 @@ jitmax — 59 annotated functions, 29 errors
       known defect: TC-9 — rules fire outside the conditions their own evidence establishes
 ```
 
-Every finding is an error, and every error fails the run. **The annotation is
-the filter**: you write `/** @jitmax */` on a function you need fast, so
-a finding on one is actionable by definition and a second severity tier gates
-nobody. Three rules — `closed-world`, `interface-dispatch` and
-`megamorphic-dispatch` — warned and exited 0 until 2026-08-31, on the argument
-that no benchmark measures the program they fire on. That gap is real and is
-still stated: they carry `TC-33`, and the report prints `known defect: TC-33`
-under every finding they make. It is also 98.6% of every finding across the
-22-codebase survey below, so a build can now fail on a mechanism this project
-has not priced for that program. Switch a rule off in the `[rules]` table, or
-per function with `-closed-world` / `-TC-33` on the annotation — and since
-v0.11.0 `interface-dispatch` is separately silenceable, so quieting the loud
-cause no longer switches off the honest "no body anywhere" one.
-
 Four things, and the second is the point:
 
-- **the line**, `demo/lib.ts:148` — which is inside `dropInner`, a function
-  nobody annotated. `viaCallee` has the annotation; jitmax followed the
-  call and reported where the cost actually is.
-- **the sweep that priced the rule**, named, so you can read the cost in this
-  file and re-run it yourself with `make bench-*`. No ratio is printed beside
-  the finding, because the tool cannot see the size of what will run through
-  that line and the ratio depends on it: accumulating spread measured 149-166x
-  at n=1000 and 1766-1889x at n=10000, the same rule on the same machine.
+- **the line** — which is inside `dropInner`, a function nobody annotated.
+  `viaCallee` has the annotation; jitmax followed the call and reported where
+  the cost actually is.
+- **the sweep that priced the rule**, named, so you can read the cost in
+  `bench/README.md` and re-run it yourself with `make bench-*`.
 - **the fix**, concretely, not "consider optimising" — and where the fix itself
   stops paying, wherever applying it to somebody else's function found a limit.
 - **what it could not check** — a call that resolves to a declaration with no
   body is listed by name, and a walk that hits its limit prints
-  `WALK TRUNCATED`, exits `1`, and is never reported as clean. A call through a
-  parameter or an interface method is NOT listed: it resolves to a declaration
-  that is neither followable nor a declaration file, and falls through both
-  branches (`BUGS.md` TC-31). Read the coverage line as "the calls it could
-  name", not "everything it could not see".
+  `WALK TRUNCATED`, exits `1`, and is never reported as clean.
 
-Exit codes: `0` clean, `1` jitmax has a finding to report OR could not
-see everything, `2` the tool itself failed. A path that does not exist is a `2`,
-never a clean run. Four things are a `1` with no finding in them, because a run
-that proves nothing about part of your call tree is not a clean run either: a
-walk that hit its limit, a module that would not resolve (every type it declares
-reads as `any`, so every type-based rule went quiet on the files importing it),
-a hot frame in a profile that matched no function in these sources, and a call
-that reads a method off a value typed `any` — nothing resolves there, so the
-tool cannot tell a `Map` builtin from your own code and says so instead of
-naming a body it never found (`BUGS.md` TC-129).
+## What it guarantees
 
-## Requirements
+Exit `0` clean, `1` a finding to report OR could not see everything, `2` the
+tool itself failed. A path that does not exist is a `2`, never a clean run.
+Warnings alone do not fail a run.
 
-Node `>=22.18`, which strips types itself, so RUNNING the tool needs no build
-step. Development has one, for the derived artifacts only:
+Four things are a `1` with no finding in them, because a run that proves
+nothing about part of your call tree is not a clean run either: a walk that hit
+its limit, a module that would not resolve (every type it declares reads as
+`any`, so every type-based rule went quiet on the files importing it), a hot
+frame in a profile that matched no function in these sources, and a call that
+reads a method off a value typed `any` — nothing resolves there, so the tool
+cannot tell a `Map` builtin from your own code and says so instead of naming a
+body it never found (`BUGS.md` TC-129).
+
+Every finding is an error, and every error fails the run. The annotation is the
+filter: a finding on a function you said must be fast is actionable by
+definition, so a second severity tier would gate nobody.
+
+## What it costs to be wrong
+
+One number, so it can be checked rather than admired. Rebuilding an
+accumulator inside a loop — `acc = [...acc, r]` — measured **149-166x** slower
+than pushing onto it, at n=1000 with construction counted:
 
 ```sh
-make          # all: lint, test, check — asserts the committed artifacts
-              # still match their sources; regenerates nothing
-make build    # numbers + builtins: regenerate lib/numbers.ts and
-              # lib/builtins.ts after a .jl sweep or a V8 re-pin, then commit
+make bench-spread
 ```
 
-`make` never runs `build`: regenerating right before the drift assertions would
-compare fresh output against fresh output, and a stale committed artifact could
-never fail again.
-
-TypeScript `>=5.0.0` as a peer dependency — jitmax loads *your* copy, so it
-parses with the same compiler your build does. It does **not** yet read your
-`tsconfig.json` when you pass it a path: the config is loaded only for a bare
-`jitmax` with no arguments, and the documented `jitmax src` form
-compiles under built-in ES2022/NodeNext options instead. Path aliases, JSX mode
-and ambient types can therefore resolve differently from your build
-(`BUGS.md` TC-32).
+The caveat is the size of the effect, not its direction: the same rule on the
+same machine measures 1766-1889x at n=10000, and applied to a function radash
+ships it moves the whole call 3.22-4.65x, because the code around that one line
+also allocates, recurses and branches. A microbenchmark cannot say what a
+program gets. `bench/README.md` has every number, the rows it came from, and
+the protocol; `examples/README.md` has what four real fixes were worth.
 
 ## Why this exists
 
@@ -234,696 +177,50 @@ jitmax borrows the annotation and the call-tree walk. The jobs differ:
 CPython does not JIT, so Numba must compile; V8 does, so jitmax only tells
 you where your code blocks it.
 
-## The rules
-
-Eight rules ship. The first six check every function in the call tree. The
-last two report where the walk stops — one for a callee with no body anywhere,
-one for a call the walk cannot bind to a single implementation. Megamorphic means one code location has
-seen many object shapes. Quadratic means the work grows with the square of the
-input size.
-
-Each rule carries two clauses, and they are not the same clause. `silent` is
-where the same benchmark **refused** the rule — it measured the case and found
-nothing worth reporting, and a test fails if the rule fires there. `unreported`
-is where the benchmark found a **real cost the rule does not report**, because
-no declared type separates that case from one it would be wrong to warn about.
-Two rules have one. Summarising both as "where the benchmark found nothing" was
-false for both (`BUGS.md` TC-39).
-
-| Rule | What it looks for | Where the measurement found no effect |
-|---|---|---|
-| `megamorphic-elements` | the fifth distinct property set at a load site — 3.4-11.3x on reads | two to four sets, 0.95-1.47x |
-| `megamorphic-dispatch` | `x.step()` where `x` is one of five object types | two to four types, for a method on a class |
-| `accumulating-spread` | `[...acc, v]`, `{ ...acc, k: v }`, `acc.concat(v)` or `Object.assign({}, acc, …)` in a loop — quadratic | no loop re-runs the copy; `Object.assign(acc, …)`, which mutates; strings, which V8 appends to instead of copying |
-| `chained-allocation` | `.map().filter()` or `Object.entries(o).map()` allocates between stages | one stage; large n; `Object.keys(o).map()`, `.sort()`, `.split().map().join()` |
-| `allocating-select` | `x = Lib.min(x, y)` in a loop returns a new object every pass | the same loop on numbers |
-| `delete-property` | `delete` demotes an object to dictionary mode — 12.3-13.6x per property load after it | assigning `undefined` instead, which costs 1.00-1.06x |
-| `closed-world` | calls to somebody's code with no readable body anywhere in the checkout | a callee small enough to inline costs nothing; the platform, which is counted and never named |
-| `interface-dispatch` | a call through an interface, whose body IS here but cannot be picked | one implementation reaching the receiver, which the walk follows instead of reporting |
-
-These two were one rule until 2026-08-29, and the split matters to anyone who
-ran the tool: a call through an interface has a body in this checkout — the walk
-simply cannot decide which one runs — and telling you to inline it is telling
-you to undo the abstraction. It was 96.7% of every finding in the survey, so
-`[rules] closed-world = false`, the obvious way to quiet it, also switched off
-the one cause that is honest about not being able to look. `BUGS.md` TC-93.
-
-Both count first. The dataflow walk asks what actually reaches the receiver at
-every escape, not only at the ones that resolved to an interface member, and
-five or more implementations at one call site is `megamorphic-dispatch`'s claim
-carrying `megamorphic-dispatch`'s benchmark — the same site, whether or not the
-walk could read the callee's body. Below that threshold the count is printed
-rather than acted on. And neither rule fires on the platform: a call into
-`globalThis`, a V8 builtin or `@types/node` has no body an `npm install`
-produces and no map to count, so it is counted and not named. `BUGS.md` TC-110.
-
-**Every rule includes the benchmark that earned it, and the case where the same
-benchmark found nothing.** `closed-world` measures the mechanism a call boundary
-controls: a callee V8 refuses to inline costs 4.64-4.95x in a hot loop at
-n=1000. That is a bound on what one unchecked call can cost, not a claim about
-any particular one: the rule fires on a callee with no readable body and the
-sweep measures a readable one padded past the inlining budget (`BUGS.md`
-TC-33). That gap is why the rule warned until 2026-08-31, and it is why every
-one of its findings still prints `known defect: TC-33`. That range used to be 4.42-4.79x, one sweep per size,
-and then 3.21-4.95x. Re-measured three times over, the n=1000 cell replicates
-and the n=100000 cell **does not replicate at all**: 3.21x, 4.68x and 4.73x,
-with intervals 2.54-3.88, 3.88-5.58 and 4.28-5.39 that share no common value.
-`lib/derive.ts` now withdraws that cell instead of quoting it, which is why the
-range no longer reaches down to 3.21x: the old bottom end **was** the dissenting
-sweep.
-If a rule fires in a case a test declares silent, `make test` fails.
-Measurements have blocked a rule or a rule's extension from shipping seven times.
-Two went further and took something away from a rule that was already shipping.
-`accumulating-spread` matched `.concat()` by name, so it reported `s = s.concat(x)`
-on a string as a quadratic array copy. Measured, appending to a string is
-*faster* than the rewrite the tool was demanding — `make bench-strings`.
-And `boxed-elements` was withdrawn outright: a boxed array really does cost
-1.39-1.66x to read, but the rule fired on the *declared* element type, and V8
-picks the representation from the values actually stored. A `(number | string)[]`
-holding only numbers is the same array `number[]` builds — 0.96-1.08x, with
-seventeen of eighteen intervals spanning 1.0 — and nothing static separates the
-array that will hold a string from the one that will not. `make bench-arrays`.
-
-The seventh of those blocks is the most repeated claim in V8 folklore, and it is
-the reason there is no rule about it here. Adding a property after you build the object —
-`const o = { a: 1 }; o.b = 2;` — is supposed to cost you a second hidden class.
-V8's own debug output says otherwise: every object built the same way ends at
-the *same* hidden class, so the code that reads them sees one, not two. Measured
-against writing both properties at once, it costs 1.21–1.34x, inside the band
-this harness has twice failed to reproduce. An optional property is no worse,
-and is *cheaper* to build. `make bench-addprop`.
-
-**Read the third column as a limit on the evidence, not as a promise about the
-code.** Two rules now check a condition in their own third column, and the rest
-do not. `megamorphic-elements` requires a read off an element before it fires
-(TC-8, fixed). `chained-allocation` stays silent when a `.slice()` in the chain
-bounds the result to a literal below the smallest n its sweep covers (TC-54,
-fixed) — and where nothing bounds it, the rule still cannot see how big your
-array is, which is the general case and is why no cost is printed beside a
-finding. The `delete` rule fires without knowing whether anything reads the
-object afterwards, and its cost is *per read*. The gap is written up as TC-9 in
-`BUGS.md`.
-
-**One entry left that column by being wrong.** Until 2026-08-15 the `delete` row
-read "a single delete on one object", published since the first round as a case
-this project had refuted — 0x, with dictionary mode up to 10% *faster*.
-Re-measured against a kernel that has to load the object on every pass, one
-object with one delete costs **13.1-15.1x**, in all nine of its sweeps, more
-consistently than a hundred thousand objects do. The old probe's fast side could
-be served by a load hoisted out of its loop; the dictionary side could not. The
-exception is withdrawn and the rule is right to fire there — a refutation has to
-be refutable too. `make bench-delete`.
-
-## Evidence
-
-```sh
-make bench                # the 24-cell object-shape sweep
-make bench-spread         # accumulating spread, array form
-make bench-spread-object  # accumulating spread, object form
-make bench-strings        # string building — the refutation, not a rule
-make bench-select         # choosing between two boxed values
-make bench-chained        # chained array passes
-make bench-inline         # the inlining boundary behind closed-world
-make bench-addprop        # adding a property after construction — a refutation
-make bench-dispatch       # calling a method on five object types
-make bench-delete         # delete, on many objects and on exactly one
-make bench-arrays         # elements kinds — the sweep that withdrew a rule
-make example              # four shipped library functions, before and after
-make v8-check             # every V8 citation, against the pinned checkout
-```
-
-**Every number this project publishes, and the rows it is.** `make numbers`
-writes the table below, and the `EVIDENCE` strings the tool prints, straight
-from the `.jl` files. Nothing here is typed twice, and `make test` fails when a
-published number is no longer what its rows say.
-
-<!-- generated: numbers -->
-
-| Number | The rows it is |
-|---|---|
-| `3.4-11.3x` | `bench/shape-sets.jl` — five distinct property sets, reads only, L1 through RAM |
-| `3.61-3.71x` | `bench/shape-sets.jl` — construction counted, five property sets, L1 and L2 — 1 of 2 cells withdrawn as unreplicable (rule 13): 5|1|incl|16384|L2 |
-| `1.08-1.20x` | `bench/shape-sets.jl` — construction counted at RAM size, five property sets |
-| `20` | `bench/shape-sets.jl` — the whole sweep — 4 of 24 cells withdrawn as unreplicable (rule 13): 2|1|incl|16384|L2, 2|1|incl|262144|L3, 4|1|incl|16384|L2, 5|1|incl|16384|L2 |
-| `0.95-1.47x` | `bench/shape-sets.jl` — two to four property sets, reads only, every size — where the rule stays quiet |
-| `4.4-11.5x` | `bench/shapes-calibrated.jl` — five key orders of ONE key set, reads only, L1 through RAM |
-| `12.9-22.7x` | `bench/dispatch.jl` — a method on a prototype, five and six shapes, reads only |
-| `1.52-1.65x` | `bench/dispatch.jl` — a method on a prototype, four shapes, reads only at L1 |
-| `19.22-22.71x` | `bench/dispatch.jl` — a method on a prototype, five shapes, reads only at L1 |
-| `7.1-9.0x` | `bench/dispatch.jl` — one shared function held as an own property, five and six shapes, reads only |
-| `1.9-5.8x` | `bench/dispatch.jl` — five shapes with construction counted, prototype and own-property, L1 and L2 |
-| `1.58-1.72x` | `bench/dispatch.jl` — a method on a prototype at RAM size, five and six shapes — 1 of 2 cells withdrawn as unreplicable (rule 13): cls5|cls1|incl|262144|L3|cls|5|dispatch-table |
-| `1.00-1.14x` | `bench/dispatch.jl` — the same cells at two to four shapes |
-| `73` | `bench/dispatch.jl` — the whole sweep — 7 of 80 cells withdrawn as unreplicable (rule 13): cls2|cls1|excl|262144|L3|cls|2|dispatch-table, cls5|cls1|incl|262144|L3|cls|5|dispatch-table, lit6|lit1|incl|16384|L2|lit|6|dispatch-table, lit6|lit1|incl|262144|L3|lit|6|dispatch-table, tgt2|lit1|excl|256|L1|tgt|2|dispatch-table, tgt3|lit1|excl|256|L1|tgt|3|dispatch-table, tgt5|lit1|excl|16384|L2|tgt|5|dispatch-table |
-| `1.41-1.65x` | `bench/dispatch.jl` — four shapes on a prototype method, reads only, every size — where the rule is quiet |
-| `2.10-2.28x` | `bench/dispatch.jl` — four shapes on one shared own-property function, reads only, every size |
-| `3.5-15.8x` | `bench/dispatch.jl` — every shape carrying its OWN function, reads only, two to six targets, every size |
-| `149-166x` | `bench/spread.jl` — array spread against push at n=1000, construction counted, both sweeps |
-| `1766-1889x` | `bench/spread.jl` — the same at n=10000, the three replications |
-| `1877x and 2348x` | `bench/spread.jl` — the two sweeps of that cell that predate the replication — the older sweep, not re-measured under r2 |
-| `777-807x` | `bench/spread.jl` — acc.concat(v) against push at n=1000, construction counted |
-| `695-928` | `bench/spread.jl` — every interval measured for that cell |
-| `0.96-1.02x` | `bench/spread.jl` — the finished array read back, spread against push, both sizes and both sweeps |
-| `0.03x` | `bench/spread-object.jl` — the finished object read back, spread against keyed assignment, n=500 |
-| `186-200x` | `bench/spread-object.jl` — object spread against keyed assignment at n=500, the three replications |
-| `814-887x` | `bench/spread-object.jl` — Object.assign({}, acc, …) at n=500, the three replications |
-| `0.03-1.87x` | `bench/spread.jl` + `bench/spread-object.jl` — all four accumulating forms with construction excluded, every size |
-| `0.26-0.52x` | `bench/strings.jl` — s = s + x, s += x and s = s.concat(x) against a push-and-join, building only — 1 of 9 cells withdrawn as unreplicable (rule 13): pluseq|joined|build|1000|dispatch-table |
-| `0.78-1.13x` | `bench/strings.jl` — the same three with the read back counted |
-| `0.71-1.48` | `bench/strings.jl` — every interval measured for those nine cells |
-| `2.56-2.87x` | `bench/select.jl` — the chosen value stored where it outlives the loop, both sizes |
-| `2.59-2.92` | `bench/select.jl` — the intervals at n=10000, across the first sweep and the three replications |
-| `2.30-3.09` | `bench/select.jl` — the intervals at n=100000, across the first sweep and the three replications |
-| `6` | `bench/select.jl` — the whole sweep |
-| `0.88-1.22x` | `bench/select.jl` — the same loop on numbers, both sizes — where the rule stays quiet |
-| `0.84-1.30` | `bench/select.jl` — every interval measured on numbers |
-| `2.01-2.45x` | `bench/select.jl` — the boxed form kept in a local, where escape analysis could see it, both sizes |
-| `1.44-1.52x` | `bench/chained.jl` — xs.map(f).filter(g) against one fused pass, construction counted, both sizes — 1 of 2 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table |
-| `6.48x and 6.58x and 7.51x` | `bench/chained.jl` — the three sweeps of the n=1000 cell this rule used to headline — withdrawn under rule 13, quoted as the refutation it is |
-| `1.37-1.63` | `bench/chained.jl` — every interval measured for the cells that replicate — 1 of 2 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table |
-| `3.67-3.76x` | `bench/chained.jl` — Object.entries(o).map(f) against a for-in walk at n=1000, construction counted |
-| `3.50-4.04` | `bench/chained.jl` — every interval measured for that cell |
-| `2.55-2.61x` | `bench/chained.jl` — the same at n=10000 |
-| `2.23-2.97` | `bench/chained.jl` — every interval measured for that cell |
-| `22` | `bench/chained.jl` — the 0.3 sweep, which is every row the dispatch-table kernel wrote — 2 of 24 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table, splitjoin|packed|excl|1000|dispatch-table |
-| `1000` | `bench/chained.jl` — the smallest n any construction-counted cell in this sweep was measured at — 1 of 12 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table |
-| `0.95-1.10x` | `bench/chained.jl` — reading the finished array back, all six chained forms, both sizes — 1 of 12 cells withdrawn as unreplicable (rule 13): splitjoin|packed|excl|1000|dispatch-table |
-| `0.84-1.00x` | `bench/chained.jl` — Object.keys(o).map(f) against the for-in walk that fuses it, construction counted |
-| `0.99-1.09x` | `bench/chained.jl` — xs.map(f).sort() against the same map, construction counted — .sort() is in place |
-| `0.91-1.22` | `bench/chained.jl` — every interval measured for those cells |
-| `0.99-1.10x` | `bench/chained.jl` — s.split(sep).map(f).join(sep) against two different fusions, construction counted |
-| `4.64-4.95x` | `bench/inline.jl` — a callee past the inlining budget against the same callee under it — 1 of 2 cells withdrawn as unreplicable (rule 13): large|small|excl|100000 |
-| `3.21x and 4.68x and 4.73x` | `bench/inline.jl` — the three sweeps at n=100000 — withdrawn under rule 13, quoted as the refutation it is |
-| `4.34-5.22` | `bench/inline.jl` — the interval at n=1000 |
-| `1` | `bench/inline.jl` — the whole sweep — 1 of 2 cells withdrawn as unreplicable (rule 13): large|small|excl|100000 |
-| `12.3-13.6x` | `bench/delete.jl` — one delete per object, reads only, at n=16384 and n=262144 — 1 of 2 cells withdrawn as unreplicable (rule 13): rowdel|rowbase|excl|262144|dispatch-table |
-| `n=16384` | `bench/delete.jl` — the sizes the cells behind delete.rows still replicate at — 1 of 2 cells withdrawn as unreplicable (rule 13): rowdel|rowbase|excl|262144|dispatch-table |
-| `11.5-13.2x` | `bench/delete.jl` — the same delete against assigning undefined instead, n=16384 |
-| `13.1-15.1x` | `bench/delete.jl` — one object with one delete, reads only, every size and every sweep |
-| `23.7-24.8x` | `bench/delete.jl` — one delete per object with construction counted, n=256 |
-| `3.3-8.7x` | `bench/delete.jl` — the single object with construction counted, every size |
-| `12` | `bench/delete.jl` — the whole sweep — 4 of 16 cells withdrawn as unreplicable (rule 13): rowdel|rowbase|excl|262144|dispatch-table, rowdel|rowbase|incl|16384|dispatch-table, rowdel|rowbase|incl|262144|dispatch-table, rowundef|rowbase|incl|16384|dispatch-table |
-| `1.00-1.06x` | `bench/delete.jl` — assigning undefined instead of deleting, reads only — the fix, not the defect |
-| `0.96-1.12` | `bench/delete.jl` — every interval measured for that cell |
-| `0.98x and 1.05x and 1.18x` | `bench/delete.jl` — the three construction-counted sweeps at n=16384 — withdrawn under rule 13, quoted as the refutation it is |
-| `3.22-4.65x` | `bench/example.jl` — radash assign — the whole call, both sizes, three sweeps each |
-| `1.57-2.06x` | `bench/example.jl` — radash assign — the caller's reads of the result, both sizes, what each cell's three sweeps agree on |
-| `1.62-3.32x` | `bench/example.jl` — es-toolkit omit — the whole call, 12 and 48 keys |
-| `0.78-1.31` | `bench/arguments.jl` — the `arguments` object against a rest parameter, escaping, indexed and length-only — 2 of 9 cells withdrawn as unreplicable (rule 13): argesc|restesc|excl|16384, arglen|restlen|excl|262144 |
-| `7` | `bench/arguments.jl` — the cells behind args.null — 2 of 9 cells withdrawn as unreplicable (rule 13): argesc|restesc|excl|16384, arglen|restlen|excl|262144 |
-| `24.3-65.5x` | `bench/sparse.jl` — dictionary elements against a packed array, reads only |
-| `20.4-40.1x` | `bench/sparse.jl` — the same with construction counted — 1 of 3 cells withdrawn as unreplicable (rule 13): dict|packed|incl|262144 |
-| `1.32-1.47x` | `bench/sparse.jl` — a holey array against a packed one, reads only — 1 of 3 cells withdrawn as unreplicable (rule 13): holey|packed|excl|262144 |
-| `0.28-0.68x` | `bench/sparse.jl` — the same with construction counted, where the holey array wins |
-| `n=12 and n=48` | `bench/example.jl` — the key counts es-toolkit omit was swept at, which delete-property quotes in its fix |
-| `11.2-11.6x` | `bench/example.jl` — es-toolkit omit — the caller's reads of the result at 12 keys |
-| `0.97-1.04x` | `bench/example.jl` — the same at 48 keys, where the fix stops fixing the read — what its three sweeps agree on |
-| `1.10-1.12x` | `bench/example.jl` — zod cleanEnum — the whole call at a 16-member enum, what its three sweeps agree on |
-| `1.03-1.10x` | `bench/example.jl` — the same at 256 members — rejected under rule 6 (the broad-warning bar), quoted as the refutation it is |
-| `1.36-1.38x` | `bench/example.jl` — remeda mergeAll — building the result at n=8 |
-| `18.78-20.87x` | `bench/example.jl` — the same at n=64 — the triple that disagreed, re-swept, and what these three agree on |
-| `0.11-0.12x` | `bench/example.jl` — remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps |
-
-<!-- /generated -->
-
-Every observation runs in a fresh OS process. An in-process A/B test shares
-inline caches. That polluted the results and made an earlier round invalid.
-Each cell uses 20 paired runs. AB/BA randomisation swaps which version runs
-first. A 95% bootstrap interval is a range calculated by repeatedly resampling
-the measured runs. The harness compares checksums, short values that show
-whether outputs match, inside every pair. It publishes raw per-pair timings
-beside every summary.
-
-If the timed work in a cell misses its 120 ms target by more than 2x, the
-benchmark **throws** instead of publishing. This guard exists because an older
-harness inflated a result by more than double. Worse, the error made a rule
-look worth shipping. See `BUGS.md` TC-5.
-
-That interval is calculated from the 20 pairs of one sweep, so it cannot see
-anything that changes between two sweeps. Six cells proved it: near-identical
-work measured 1.64x, 0.91x and 0.89x, and no two of those can both be true. So a
-cell behind a published number is run three times over, and the three answers are
-published next to each other. Where they disagree, the cell is dropped and the
-three numbers are printed anyway — `make bench-tc11`, `BUGS.md` TC-11.
-
-### Two sweeps that produced no rule
-
-Not every measurement earns a rule, and these two are in the file because they
-did not.
-
-**`arguments` against a rest parameter: nothing.** The advice to avoid the
-`arguments` object is old, widely repeated, and this project could not price it.
-Nine cells — escaping, indexed, and length-only, at 256, 16384 and 262144 — three
-sweeps each. Seven replicate and every one of those intervals contains 1.00
-(`args.null`, spanning 0.78-1.31 across them); the other two agree on nothing at
-all and are withdrawn, which is what a sweep does when the effect it is looking
-for is not there. No rule reports `arguments`, and `bench/arguments.jl` is why.
-`BUGS.md` TC-53.
-
-**Dictionary-mode ELEMENTS, which no rule reports, is the largest ratio here.**
-An array V8 has moved to dictionary elements reads 24.3-65.5x slower
-than a packed one, and 20.4-40.1x slower with construction counted —
-an order of magnitude past anything else in this file. It has no rule because
-nothing static separates an array that went sparse from one that did not.
-
-**And the folklore beside it is refuted.** A holey array — the transition people
-actually warn about — reads only 1.32-1.47x slower, and is FASTER than
-packed once you count building it: 0.28-0.68x. So "holey arrays are
-slow" is not the sparse transition worth a rule, and the one that is cannot be
-detected. `BUGS.md` TC-52.
-
-## What the fix is worth on somebody else's code
-
-Every number above is a microbenchmark, and a microbenchmark cannot say what a
-program gets. So: take a function a library ships, apply the fix jitmax
-printed on it and nothing else, and time the whole call the way a caller makes
-it. The pairs are in `examples/` — `diff` a `.before.ts` against its `.after.ts`
-and the fix is the entire change. `make example` prints the findings, then runs
-the sweep.
-
-Nothing here was searched for. Eleven libraries were cloned shallow and
-annotated by `examples/annotate.js` — every function not nested inside another
-whose body loops — and these are the findings that came back. radash is the
-twelfth, marked by hand a round earlier, and it took fixing three classes of
-false positive to get that run from eight findings to one. The
-ratio is before/after, so above 1.0 the shipped code costs that much more and
-**below 1.0 the fix made it slower**. Three whole sweeps per cell, per §4
-rule 13, all three printed.
-
-**The whole call, which is what a caller gets:**
-
-| Function, and the finding | n | three sweeps | agreement |
-|---|---|---|---|
-| radash `assign` — `accumulating-spread` | 16 | 3.22 / 3.25 / 3.46 | **3.13–3.38** |
-| radash `assign` | 128 | 4.60 / 4.65 / 4.44 | **4.38–4.79** |
-| remeda `mergeAll` — `accumulating-spread` | 8 | 1.36 / 1.37 / 1.38 | **1.33–1.42** |
-| remeda `mergeAll` | 64 | 20.29 / 18.09 / 19.88 | **18.78–20.87** |
-| es-toolkit `omit` — `delete-property` | 12 | 1.70 / 1.77 / 1.62 | **1.67–1.71** |
-| es-toolkit `omit` | 48 | 3.13 / 3.17 / 3.32 | **3.14–3.30** |
-| zod `cleanEnum` — `chained-allocation` | 16 | 1.05 / 1.20 / 1.14 | **1.10–1.12** |
-| zod `cleanEnum` | 256 | 1.03 / 1.06 / 1.08 | **1.03–1.10** |
-
-**Reads on the value the function returns**, which is where `delete-property`'s
-cost is actually paid — by the caller, not inside the function:
-
-| Function | n | three sweeps | agreement |
-|---|---|---|---|
-| radash `assign` | 16 / 128 | 1.98 / 1.93 / 2.01 · 1.61 / 1.70 / 1.55 | **1.91–2.06** · **1.57–1.70** |
-| remeda `mergeAll` | 8 / 64 | 0.12 / 0.11 / 0.12 · 0.11 / 0.11 / 0.11 | **0.11–0.12** · **0.11** |
-| es-toolkit `omit` | 12 | 11.18 / 11.65 / 11.29 | **10.89–11.77** |
-| es-toolkit `omit` | 48 | 0.99 / 1.01 / 1.05 | **0.97–1.04, REJECTED** |
-| zod `cleanEnum` | 16 | 0.98 / 1.11 / 1.01 | **none — DISAGREES** |
-| zod `cleanEnum` | 256 | 1.02 / 1.01 / 1.05 | **0.98–1.07, REJECTED** |
-
-**The honesty condition.** An end-to-end number is far below the microbenchmark
-ratio, always. `accumulating-spread` cites 186-200x for an object spread at
-n=500; applied to radash's `assign` it moves the whole call 3.22-4.65x, because
-the function around that one line also allocates, recurses and branches. That
-gap is the most useful thing in this table: it is what a reader gets, and the
-200x is not.
-
-Four things in these tables say something worse than "smaller", and they are
-here at the same size as the wins. **Two of the four were different when this
-section was written**, and the re-measurement moved them in opposite directions
-— which is the reason each cell is run three times and each of the three is
-printed:
-
-- **`omit` at 48 keys rejects on reads** — 0.97–1.04x, an interval spanning 1.0
-  in all three sweeps. `%HasFastProperties` is false on *both* sides: building a
-  46-key object one key at a time normalizes it just as `delete` does. The fix
-  stops fixing the read somewhere between 12 keys and 48, and the rule still
-  cannot see the width — so the `fix:` line says it, in the sizes the cells were
-  swept at: *"the rebuild helps at the smaller of n=12 and n=48 and not at the
-  larger, where filling it key by key normalizes it too"*.
-- **`mergeAll` at n=64 stopped disagreeing, and that is not a promotion.** It
-  read 17.34x, 19.34x, 20.10x with no value inside all three intervals, and was
-  printed here as a cell rule 13 refuses. Three fresh sweeps read 20.29x,
-  18.09x, 19.88x and *do* share one, 18.78–20.87x. Six sweeps, the same six
-  numbers scattered over the same range, and the second three happened to
-  overlap. It stays in this list: a cell that agrees on one triple and not on
-  another has shown that its interval is narrower than its spread, which is the
-  thing rule 13 exists to catch, and one agreeing triple does not unshow it.
-- **`mergeAll` reads are 8x slower after the fix**, 0.11–0.12x at both sizes in
-  all six sweeps. `Object.assign(out, item)` in a loop — the form this project's
-  own evidence names as the fix — returns a `[DictionaryProperties]` object,
-  where the spread returns a `[FastProperties]` one. `accumulating-spread` fixed
-  a quadratic build and created a per-load cost it never mentioned, so the rule
-  now prints a different fix for each form: pushing onto an **array** costs the
-  reader nothing (0.96-1.02x) and carries no condition, and the **object** form
-  says *"that fills the result key by key, which normalizes the object: the
-  SPREAD-built object reads 0.11-0.12x of what the filled one costs"*. Read the
-  ratio in that direction: the object the defect builds is the CHEAPER one to
-  read back, which is the whole reason the clause exists. Same detection, honest
-  advice — radash's `assign` is the same fix with the reads coming out
-  1.57–2.06x *faster*, which is why it is a condition to check and not a rule to
-  apply. `BUGS.md` TC-16. And zod's `cleanEnum` reads went the other way from
-  `mergeAll`'s: they rejected at 1.00–1.15x and now do not replicate at all
-  (0.98x, 1.11x, 1.01x), so of the six read cells here, one agrees on a real
-  effect, three reject, one is 8x worse and one has stopped agreeing with
-  itself.
-- **`chained-allocation`'s fix is worth almost nothing on the real instance**,
-  and this is the verdict the re-measurement moved. It used to read "worth
-  nothing at either size" — 0.98–1.03x rejecting at a 256-member enum, three
-  sweeps that could not agree at a 16-member one. Re-run, both sizes now clear
-  1.0: **1.10–1.12x** at 16 and **1.03–1.10x** at 256, neither interval spanning
-  it. So the fix is worth something, and what it is worth is three to twelve
-  percent against a rule that cites **1.44-1.52x** for `map` then `filter`,
-  where the loop body is one multiply and the allocation is the whole cost.
-  That figure read 6.48-7.51x until rule 13 was enforced in `lib/derive.ts`:
-  it came from an n=1000 cell whose three sweeps share no common value, and
-  what is left is the cell that replicates. In zod's `cleanEnum` the same two stages sit next to an `Object.entries`
-  allocation neither version avoids and a `Number.parseInt` per key that dwarfs
-  both, and the fused loop pays back most of what it saved by growing its result
-  array instead of getting it pre-sized by `.map()`. Two orders of magnitude
-  between the microbenchmark and the function is the finding either way.
-
-**The whole survey, so the four examples are not four picks out of a hat.**
-Twelve libraries, 850 annotated functions, 1546 findings — **53 of them errors,
-at 53 distinct source lines.** No library produced nothing.
-
-Re-measured 2026-08-30, and the counting changed with it. A finding is one per
-SITE: a line reached from 28 annotated functions used to be 28 findings, so
-every count in this section used to be the call-graph fan-in rather than the
-work (`BUGS.md` TC-62). Calls into the platform — Node's own API, V8's builtins
-and anything reached off `globalThis` — are counted for the run and never
-listed (TC-55, TC-110), and every call the walk cannot follow is reported rather
-than falling through both branches and vanishing (TC-45).
-
-| Library | annotated | findings | what fired |
-|---|---|---|---|
-| es-toolkit 1.50.0 | 286 | 202 | 189 `closed-world`, 7 `delete-property`, 3 `chained-allocation`, 2 `accumulating-spread`, 1 `interface-dispatch` |
-| ramda 0.32.0 | 100 | 176 | 175 `closed-world`, 1 `delete-property` (`_dissoc`) |
-| immutable 5.1.9 | 89 | 268 | 264 `closed-world`, 2 `megamorphic-dispatch`, 1 each `chained-allocation` and `delete-property` |
-| remeda 2.0.0 | 79 | 81 | 78 `closed-world`, 2 `delete-property`, 1 `accumulating-spread` |
-| zod 4.4.3 (`v4/core`) | 78 | 134 | 59 `interface-dispatch`, 54 `closed-world`, 15 `delete-property`, 5 `chained-allocation`, 1 `megamorphic-elements` |
-| just 1.22.4 | 61 | 72 | 70 `closed-world`, 1 each `chained-allocation` and `delete-property` |
-| luxon 3.7.2 | 52 | 112 | 106 `closed-world`, 3 each `chained-allocation` and `delete-property` |
-| decimal.js 10.6.0 | 36 | 260 | 260 `closed-world` |
-| date-fns 4.4.0 (`core`) | 28 | 24 | 17 `closed-world`, 3 `interface-dispatch`, 1 each `megamorphic-dispatch`, `chained-allocation`, `delete-property` and `accumulating-spread` |
-| dinero.js 2.0.2 | 20 | 143 | 141 `closed-world`, 1 `chained-allocation`, 1 `accumulating-spread` |
-| big.js 7.0.1 | 13 | 64 | 64 `closed-world` |
-| radash 12.1.1 | 8 | 10 | 9 `closed-world`, 1 `accumulating-spread` |
-
-Three things in that table are about the tool rather than the libraries.
-
-**The two escape rules are 1490 of the 1546 findings** — 96%. Both warned
-rather than erring until 2026-08-31, so none of it failed a run; all of it does
-now, and `[rules]` is where a reader who disagrees says so. They were one rule
-until 2026-08-29
-and the split is what the ratio between them is for: 1427 `closed-world`, a
-callee whose body is nowhere in the checkout, against 63 `interface-dispatch`,
-a body that IS here at a site the walk cannot bind to one implementation. The
-platform is in neither — Node's own API, V8's builtins and anything reached off
-`globalThis` are counted for the run and never listed, because "inline what you
-need from `path.join`" is advice nobody can take (`BUGS.md` TC-55, TC-69,
-TC-51, TC-110). The 53 findings from the other six rules are the ones no rule
-carries TC-33 for.
-
-**`megamorphic-dispatch` fires three times** in these 850 annotated functions,
-all three through the escape route added in TC-110 — five or more implementations
-reaching one receiver at a call the walk could not follow. immutable's
-`Seq.js:65` and `:83` call `this.__iterateUncached()` and
-`this.__iteratorUncached()`, and ten `Seq` subclasses reach that `this`;
-date-fns's `parse` calls `this.parse()` on a `this` that 31 parser classes reach
-— `EraParser`, `YearParser`, `LocalWeekYearParser` and the rest. Both are
-dispatch tables written on purpose, which is the honest reading: the rule found
-the two places these libraries chose polymorphism, not a mistake. It fired NOT
-AT ALL before that route existed, which is the more useful fact about it: the sharpest cliff this project measured, 12.9-22.7x, is
-not a shape utility libraries write on purpose. The applications below have
-more.
-
-**`megamorphic-elements` fires at exactly one site in 850 functions** — zod's
-`prefixIssues`, whose `issues` parameter unions twelve issue types and which
-reads `.path` off every element through an `as any`. It used to print as ten
-findings, which was the same line reported from ten annotated roots that reach
-it; one site is what the flagship rule is worth across twelve libraries, and the
-ten was the fan-in flattering it.
-
-### Two applications, and the rules twelve libraries could not reach
-
-A utility library is a pipeline. Two programs that are neither small nor fast
-were run exactly the same way — cloned shallow, annotated by
-`examples/annotate.js`, nothing picked by hand:
-
-| Program | annotated | findings | what fired |
-|---|---|---|---|
-| TypeScript 5.9.3 (`src/compiler`) | 465 | 5879 | 4831 `interface-dispatch`, 1010 `closed-world`, 20 `megamorphic-elements`, 12 `allocating-select`, 4 `chained-allocation`, 1 each `delete-property` and `accumulating-spread` |
-| typescript-eslint 8.67.0 | 311 | 2882 | 2863 `closed-world`, 9 `interface-dispatch`, 7 `chained-allocation`, 2 `delete-property`, 1 `megamorphic-dispatch` |
-
-Read those `closed-world` totals as a defect in this tool before reading them
-as anything about either codebase. Neither checkout had `node_modules` installed, so every call into a
-missing package is an unresolvable callee, reported once per annotated caller
-that reaches it. `BUGS.md` TC-51. The two rows are kept out
-of the table above for the same reason: mixed in they would move
-the two escape rules' share from 96% to 99% and teach a reader nothing. The
-compiler is also the one codebase where `interface-dispatch` is the larger
-half: TypeScript dispatches almost everything through `Node`, `Symbol` and
-`Type` interfaces whose implementations are all in the checkout.
-
-Under the flood are the two rules twelve libraries never exercised.
-
-**`megamorphic-dispatch` fired, for the first time on code this project did not
-write.** `packages/eslint-plugin/src/rules/no-misused-promises.ts:543` calls
-`tsNode.name.getText()`, and `name` reaches that call as six distinct property
-sets — a TypeScript declaration name is not one node type. Six is past the four
-maps V8 caches for the site.
-
-**`megamorphic-elements` fires at 20 sites in the compiler**, against one in
-all twelve libraries, and its widest instance is `checker.ts:44260`:
-`checkUnusedIdentifiers` walks a `PotentiallyUnusedIdentifier[]` and reads
-`node.kind` off every element, where that union is 20 distinct property sets at
-one load site. TC-2's caveat still applies — a union member is not a V8 map —
-but 20 against a budget of 4 is the widest gap this survey has found.
-
-The plainest finding in either program needs no caveat at all.
-`typescript-estree/src/ast-converter.ts:48` deletes `range` and `loc` from
-every node of the converted AST when the parser is asked not to emit them, and
-`delete` is the one pattern here whose mechanism is not an estimate: the object
-goes to dictionary mode, and every rule that later reads that node reads it
-from a dictionary.
-
-### A wider net, and the one thing it settled
-
-Twelve libraries and two applications left one rule with no instance of the
-shape its own benchmark measured. Eight more codebases were run the same way,
-so that the absence would mean something:
-
-| Codebase | annotated | findings | what fired besides `closed-world` |
-|---|---|---|---|
-| svelte (`packages/svelte/src`) | 504 | 2760 | 16 `allocating-select`, 13 `delete-property`, 12 `chained-allocation`, 9 `interface-dispatch`, 2 `accumulating-spread` |
-| vue (`packages/*/src`) | 409 | 2237 | 277 `interface-dispatch`, 13 `delete-property`, 10 `megamorphic-dispatch`, 8 `megamorphic-elements`, 5 `chained-allocation`, 4 `accumulating-spread`, 1 `allocating-select` |
-| typebox | 199 | 57 | **30 `accumulating-spread`**, 7 `interface-dispatch`, 3 `delete-property` |
-| mobx | 49 | 83 | 28 `interface-dispatch`, 2 `delete-property` |
-| valibot | 87 | 133 | 9 `chained-allocation`, 1 each `interface-dispatch`, `megamorphic-dispatch` and `delete-property` |
-| rxjs | 60 | 248 | 25 `interface-dispatch` |
-| immer | 10 | 60 | 12 `interface-dispatch`, 2 `delete-property` |
-| ts-pattern | 9 | 26 | nothing |
-
-**Vue is the only codebase that fires all eight rules.** A framework is not a
-pipeline, and both megamorphic rules find shapes in it that no utility library
-has. Eight of its ten `megamorphic-dispatch` sites are the rule counting
-declared property sets — `vnode.type` is nine of them, at `.hydrate()`,
-`.process()`, `.remove()` and `.toLowerCase()`. The other two are the escape
-route added in TC-110: `watch.ts:161` calls `.some()` and `.map()` on a `source`
-that seven allocation sites reach.
-
-**And the survey is what closed TC-8.** Vue reported 46 `megamorphic-elements`
-before the rule was made to check for a read off an element. Of 46 findings on a
-real framework, every one was a function that never read a property off the
-thing being reported — `rows.length` and nothing else. A defect that reads as a
-caveat in a tracker reads differently at the whole of a rule's output on a real
-codebase.
-
-The same survey caught the fix overshooting. zod's `prefixIssues` writes
-`(iss as any).path.unshift(path)`, and reading the receiver's type off the cast
-returned `any`, so the one true instance of this rule in twelve libraries went
-silent with the false ones. A cast is a claim about the type checker, not about
-the object; V8 loads from the object's map either way.
-
-**What the rule is worth, counted per site: 29 lines in 2953 annotated
-functions** — 20 in the TypeScript compiler, 8 in vue, one in zod. It was eight
-until the rule was taught to count an intersection as an object type, which is
-what a branded type is, and five branded types behind one receiver had counted
-as zero shapes (`BUGS.md` TC-95). That is
-the flagship rule's whole footprint on 22 real codebases, and it is the number
-this README leads with. `BUGS.md` TC-64 reaches the same place from 30 other
-corpora and a different annotation rule.
-
-**TypeBox has 30 distinct accumulating-spread sites, more than every other
-codebase here put together** — 13 across the other twenty-one. It used to print as 119, which was those sites
-counted once per annotated function reaching them. `FromObject` in
-`value/create/from_object.ts` is six lines and is the whole rule:
-`required.reduce((result, key) => ({ ...result, [key]: … }), {})`.
-
-**`allocating-select` fires at 29 distinct sites across 2953 annotated
-functions, and not once on the shape it measures.** Every finding is a value being
-*advanced* or *wrapped* — `date = addMinutes(date, step)`, `initial =
-b.call('$.proxy', initial)`, `spread = getSpreadType(…)` — where the value
-changes on every pass and "compare first" saves nothing. The benchmark measured
-a *choice* between two values where the incumbent almost always wins. Twenty-two
-codebases is a large enough net that this stops reading as a gap in the search
-and starts reading as a verdict on the rule. `BUGS.md` TC-18.
-
-### Which rules have an end-to-end example, and which cannot have one
-
-`examples/` can only hold a rule whose printed fix is a change to the function
-the rule fired on. That is not a property of every rule here, and saying which
-is which is worth more than four more tables.
-
-| Rule | End to end |
-|---|---|
-| `accumulating-spread` | radash `assign`, remeda `mergeAll` — **3.22-4.65x**, and a read cost the fix line now carries |
-| `delete-property` | es-toolkit `omit` — **1.62-3.32x**, and a width past which it stops |
-| `chained-allocation` | zod `cleanEnum` — **1.10-1.12x** at 16 members clears the broad-warning bar; **rejected under rule 6 at 256** (1.03-1.10x — lower bound under 1.05x, point estimate under 1.10x), published above |
-| `allocating-select` | **no instance of the measured shape in 2953 functions.** Its six findings are all `x = advance(x, step)` — `date = addMinutes(date, step)` in four date-fns functions, `sink = lazy(sink)` in es-toolkit's `pipe`. The benchmark measured a *choice* between two values where the incumbent almost always wins, and the fix, "compare first and assign only when x really changes", saves an allocation exactly on the passes that change nothing. A cursor changes on every pass. `BUGS.md` TC-18 |
-| `megamorphic-elements` | **structurally impossible.** The rule fires on a *parameter*, so its fix — "get the element type to four shapes or fewer, or give it one construction path" — is always a change to whoever built the array, never to the function that was flagged. No before/after pair of the flagged function can carry it. `BUGS.md` TC-19 |
-| `megamorphic-dispatch` | **nothing to demonstrate.** Zero findings in 850 functions |
-| `closed-world` | makes no speed claim; it reports what was not checked |
-
-## What V8's source says
-
-Each rule carries a second, independent evidence: the mechanism, in the engine's
-own source. A benchmark says what it cost here and cannot say why. A citation
-says what mechanism exists and cannot say what it costs — **the source is silent
-on all seven magnitudes**, and a constant in it is a hypothesis, never a
-measurement.
-
-```pin
-revision = c635f0d160b6e988b5ea5a907511a2929beb5d5e
-version = 15.3.0.0
-```
-
-| Rule | Mechanism in V8 | Citation |
-|---|---|---|
-| `megamorphic-elements` | the fourth map fills the inline cache's budget; the fifth makes the site megamorphic | `src/flags/flag-definitions.h:3320` → `DEFAULT_MAX_POLYMORPHIC_MAP_COUNT`, `src/ic/ic.cc:798` → `number_of_maps` |
-| `megamorphic-dispatch` | a call slot holds ONE target as a weak reference and has no polymorphic tier | `src/builtins/ic-callable.tq:14` → `IsMonomorphic`, `src/builtins/ic-callable.tq:45` → `TransitionToMegamorphic` |
-| `delete-property` | a named delete normalizes a fast object unconditionally, and only prototypes go back | `src/objects/lookup.cc:840` → `PropertyNormalizationMode`, `src/objects/js-objects.cc:5094` → `V8_DICT_PROPERTY_CONST_TRACKING_BOOL` |
-| `chained-allocation` | every stage allocates its own result array; `Object.entries` allocates two objects per key | `src/builtins/array-map.tq:101` → `CreateJSArray`, `src/objects/objects-inl.h:1182` → `MakeEntryPair` |
-| `allocating-select` | escape analysis removes an allocation only where it can see it, inside a 1300-byte budget | `src/compiler/escape-analysis.cc:302` → `kTrackingBudget`, `src/compiler/escape-analysis.cc:670` → `HasEscaped` |
-| `closed-world` | bytecode length and a statically known target gate inlining | `src/objects/shared-function-info-inl.h:437` → `bytecode`, `src/flags/flag-definitions.h:1606` → `max_inlined_bytecode_size` |
-| `accumulating-spread` | **none** — quadratic work is quadratic on any engine | — |
-| *no rule* — the elements kind is decided by the values stored, one value at a time, which is why `boxed-elements` was withdrawn | | `src/objects/elements-kind.h:105` → `enum ElementsKind`, `src/objects/objects-inl.h:700` → `OptimalElementsKind` |
-
-Three of these say something the benchmark alone could not:
-
-- **It contradicts one shipped threshold.** A call slot has no polymorphic tier
-  at all, so the four-map budget governs the method *load* and the *call* has a
-  budget of one. A method kept in a field is off the cliff at two, not five.
-  `BUGS.md` TC-13.
-- **It refused one trigger, and the benchmark then agreed.** V8 picks the
-  elements kind from the values actually stored; `boxed-elements` fired on the
-  *declared* type. `make bench-arrays` measured that case at 0.96-1.08x, so the
-  rule is gone — the last row above is a mechanism with no rule attached, kept
-  because it is the reason there is no rule. `BUGS.md` TC-14.
-- **It gives `accumulating-spread` nothing, correctly.** The largest effect
-  measured here is the one that would survive an engine rewrite.
-
-`make v8-check` verifies every citation above against a pinned checkout and
-fails with the drifted line. It exits non-zero when the checkout is missing
-rather than reporting success. `CLAUDE.md` has the three clone commands.
-
-## Honest limits
-
-- These ratios come from a microbenchmark, a small speed test, on one machine
-  (Node v22.23.2, V8 12.4). They show that a pattern *can* cost that much. They
-  do not say it costs that much in your workload.
-- **Two cells failed replication, and neither is inside a range this page
-  quotes.** Protocol rule 13 runs every published cell three whole times and
-  calls the three in agreement when a value sits inside all three intervals.
-  `closed-world`'s n=100000 cell read 3.21x and 4.68x and 4.73x with no such
-  value, and `delete-property`'s n=262144 read cell disagreed the same way.
-  Both are withdrawn inside `lib/derive.ts`, where the number is made, so
-  4.64-4.95x and 12.3-13.6x rest on the cells that replicate and on nothing
-  else. The withdrawn triples are still printed, because a range that quietly
-  excluded its worst-behaved cell would read tighter than the measurement was —
-  but they are printed as refutations, not folded into a range. This bullet said
-  the opposite until 2026-08-29, and had contradicted the paragraph above it
-  since rule 13 was enforced. `BUGS.md` TC-21, TC-37.
-- **601 published rows were measured under a load gate that could not see a
-  tenant.** Protocol rule 9 refuses to start a cell while the machine is busy.
-  Until 2026-08-21 the gate read the one-minute load average, and on a two-core
-  machine that average was mostly the sweep's own children — one pinned child at
-  a time, each worth about 1.0 in the window — so an idle machine read ~1.5
-  against a gate of 1, while a real tenant sitting behind the harness moved it
-  barely at all. The gate now counts runnable threads outside the harness, read
-  as each row is written, and refuses above `nproc - 1`. The rows written above
-  the old gate are **registered per file in `test/check.test.ts` and withdrawn
-  nowhere**: the old pair cannot say which of them had a real tenant, only that
-  the gate was not answering its question, and withdrawing most of the corpus on
-  a number like that is the owner's call rather than a query's. A new row over
-  the reworked gate fails `make test`. `BUGS.md` TC-46.
-- **One of V8's two optimizing tiers was switched off the whole time.** This
-  Node reports `--maglev` as `default: --no-maglev`, so the ladder under every
-  number here is Ignition → Sparkplug → TurboFan, with no Maglev in it. A tier
-  that compiles faster and optimizes less is exactly the one that could move a
-  ratio, and nothing in this repo has ever run on it. `BUGS.md` TC-21.
-- The recursive walk has limits. A visited set stops cycles. Each annotation
-  also has a hard cap of 200 function bodies. When the walk hits the cap, it
-  prints `WALK TRUNCATED` and exits `1`. The run is not reported as clean, in
-  the text or in the exit code.
-- **Every rule matches inside one body.** The walk widens *where* the rules are
-  applied — it visits every callee whose source the program has — and it does
-  not widen what any single rule can see. So `acc = append(acc, x)` in a loop,
-  with `append = (a, x) => [...a, x]` next to it, is a loop in one body and a
-  copy in another, and no rule here joins them, even though the walk reads both
-  files. Hoisting the measured pattern into a helper silences the tool.
-  `BUGS.md` TC-43 holds the two forms this still misses and what closing them
-  would take.
-- `megamorphic-elements` used to report from the parameter's type alone, so a
-  function whose only contact with the array was `rows.length` triggered it —
-  46 of vue's 46 findings were that shape, and 38 of them survived nothing else.
-  It now requires a READ off an element, and it is narrowed to a read on
-  purpose: V8 charges the same four-map budget at a store and at `in`, but the
-  sweep measures `s += r.x + r.y`, so firing on `r.x = v` would quote a read's
-  number for a write. `in` is the remaining gap. `BUGS.md` TC-8.
-- `megamorphic-dispatch` fires on the fifth object type. That is right for a
-  method on a class: four types cost 1.41-1.65x and the fifth costs
-  12.9-22.7x, the sharpest step measured here. It is late for an object that
-  carries its own function in a field. There the cost starts at the *second*
-  one — 3.5-15.8x, flat from two targets to six, no threshold at all — and no
-  declared type tells the two apart. The rule misses that case rather than
-  guessing at it, which is a miss and not a refutation: it is in the rule's
-  `unreported` clause, never in its `silent` one.
-- A TypeScript union member is not a V8 map, which is the engine's internal
-  object shape. `megamorphic-elements` estimates the shape count from the
-  declared type. It can report a problem even if no load site ever sees five
-  maps. What it no longer does is count NAMES: five aliases of one type, and
-  five discriminated-union variants over one key set, are one map each —
-  `%HaveSameMap` says so — and the rule counted them as five until 2026-08-19.
-  It counts distinct property-name sets, which no rename can change. `BUGS.md`
-  TC-2 and TC-42.
-- The same rule's benchmark used to measure a program the rule is silent on.
-  `bench/shapes.ts` varies key ORDER — five builders, one key set, five V8 maps,
-  and exactly one TypeScript type. `bench/shape-sets.ts` varies the key SET, at
-  the same three sizes and in both modes, and that is where 3.4-11.3x comes
-  from. The key-order sweep is still on disk and still quoted, in the rule's
-  `unreported` clause: it costs 4.4-11.5x and nothing static can find it.
-- One measured effect ships no rule, because nothing static can find it. A
-  boxed array costs 1.39-1.66x to read, and 1.58-1.69x to build at RAM size, and
-  whether an array is boxed depends on what was stored in it, which a type
-  annotation does not decide. `make bench-arrays`, `BUGS.md` TC-14. The same
-  shape as the 6.17-6.34x dictionary effect in TC-12.
-- Never trust V8 optimization state as a speed signal. `%GetOptimizationStatus`
-  reported `optimized=true` throughout a 5x megamorphic slowdown. An earlier
-  version used exactly that signal as a CI gate, an automated check that could
-  block a change. That was wrong, so the gate was deleted.
+## When NOT to use this
+
+- **You want a profiler.** This is a static checker. It cannot see how hot a
+  line is unless you hand it a `--cpu-prof` profile, and it never guesses.
+- **You want a number for your program.** Every ratio here comes from a
+  microbenchmark on one machine, with Maglev switched off. It shows a pattern
+  *can* cost that much, never that it costs that much in your workload.
+- **Your hot pattern is spread over two functions.** Every rule matches inside
+  one body. Hoisting the measured pattern into a helper silences the tool.
+- **You need the rule to know your data.** Rules fire outside the conditions
+  their own evidence establishes — the `delete` rule does not know whether
+  anything reads the object afterwards, and its cost is per read. That is
+  `BUGS.md` TC-9, and it is printed under every finding of the rules that
+  carry it.
+- **You pass paths and expect your `tsconfig.json` to be read.** It is loaded
+  only for a bare `jitmax` with no arguments. Path aliases, JSX mode and
+  ambient types can resolve differently from your build (`BUGS.md` TC-32).
+- **You want the two escape rules quiet by default.** `closed-world` and
+  `interface-dispatch` were 96% of every finding across twelve libraries, and
+  they are errors. Switch them off in `[rules]` if you disagree.
+
+`docs/limits.md` is the full list, including the two cells that failed
+replication and the 601 rows measured under a load gate that could not see a
+tenant.
+
+## Requirements
+
+Node `>=22.18`, which strips types itself, so running the tool needs no build
+step. TypeScript `>=5.0.0` as a peer dependency — jitmax loads *your* copy, so
+it parses with the same compiler your build does, and it needs the 5.x API
+(`BUGS.md` TC-130).
 
 ## Development
 
 ```sh
-make test    # 156 unit tests, including the must-stay-silent cases
-make lint    # tsc --noEmit
-make numbers # re-derive every published number from the .jl sweeps
-make check   # run the checker against demo/
-make example # the checker against examples/, then the end-to-end sweep
-make demo    # re-record demo/demo.gif — a real asciinema run, not a mock-up
-make meme    # re-render the launch loop from demo/meme/
+make          # lint, test, check
+make verify   # everything a release needs: all, v8-check, reality
 ```
 
-`CLAUDE.md` holds the layout, the rules of this repo, and how to verify both
-kinds of evidence. `BUGS.md` holds the open queue, and the entries commissioned
-adversarial reviews produced — each reviewer told to argue the tool is
-worthless, every finding re-run here before it was written down.
+`make` never runs `make build`: regenerating the derived artifacts right before
+the drift assertions would compare fresh output against fresh output, and a
+stale committed artifact could never fail again. `ARCHITECTURE.md` has the rest
+of the targets, `CLAUDE.md` the repository's own rules and the measurement
+protocol.
 
 ## Licence
 
@@ -950,3 +247,19 @@ number is re-measured whole under the current runner: three sweeps per cell, and
 a cell whose three share no common value is withdrawn by `lib/derive.ts` before
 the number is written. 31 are withdrawn today, and `test/check.test.ts`
 lists every one.
+
+## How to read this
+
+Each file answers one question. Nothing is repeated between them.
+
+| File | The question it answers |
+|---|---|
+| `README.md` | What is this, why use it, how do I start |
+| `ARCHITECTURE.md` | How is it built inside |
+| `docs/rules.md` | What does each rule detect, and what is the fix |
+| `docs/limits.md` | Where does it not work |
+| `bench/README.md` | How is every number measured, and how do I re-check it |
+| `test/README.md` | What does the suite guard, and how do I run one test |
+| `examples/README.md` | What is a fix worth on somebody else's code |
+| `CLAUDE.md` | The rules of this repository, and the measurement protocol |
+| `BUGS.md` | The open queue: found during audits, fixed when asked |
