@@ -69,6 +69,12 @@ export interface Blind {
   // file: the alias is declared here and its target is not on disk, which is
   // not a missing install and must not be reported as one (BUGS TC-80).
   aliased: string[];
+  // Any tsconfig.json sitting at or above a path this run was POINTED at that
+  // is not the one it read. A config is found from the working directory and
+  // never from the path argument, so a run launched elsewhere compiles the
+  // named files under a config that governs none of them — which is how the
+  // documented invocation came to be the degraded one (BUGS TC-76).
+  nearer: string[];
 }
 
 // Could this run see everything it was asked to look at? ONE answer, because
@@ -111,6 +117,7 @@ export function render(
     untyped: [],
     tsconfig: undefined,
     aliased: [],
+    nearer: [],
   },
   // What the functions in this run are. An annotation is the author asserting
   // hotness; a profile is a measurement of it. The report says which.
@@ -193,6 +200,13 @@ export function render(
               '  that matches: run `npm install`, or run this from the directory holding the',
               '  tsconfig.json that declares the alias.',
             ])
+      );
+    }
+    if (blind.nearer.length > 0) {
+      out.push(
+        '  a tsconfig is found from the working directory and never from the path argument,',
+        '  and one this run did not read sits over the paths you named — run this from that',
+        `  directory instead: ${listed(blind.nearer)}`
       );
     }
     out.push('  This is not a clean run.');

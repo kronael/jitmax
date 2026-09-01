@@ -150,6 +150,20 @@ try {
     // somebody whose dependencies are fine (BUGS TC-80).
     tsconfig: configFile === undefined ? undefined : rel(cwd, configFile),
     aliased: unresolved.filter((m) => aliasedBy(p.getCompilerOptions().paths, m)),
+    // The config governing the files the caller POINTED at, when it is not the
+    // one this run read. `findConfigFile` searches up from the working
+    // directory and never from the path argument, so `jitmax ../other/src`
+    // compiles ../other under THIS directory's options and every alias in it
+    // goes unresolved (BUGS TC-76).
+    nearer: [
+      ...new Set(
+        inputs
+          .map((input) => path.resolve(cwd, input))
+          .map((abs) => tsconfigOf(ts, ts.sys.directoryExists(abs) ? abs : path.dirname(abs)))
+          .filter((found): found is string => found !== undefined && found !== configFile)
+          .map((found) => rel(cwd, found))
+      ),
+    ],
   };
   const out = render(
     cwd,

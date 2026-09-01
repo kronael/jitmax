@@ -1500,6 +1500,23 @@ test('a bare specifier that matches a `paths` entry is reported as an alias', ()
   assert.strictEqual(run.status, 1);
 });
 
+// TC-76. A tsconfig is found from the WORKING DIRECTORY, never from the path
+// argument, so a run launched somewhere else reads a config that governs none
+// of the files it was pointed at — and every alias in them goes unresolved.
+// The blindness was already reported; which config was in force, and that a
+// nearer one exists beside the named path, was not.
+test('a tsconfig beside the named path, and not read, is named', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'alias')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /1 module could not be resolved/);
+  assert.match(run.stdout, /test\/fixtures\/alias\/tsconfig\.json/);
+  assert.match(run.stdout, /this run did not read/);
+  assert.strictEqual(run.status, 1);
+});
+
 // TC-124. `isFunctionLike` tests the NODE KIND, and an overload signature and an
 // ambient `declare function` are both that kind with nothing inside them. The
 // walk had nothing to walk, found nothing, and the run printed "every annotated
