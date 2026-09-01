@@ -10,6 +10,7 @@ import {
   current,
   derive,
   deriveDetail,
+  frozenReading,
   markdown,
   overGate,
   rows,
@@ -20,6 +21,9 @@ import {
 // Rule 6's REJ predicate lives with the protocol it belongs to, and both
 // bench/run.ts and this file read it from there.
 import { spans1 } from '../bench/driver.ts';
+// Rule 9's per-row half: what a row records about the machine, and the refusal
+// that keeps a sweep-wide reading off a row (TC-24, TC-47).
+import { environment, reading } from '../bench/env.ts';
 // The sweep table and the two lists that partition it. bench/run.ts is a
 // script and runs a sweep on import; these live in sweeps.ts so they can be
 // read without measuring anything (BUGS TC-99).
@@ -2656,6 +2660,54 @@ test('a file with no judgeable row is on record as unjudgeable, not as clean', (
     ['arrays.jl'],
     'a sweep gained or lost the ability to answer its own load gate'
   );
+});
+
+// Rule 9 says the reading travels IN the row because a sweep runs for hours
+// and the load it started at stops being true within minutes. Eighteen rows of
+// select.jl predate that: they carry `load1: 0.97` inside `env`, one
+// observation stamped onto three replicates of each of six cells, and it is
+// the whole of what `allocating-select`'s cost line rests on (TC-24, TC-47).
+// `overGate` judges them where the reading lives — better than asking nothing —
+// but a frozen reading and a per-row one are not the same evidence, and this
+// register is what keeps them apart. Closing it is a re-measurement of six
+// cells and the owner's call; what a test can do is refuse to let the number
+// grow, in both directions, and `reading()` below is why it cannot.
+const FROZEN: Record<string, number> = { 'select.jl': 18 };
+
+test('the rows whose recorded load is frozen are the eighteen on record', () => {
+  const found: Record<string, number> = {};
+  for (const file of SWEPT) {
+    const n = frozenReading(root, file);
+    if (n > 0) found[file] = n;
+  }
+  assert.deepStrictEqual(
+    found,
+    FROZEN,
+    'a published row records its machine reading inside `env` — one number for a whole ' +
+      'sweep — where every row since carries the reading taken as it was written'
+  );
+});
+
+// The cause, not the count: the one place a row's environment is assembled
+// refuses to assemble it out of a sweep record that already holds a reading.
+// The 18 rows exist because nothing checked, and the type that would have
+// caught it arrived after them.
+test('a row cannot be written with the reading frozen into its environment', () => {
+  const env = environment(1);
+  assert.ok(!('load1' in env) && !('runnable' in env), 'the sweep record carries a reading');
+  for (const field of ['load1', 'runnable']) {
+    assert.throws(
+      () => reading({ ...env, [field]: 0.97 }),
+      new RegExp(`carries ${field}`),
+      `an environment carrying ${field} was accepted onto a row`
+    );
+  }
+  // And the reading it does take is this instant's, not the sweep's — off the
+  // record bench/run.ts actually hands it, which carries what the gate let the
+  // sweep begin at. That is a fact about the sweep, not a reading, and passes.
+  const now = reading({ ...env, runnableStart: 0 });
+  assert.ok(Number.isFinite(now.load1) && Number.isFinite(now.runnable), 'no reading was taken');
+  assert.strictEqual(now.env.runnableStart, 0);
 });
 
 // docs/limits.md tells a reader the corpus number; this register IS the corpus

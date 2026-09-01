@@ -44,7 +44,7 @@ import type { CellResult, Replicated } from './driver.ts';
 // it selects from, so a test can hold the two to each other. See the note there.
 import { ALL, BENCHMARKS, plan, label } from './sweeps.ts';
 import type { Bench } from './sweeps.ts';
-import { environment, gate, load1, runnable, MAX_RUNNABLE, CORES } from './env.ts';
+import { environment, gate, reading, MAX_RUNNABLE, CORES } from './env.ts';
 import type { Environment } from './env.ts';
 
 // The environment as the runner stamps it into rows: bench/env.ts's record
@@ -244,9 +244,12 @@ function sweep(name: string, env: RunEnv) {
       // still written (the measurement happened, and rule 10 reports failures
       // in the same format as wins); test/check.test.ts holds the register
       // that fails the build on any such row nobody has accounted for (TC-46).
-      const seen = runnable();
+      // bench/env.ts assembles the pair, and refuses to assemble it out of a
+      // sweep record that already carries a reading of its own (TC-24, TC-47).
+      const now = reading(env);
+      const seen = now.runnable;
       fs.appendFileSync(file, JSON.stringify({ ...r, ...extra, baseline: opts.baseline,
-        runner: RUNNER, load1: load1(), runnable: seen, env }) + '\n');
+        runner: RUNNER, ...now }) + '\n');
       if (seen > env.maxRunnable) {
         out(`      OVER GATE: ${seen} runnable outside the harness against ` +
           `${env.maxRunnable} — recorded in the row, and make test will name it\n`);

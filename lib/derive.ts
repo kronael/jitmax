@@ -1062,6 +1062,19 @@ export function overGate(root: string, file: string): { over: number; judged: nu
   return { over, judged };
 }
 
+// The rows whose reading of the machine is frozen into the sweep record
+// instead of taken as the row was written — `env.load1`, one observation
+// stamped onto every row of a sweep that ran for an evening. `overGate` above
+// judges them against it because a false reading answered where it lives is
+// still better than no question asked at all, but the two are not the same
+// evidence and a count is the only thing that keeps them apart: eighteen rows
+// of select.jl are the whole of it, they back `allocating-select`, and closing
+// that is a re-measurement of six cells, not a query (TC-24, TC-47).
+// bench/env.ts refuses to write another; this is what sees the ones there are.
+export function frozenReading(root: string, file: string): number {
+  return rows(root, file).filter((r) => r.env?.load1 !== undefined).length;
+}
+
 export function rows(root: string, file: string): Row[] {
   const p = path.join(root, 'bench', file);
   const text = fs.readFileSync(p, 'utf8').trim();

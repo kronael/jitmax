@@ -108,6 +108,35 @@ export function environment(maxRunnable: number): Environment {
   };
 }
 
+// The other half of rule 9, and the ONE place a row's machine state is
+// assembled: the reading is taken HERE, as the row is written, and the
+// sweep-wide `Environment` beside it may carry no reading at all.
+//
+// Eighteen rows of bench/select.jl carry `load1: 0.97` inside `env` — one
+// observation, stamped identically onto three replicates of each of six cells
+// written across an evening — and `lib/derive.ts` has to judge them against a
+// number that was already false when the second row was written (TC-24,
+// TC-47). The type has excluded a reading since; a type is not present at 2am
+// when someone adds a field to the sweep record, so the value is checked too,
+// and a run that would write such a row dies rather than writing it.
+//
+// `runnableStart` is not a reading and passes: it is what the gate let the
+// sweep BEGIN at, which is a fact about the sweep and true for its whole life.
+export function reading<E extends Environment>(
+  env: E
+): { load1: number; runnable: number; env: E } {
+  for (const field of ['load1', 'runnable'] as const) {
+    if (field in env) {
+      throw new Error(
+        `bench/env.ts: the sweep environment carries ${field}, which is a reading of the ` +
+          'machine and belongs on the row that was written while it held. A frozen reading ' +
+          'is worse than none — see BUGS TC-24, TC-47.'
+      );
+    }
+  }
+  return { load1: load1(), runnable: runnable(), env };
+}
+
 // Refuse to run above the gate, and say what was seen rather than only that
 // something was wrong. `waitFor` seconds of polling is the difference between a
 // sweep that dies at 3am and one that starts when the machine is free; a sweep
