@@ -542,6 +542,17 @@ export function syncUniforms(kind: string, v: number[], o: number[]): void {
   upload(v, o);
 }
 
+/** A call through a bare function-typed parameter. It resolves to a parameter
+ * declaration, which is neither followable nor in a declaration file, so it fell
+ * through both branches of the escape test and vanished: the run printed "every
+ * annotated function is clean" and exited 0 over a call it could not see into.
+ * TC-45's change put it in `escapes`; this is BUGS TC-31's own program, kept as
+ * a fixture so that silence cannot come back. */
+/** @jitmax */
+export function throughParam(cb: (x: number) => number): number {
+  return cb(1);
+}
+
 /** A constructor is a body like any other, and allocation is what constructors
  * do. `new` is a NewExpression, not a CallExpression, so the walk used to step
  * over it: the chain below was never checked and the closed-world report said

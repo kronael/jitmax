@@ -178,6 +178,7 @@ test('a function is checked only where it is annotated', () => {
       'storeByDestructuring',
       'syncUniforms',
       'taggedShapes',
+      'throughParam',
       'topTen',
       'total',
       'totalArea',
@@ -272,6 +273,13 @@ test('a call the walk cannot follow is reported, not silently dropped', () => {
     rules('areaOfFour').includes('interface-dispatch'),
     'a call through an object-type method signature vanished from the coverage report'
   );
+});
+
+// The other half of the same hole, and TC-31's own program: a call through a
+// bare function-typed PARAMETER. Only the interface twin above had a fixture,
+// so the half the entry is written about was asserted nowhere.
+test('a call through a bare function parameter is reported, not dropped', () => {
+  assert.deepStrictEqual(rules('throughParam'), ['closed-world']);
 });
 
 // One union reaching one site is one finding. megamorphic-elements has the
