@@ -1979,6 +1979,37 @@ test('a cell count agrees with the noun beside it', () => {
 // now is TC-33 in their `defects`, printed under every finding they make, so a
 // rule that drops it has either gained a sweep or quietly stopped admitting the
 // gap.
+// TC-15 was a rule citing a benchmark that was not in the repository, and the
+// sentence it falsified — "every rule includes the benchmark that earned it" —
+// is printed in docs/rules.md. `bench/delete.jl` closed it for
+// `delete-property`; nothing ever held the sentence, and it went false again
+// for `interface-dispatch`, which has no sweep and says so. Both ends are
+// checked here: a rule that names a sweep must name one that exists, and a rule
+// that names none may not be standing under a claim that every rule has one.
+test('every rule names a sweep that exists, and the docs claim no more than that', () => {
+  const noSweep: string[] = [];
+  for (const [name, e] of Object.entries(EVIDENCE)) {
+    const cited = [...e.source.matchAll(/bench\/([\w.-]+\.jl)/g)].map((m) => m[1]!);
+    if (cited.length === 0) {
+      noSweep.push(name);
+      continue;
+    }
+    for (const file of cited) {
+      assert.ok(
+        fs.existsSync(path.join(root, 'bench', file)),
+        `${name} cites bench/${file} as its evidence, and no such sweep is in the repository (BUGS TC-15)`
+      );
+    }
+  }
+  if (noSweep.length === 0) return;
+  assert.doesNotMatch(
+    doc(path.join('docs', 'rules.md')),
+    /\*\*Every rule includes the benchmark that earned it/,
+    `${noSweep.join(', ')} name no sweep, so docs/rules.md may not claim that every rule ` +
+      'includes the benchmark that earned it'
+  );
+});
+
 const UNMEASURED_TRIGGER = ['megamorphic-dispatch', 'closed-world', 'interface-dispatch'];
 
 test('every rule reports as an error, and the unmeasured triggers still carry TC-33', () => {

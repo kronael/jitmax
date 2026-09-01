@@ -311,8 +311,16 @@ rather than acted on. And neither rule fires on the platform: a call into
 `globalThis`, a V8 builtin or `@types/node` has no body an `npm install`
 produces and no map to count, so it is counted and not named. `BUGS.md` TC-110.
 
-**Every rule includes the benchmark that earned it, and the case where the same
-benchmark found nothing.** `closed-world` measures the mechanism a call boundary
+**Every rule that makes a speed claim includes the benchmark that earned it, and
+the case where the same benchmark found nothing — and one of these two makes
+none.** `interface-dispatch` has no sweep at all: its own evidence says "no
+sweep" where every other rule names a `bench/*.jl`, and its cost is "nothing
+this project has measured". Read it as coverage, never as a price. The
+unqualified form of this sentence stood here until 2026-09-01 and was false for
+that rule; `BUGS.md` TC-15 is the same sentence being false for
+`delete-property`, before `bench/delete.jl` existed to make it true.
+
+`closed-world` measures the mechanism a call boundary
 controls: a callee V8 refuses to inline costs 4.64-4.95x in a hot loop at
 n=1000. That is a bound on what one unchecked call can cost, not a claim about
 any particular one: the rule fires on a callee with no readable body and the
