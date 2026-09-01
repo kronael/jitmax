@@ -1,5 +1,45 @@
 # Changelog
 
+## [v0.12.3] — 20260901
+
+> jitmax v0.12.3 — one question per file
+>
+> README was 952 lines and answered six questions at once. It is 265 now, and six more files each answer exactly one.
+>
+> • `docs/rules.md` gives every rule a trigger snippet quoted from the tested fixture, plus the neighbouring case that stays silent.
+> • `bench/README.md` carries the protocol, the generated numbers, the V8 pin and the citation table — and the four programs that read them follow.
+> • `ARCHITECTURE.md`, `docs/limits.md`, `test/README.md` and `examples/README.md` take the rest. README ends with an index saying which file answers what.
+>
+> Full notes: https://github.com/kronael/jitmax/blob/main/CHANGELOG.md
+
+### Added
+
+- `ARCHITECTURE.md` — how the walk, the dataflow, the rule register and the
+  derived-number chain fit together, each decision naming the alternative it
+  rejected.
+- `docs/rules.md` — per rule: what it detects, a trigger quoted from
+  `demo/lib.ts`, the neighbouring fixture that stays silent and why, the fix,
+  and the measured cost with its sweep file. The snippets are quoted from the
+  file `make check` runs, so a rule that changes behaviour breaks a test before
+  the document goes stale.
+- `docs/limits.md`, `bench/README.md`, `test/README.md`, `examples/README.md`.
+- `examples/README.md` names the four vendored functions with their upstream
+  version, commit and licence: radash `assign`, remeda `mergeAll`, es-toolkit
+  `omit`, zod `cleanEnum`.
+
+### Changed
+
+- README is 265 lines: what it is, how to start, the eight rules, the exit
+  contract, one measured number, when not to use it, and an index of which file
+  answers which question.
+- The generated numbers block, the V8 pin and the citation table live in
+  `bench/README.md`. `lib/derive.ts`, `bench/v8-check.ts`,
+  `lib/derive-builtins.ts` and CI's revision `sed` read them there.
+- `test/check.test.ts` gains a `DOCS` register. Each guard scans the file that
+  holds the claim, and a doc file outside the register has unchecked numbers.
+- Three of eight rules have an end-to-end example on foreign code, not four.
+  `node bin/jitmax.ts examples` reports one rule per vendored function.
+
 ## [v0.12.2] — 20260901
 
 > jitmax v0.12.2 — the film keeps all three acts, and V8 is set as type
