@@ -922,7 +922,19 @@ test('the report says how many findings were suppressed and by what', () => {
 
 test('a finding prints the defects its rule carries', () => {
   const out = render(root, [{ mark: markFor('drop'), findings: rawFindings('drop') }]);
-  assert.match(out, /known defect: TC-9 — rules fire outside the conditions their own evidence establishes/);
+  assert.match(out, /known defect: TC-9 — rules fire outside the conditions their own\n +evidence establishes/);
+});
+
+// Every line fits 78 columns. A finding's fix ran to 553 characters on one
+// physical line, and a terminal wraps that at column 0, so its second half read
+// as a new block; the run-level notes were hand-wrapped and the findings were
+// not. The whole demo, because it fires every rule and every fix.
+test('every line of the report fits 78 columns', () => {
+  const results = demoScan.marks.map((mark) => ({ mark, findings: rawFindings(mark.name) }));
+  const wide = render(root, results)
+    .split('\n')
+    .filter((line) => line.length > 78);
+  assert.deepStrictEqual(wide, [], 'these lines run past 78 columns');
 });
 
 // The published numbers. A ratio used to be typed into `EVIDENCE`, into a spec

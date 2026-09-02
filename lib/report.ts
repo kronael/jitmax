@@ -95,6 +95,30 @@ export const blinded = (b: Blind): boolean =>
 const listed = (items: string[]): string =>
   items.slice(0, 8).join(', ') + (items.length > 8 ? `, and ${items.length - 8} more` : '');
 
+// Every sentence the report prints fits 78 columns, continuation lines indented
+// to where the text after `prefix` began. A finding's fix ran to 553 characters
+// on one physical line, and a terminal wraps that at column 0, so the second
+// half read as a new block. The run-level notes were hand-wrapped and the
+// findings were not; this is the one path both go through now.
+const WIDTH = 78;
+function wrap(prefix: string, text: string): string[] {
+  const hang = ' '.repeat(prefix.length);
+  const lines: string[] = [];
+  let line = prefix;
+  let empty = true;
+  for (const word of text.split(/\s+/)) {
+    if (!empty && line.length + 1 + word.length > WIDTH) {
+      lines.push(line);
+      line = hang;
+      empty = true;
+    }
+    line += (empty ? '' : ' ') + word;
+    empty = false;
+  }
+  lines.push(line);
+  return lines;
+}
+
 export interface Suppression {
   // Findings a config or an annotation removed before they reached this
   // report. Zero is the common case and prints nothing.
@@ -272,8 +296,11 @@ export function render(
   const lowered = results.reduce((n, r) => n + r.mark.lowered, 0);
   if (lowered > 0) {
     out.push(
-      `  ${plural(lowered, 'call')} lowered to inline code, not listed: no call ` +
-        `boundary exists there (V8 ${BUILTINS.version} @ ${BUILTINS.revision.slice(0, 10)})`
+      ...wrap(
+        '  ',
+        `${plural(lowered, 'call')} lowered to inline code, not listed: no call ` +
+          `boundary exists there (V8 ${BUILTINS.version} @ ${BUILTINS.revision.slice(0, 10)})`
+      )
     );
   }
   // Interface-typed calls whose receiver the dataflow walk traced to exactly
@@ -284,8 +311,11 @@ export function render(
   const followed = results.reduce((n, r) => n + r.mark.followed, 0);
   if (followed > 0) {
     out.push(
-      `  ${plural(followed, 'interface call')} resolved to the one implementation this ` +
-        'program builds, and followed — sound only for a closed program'
+      ...wrap(
+        '  ',
+        `${plural(followed, 'interface call')} resolved to the one implementation this ` +
+          'program builds, and followed — sound only for a closed program'
+      )
     );
   }
 
@@ -323,8 +353,8 @@ export function render(
       } else if (alsoFrom !== '') {
         out.push(`     ${alsoFrom}`);
       }
-      out.push(`      ${f.message}`);
-      out.push(`      fix: ${f.fix}`);
+      out.push(...wrap('      ', f.message));
+      out.push(...wrap('      fix: ', f.fix));
       // The sweep that priced the RULE, named — and no ratio. A ratio is a
       // property of the input: chained allocation is one number at n=1000 and
       // another at n=100000, and the annotation says this function is hot, not
@@ -337,7 +367,7 @@ export function render(
         if (data.length > 0) out.push(`      measured in ${data.join(' and ')}`);
       }
       for (const code of f.evidence?.defects ?? []) {
-        out.push(`      known defect: ${code} — ${DEFECT[code] ?? code}`);
+        out.push(...wrap(`      known defect: ${code} — `, DEFECT[code] ?? code));
       }
     }
   }
