@@ -58,7 +58,52 @@ not implement, and no finding says that today.
 - **Status:** open
 - **Fix:** one predicate on both paths, and a finding for the stub-only receiver
 
-## TC-134 — `allocating-select`'s cost line rests on eighteen rows whose machine reading is one frozen number (2026-09-01, open, owner decision)
+## TC-136 — 689 published rows carry no reading of the machine at all (2026-09-02, open, owner decision)
+
+TC-134 closed the same hole in `select.jl` by re-measuring it. The query that
+found it generalises: of 976 rows marked `runner: r2`, **269 carry a per-row
+`load1` and `runnable` and 707 do not**. Eighteen of the 707 were select's
+frozen rows and are now superseded. The other **689 predate the reading
+mechanism entirely** — no `load1`, no `runnable`, no `env` — across ten sweeps:
+
+| file | rows without a reading |
+| --- | --- |
+| `dispatch.jl` | 240 |
+| `strings.jl` | 81 |
+| `shape-sets.jl` | 72 |
+| `shapes-calibrated.jl` | 72 |
+| `chained.jl` | 72 |
+| `example.jl` | 48 |
+| `delete.jl` | 48 |
+| `spread.jl` | 24 |
+| `spread-object.jl` | 24 |
+| `inline.jl` | 6 |
+| `addprop.jl` | 2 |
+
+Protocol rule 9 asks for the environment in every row. These rows do not carry
+it, so nothing can show they were inside the gate. That is not the same as
+showing they were outside it: `overGate` reports them as unjudgeable, not as
+contaminated, and the re-measurement TC-134 ran found the frozen sweep's numbers
+correct to the second decimal.
+
+Making `current()` in `lib/derive.ts` ask `hasReading` withdraws all 689 in one
+line and takes seven of eight rules' cost figures with them. That is a
+re-measurement of ten sweeps, roughly two hours of quiet machine at select's
+observed rate, and it is a redesign of what the published corpus is — so it is
+recorded here for sign-off rather than shipped. The scoped form is in place: a
+citation asks `hasReading` when its sweep has been re-measured, and select's six
+do.
+
+- **Severity:** medium
+- **Scope:** published evidence
+- **Affected:** `lib/derive.ts` `current()`, ten `.jl` files, seven rules' EVIDENCE
+- **Source:** query over `bench/*.jl` on 2026-09-02; `hasReading` in `bench/env.ts`
+- **Status:** open, owner decision
+- **Fix:** re-run the ten sweeps on a quiet machine and move every citation to
+  `hasReading`, or state beside the numbers that their rows predate the per-row
+  reading. Either is the owner's call; the corpus is not known to be wrong.
+
+## TC-134 — `allocating-select`'s cost line rests on eighteen rows whose machine reading is one frozen number (2026-09-01, fixed 2026-09-02)
 
 TC-24 and TC-47 retired to `.diary/20260901.md` on 2026-09-01 with the cause
 closed — `reading()` in `bench/env.ts` refuses to write another such row — and
@@ -75,8 +120,25 @@ per-row reading.
 - **Scope:** published evidence
 - **Affected:** `allocating-select` EVIDENCE, `bench/select.jl`, `docs/rules.md`
 - **Source:** `frozenReading('.', 'select.jl')` = 18; `.diary/20260901.md`, TC-24 and TC-47
-- **Status:** open, owner decision
-- **Fix:** `node bench/run.ts select` whole (six cells, three sweeps), or the limit stated beside the number
+- **Status:** fixed 2026-09-02 — re-measured
+- **Fix:** the machine was quieted and `node bench/run.ts select` re-ran all six
+  cells, three sweeps each: eighteen new rows, none void, each carrying its own
+  `load1` and `runnable`. The six select citations in `lib/derive.ts` now ask
+  `hasReading` and read only those, so the frozen eighteen stay in the file as
+  history and back no published number.
+
+  The two sweeps agree cell for cell — `select.heap` moved 2.56-2.87x to
+  2.60-2.89x — so the rule's claim is unchanged and is now checkable. One cell
+  did move: `number` at n=100000 read 0.97, 0.89 and 1.03 and rule 13 withdraws
+  it, so the silent clause no longer says the effect "changes sign with the
+  working set". It says n=10000 costs 1.10-1.19x under the broad-warning bar and
+  n=100000 has no measurement at all.
+
+  The cause fix is in `bench/resume.ts`: `done()` skipped these six cells forever
+  because it counted the reading-less rows as finished runs. It now asks
+  `hasReading` too, so a cell whose only rows cannot be judged is re-measured
+  rather than declared complete. See TC-136 for the same question on the other
+  ten sweeps.
 
 ## TC-133 — the documented GitHub install has no remote ref to install (2026-08-31, open)
 
