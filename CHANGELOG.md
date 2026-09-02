@@ -1,5 +1,62 @@
 # Changelog
 
+## [v0.14.0] — 20260902
+
+> jitmax v0.14.0 — the report is readable now, and every change cites the source that asked for it
+>
+> Findings were a wall. One `fix:` line ran to 553 characters; 70 of 244 lines overflowed an 80-column terminal; the sentence explaining defect TC-9 printed twelve times in a single run.
+>
+> • Every printed sentence wraps at 78 columns with a hanging indent.
+> • `fix:` is now the action alone. The conditions, ratios and caveats moved to `note:` — no clause was dropped.
+> • Each known defect is described once in a legend; findings cite the bare code.
+>
+> Nothing was deleted to make the output shorter. It is re-laid-out: 244 lines became 351, and none of them overflow.
+>
+> Full notes: https://github.com/kronael/jitmax/blob/main/CHANGELOG.md
+
+### Changed
+
+- **Every printed sentence wraps at 78 columns**, with a hanging indent that
+  keeps a continuation visibly subordinate to its label. One helper in
+  `lib/report.ts`; no second wrapping path. Lines over 80 columns went from 70
+  to 0, and the longest line from 553 characters to 80.
+  *(Butterick, Practical Typography: "Aim for an average line length of 45-90
+  characters." Rust RFC 1644: "Create something that's visually easy to parse".)*
+- **`fix:` says what to do; `note:` says what to know.** The action is now
+  separated from the conditions, the measured sizes and the caveats, which used
+  to be dash-joined onto the same line. `note?: string` on `Finding`; six rule
+  files re-split the strings they already had. **No clause was removed** —
+  everything printed before is still printed, under one of the two labels.
+  *(rustc dev guide: "help should be used to show changes the user can possibly
+  make to fix the problem. note should be used for everything else".)*
+- **A known defect is described once.** Findings cite bare codes
+  (`known defects: TC-13, TC-33`) and one legend before the verdict spells each
+  out. TC-9's sentence printed 12 times in a run of `demo/` and now prints once;
+  TC-33's, 10 times. Every finding keeps every code it carried.
+  *(clig.dev: "If your program produces multiple errors of the same type,
+  consider grouping them under a single explanatory header instead of printing
+  many similar-looking lines".)*
+- **A blank line separates two findings under one function.**
+  *(RFC 1644 names the old rustc format's lack of "a clear visual break between
+  errors" as a fault; Elm's "Compiler Errors for Humans" makes the same case for
+  whitespace.)*
+
+### Fixed
+
+- The V8 pin line ran into the preceding word when the citation count was a
+  single digit. It is a line of its own now. Found by the suite, not by a
+  reader.
+
+### Notes
+
+- The research behind these four changes is in
+  `.ship/plan-output-readability-20260902.md`: 11 pages opened, 10 cited, and
+  five recommendations the author could not source kept separate and unshipped.
+  Three further recommendations (a column number, a trailing count, reworded
+  rule messages) were deferred as new content rather than layout.
+- `WALK TRUNCATED`, the exit contract, the evidence pointers and the defect
+  codes are untouched. None of them may be traded for a shorter report.
+
 ## [v0.13.1] — 20260902
 
 > jitmax v0.13.1 — the select numbers were re-measured, and one of them did not survive
