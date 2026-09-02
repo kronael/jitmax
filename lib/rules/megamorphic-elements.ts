@@ -189,7 +189,8 @@ const detect: Rule = (ts, checker, body, add) => {
         fifthMap('load'),
       fix:
         'get the element type to four distinct property sets or fewer, or give it one ' +
-        'construction path — renaming a member does not merge two shapes',
+        'construction path',
+      note: 'renaming a member does not merge two shapes',
     });
   }
 };

@@ -48,8 +48,8 @@ four-map budget, and the measurement agrees — two to four sets cost
 element, so no site exists for a fifth map to reach.
 
 **The fix it prints.** "get the element type to four distinct property sets or
-fewer, or give it one construction path — renaming a member does not merge two
-shapes".
+fewer, or give it one construction path", with the note that renaming a member
+does not merge two shapes.
 
 **The cost.** 3.4-11.3x on reads, in `bench/shape-sets.jl` and
 `bench/shapes-calibrated.jl`. No end-to-end example is possible; see
@@ -75,9 +75,9 @@ which body runs — a different question from how many shapes reach it.
 
 **The fix it prints.** "get the receiver to four distinct property sets or
 fewer, or give the call site one shape". Where the count comes from the
-dataflow walk rather than from a declared type, the fix adds that the count is
-a lower bound: two identical classes are still two maps, and a consumer of an
-exported interface can add more.
+dataflow walk rather than from a declared type, the fix carries a note that the
+count is a lower bound: two identical classes are still two maps, and a
+consumer of an exported interface can add more.
 
 **The cost.** 12.9-22.7x, in `bench/dispatch.jl`. The rule is late for an
 object that carries its own function in a field; that gap is in
@@ -105,7 +105,8 @@ and `joinByConcat`, which are strings, and V8 appends to a string instead of
 copying it.
 
 **The fix it prints**, for the array form: "push onto acc instead of rebuilding
-it — the finished array reads the same either way, 0.96-1.02x". For the object
+it", with the note that the finished array reads the same either way,
+0.96-1.02x. For the object
 form there is no rewrite this project has measured as a win on both halves:
 assigning the key on `acc` builds faster, 186-200x at n=500, and fills the
 result key by key, which normalizes the object — the spread-built object reads
@@ -207,13 +208,14 @@ interceptor and which has no hidden class to demote. And the measurement
 refused the rewrite as a defect: assigning `undefined` instead costs
 1.00-1.06x.
 
-**The fix it prints.** "assign undefined where the key may stay present —
+**The fix it prints.** "assign undefined where the key may stay present, or
+build the object without the key", with the note that assigning undefined is
 equivalent only while nothing downstream tells an absent key from one holding
-undefined … — or build the object without the key — the rebuild helps at the
-smaller of n=12 and n=48 and not at the larger, where filling it key by key
-normalizes it too". Where the walk sees the object reach `Object.keys`, a
-spread or another observer that tells an absent key from one holding
-`undefined`, the first branch is dropped and the observer is named.
+undefined, and that the rebuild helps at the smaller of n=12 and n=48 and not
+at the larger, where filling it key by key normalizes it too. Where the walk
+sees the object reach `Object.keys`, a spread or another observer that tells an
+absent key from one holding `undefined`, the first branch is dropped and the
+observer is named.
 
 **The cost.** 12.3-13.6x per property load after the delete, in
 `bench/delete.jl`. End to end: es-toolkit `omit` in `examples/README.md`.
@@ -290,8 +292,8 @@ receiver: the walk follows it instead of reporting, and finds the
 `accumulating-spread` inside it.
 
 **The fix it prints.** "check the implementations of op.run yourself, or narrow
-the value to one of them at this call — do not inline the abstraction away on
-this rule's account".
+the value to one of them at this call", with the note not to inline the
+abstraction away on this rule's account.
 
 **The cost.** None. This rule makes no speed claim; it reports what was not
 checked.

@@ -88,9 +88,12 @@ const detect: EscapeRule = (mark, add) => {
           : `calls ${c.text}, which we have no body for; the promise stops here`,
       fix:
         d.located > 0
-          ? `read the ${d.located} implementations named above, or give this call one of ` +
-            'them — they are located, not missing, and what is inside them is unchecked'
+          ? `read the ${d.located} implementations named above, or give this call one of them`
           : `inline what you need from ${c.text}, or accept that this call is unchecked`,
+      note:
+        d.located > 0
+          ? 'they are located, not missing, and what is inside them is unchecked'
+          : undefined,
     });
   }
 };

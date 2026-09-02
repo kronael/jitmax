@@ -355,6 +355,7 @@ export function render(
       }
       out.push(...wrap('      ', f.message));
       out.push(...wrap('      fix: ', f.fix));
+      if (f.note !== undefined) out.push(...wrap('      note: ', f.note));
       // The sweep that priced the RULE, named — and no ratio. A ratio is a
       // property of the input: chained allocation is one number at n=1000 and
       // another at n=100000, and the annotation says this function is hot, not

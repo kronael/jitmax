@@ -310,7 +310,7 @@ test('five implementations reaching a receiver are a megamorphic-dispatch findin
   const f = rawFindings('runAll').find((x) => x.rule === 'megamorphic-dispatch');
   assert.match(f?.message ?? '', /at least 5 implementations/);
   assert.match(f?.message ?? '', /OpA, OpB, OpC, OpD, OpE/);
-  assert.match(f?.fix ?? '', /lower bound/);
+  assert.match(f?.note ?? '', /lower bound/);
 });
 
 // Inside V8's four-map budget: a note at most, never an error — and it names
@@ -409,20 +409,21 @@ test('the concat form on a STRING stays silent', () => {
 // slower by following this rule. The two forms therefore print two fixes, and
 // the conditional one is the object.
 test('the fix differs by form: the array half is unconditional and the object half is not', () => {
-  const fixFor = (name: string): string => {
-    const f = rawFindings(name).find((x) => x.rule === 'accumulating-spread');
-    return f?.fix ?? assert.fail(`no accumulating-spread finding on ${name}`);
-  };
+  const spreadFor = (name: string) =>
+    rawFindings(name).find((x) => x.rule === 'accumulating-spread') ??
+    assert.fail(`no accumulating-spread finding on ${name}`);
+  const fixFor = (name: string): string => spreadFor(name).fix;
+  const noteFor = (name: string): string => spreadFor(name).note ?? '';
   assert.match(fixFor('collect'), /^push onto acc /);
-  assert.doesNotMatch(fixFor('collect'), /normalizes/);
+  assert.doesNotMatch(noteFor('collect'), /normalizes/);
   assert.match(fixFor('collectByConcat'), /^push onto acc /);
   // The object half stopped being an instruction (BUGS TC-38): applying it
   // makes the build faster and the reads 8x slower, and the tool reports the
   // result CLEAN — so the text has to carry what the exit code cannot.
   assert.match(fixFor('collectObject'), /^there is no rewrite here/);
-  assert.match(fixFor('collectObject'), /normalizes the object/);
-  assert.match(fixFor('collectObject'), /checks CLEAN/);
-  assert.match(fixFor('collectByAssign'), /normalizes the object/);
+  assert.match(noteFor('collectObject'), /normalizes the object/);
+  assert.match(noteFor('collectObject'), /checks CLEAN/);
+  assert.match(noteFor('collectByAssign'), /normalizes the object/);
 });
 
 // Three tokens moved the measured defect out of the rule's sight, and both are
@@ -485,8 +486,8 @@ test('the delete fix says where the rebuild stops paying, in the swept sizes', (
   const sizes = N['ex.omit.sizes'];
   assert.match(sizes, /^n=\d+ and n=\d+$/, `ex.omit.sizes reads "${sizes}"`);
   assert.ok(
-    (f?.fix ?? '').includes(sizes),
-    `the fix does not quote the swept sizes (${sizes}): ${f?.fix}`
+    (f?.note ?? '').includes(sizes),
+    `the fix's note does not quote the swept sizes (${sizes}): ${f?.note}`
   );
   const swept = [
     ...new Set(
@@ -540,7 +541,7 @@ test('every published copy of the delete fix quotes the swept sizes', () => {
 // columns meant to be left alone.
 test('a delete whose object reaches Object.keys loses the assign-undefined rewrite', () => {
   const f = rawFindings('scrub').find((x) => x.rule === 'delete-property');
-  assert.match(f?.fix ?? '', /Object\.keys reads o at line \d+/);
+  assert.match(f?.note ?? '', /Object\.keys reads o at line \d+/);
   assert.doesNotMatch(f?.fix ?? '', /assign undefined/);
 });
 
@@ -548,7 +549,7 @@ test('a delete whose object reaches Object.keys loses the assign-undefined rewri
 // the check crosses bodies the way the walk does.
 test('the observer check crosses bodies: a spread in the caller reaches a delete in the callee', () => {
   const f = rawFindings('dropThenSpread').find((x) => x.rule === 'delete-property');
-  assert.match(f?.fix ?? '', /a spread reads o at line \d+/);
+  assert.match(f?.note ?? '', /a spread reads o at line \d+/);
   assert.doesNotMatch(f?.fix ?? '', /assign undefined/);
 });
 
@@ -557,8 +558,8 @@ test('the observer check crosses bodies: a spread in the caller reaches a delete
 test('a delete no observer reaches keeps the rewrite, with its precondition stated', () => {
   const f = rawFindings('drop').find((x) => x.rule === 'delete-property');
   assert.match(f?.fix ?? '', /assign undefined where the key may stay present/);
-  assert.match(f?.fix ?? '', /spread and Object\.assign copy it/);
-  assert.match(f?.fix ?? '', /Reflect\.ownKeys see it; JSON\.stringify does not/);
+  assert.match(f?.note ?? '', /spread and Object\.assign copy it/);
+  assert.match(f?.note ?? '', /Reflect\.ownKeys see it; JSON\.stringify does not/);
 });
 
 // The observer list, one row per entry. It shipped four entries long and the
@@ -568,9 +569,10 @@ test('a delete no observer reaches keeps the rewrite, with its precondition stat
 // on the hole it was written to skip. A list with no test per entry is how the
 // first four drifted, so every entry is a row here (BUGS TC-79).
 const tc79 = findingsByFunction(path.join('test', 'fixtures', 'tc79'));
-const deleteFix = (name: string): string =>
-  (tc79.get(name) ?? assert.fail(`no mark ${name}`)).find((f) => f.rule === 'delete-property')
-    ?.fix ?? assert.fail(`${name} has no delete-property finding`);
+const deleteFinding = (name: string) =>
+  (tc79.get(name) ?? assert.fail(`no mark ${name}`)).find((f) => f.rule === 'delete-property') ??
+  assert.fail(`${name} has no delete-property finding`);
+const deleteFix = (name: string): string => deleteFinding(name).fix;
 
 test('every observer that tells an absent key from an undefined one drops the rewrite', () => {
   const withRewrite: string[] = [];
@@ -587,10 +589,10 @@ test('every observer that tells an absent key from an undefined one drops the re
     ['copiedFrom', 'Object.assign'],
   ];
   for (const [fn, op] of observers) {
-    const fix = deleteFix(fn);
+    const { fix, note } = deleteFinding(fn);
     if (fix.includes('assign undefined')) withRewrite.push(`${fn} (${op})`);
-    if (!new RegExp(`^${op.replace(/\./g, '\\.')} reads o at line \\d+`).test(fix)) {
-      unnamed.push(`${fn}: ${fix}`);
+    if (!new RegExp(`^${op.replace(/\./g, '\\.')} reads o at line \\d+`).test(note ?? '')) {
+      unnamed.push(`${fn}: ${note}`);
     }
   }
   assert.deepStrictEqual(withRewrite, [], 'the rewrite survived an observer that forbids it');
@@ -785,7 +787,7 @@ test('a call the walk located two bodies for is not reported as bodiless', () =>
   assert.doesNotMatch(f?.message ?? '', /we have no body for/);
   assert.match(f?.message ?? '', /uploadFloat\(\), uploadInt\(\)/);
   assert.doesNotMatch(f?.fix ?? '', /^inline what you need/);
-  assert.match(f?.fix ?? '', /located, not missing/);
+  assert.match(f?.note ?? '', /located, not missing/);
 });
 
 test('the object form of the accumulator fires', () => {

@@ -379,22 +379,24 @@ const detect: Rule = (ts, checker, body, add, mark) => {
       // typed by hand, and the test asserted the sentence still said 12 and 48
       // rather than that the data still did (the re-aimed BUGS TC-48).
       const rebuild =
-        `build the object without the key — the rebuild helps at the smaller of ${N['ex.omit.sizes']} and not at the larger, ` +
+        `The rebuild helps at the smaller of ${N['ex.omit.sizes']} and not at the larger, ` +
         'where filling it key by key normalizes it too';
       add({
         ...at(body.sf, node),
         rule: NAME,
         message: `delete ${node.expression.getText(body.sf)} puts its object in dictionary mode`,
         fix: seen
+          ? 'build the object without the key'
+          : 'assign undefined where the key may stay present, or build the object without the key',
+        note: seen
           ? `${seen.op} reads ${object.getText(body.sf)} at line ${seen.line} and tells an ` +
             `absent key from one holding undefined, so assigning undefined is not a rewrite ` +
-            `here; ${rebuild}`
-          : 'assign undefined where the key may stay present — equivalent only while nothing ' +
-            'downstream tells an absent key from one holding undefined (spread and ' +
-            'Object.assign copy it; `in`, for-in, hasOwnProperty, Object.keys, Object.values, ' +
-            'Object.entries, Object.getOwnPropertyNames and Reflect.ownKeys see it; ' +
-            'JSON.stringify does not, it omits both) — or ' +
-            rebuild,
+            `here. ${rebuild}`
+          : 'assigning undefined is equivalent only while nothing downstream tells an absent ' +
+            'key from one holding undefined: spread and Object.assign copy it; `in`, for-in, ' +
+            'hasOwnProperty, Object.keys, Object.values, Object.entries, ' +
+            'Object.getOwnPropertyNames and Reflect.ownKeys see it; JSON.stringify does not, ' +
+            `it omits both. ${rebuild}`,
       });
     }
   });

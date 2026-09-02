@@ -142,8 +142,10 @@ export function megamorphicCall(c: Call, add: Add): boolean {
       `called on it; ${fifthMap('call')}`,
     fix:
       'get the implementations reaching this call to four or fewer, or give the ' +
-      'call site one shape — the count is a lower bound: two identical classes are ' +
-      'still two maps, and a consumer of an exported interface can add more',
+      'call site one shape',
+    note:
+      'the count is a lower bound: two identical classes are still two maps, and a ' +
+      'consumer of an exported interface can add more',
   });
   return true;
 }

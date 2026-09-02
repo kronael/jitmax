@@ -62,7 +62,8 @@ const detect: EscapeRule = (mark, add) => {
             'implementation runs here; the promise stops here',
       fix:
         `check the implementations of ${c.text} yourself, or narrow the value to one of ` +
-        "them at this call — do not inline the abstraction away on this rule's account",
+        'them at this call',
+      note: "do not inline the abstraction away on this rule's account",
     });
   }
 };

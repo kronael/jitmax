@@ -126,21 +126,29 @@ const detect: Rule = (ts, checker, body, add) => {
   // the same whichever way it was built. The object half does, and it is not a
   // caveat: taking it cost remeda's caller more on reads than the quadratic
   // build ever cost, and this rule shipped for months without saying so.
-  const FIX: Record<Form, string> = {
-    array: `push onto NAME instead of rebuilding it — the finished array reads the same either way, ${N['spread.array.reads']}`,
+  const FIX: Record<Form, { fix: string; note: string }> = {
+    array: {
+      fix: 'push onto NAME instead of rebuilding it',
+      note: `the finished array reads the same either way, ${N['spread.array.reads']}`,
+    },
     // Not an instruction. Assigning the key on NAME is faster to BUILD and
     // slower to READ, both measured, and jitmax reports the mutating form
     // as clean — so a reader who takes the instruction and re-runs the tool
     // gets a green run on an 8x read regression (BUGS TC-38). The exit code
     // cannot say that, so the text does.
-    object:
-      'there is no rewrite here this project has measured as a win on both halves. Assigning ' +
-      `the key on NAME instead builds faster, ${N['spread.object']} at n=500, and fills the ` +
-      'result key by key, which normalizes the object: the SPREAD-built object reads ' +
-      `${N['ex.mergeall.reads']} of what the filled one costs (remeda mergeAll), so the ` +
-      'copy you are being asked to delete is the cheaper one to read back. Mutate where the ' +
-      'result is written more than it is read; keep the copy where it is read hot. No rule ' +
-      'here detects a dictionary-mode object, so the mutating form checks CLEAN',
+    object: {
+      fix:
+        'there is no rewrite here this project has measured as a win on both halves: ' +
+        'mutate where the result is written more than it is read; keep the copy where it ' +
+        'is read hot',
+      note:
+        `assigning the key on NAME instead builds faster, ${N['spread.object']} at n=500, ` +
+        'and fills the result key by key, which normalizes the object: the SPREAD-built ' +
+        `object reads ${N['ex.mergeall.reads']} of what the filled one costs (remeda ` +
+        'mergeAll), so the copy you are being asked to delete is the cheaper one to read ' +
+        'back. No rule here detects a dictionary-mode object, so the mutating form checks ' +
+        'CLEAN',
+    },
   };
 
   const report = (node: TS.Node, name: string, form: Form): void =>
@@ -148,7 +156,8 @@ const detect: Rule = (ts, checker, body, add) => {
       ...at(body.sf, node),
       rule: NAME,
       message: `${name} is rebuilt from a copy of itself; every pass copies everything it already holds`,
-      fix: FIX[form].replaceAll('NAME', name),
+      fix: FIX[form].fix.replaceAll('NAME', name),
+      note: FIX[form].note.replaceAll('NAME', name),
     });
 
   // The accumulator of a reduce is spread by the callback, so the loop that

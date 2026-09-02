@@ -39,7 +39,12 @@ export interface Evidence {
 export interface Finding extends Site {
   rule: string;
   message: string;
+  // The change to make, and nothing else. What it holds under, what it was
+  // measured at and where it stops paying are `note`, printed under it — one
+  // fix carried all four in a 553-character sentence, and the action was its
+  // first and fourth clause.
   fix: string;
+  note?: string;
   evidence: Evidence | null;
 }
 
