@@ -23,13 +23,17 @@ const evidence: Evidence = {
     `(CI ${N['select.heap.ci10k']} at n=10000, ${N['select.heap.ci100k']} at n=100000)`,
   source: `bench/select.jl, ${cells(N['select.cells'])}, 20 pairs each`,
   silent:
-    `on numbers the effect is small and changes sign with the working set — ` +
-    `${N['select.silent.number']} across both sizes, intervals ` +
-    `${N['select.silent.number.ci']}, above 1 at n=10000 and below it at n=100000 — ` +
-    'because Math.min allocates nothing and what is left is the loop, not the rule. ' +
-    'This clause said "no effect at all, both intervals spanning 1" until the cells were ' +
-    'run three times each (BUGS TC-23); the rule still stays out, but on a smaller ' +
-    'margin than it claimed',
+    'on numbers the rule stays out, and the two sizes say so differently. At n=10000 ' +
+    `the same loop costs ${N['select.silent.number']}, interval ` +
+    `${N['select.silent.number.ci']} — a lower bound under the broad-warning bar, so ` +
+    'there is an effect and it is not one this rule may warn about. At n=100000 there ' +
+    `is no measurement to warn from: three sweeps read ` +
+    `${N['select.silent.number.withdrawn']} and rule 13 withdraws the cell. Math.min ` +
+    'allocates nothing and what is left is the loop, not the rule. This clause claimed ' +
+    '"no effect at all, both intervals spanning 1" until the cells were run three times ' +
+    'each (BUGS TC-23), and rested on eighteen rows stamped with one frozen reading of ' +
+    'the machine until they were re-measured with a reading per row (TC-134). The rule ' +
+    'stays out through all three tellings, on a smaller margin each time',
   unreported:
     'escape analysis does not rescue the boxed form: kept in a local, where the compiler ' +
     `can see it, the same loop still costs ${N['select.silent.local']} — below the cell ` +

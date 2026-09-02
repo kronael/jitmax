@@ -173,12 +173,15 @@ export function lowest(rows: Money[], bucket: { lo: Money }): void {
 ```
 
 **It is silent on** `lowestNumber`, the same loop on numbers, where `Math.min`
-allocates nothing.
+allocates nothing. That silence is measured, not assumed: at n=10000 the number
+loop still costs 1.10-1.19x, an interval whose lower bound sits under the
+broad-warning bar, and at n=100000 three sweeps read 0.89x, 0.97x and 1.03x, so
+rule 13 withdraws the cell and there is no measurement to warn from.
 
 **The fix it prints.** "compare first and assign only when bucket.lo really
 changes".
 
-**The cost.** 2.56-2.87x where the chosen value outlives the loop, in
+**The cost.** 2.60-2.89x where the chosen value outlives the loop, in
 `bench/select.jl`. In 2953 annotated functions the rule never fired on the
 shape it measures; `examples/README.md` has that verdict.
 

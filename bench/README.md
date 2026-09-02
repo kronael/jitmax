@@ -73,13 +73,14 @@ prints, straight from the `.jl` files. Nothing here is typed twice, and
 | `0.26-0.52x` | `bench/strings.jl` — s = s + x, s += x and s = s.concat(x) against a push-and-join, building only — 1 of 9 cells withdrawn as unreplicable (rule 13): pluseq|joined|build|1000|dispatch-table |
 | `0.78-1.13x` | `bench/strings.jl` — the same three with the read back counted |
 | `0.71-1.48` | `bench/strings.jl` — every interval measured for those nine cells |
-| `2.56-2.87x` | `bench/select.jl` — the chosen value stored where it outlives the loop, both sizes |
-| `2.59-2.92` | `bench/select.jl` — the intervals at n=10000, across the first sweep and the three replications |
-| `2.30-3.09` | `bench/select.jl` — the intervals at n=100000, across the first sweep and the three replications |
-| `6` | `bench/select.jl` — the whole sweep |
-| `0.88-1.22x` | `bench/select.jl` — the same loop on numbers, both sizes — where the rule stays quiet |
-| `0.84-1.30` | `bench/select.jl` — every interval measured on numbers |
-| `2.01-2.45x` | `bench/select.jl` — the boxed form kept in a local, where escape analysis could see it, both sizes |
+| `2.60-2.89x` | `bench/select.jl` — the chosen value stored where it outlives the loop, both sizes |
+| `2.58-3.08` | `bench/select.jl` — the intervals at n=10000, across the three replications of the re-measurement |
+| `2.48-2.86` | `bench/select.jl` — the intervals at n=100000, across the three replications of the re-measurement |
+| `5` | `bench/select.jl` — the whole re-measurement — 1 of 6 cells withdrawn as unreplicable (rule 13): select|compare|number|100000 |
+| `1.10-1.19x` | `bench/select.jl` — the same loop on numbers at n=10000 — where the rule stays quiet |
+| `1.03-1.29` | `bench/select.jl` — every interval measured on numbers at n=10000 |
+| `0.89x and 0.97x and 1.03x` | `bench/select.jl` — the three sweeps of the n=100000 number cell — withdrawn under rule 13, quoted as the refutation it is |
+| `2.02-2.47x` | `bench/select.jl` — the boxed form kept in a local, where escape analysis could see it, both sizes |
 | `1.44-1.52x` | `bench/chained.jl` — xs.map(f).filter(g) against one fused pass, construction counted, both sizes — 1 of 2 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table |
 | `6.48x and 6.58x and 7.51x` | `bench/chained.jl` — the three sweeps of the n=1000 cell this rule used to headline — withdrawn under rule 13, quoted as the refutation it is |
 | `1.37-1.63` | `bench/chained.jl` — every interval measured for the cells that replicate — 1 of 2 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table |

@@ -2397,7 +2397,10 @@ const HISTORICAL: Record<string, string> = {
   // The three sweeps of a cell rule 13 refuses, printed as the refutation.
   '1.64x': 'one of three disagreeing sweeps, quoted to show they disagree',
   '0.91x': 'one of three disagreeing sweeps, quoted to show they disagree',
-  '0.89x': 'one of three disagreeing sweeps, quoted to show they disagree',
+  // `0.89x` stood here for the same reason and is now DERIVED: the select
+  // number cell at n=100000 was re-measured and disagrees at 0.89x, 0.97x and
+  // 1.03x, so `select.silent.number.withdrawn` quotes the figure out of the
+  // rows (BUGS TC-134). The register refuses an entry the data now supplies.
   '17.34x': 'one of three disagreeing sweeps of remeda mergeAll at n=64, before it was re-swept',
   '19.34x': 'one of three disagreeing sweeps of remeda mergeAll at n=64, before it was re-swept',
   '20.10x': 'one of three disagreeing sweeps of remeda mergeAll at n=64, before it was re-swept',
@@ -2777,6 +2780,12 @@ const DISAGREE = new Set([
   // can tell "never replicated" from "replicated and refuted". No citation
   // reads this file.
   'addprop.jl added|literal|build|256|dispatch-table (2 sweeps)',
+  // The number cell at n=100000, from the re-measurement TC-134 ran. The
+  // frozen sweep it replaces disagreed here too — 0.88x, 0.94x, 1.00x against
+  // 0.97x, 0.89x, 1.03x — but its rows were not admissible to say so, and the
+  // range they published spanned both sizes and hid it. `allocating-select`'s
+  // silent clause now quotes the three sweeps instead of a range.
+  'select.jl select|compare|number|100000',
 ]);
 
 // Every sweep a citation reads. A file is here whether or not it is in
@@ -2825,7 +2834,13 @@ test('a single-sweep cell and a rejected interval cannot publish as live', () =>
   // Rule 13's base case: one sweep of a 99x cell under select.heap's pick. A
   // cell measured once was the one count the old `length >= 2` guard let
   // through unchallenged (BUGS TC-84).
-  const select = { runner: 'r2', variant: 'select', baseline: 'compare', mode: 'heap', protocol: 'replicated' };
+  // `load1`/`runnable` because select's citations ask `hasReading` since the
+  // sweep was re-measured (TC-134): a planted row must look like a row the
+  // rule publishes, or the funnel never sees it.
+  const select = {
+    runner: 'r2', variant: 'select', baseline: 'compare', mode: 'heap',
+    protocol: 'replicated', load1: 1, runnable: 0, env: { maxRunnable: 1, cores: 2 },
+  };
   plant('select.jl', [{ ...select, n: 555, replicate: 1, ratio: 99, lo: 98, hi: 100 }]);
   // Rule 6 on a rule's evidence: three agreeing sweeps whose shared interval
   // spans 1.0, however large the point estimates read.
@@ -2893,7 +2908,10 @@ const OVER_GATE: Record<string, [number, number]> = {
   'dispatch.jl': [205, 240],
   'example.jl': [45, 48],
   'inline.jl': [4, 6],
-  'select.jl': [0, 18],
+  // 36 judgeable rows, not 18: the eighteen frozen ones the note above
+  // describes, plus the eighteen that re-measured the same six cells with the
+  // reading taken per row (TC-134). Every citation reads the second eighteen.
+  'select.jl': [0, 36],
   'shape-sets.jl': [57, 72],
   'shapes-calibrated.jl': [64, 72],
   'spread.jl': [21, 24],

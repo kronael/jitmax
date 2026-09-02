@@ -30,6 +30,7 @@ import path from 'node:path';
 // definition, in the file that runs the sweeps, and the gate below is the
 // second caller it should always have had (BUGS TC-37).
 import { replicates, RUNNER } from '../bench/driver.ts';
+import { frozen, hasReading } from '../bench/env.ts';
 // Rule 9's gate as a function of the core count, imported for the same reason:
 // a row is judged against the gate its own machine derives, and the model has
 // one home (bench/env.ts).
@@ -143,6 +144,11 @@ interface Citation {
 // together. The marker is bench/driver.ts's, imported: it used to be a second
 // `const RUNNER = 'r2'` here, and the two had to be equal with nothing making
 // them equal — the writer moving to `r3` alone would fail every citation.
+//
+// Rule 9 asks for the environment in EVERY row, and 689 rows carrying this
+// marker predate the field entirely. Withdrawing them is a re-measurement of
+// ten sweeps and an owner's call, not a query (BUGS TC-136); `hasReading` is
+// applied per citation instead, where a sweep HAS been re-measured.
 export const current = (r: Row): boolean => r.runner === RUNNER;
 
 // The sweeps that have been re-measured under it, whole. A file moves in here
@@ -442,54 +448,73 @@ export const CITATIONS: Record<string, Citation> = {
     agg: 'cispan',
   },
 
-  // allocating-select
+  // allocating-select. Every pick here asks `hasReading`, which the other
+  // sweeps' picks do not. select.jl holds two sweeps of the same six cells: the
+  // eighteen rows that stamped ONE sweep-wide reading onto an evening's work,
+  // and the eighteen that re-measured them with the reading taken as each row
+  // was written. `frozenReading` below counts the first set and says its exit
+  // condition is a re-measurement rather than a query; this is that
+  // re-measurement being read (BUGS TC-134). The two sweeps agree cell for
+  // cell, so nothing here moved — what moved is that a reader can now check
+  // what the machine was doing under every number.
   'select.heap': {
     claims: 'rule',
     file: 'select.jl',
     cells: 'the chosen value stored where it outlives the loop, both sizes',
-    pick: (r) => r.mode === 'heap',
+    pick: (r) => r.mode === 'heap' && hasReading(r),
     agg: 'range',
   },
   'select.heap.ci10k': {
     claims: 'nothing',
     file: 'select.jl',
-    cells: 'the intervals at n=10000, across the first sweep and the three replications',
-    pick: (r) => r.mode === 'heap' && r.n === 10000,
+    cells: 'the intervals at n=10000, across the three replications of the re-measurement',
+    pick: (r) => r.mode === 'heap' && r.n === 10000 && hasReading(r),
     agg: 'cispan',
   },
   'select.heap.ci100k': {
     claims: 'nothing',
     file: 'select.jl',
-    cells: 'the intervals at n=100000, across the first sweep and the three replications',
-    pick: (r) => r.mode === 'heap' && r.n === 100000,
+    cells: 'the intervals at n=100000, across the three replications of the re-measurement',
+    pick: (r) => r.mode === 'heap' && r.n === 100000 && hasReading(r),
     agg: 'cispan',
   },
   'select.cells': {
     claims: 'nothing',
     file: 'select.jl',
-    cells: 'the whole sweep',
-    pick: () => true,
+    cells: 'the whole re-measurement',
+    pick: (r) => hasReading(r),
     agg: 'count',
   },
   'select.silent.number': {
     claims: 'nothing',
     file: 'select.jl',
-    cells: 'the same loop on numbers, both sizes — where the rule stays quiet',
-    pick: (r) => r.mode === 'number',
+    cells: 'the same loop on numbers at n=10000 — where the rule stays quiet',
+    pick: (r) => r.mode === 'number' && r.n === 10000 && hasReading(r),
     agg: 'range',
   },
   'select.silent.number.ci': {
     claims: 'nothing',
     file: 'select.jl',
-    cells: 'every interval measured on numbers',
-    pick: (r) => r.mode === 'number',
+    cells: 'every interval measured on numbers at n=10000',
+    pick: (r) => r.mode === 'number' && r.n === 10000 && hasReading(r),
     agg: 'cispan',
+  },
+  // The n=100000 number cell. Rule 13 withdraws it — three sweeps at 0.97,
+  // 0.89 and 1.03 — so what is published about it is the disagreement, not a
+  // range that would read as a measurement of nothing.
+  'select.silent.number.withdrawn': {
+    claims: 'nothing',
+    file: 'select.jl',
+    cells: 'the three sweeps of the n=100000 number cell',
+    pick: (r) => r.mode === 'number' && r.n === 100000 && hasReading(r),
+    agg: 'points',
+    unreplicable: true,
   },
   'select.silent.local': {
     claims: 'nothing',
     file: 'select.jl',
     cells: 'the boxed form kept in a local, where escape analysis could see it, both sizes',
-    pick: (r) => r.mode === 'local',
+    pick: (r) => r.mode === 'local' && hasReading(r),
     agg: 'range',
   },
 
@@ -1112,7 +1137,7 @@ export function overGate(root: string, file: string): { over: number; judged: nu
 // that is a re-measurement of six cells, not a query (TC-24, TC-47).
 // bench/env.ts refuses to write another; this is what sees the ones there are.
 export function frozenReading(root: string, file: string): number {
-  return rows(root, file).filter((r) => r.env?.load1 !== undefined).length;
+  return rows(root, file).filter((r) => frozen(r)).length;
 }
 
 // The rows whose gate was RAISED — a recorded limit above the one their own

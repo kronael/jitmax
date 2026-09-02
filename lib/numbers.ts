@@ -64,19 +64,21 @@ export const N = {
   // strings.jl: every interval measured for those nine cells
   'spread.silent.strings.incl.ci': '0.71-1.48',
   // select.jl: the chosen value stored where it outlives the loop, both sizes
-  'select.heap': '2.56-2.87x',
-  // select.jl: the intervals at n=10000, across the first sweep and the three replications
-  'select.heap.ci10k': '2.59-2.92',
-  // select.jl: the intervals at n=100000, across the first sweep and the three replications
-  'select.heap.ci100k': '2.30-3.09',
-  // select.jl: the whole sweep
-  'select.cells': '6',
-  // select.jl: the same loop on numbers, both sizes — where the rule stays quiet
-  'select.silent.number': '0.88-1.22x',
-  // select.jl: every interval measured on numbers
-  'select.silent.number.ci': '0.84-1.30',
+  'select.heap': '2.60-2.89x',
+  // select.jl: the intervals at n=10000, across the three replications of the re-measurement
+  'select.heap.ci10k': '2.58-3.08',
+  // select.jl: the intervals at n=100000, across the three replications of the re-measurement
+  'select.heap.ci100k': '2.48-2.86',
+  // select.jl: the whole re-measurement — 1 of 6 cells withdrawn as unreplicable (rule 13): select|compare|number|100000
+  'select.cells': '5',
+  // select.jl: the same loop on numbers at n=10000 — where the rule stays quiet
+  'select.silent.number': '1.10-1.19x',
+  // select.jl: every interval measured on numbers at n=10000
+  'select.silent.number.ci': '1.03-1.29',
+  // select.jl: the three sweeps of the n=100000 number cell — withdrawn under rule 13, quoted as the refutation it is
+  'select.silent.number.withdrawn': '0.89x and 0.97x and 1.03x',
   // select.jl: the boxed form kept in a local, where escape analysis could see it, both sizes
-  'select.silent.local': '2.01-2.45x',
+  'select.silent.local': '2.02-2.47x',
   // chained.jl: xs.map(f).filter(g) against one fused pass, construction counted, both sizes — 1 of 2 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table
   'chained.mapfilter': '1.44-1.52x',
   // chained.jl: the three sweeps of the n=1000 cell this rule used to headline — withdrawn under rule 13, quoted as the refutation it is

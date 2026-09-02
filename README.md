@@ -95,7 +95,7 @@ property of the input as much as of the code.
 | [`megamorphic-dispatch`](docs/rules.md#megamorphic-dispatch) | `x.step()` where `x` is one of five object types | 12.9-22.7x |
 | [`accumulating-spread`](docs/rules.md#accumulating-spread) | `[...acc, v]` or `{ ...acc, k: v }` in a loop — quadratic | 149-166x |
 | [`chained-allocation`](docs/rules.md#chained-allocation) | `.map().filter()` allocates a whole array between stages | 1.44-1.52x |
-| [`allocating-select`](docs/rules.md#allocating-select) | `x = Lib.min(x, y)` in a loop returns a new object every pass | 2.56-2.87x |
+| [`allocating-select`](docs/rules.md#allocating-select) | `x = Lib.min(x, y)` in a loop returns a new object every pass | 2.60-2.89x |
 | [`delete-property`](docs/rules.md#delete-property) | `delete` demotes an object to dictionary mode | 12.3-13.6x |
 | [`closed-world`](docs/rules.md#closed-world) | a callee with no readable body anywhere in the checkout | 4.64-4.95x |
 | [`interface-dispatch`](docs/rules.md#interface-dispatch) | a call whose body IS here but cannot be picked | no claim |

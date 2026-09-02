@@ -189,7 +189,7 @@ export function total(rows: Row[]): number { … }</code></pre>
     <tr>
       <td><code>x = Lib.min(x, y)</code> in a loop</td>
       <td>a fresh object every pass, even when nothing changed</td>
-      <td>2.56&ndash;2.87x. <strong>It fires at 29 distinct sites across 2953 real
+      <td>2.60&ndash;2.89x. <strong>It fires at 29 distinct sites across 2953 real
           functions in 22 codebases, and not once on that shape.</strong> Every
           finding is a value being advanced or wrapped &mdash; it changes on
           every pass, so &ldquo;compare first&rdquo; saves nothing. At that
