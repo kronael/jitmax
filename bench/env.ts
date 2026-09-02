@@ -127,6 +127,30 @@ export function environment(maxRunnable: number): Environment {
 //
 // `runnableStart` is not a reading and passes: it is what the gate let the
 // sweep BEGIN at, which is a fact about the sweep and true for its whole life.
+// Does a row carry the reading rule 9 asks for, taken as that row was written?
+// `reading()` above is the writer's half of the contract; this is the reader's.
+// A citation whose sweep has been re-measured asks it, so the rows it publishes
+// are rows whose machine state a reader can check. It is NOT the global
+// admissibility rule: 689 rows across ten sweeps predate the field entirely and
+// withdrawing them is a re-measurement, not a query (BUGS TC-136).
+export const hasReading = (r: { load1?: unknown; runnable?: unknown }): boolean =>
+  typeof r.load1 === 'number' && typeof r.runnable === 'number';
+
+// The other shape a reading comes in, and the one rule 9 forbids: ONE
+// observation stamped into the sweep record and copied onto every row of an
+// evening's work. `reading()` above refuses to write another; this recognises
+// the ones already written. Eighteen rows of select.jl are the whole of it.
+//
+// Resume asks this rather than `hasReading`, and the difference matters. A row
+// with no reading at all is a row from before the mechanism — not evidence of
+// anything, and deliberately still counted as a run. A row with a FROZEN
+// reading claims to answer the question and does not, so its cell has never
+// been measured under this protocol and resume must not call it finished. It
+// did: six select.jl cells were unmeasurable however often the sweep was re-run
+// (BUGS TC-24, TC-47, TC-134).
+export const frozen = (r: { env?: { load1?: unknown } }): boolean =>
+  typeof r.env?.load1 === 'number';
+
 export function reading<E extends Environment>(
   env: E
 ): { load1: number; runnable: number; env: E } {

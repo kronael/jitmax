@@ -9,6 +9,7 @@
 
 import fs from 'node:fs';
 import { RUNNER } from './driver.ts';
+import { frozen } from './env.ts';
 
 // A row as `key` and `done` see it: parsed back off a .jl line, every field
 // the runner may have written, nothing guaranteed.
@@ -47,6 +48,13 @@ export function done(file: string): Map<string, number> {
     if (!l) continue;
     const r: JlRow = JSON.parse(l);
     if (r.runner !== RUNNER) continue;
+    // A frozen reading is not a run. Such a row claims to say what the machine
+    // was doing and answers with one number stamped across an evening, so its
+    // cell has never been measured under this protocol — yet counting it made
+    // six select.jl cells permanently unmeasurable: three frozen rows each, and
+    // the runner skipping them however often the sweep was re-run (TC-134). A
+    // row with NO reading is a different case and stays counted, above.
+    if (frozen(r as { env?: { load1?: unknown } })) continue;
     const limit = (r.env as { maxRunnable?: number } | undefined)?.maxRunnable;
     const seen = r.runnable as number | undefined;
     if (limit !== undefined && seen !== undefined && seen > limit) continue;
