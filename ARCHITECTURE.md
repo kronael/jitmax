@@ -57,8 +57,9 @@ it — and `lib/rules/shared.ts` is what more than one of them needs. Each rule
 matches inside a single body; the walk widens where the rules are applied and
 does not widen what one rule can see (`docs/limits.md`).
 
-**Report.** `lib/report.ts` prints one finding per site, its fix, the sweep
-that priced the rule, and every `known defect` code the rule carries. It also
+**Report.** `lib/report.ts` prints one finding per site, its fix and the note
+under it, the sweep that priced the rule, and every `known defect` code the
+rule carries — what each code says is printed once, after the findings. It also
 prints what the run could not check: calls into the platform, calls lowered to
 inline code, and how many findings a config suppressed and by what.
 

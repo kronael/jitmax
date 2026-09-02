@@ -106,20 +106,26 @@ running through that line will be, and the ratio depends on it.
 ## What a finding looks like
 
 ```
-jitmax — 59 annotated functions, 29 errors
+jitmax — 64 annotated functions, 31 errors
 
-  demo/lib.ts:164  viaCallee()
+  demo/lib.ts:175  viaCallee()
     error  delete-property
-      demo/lib.ts:159
+      demo/lib.ts:170
       delete o[k] puts its object in dictionary mode
-      fix: assign undefined where the key may stay present — equivalent only while nothing
-      downstream tells an absent key from one holding undefined (spread and Object.assign copy
-      it; `in`, for-in, hasOwnProperty, Object.keys, Object.values, Object.entries,
-      Object.getOwnPropertyNames and Reflect.ownKeys see it; JSON.stringify does not, it omits
-      both) — or build the object without the key — the rebuild helps at the smaller of n=12
-      and n=48 and not at the larger, where filling it key by key normalizes it too
+      fix: assign undefined where the key may stay present, or build the
+           object without the key
+      note: assigning undefined is equivalent only while nothing downstream
+            tells an absent key from one holding undefined: spread and
+            Object.assign copy it; `in`, for-in, hasOwnProperty, Object.keys,
+            Object.values, Object.entries, Object.getOwnPropertyNames and
+            Reflect.ownKeys see it; JSON.stringify does not, it omits both.
+            The rebuild helps at the smaller of n=12 and n=48 and not at the
+            larger, where filling it key by key normalizes it too
       measured in bench/delete.jl
-      known defect: TC-9 — rules fire outside the conditions their own evidence establishes
+      known defect: TC-9
+
+  known defects cited above, from BUGS.md:
+    TC-9   rules fire outside the conditions their own evidence establishes
 ```
 
 Four things, and the second is the point:
@@ -129,8 +135,9 @@ Four things, and the second is the point:
   the cost actually is.
 - **the sweep that priced the rule**, named, so you can read the cost in
   `bench/README.md` and re-run it yourself with `make bench-*`.
-- **the fix**, concretely, not "consider optimising" — and where the fix itself
-  stops paying, wherever applying it to somebody else's function found a limit.
+- **the fix**, concretely, not "consider optimising" — and under `note:`, where
+  the fix itself stops paying, wherever applying it to somebody else's function
+  found a limit.
 - **what it could not check** — a call that resolves to a declaration with no
   body is listed by name, and a walk that hits its limit prints
   `WALK TRUNCATED`, exits `1`, and is never reported as clean.

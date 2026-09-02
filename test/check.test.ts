@@ -122,6 +122,9 @@ function markFor(name: string): Mark {
 function rawFindings(name: string) {
   return check(ts, demoScan.checker, markFor(name));
 }
+// The report wraps every sentence at 78 columns, so a test that quotes one
+// whole matches it with the continuation lines joined back up.
+const unwrapped = (out: string): string => out.replace(/\n +/g, ' ');
 
 test('a function is checked only where it is annotated', () => {
   assert.deepStrictEqual(
@@ -522,7 +525,7 @@ test('every published copy of the delete fix quotes the swept sizes', () => {
     const flat = fs
       .readFileSync(path.join(root, file), 'utf8')
       .replace(/\n\s*(\/\/)?\s*/g, ' ');
-    for (const m of flat.matchAll(/the rebuild helps at ([^,]+),/g)) {
+    for (const m of flat.matchAll(/the rebuild helps at ([^,]+),/gi)) {
       copies++;
       if (!m[1]!.includes(sizes)) typed.push(`${file}: "the rebuild helps at ${m[1]}"`);
     }
@@ -922,9 +925,13 @@ test('the report says how many findings were suppressed and by what', () => {
   assert.match(out, /1 finding suppressed \(delete-property\)/);
 });
 
+// The code under the finding, the sentence once in a legend after the findings:
+// the sentence went under every finding that cited it, twelve times for TC-9
+// in one run of demo/.
 test('a finding prints the defects its rule carries', () => {
   const out = render(root, [{ mark: markFor('drop'), findings: rawFindings('drop') }]);
-  assert.match(out, /known defect: TC-9 — rules fire outside the conditions their own\n +evidence establishes/);
+  assert.match(out, /^ {6}known defect: TC-9$/m);
+  assert.match(out, /^ {4}TC-9 +rules fire outside the conditions their own evidence establishes$/m);
 });
 
 // Every line fits 78 columns. A finding's fix ran to 553 characters on one
@@ -1815,7 +1822,10 @@ test('an erased token does not change what the receiver is', () => {
     { cwd: root, encoding: 'utf8' }
   );
   assert.match(run.stdout, /error {2}megamorphic-dispatch/);
-  assert.match(run.stdout, /at least 5 implementations built by this program \(A, B, C, D, E\)/);
+  assert.match(
+    unwrapped(run.stdout),
+    /at least 5 implementations built by this program \(A, B, C, D, E\)/
+  );
   assert.strictEqual(run.status, 1);
 });
 
@@ -1918,15 +1928,15 @@ test('an unreadable callee still counts what reaches its receiver', () => {
   // the walk located both bodies and printed their names in the same breath, so
   // it says that it did not pick between them (BUGS TC-109).
   assert.match(
-    run.stdout,
+    unwrapped(run.stdout),
     /calls pickOne, and the walk does not pick between the bodies that reach it; 2 implementations reach this receiver \(left\(\), right\(\)\)/
   );
   // Not megamorphic-dispatch's own body detector: P1 through P5 carry ONE
   // property set between them, so `objectShapes` counts 1 and that detector is
   // silent. The finding can only have come through the escape rule.
   assert.match(
-    run.stdout,
-    /megamorphic-dispatch\n\s+\S+escape\.ts:\d+\n\s+p reaches this call as at least 5 implementations built by this program \(P1, P2, P3, P4, P5\)/
+    unwrapped(run.stdout),
+    /megamorphic-dispatch \S+escape\.ts:\d+ p reaches this call as at least 5 implementations built by this program \(P1, P2, P3, P4, P5\)/
   );
   assert.strictEqual(run.status, 1);
 });

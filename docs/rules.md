@@ -399,8 +399,8 @@ cause no longer switches off the honest "no body anywhere" one.
 Both layers — the TOML `[rules]` table and the per-function override — accept
 two forms of key: a rule name (`megamorphic-elements`)
 disables that rule; a defect code (`TC-9`) disables every rule that carries it
-— see the `known defect` line under a finding, or `BUGS.md`, for what a code
-names. An unknown name or code fails loudly with exit `2`, the same as a
+— see the `known defects` legend after the findings, or `BUGS.md`, for what a
+code names. An unknown name or code fails loudly with exit `2`, the same as a
 missing path. Suppression is never silent: the report always says how many
 findings were removed and by what, e.g.
 `3 findings suppressed (TC-9, megamorphic-elements)` — a clean run that is

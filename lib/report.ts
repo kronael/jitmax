@@ -294,13 +294,17 @@ export function render(
   // stating it without the version would be a version-specific claim in a
   // general voice (BUGS TC-126). See Mark.lowered.
   const lowered = results.reduce((n, r) => n + r.mark.lowered, 0);
+  // The pin is a line of its own: wrapped with the sentence, `(V8` ended one
+  // line and the version began the next, and the pin is the token a reader
+  // greps for.
   if (lowered > 0) {
     out.push(
       ...wrap(
         '  ',
         `${plural(lowered, 'call')} lowered to inline code, not listed: no call ` +
-          `boundary exists there (V8 ${BUILTINS.version} @ ${BUILTINS.revision.slice(0, 10)})`
-      )
+          'boundary exists there'
+      ),
+      `  (V8 ${BUILTINS.version} @ ${BUILTINS.revision.slice(0, 10)})`
     );
   }
   // Interface-typed calls whose receiver the dataflow walk traced to exactly
@@ -319,6 +323,8 @@ export function render(
     );
   }
 
+  // Every defect code a finding below cites, for the legend after them.
+  const cited = new Set<string>();
   for (const { mark, findings } of perSite) {
     if (findings.length === 0 && !mark.truncated) continue;
     out.push(
@@ -335,7 +341,11 @@ export function render(
         '      treat any silence from this function as unproven'
       );
     }
-    for (const f of findings) {
+    for (const [i, f] of findings.entries()) {
+      // A blank line between two findings under one function: the `error`
+      // token was the only boundary, and after wrapping it is not at a
+      // predictable line.
+      if (i > 0) out.push('');
       // Every finding is an error. The annotation is the filter: a function
       // marked `/** @jitmax */` is one somebody needs fast, so a finding
       // on it is actionable by definition and a second tier gates nobody. Three
@@ -367,9 +377,23 @@ export function render(
         const data = f.evidence.source.match(/bench\/[a-z-]+\.jl/g) ?? [];
         if (data.length > 0) out.push(`      measured in ${data.join(' and ')}`);
       }
-      for (const code of f.evidence?.defects ?? []) {
-        out.push(...wrap(`      known defect: ${code} — `, DEFECT[code] ?? code));
+      // The codes only. What each one says is printed once, in the legend
+      // after the findings: TC-9's sentence went under twelve findings in one
+      // run of demo/, and thirty of that run's lines were repeated defect prose.
+      const codes = f.evidence?.defects ?? [];
+      if (codes.length > 0) {
+        for (const code of codes) cited.add(code);
+        out.push(`      known defect${codes.length === 1 ? '' : 's'}: ${codes.join(', ')}`);
       }
+    }
+  }
+
+  if (cited.size > 0) {
+    const codes = [...cited].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+    const width = Math.max(...codes.map((code) => code.length));
+    out.push('', '  known defects cited above, from BUGS.md:');
+    for (const code of codes) {
+      out.push(...wrap(`    ${code.padEnd(width)}  `, DEFECT[code] ?? code));
     }
   }
 
