@@ -1,5 +1,56 @@
 # Changelog
 
+## [v0.13.1] — 20260902
+
+> jitmax v0.13.1 — the select numbers were re-measured, and one of them did not survive
+>
+> `allocating-select` cited eighteen rows that recorded the machine's state as one number stamped across a whole evening. The machine was quieted and all six cells were measured again, three sweeps each, with the reading taken as every row was written.
+>
+> • The rule's cost is confirmed, not moved: 2.56-2.87x becomes 2.60-2.89x, and every figure now rests on a row whose machine state a reader can check.
+> • The silent clause loses a claim. It said the effect on numbers "changes sign with the working set"; the n=100000 cell reads 0.89x, 0.97x and 1.03x, rule 13 withdraws it, and there is no sign left to change.
+> • Resume counted a frozen reading as a measured run, which is why those six cells could never re-measure themselves however often the sweep was re-run.
+>
+> Full notes: https://github.com/kronael/jitmax/blob/main/CHANGELOG.md
+
+### Fixed
+
+- **Six cells were permanently unmeasurable.** `bench/resume.ts` counted any
+  in-gate row as a finished run, including a row whose only reading of the
+  machine was frozen into the sweep record and copied onto every row of an
+  evening's work. `select.jl`'s six cells each had three such rows, so the
+  runner skipped them every time the sweep ran. `frozen()` in `bench/env.ts`
+  now separates the two cases: a row with NO reading predates the mechanism and
+  is still counted, a row that claims to answer rule 9 and answers with one
+  stale number is not a run of anything (TC-134).
+- **`allocating-select` published from rows nobody could check.** Its six
+  citations in `lib/derive.ts` now ask `hasReading`, so they read the
+  re-measurement and not the frozen eighteen. The old rows stay in the file —
+  runners append — and back no published number.
+
+### Changed
+
+- **The silent clause on numbers is smaller and truer.** It read "the effect is
+  small and changes sign with the working set", quoting one range across both
+  sizes. The re-measurement withdraws the n=100000 cell under rule 13, so the
+  clause now states each size separately: n=10000 costs 1.10-1.19x with a lower
+  bound under the broad-warning bar, and n=100000 has no measurement to warn
+  from. The rule stays quiet on numbers, for the third time and on a smaller
+  margin each time.
+- **`bench/select.jl` gained eighteen rows**, none void, `runnable` 0 on every
+  one. The two sweeps agree cell for cell; the frozen sweep's numbers were
+  right, and could not be shown to be.
+
+### Known
+
+- **689 published rows carry no reading of the machine at all** (TC-136). Of
+  976 rows under the current runner, 269 carry a per-row `load1` and `runnable`
+  and 707 do not; 18 were select's and are now superseded. The rest predate the
+  field across ten sweeps. `overGate` reports them as unjudgeable rather than
+  contaminated, and the one re-measurement run so far found the old numbers
+  correct — but rule 9 asks for the environment in every row, and these do not
+  carry it. Withdrawing them is a re-measurement of ten sweeps, so it is in the
+  queue for a decision rather than shipped here.
+
 ## [v0.13.0] — 20260901
 
 > jitmax v0.13.0 — thirteen defects closed, and the page stops selling a rejection
