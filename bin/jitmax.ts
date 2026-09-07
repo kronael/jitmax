@@ -8,36 +8,57 @@ import { check, resolveDisabled } from '../lib/rules.ts';
 import { blinded, findingKey, plural, rel, render, type Blind } from '../lib/report.ts';
 import { DEFAULT_MIN_SELF_PCT, loadConfig } from '../lib/config.ts';
 
-try {
-  const cwd = process.cwd();
-  const ts = load(cwd);
-  // Every argument is positional. There are no flags, so an argument that
-  // LOOKS like one was a mistake — and this line used to drop it silently, so
-  // `jitmax --config=cfg.toml src` scanned src with the config never
-  // loaded and exited 0. A configuration that was never read is the same
-  // silent lie `loadConfig` and `resolveDisabled` throw on everywhere else.
-  const argv = process.argv.slice(2);
-  const flag = argv.find((a) => a.startsWith('-'));
+function main() {
+  const args = process.argv.slice(2);
+  if (args.includes('-h') || args.includes('--help')) {
+    process.stdout.write(`jitmax — check hot TypeScript functions and their callees
+
+Usage: jitmax [config.toml] [run.cpuprofile] [path…]
+
+Examples:
+  jitmax src/hot.ts          Check annotated functions in one file
+  jitmax src                 Check annotated functions in a directory
+  jitmax rules.toml src      Apply rule settings from a TOML file
+  jitmax run.cpuprofile src  Select hot functions from a CPU profile
+  jitmax                    Use the tsconfig file list
+
+Mark a hot function: /** @jitmax */
+A profile selects functions with at least ${DEFAULT_MIN_SELF_PCT}% sampled self time by default.
+Record one: node --cpu-prof --cpu-prof-name=run.cpuprofile workload.js
+Set [profile] min_self_pct in a TOML file to change the threshold.
+
+Run from your project root. Compiler options come from tsconfig.json found
+from the working directory upward. Paths choose files, not compiler options.
+With neither paths nor a tsconfig, scan sources under the working directory.
+One .toml and one .cpuprofile are allowed, in any argument position.
+
+Suppress a rule for one function and its callees:
+  /** @jitmax -megamorphic-elements */
+Or pass a TOML file:
+  [rules]
+  "megamorphic-elements" = false
+
+Options: -h, --help  Show this help and exit; other arguments are ignored.
+Exit codes: 0 checked and clean; 1 findings or incomplete coverage;
+            2 the tool failed (input, configuration, or syntax error).
+`);
+    return;
+  }
+  const flag = args.find((a) => a.startsWith('-'));
   if (flag !== undefined) {
     throw new Error(
-      `${flag}: jitmax takes no options. Usage: ` +
-        'jitmax [config.toml] [run.cpuprofile] [path…]'
+      `Unknown option: ${flag}. Pass config and profile files as positional ` +
+        'arguments. Run jitmax --help for usage and examples.'
     );
   }
-  const args = argv;
+  const cwd = process.cwd();
+  const ts = load(cwd);
 
   // The suffixes that are not paths, in one list. They were spelled once as two
   // `only()` calls and once as a negated filter below, so a third recognised
   // suffix reaches one of the two and is scanned as a source file.
   const SUFFIXES = ['.toml', '.cpuprofile'];
 
-  // Positionals are named by their suffix, anywhere in the line, because this
-  // binary rejects flags by design: a .toml is the config, a .cpuprofile makes
-  // the tool measure hotness instead of taking the author's word for it (BUGS
-  // TC-57), and everything else is a path to scan. Matching by SLOT instead
-  // meant `jitmax src run.cpuprofile` read the profile as a source file, found
-  // no annotations in it, and printed `every annotated function is clean` —
-  // the silent lie this file's first comment says it stopped accepting.
   const only = (suffix: string): string | undefined => {
     const hits = args.filter((a) => a.endsWith(suffix));
     if (hits.length > 1) {
@@ -74,10 +95,18 @@ try {
   // that this tool could not look.
   const broken = p.getSyntacticDiagnostics();
   if (broken.length > 0) {
-    const where = [...new Set(broken.map((d) => d.file?.fileName ?? '<unknown>'))];
+    const details = broken.map((d) => {
+      let at = d.file ? rel(cwd, d.file.fileName) : '<unknown>';
+      if (d.file && d.start !== undefined) {
+        const pos = d.file.getLineAndCharacterOfPosition(d.start);
+        at += `:${pos.line + 1}:${pos.character + 1}`;
+      }
+      return `  ${at}: TS${d.code}: ` +
+        ts.flattenDiagnosticMessageText(d.messageText, '\n  ');
+    });
     throw new Error(
       `${plural(broken.length, 'syntax error')} — nothing here was ` +
-        `checked: ${where.map((f) => rel(cwd, f)).join(', ')}`
+        `checked. Fix these errors and run jitmax again:\n${details.join('\n')}`
     );
   }
   // Hotness comes from the profile or from the annotation, never from a guess
@@ -201,6 +230,10 @@ try {
     results.some((r) => r.findings.length > 0 || r.mark.truncated)
       ? 1
       : 0;
+}
+
+try {
+  main();
 } catch (err) {
   process.stderr.write(`jitmax: ${(err as Error).message}\n`);
   process.exitCode = 2;

@@ -983,6 +983,66 @@ test('every published number is what its own data file says', () => {
 // (BUGS TC-17). `test/fixtures/deep` is a chain longer than the cap with no
 // finding in it, so 1 here can only come from the truncation.
 
+/** Checks both help flags through each entrypoint despite invalid project inputs. */
+test('CLI help works without a valid project and ignores other arguments', () => {
+  fs.mkdirSync(path.join(root, 'tmp'), { recursive: true });
+  const dir = fs.mkdtempSync(path.join(root, 'tmp', 'test-cli-help-'));
+  const config = path.join(dir, 'tsconfig.json');
+  fs.writeFileSync(config, '{ invalid');
+  try {
+    for (const entry of ['jitmax.ts', 'cli.js']) {
+      for (const flag of ['-h', '--help']) {
+        const run = spawnSync(process.execPath, [
+          path.join(root, 'bin', entry), '--unknown', 'missing.toml', flag,
+        ], { cwd: dir, encoding: 'utf8' });
+        assert.strictEqual(run.status, 0, run.stderr);
+        assert.strictEqual(run.stderr, '');
+        assert.match(run.stdout, /Usage: jitmax/);
+        assert.match(run.stdout, /jitmax run\.cpuprofile src/);
+        assert.match(run.stdout, /\/\*\* @jitmax \*\//);
+        assert.match(run.stdout, /\/\*\* @jitmax -megamorphic-elements \*\//);
+        assert.match(run.stdout, /working directory upward/);
+        assert.match(run.stdout, /Exit codes: 0 checked and clean; 1 findings/);
+        assert.match(run.stdout, /2 the tool failed/);
+      }
+    }
+  } finally {
+    fs.unlinkSync(config);
+    fs.rmdirSync(dir);
+  }
+});
+
+/** Checks an unsupported option fails before scanning and points to usable help. */
+test('CLI unknown options explain positional arguments and point to help', () => {
+  const run = spawnSync(process.execPath, [
+    path.join(root, 'bin', 'cli.js'), '--config=rules.toml', 'missing.ts',
+  ], { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(run.status, 2);
+  assert.strictEqual(run.stdout, '');
+  assert.match(run.stderr, /Unknown option: --config=rules\.toml/);
+  assert.match(run.stderr, /positional arguments/);
+  assert.match(run.stderr, /jitmax --help/);
+});
+
+/** Checks invalid source reports its compiler message and exact position. */
+test('CLI syntax errors name the compiler diagnostic and source position', () => {
+  const file = path.join(root, 'tmp', `test-cli-syntax-${process.pid}.ts`);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, '/** @jitmax */\nexport const value = ;\n');
+  try {
+    const run = spawnSync(process.execPath, [
+      path.join(root, 'bin', 'jitmax.ts'), file,
+    ], { cwd: root, encoding: 'utf8' });
+    assert.strictEqual(run.status, 2);
+    assert.strictEqual(run.stdout, '');
+    assert.match(run.stderr, /nothing here was checked/);
+    assert.match(run.stderr, /Fix these errors and run jitmax again/);
+    assert.match(run.stderr, /\.ts:2:22: TS1109: Expression expected\./);
+  } finally {
+    fs.unlinkSync(file);
+  }
+});
+
 test('a truncated walk exits 1: not clean, even with no findings', () => {
   const run = spawnSync(
     process.execPath,

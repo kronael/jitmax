@@ -14,40 +14,40 @@ about part of your call tree is not a clean run.
 
 ## Quick start
 
-From the root of a TypeScript repository:
+Use Node 22.18 or newer. In a jitmax checkout, install its dependencies once:
 
 ```sh
-bunx github:kronael/jitmax
+npm install
 ```
 
-`npx github:kronael/jitmax` does the same, and needs one more step to get
-there: Node refuses to strip types from any file under `node_modules`, so npm's
-`prepare` compiles `dist/` on install and the `bin` entry runs that. Bun reads
-TypeScript anywhere and runs the source. Prefer `bunx`.
-
-With no path argument jitmax reads the repository's `tsconfig.json`, including
-its module resolution and file list. It is not on npm, so use the repository
-URL as the package name. The remote does not have a published Git ref yet, so
-this public install remains blocked by TC-133.
-
-Mark the function you need fast:
+In your TypeScript project, mark the function you need fast:
 
 ```ts
 /** @jitmax */
 export function total(rows: Row[]): number { … }
 ```
 
-From a checkout, `npm install` once, then run it from your repository root:
+Run from your TypeScript project's root:
 
 ```sh
-node /path/to/jitmax/bin/jitmax.ts
+node /path/to/jitmax/bin/jitmax.ts --help
+node /path/to/jitmax/bin/jitmax.ts src/hot.ts
 ```
 
 Pass paths to narrow what is scanned. They choose the file list and nothing
 else: the compiler options still come from the `tsconfig.json` found from the
 directory you run in, so run from the root of the repository you are naming.
+With no path argument, jitmax uses that config's file list. With no config or
+paths, it scans sources under the working directory.
 
-**Turn a rule off** in a TOML file, given as the first positional argument and
+Exit 0 means checked and clean; 1 means findings or incomplete coverage;
+2 means the tool failed. `--help` and `-h` exit 0 without loading your project.
+
+Public installation is blocked by TC-133: `bunx github:kronael/jitmax` and
+`npx github:kronael/jitmax` require a published Git ref. The package is not on
+npm. Use a checkout until that ref is available.
+
+**Turn a rule off** in a TOML file, given as a positional argument and
 recognised by its `.toml` suffix. Neither layer is required — with no config
 and no overrides, jitmax behaves exactly as above:
 
@@ -68,11 +68,20 @@ A rule name switches off that rule; a defect code switches off every rule
 carrying it. Suppression is never silent — the report says how many findings
 were removed and by what. `docs/rules.md` has both layers in full.
 
+**Focus on megamorphic reads and calls:**
+
+```sh
+node /path/to/jitmax/bin/jitmax.ts /path/to/jitmax/examples/megamorphic.toml src/hot.ts
+```
+
+This preset disables the other six rules. Coverage notices still apply;
+suppression does not prove that an unreadable call is safe.
+
 **Or let a profile decide what is hot.** The annotation is you asserting a
 function is hot; a profile is a measurement of it:
 
 ```sh
-node --cpu-prof --cpu-prof-dir=. your-workload.js
+node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
 jitmax run.cpuprofile src
 ```
 
