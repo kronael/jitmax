@@ -82,7 +82,7 @@ function is hot; a profile is a measurement of it:
 
 ```sh
 node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
-jitmax run.cpuprofile src
+node /path/to/jitmax/bin/jitmax.ts run.cpuprofile src
 ```
 
 Every function at or above `[profile] min_self_pct` of the profile's sampled
@@ -109,8 +109,9 @@ property of the input as much as of the code.
 | [`closed-world`](docs/rules.md#closed-world) | a callee with no readable body anywhere in the checkout | 4.64-4.95x |
 | [`interface-dispatch`](docs/rules.md#interface-dispatch) | a call whose body IS here but cannot be picked | no claim |
 
-No cost is printed beside a finding. The tool cannot see how big the data
-running through that line will be, and the ratio depends on it.
+Findings do not predict this workload's cost. Ratios in rule notes describe
+the benchmark inputs, not your caller. Profile the caller, preserve its
+observable behavior, and benchmark the full operation before keeping a change.
 
 ## What a finding looks like
 
@@ -119,7 +120,7 @@ jitmax — 64 annotated functions, 31 errors
 
   demo/lib.ts:175  viaCallee()
     error  delete-property
-      demo/lib.ts:170
+      demo/lib.ts:170:3
       delete o[k] puts its object in dictionary mode
       fix: assign undefined where the key may stay present, or build the
            object without the key

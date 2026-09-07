@@ -6,7 +6,7 @@ import { N } from '../numbers.ts';
 import {
   arrayValues,
   cells,
-  fifthMap,
+  megamorphicCandidate,
   MAX_CACHED_MAPS,
   objectShapes,
   walk,
@@ -94,7 +94,7 @@ function readsFromElement(
   scope: TS.Node,
   collection: TS.ParameterDeclaration | TS.VariableDeclaration,
   element: TS.Type
-): boolean {
+): TS.Node | undefined {
   const from = elementFlow(ts, checker, collection, scope);
   // Provenance says the value is an element; the type says it is still the
   // WHOLE element type at this site. A read a guard has narrowed to one member
@@ -125,7 +125,7 @@ function readsFromElement(
       n.parent.left === n
     );
   };
-  let found = false;
+  let found: TS.Node | undefined;
   walk(ts, scope, (node) => {
     if (found) return;
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
@@ -134,7 +134,7 @@ function readsFromElement(
         isElement(checker.getTypeAtLocation(unwrap(ts, node.expression))) &&
         from.value(node.expression)
       ) {
-        found = true;
+        found = node;
       }
       return;
     }
@@ -143,7 +143,7 @@ function readsFromElement(
       isElement(checker.getTypeAtLocation(node)) &&
       from.binding(node.parent)
     ) {
-      found = true;
+      found = node;
     }
   });
   return found;
@@ -176,7 +176,8 @@ const detect: Rule = (ts, checker, body, add) => {
     // off an element there is no site to go megamorphic, and the annotation
     // cannot rescue it, because hot code that never reads a property still
     // never reads a property (BUGS TC-8).
-    if (!readsFromElement(ts, checker, scopeOf(ts, p, body), p, element)) continue;
+    const read = readsFromElement(ts, checker, scopeOf(ts, p, body), p, element);
+    if (!read) continue;
     add({
       ...at(body.sf, p),
       rule: NAME,
@@ -185,12 +186,17 @@ const detect: Rule = (ts, checker, body, add) => {
       // took that literally could satisfy the fix by renaming a member (TC-42).
       // Distinct property sets cannot be merged by a rename.
       message:
-        `${p.name.getText(body.sf)} reaches this line as ${shapes} distinct property sets; ` +
-        fifthMap('load'),
+        `${p.name.getText(body.sf)} has ${shapes} distinct property sets in its element type; ` +
+        megamorphicCandidate('load'),
       fix:
-        'get the element type to four distinct property sets or fewer, or give it one ' +
-        'construction path',
-      note: 'renaming a member does not merge two shapes',
+        'inspect where these elements are built, not just this parameter. If semantics ' +
+        'allow, use consistent own properties and insertion order; benchmark the full ' +
+        'caller including construction',
+      note:
+        'type assertions do not change runtime shapes. Adding a missing property ' +
+        'can change key enumeration and presence checks. Library callers may need ' +
+        'an upstream change; no automatic rewrite is established here',
+      read: { ...at(body.sf, read), expression: read.getText(body.sf) },
     });
   }
 };

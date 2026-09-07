@@ -770,11 +770,10 @@ Found 2026-08-29 in the TC-75 trial.
 ## TC-75 — first-contact trial: three users, README only, no other help (2026-08-29, open, data)
 
 User command trial, 2026-09-07: the radash configuration walkthrough in
-`examples/README.md` completed from the checkout. `node bin/jitmax.ts --help`
-exited 2 with `jitmax takes no options` and a usage line, without explaining
-annotations. The finding's note printed benchmark ratios, while its footer
-said `No cost is printed beside a finding.` My assessment: the precise file and
-line help, but that wording makes the performance advice harder to interpret.
+`examples/README.md` completes from the checkout. `node bin/jitmax.ts --help`
+exits 0 and explains annotations, config, profiles and exit codes. Syntax
+errors name the compiler diagnostic and file:line:column. Findings distinguish
+static evidence from workload costs; megamorphic reads name their source site.
 The ordinary caller inputs passed; a JSON-key result failed as recorded in
 TC-137. Public installation still failed as recorded in TC-133.
 
@@ -1993,29 +1992,28 @@ changes the answer shows up as three sweeps that disagree, and a storm that does
 not change the answer was never a defect in the measurement. Proposals 1 and 3
 stand.
 
-## TC-19 — megamorphic-elements prints a fix nobody at the finding can apply (2026-08-15, open, proposal)
+## TC-19 — megamorphic-elements prints a fix nobody at the finding can apply (2026-08-15, partial, proposal)
 
 User trial, 2026-09-07: a fresh Zod source worktree at `5e608851` with only
 `prefixIssues` annotated reports 12 declared property sets at
 `packages/zod/src/v4/core/util.ts:842`. A caller validating records checked
 the paths of invalid name, email, age, score, quota, role, date and active
-fields. The finding says "one construction path" but names none of the issue
-creators. As a Zod caller, I cannot apply that change through the validation
-API. Detection reproduced; a usable caller rewrite and a speedup did not.
+fields. The finding names the property read at `util.ts:844:5` and directs the
+reader to the builders, but names none of the issue creators. It explicitly
+says a library caller may need an upstream change. As a Zod caller, I cannot
+apply that change through the validation API. Detection and diagnostic checks
+pass; a usable caller rewrite and a speedup are not established.
 `examples/README.md` records the trial and its megamorphic-only preset.
 
 Found while giving every rule an end-to-end example. `examples/` can only hold a
 rule whose printed fix is a change to the function the rule fired on, and this
 one never is.
 
-The rule reads a **parameter's** declared element type and reports the load
-site inside the callee. Its fix line says *"get the element type to four shapes
-or fewer, or give it one construction path"* — and the function holding the
-finding received that array already built. Whoever can act on the line is a
-caller the report never names, in a file the walk may never have visited.
-
-So there is no before/after pair to vendor, and the gap is not a missing
-example: it is the finding addressing the wrong reader.
+The rule counts declared property sets on a collection and names a read inside
+the callee. For a parameter, that callee receives an array already built. The
+advice identifies construction as the place to investigate, but the report
+does not locate those builders. They can belong to a caller in a file the
+walk never visits. No verified before/after pair covers that change.
 
 The survey that found it also refutes what README said until today. Extended
 from five libraries to twelve — 850 annotated functions — `megamorphic-elements`
@@ -2025,16 +2023,12 @@ mutates `.path` on each element. Nine of the ten are that one site reported from
 nine annotated roots that reach it. So the rule is not unfireable, as the
 previous survey suggested; it is narrow, and its advice is misaddressed.
 
-Proposals, none of them shipped:
+Remaining proposals:
 
-1. **Say whose problem it is.** The fix line becomes something like *"the array
-   reaching this parameter has to be built with four shapes or fewer — that is a
-   change where it is built, not here"*. Cheap, honest, and still not actionable
-   at the finding.
-2. **Report at the construction site instead.** Needs whole-program flow to the
+1. **Report at the construction site.** Needs whole-program flow to the
    parameter, which this tool does not have and which the annotation model
    (one root, its call tree) does not obviously give it.
-3. **Withdraw the rule** on the grounds that a warning nobody at the site can
+2. **Withdraw the rule** on the grounds that a warning nobody at the site can
    act on is not worth a false-positive budget. TC-8 and TC-2 are already open
    against it.
 

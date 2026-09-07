@@ -60,13 +60,18 @@ whether changing them improves performance. Node v22.23.2 ran both callers;
 date-fns needed `--experimental-transform-types`, and Bun bundled the Zod caller
 for Node.
 
-My user assessment: naming the source location and, for dispatch, concrete
-parser classes gives me somewhere to investigate. But "four or fewer" and
-"one construction path" give me no change I can make through the libraries'
-public APIs. Zod's report does not name the issue creators I would need to edit.
-Neither report offers a caller-level rewrite or proves that my data sees the
-reported number of shapes. I count these as detection successes only, not
-successful performance fixes. TC-19 and TC-33 record those limits.
+The diagnostic workflow also passes: Zod's report names the collection at
+`util.ts:842:64` and its first property read, `(iss as any).path`, at
+`util.ts:844:5`. date-fns names the call at `Parser.ts:16:20`. Both distinguish
+static counts from runtime evidence and retain their coverage notices.
+
+My user assessment: the locations and named parser classes give me somewhere
+to investigate. The advice identifies a builder or call-site change and says
+when a library caller needs upstream help. Zod's report does not name the issue
+creators I would need to edit. Neither report provides a verified caller-level
+rewrite or proves that my data sees the reported number of shapes. These are
+detection and diagnostic successes, not successful performance fixes.
+TC-19 and TC-33 record those limits.
 
 ## Successful checkout trial: merging service configuration
 
@@ -110,13 +115,12 @@ it does not establish that the rewrite preserves radash's full contract.
 command exited 1 with a GitHub archive 404. The checkout command above works;
 the public route remains blocked by TC-133. The trial ran on Node v22.23.2.
 
-My user assessment: the file, line and explanation of repeated copying helped
-me locate the work. The fix text then asked me to choose between faster merging
-and faster reads without measuring my caller. Its note printed benchmark
-ratios, followed by a footer saying no cost is printed beside a finding. I
-found that confusing. `--help` also exited 2 with only a usage line, so I needed
-the README to learn how to mark a function. These are my observations and
-opinions from using the public commands, not a review of the checker internals.
+My user assessment: the file, line and explanation of repeated copying help me
+locate the work. The fix text asks me to choose between faster merging and
+faster reads without measuring my caller. The footer identifies findings as
+static candidates and directs me to profile and benchmark. `--help` exits 0
+and explains annotations, configuration, profiles and exit codes. These are
+observations and opinions from using the commands, not a claim about speed.
 
 ## Measured library examples
 

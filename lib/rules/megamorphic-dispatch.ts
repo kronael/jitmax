@@ -4,7 +4,7 @@ import { N } from '../numbers.ts';
 import {
   arrayValues,
   cells,
-  fifthMap,
+  megamorphicCandidate,
   MAX_CACHED_MAPS,
   objectShapes,
   walk,
@@ -92,12 +92,16 @@ const detect: Rule = (ts, checker, body, add) => {
           // Counted the same way as megamorphic-elements, and for the same
           // reason: five names for one property set are one map (TC-42).
           message:
-            `${recv.getText(body.sf)} reaches this call as ${shapes} distinct property ` +
-            `sets and .${node.expression.name.text}() is called on it; ` +
-            fifthMap('call'),
+            `${recv.getText(body.sf)} has ${shapes} distinct property sets in its ` +
+            `declared type and .${node.expression.name.text}() is called on it; ` +
+            megamorphicCandidate('call'),
           fix:
-            'get the receiver to four distinct property sets or fewer, or give the call ' +
-            'site one shape',
+            'inspect the receiver builders and profile this call. If a runtime guard ' +
+            'can separate receiver kinds, test dedicated call sites; benchmark the ' +
+            'full caller before keeping the change',
+          note:
+            'type assertions do not change runtime shapes. Splitting a call site can ' +
+            'add branches and code size; a speedup is not established for this caller',
         });
       }
     }
@@ -139,13 +143,14 @@ export function megamorphicCall(c: Call, add: Add): boolean {
     message:
       `${d.recv} reaches this call as at least ${d.count} implementations built by ` +
       `this program (${listed}${d.count > 5 ? ', …' : ''}) and .${d.method}() is ` +
-      `called on it; ${fifthMap('call')}`,
+      `called on it; ${megamorphicCandidate('call')}`,
     fix:
-      'get the implementations reaching this call to four or fewer, or give the ' +
-      'call site one shape',
+      'inspect the named implementations and profile this call. If a runtime guard ' +
+      'can separate receiver kinds, test dedicated call sites; benchmark the full caller',
     note:
-      'the count is a lower bound: two identical classes are still two maps, and a ' +
-      'consumer of an exported interface can add more',
+      'the count is a static lower bound on implementations, not proof they all run ' +
+      'in this workload. Type assertions do not specialize a call. Library callers ' +
+      'may need an upstream change; splitting sites can add branches and code size',
   });
   return true;
 }

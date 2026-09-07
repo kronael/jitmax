@@ -47,13 +47,21 @@ four-map budget, and the measurement agrees — two to four sets cost
 `fiveShapesNoLoad`, where `rows.length` is a load off the array and not off an
 element, so no site exists for a fifth map to reach.
 
-**The fix it prints.** "get the element type to four distinct property sets or
-fewer, or give it one construction path", with the note that renaming a member
-does not merge two shapes.
+**How to act.** The report names the collection declaration and the first
+property read found through it, both with line and column. Inspect where those
+elements are built. If semantics allow, use consistent own properties and
+insertion order, then benchmark the full caller including construction.
+Adding a property can change enumeration and presence checks; a type assertion
+changes neither the object nor its runtime shape. Library callers may need an
+upstream change. This is an investigation path, not a verified rewrite.
+
+The count describes declared property sets, not observed V8 maps. V8 tracks
+runtime property layout and insertion order; a TypeScript type does not record
+that history. See [V8's fast-properties explanation](https://v8.dev/blog/fast-properties).
 
 **The cost.** 3.4-11.3x on reads, in `bench/shape-sets.jl` and
-`bench/shapes-calibrated.jl`. No end-to-end example is possible; see
-`examples/README.md`.
+`bench/shapes-calibrated.jl`. `examples/README.md` records a successful Zod
+detection, not a verified caller speedup.
 
 ## megamorphic-dispatch
 
@@ -73,11 +81,17 @@ types, for a method on a class, is where the measurement found no effect.
 `interface-dispatch` still reports that call, because the walk cannot pick
 which body runs — a different question from how many shapes reach it.
 
-**The fix it prints.** "get the receiver to four distinct property sets or
-fewer, or give the call site one shape". Where the count comes from the
-dataflow walk rather than from a declared type, the fix carries a note that the
-count is a lower bound: two identical classes are still two maps, and a
-consumer of an exported interface can add more.
+**How to act.** Inspect the receiver builders or named implementations and
+profile the reported call. If a runtime guard can separate receiver kinds,
+test dedicated call sites and benchmark the full caller. Splitting sites can
+add branches and code size; a type assertion does not specialize a call.
+Library callers may need an upstream change.
+
+Declared property sets and statically reachable implementations are different
+counts. Neither proves how many maps this workload sends through the site.
+The implementation count is a lower bound within the program; external
+consumers can supply more implementations. `examples/README.md` records a
+date-fns detection, with no verified speedup from a caller rewrite.
 
 **The cost.** 12.9-22.7x, in `bench/dispatch.jl`. The rule is late for an
 object that carries its own function in a field; that gap is in

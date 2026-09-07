@@ -358,10 +358,12 @@ export function render(
       // and a riddle.
       const from = reach.get(findingKey(f)) ?? 1;
       const alsoFrom = from > 1 ? ` — reached by ${from} annotated functions` : '';
-      if (f.file !== mark.file || f.line !== mark.line) {
-        out.push(`      ${rel(cwd, f.file)}:${f.line}${alsoFrom}`);
-      } else if (alsoFrom !== '') {
-        out.push(`     ${alsoFrom}`);
+      out.push(...wrap('      ', `${rel(cwd, f.file)}:${f.line}:${f.column}${alsoFrom}`));
+      if (f.read) {
+        out.push(
+          ...wrap('      read: ',
+            `${rel(cwd, f.read.file)}:${f.read.line}:${f.read.column} ${f.read.expression}`)
+        );
       }
       out.push(...wrap('      ', f.message));
       out.push(...wrap('      fix: ', f.fix));
@@ -424,11 +426,9 @@ export function render(
       ? '  no findings, but the receivers above are `any`: this is not a clean run.'
       : all.length === 0 && partial.length > 0
       ? `  no findings, but ${plural(partial.length, 'walk')} truncated: this is not a clean run.`
-      : '  No cost is printed beside a finding. Every rule is measured, and the\n' +
-        '  measurements are in bench/README.md and in the bench/*.jl named above —\n' +
-        '  but a ratio is a property of the input, and being told a function is hot\n' +
-        '  does not say how large its data is. Each rule also records where its own\n' +
-        '  benchmark found nothing; docs/rules.md prints that beside the cost.'
+      : '  Static findings are candidates, not measured costs in this workload.\n' +
+        '  Profile and benchmark the caller before keeping a change.\n' +
+        '  Rule evidence and limits: docs/rules.md; measurements: bench/README.md.'
   );
   if (nothingChecked) {
     out.push(

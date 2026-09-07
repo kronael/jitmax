@@ -45,6 +45,7 @@ export interface Finding extends Site {
   // first and fourth clause.
   fix: string;
   note?: string;
+  read?: Site & { expression: string };
   evidence: Evidence | null;
 }
 
@@ -149,12 +150,8 @@ export const reassignedInLoop = (ts: Ts, node: TS.Node, inLoop: boolean): node i
 // rather than two.
 export const MAX_CACHED_MAPS = 4;
 
-// What the fifth map costs, in one sentence. Three findings end with it —
-// `megamorphic-elements` at a load site, and both detectors that report
-// `megamorphic-dispatch` at a call site — and each carried its own copy of a
-// claim about V8 that has to be the same claim.
-export const fifthMap = (site: 'load' | 'call'): string =>
-  `V8 caches four maps per ${site} site, so a fifth makes every ${site} here a lookup`;
+export const megamorphicCandidate = (site: 'load' | 'call'): string =>
+  `this is a candidate for megamorphic ${site} feedback, not an observed runtime map count`;
 
 // What the dataflow walk counted, in one clause, for a finding that is NOT
 // reporting a megamorphic site. Both escape rules print it and each had its own

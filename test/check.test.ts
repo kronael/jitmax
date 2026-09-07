@@ -934,6 +934,33 @@ test('a finding prints the defects its rule carries', () => {
   assert.match(out, /^ {4}TC-9 +rules fire outside the conditions their own evidence establishes$/m);
 });
 
+test('megamorphic findings locate the read and retain the collection location', () => {
+  const mark = markFor('fiveShapes');
+  const findings = rawFindings('fiveShapes');
+  const f = findings.find((f) => f.rule === 'megamorphic-elements');
+  assert.ok(f?.read);
+  assert.strictEqual(f.read.expression, 'r.x');
+  assert.ok(f.read.line > f.line, 'the read is distinct from its collection declaration');
+  const pos = mark.sf.getPositionOfLineAndCharacter(f.read.line - 1, f.read.column - 1);
+  assert.strictEqual(mark.sf.text.slice(pos, pos + f.read.expression.length), 'r.x');
+  const out = render(root, [{ mark, findings }]);
+  assert.ok(out.includes(`demo/lib.ts:${f.line}:${f.column}`));
+  assert.ok(out.includes(`read: demo/lib.ts:${f.read.line}:${f.read.column} r.x`));
+  assert.match(out.replace(/\s+/g, ' '), /not an observed runtime map count/);
+  assert.match(out, /type assertions do not change runtime shapes/);
+});
+
+test('the report prints exact finding positions and qualifies workload costs', () => {
+  const mark = markFor('areaOfFive');
+  const findings = rawFindings('areaOfFive');
+  const out = render(root, [{ mark, findings }]);
+  for (const f of findings) {
+    assert.ok(out.includes(`demo/lib.ts:${f.line}:${f.column}`));
+  }
+  assert.match(out, /Static findings are candidates, not measured costs in this workload/);
+  assert.doesNotMatch(out, /Every rule is measured|No cost is printed/);
+});
+
 // Every line fits 78 columns. A finding's fix ran to 553 characters on one
 // physical line, and a terminal wraps that at column 0, so its second half read
 // as a new block; the run-level notes were hand-wrapped and the findings were
@@ -1475,9 +1502,9 @@ test('a local union array counts, a branded one counts, an unrelated read does n
   // function. `walk` does not stop at a function boundary, so `acc` borrowed
   // the read in `sum`; six of TypeScript's eight findings were that, under one
   // annotation on a 50,000-line function (BUGS TC-119).
-  assert.match(run.stdout, /rows reaches this line as 5 distinct property sets/);
+  assert.match(run.stdout, /rows has 5 distinct property sets/);
   assert.ok(
-    !run.stdout.includes('acc reaches this line'),
+    !run.stdout.includes('acc has 5 distinct property sets'),
     `an array its own function never loads from was billed:\n${run.stdout}`
   );
   assert.strictEqual(run.status, 1);
@@ -1490,7 +1517,7 @@ test('a local union array counts, a branded one counts, an unrelated read does n
 // this: a collection reported for a load off something else (BUGS TC-101).
 test('a collection nothing reads is not billed for a load off a value of its type', () => {
   const run = shapesRun;
-  for (const quiet of ['collect()', 'src reaches this line', 'out reaches this line']) {
+  for (const quiet of ['collect()', 'src has 5 distinct property sets', 'out has 5 distinct property sets']) {
     assert.ok(!run.stdout.includes(quiet), `${quiet}: an unread collection was billed:\n${run.stdout}`);
   }
 });
@@ -1499,9 +1526,9 @@ test('a collection nothing reads is not billed for a load off a value of its typ
 // an element of `items`, and only `items` pays for it (BUGS TC-94).
 test('a read off one collection does not bill its same-typed sibling', () => {
   const run = shapesRun;
-  assert.match(run.stdout, /items reaches this line as 5 distinct property sets/);
+  assert.match(run.stdout, /items has 5 distinct property sets/);
   assert.ok(
-    !run.stdout.includes('spare reaches this line'),
+    !run.stdout.includes('spare has 5 distinct property sets'),
     `an array with no read of its own was billed:\n${run.stdout}`
   );
 });
@@ -1539,7 +1566,7 @@ test('an element-returning method, a destructuring and a named callback reach th
   ]) {
     assert.match(
       run.stdout,
-      new RegExp(`${fires} reaches this line as 5 distinct property sets`),
+      new RegExp(`${fires} has 5 distinct property sets`),
       `${fires}: the read never reached its collection:\n${run.stdout}`
     );
   }
@@ -1560,7 +1587,7 @@ test('the same form on a collection nothing read stays silent', () => {
     'letA',
   ]) {
     assert.ok(
-      !run.stdout.includes(`${quiet} reaches this line`),
+      !run.stdout.includes(`${quiet} has 5 distinct property sets`),
       `${quiet}: an unread collection was billed:\n${run.stdout}`
     );
   }
@@ -1571,8 +1598,8 @@ test('the same form on a collection nothing read stays silent', () => {
 // Reading the declaration alone reports the first and drops the second.
 test('a reassigned local bills every write, not its declaration', () => {
   const run = provenanceRun;
-  assert.match(run.stdout, /letRows reaches this line as 5 distinct property sets/);
-  assert.match(run.stdout, /letOther reaches this line as 5 distinct property sets/);
+  assert.match(run.stdout, /letRows has 5 distinct property sets/);
+  assert.match(run.stdout, /letOther has 5 distinct property sets/);
 });
 
 // A `delete` on something with no hidden class to demote is not this rule's
@@ -1996,7 +2023,7 @@ test('an unreadable callee still counts what reaches its receiver', () => {
   // silent. The finding can only have come through the escape rule.
   assert.match(
     unwrapped(run.stdout),
-    /megamorphic-dispatch \S+escape\.ts:\d+ p reaches this call as at least 5 implementations built by this program \(P1, P2, P3, P4, P5\)/
+    /megamorphic-dispatch \S+escape\.ts:\d+:\d+ p reaches this call as at least 5 implementations built by this program \(P1, P2, P3, P4, P5\)/
   );
   assert.strictEqual(run.status, 1);
 });
