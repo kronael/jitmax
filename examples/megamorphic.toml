@@ -1,0 +1,9 @@
+[rules]
+megamorphic-elements = true
+megamorphic-dispatch = true
+accumulating-spread = false
+chained-allocation = false
+allocating-select = false
+delete-property = false
+closed-world = false
+interface-dispatch = false

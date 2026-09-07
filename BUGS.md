@@ -1701,6 +1701,15 @@ the same column as the win. The k axis stays unswept and this entry stays open.
 
 ## TC-33 — `closed-world`'s trigger and its benchmark measure different things (2026-08-17, open — the report says `bound` as of 2026-08-19)
 
+User trial, 2026-09-07: date-fns at `a0a39220` correctly parsed the tested
+timestamps with offsets and a leap-day rollover. jitmax followed `parse` to
+`Parser.run`, then reported at least 31 implementations at `this.parse` in
+`src/parse/_lib/Parser.ts:16`. The report names parser classes and asks for four
+or fewer, but supplies no replacement a caller can use through `parse`'s API.
+The static count does not establish how many implementations those timestamp
+inputs exercise. This is a reproduced detection, not a measured runtime count
+or speedup; the trial is in `examples/README.md`.
+
 **Amended 2026-08-31 — the `warn` tier is gone, and this gap is now the only
 thing that states it.** `severity` was removed from `Evidence`: every finding is
 an error and every error fails the run. The owner's reasoning is that the
@@ -1985,6 +1994,15 @@ not change the answer was never a defect in the measurement. Proposals 1 and 3
 stand.
 
 ## TC-19 — megamorphic-elements prints a fix nobody at the finding can apply (2026-08-15, open, proposal)
+
+User trial, 2026-09-07: a fresh Zod source worktree at `5e608851` with only
+`prefixIssues` annotated reports 12 declared property sets at
+`packages/zod/src/v4/core/util.ts:842`. A caller validating records checked
+the paths of invalid name, email, age, score, quota, role, date and active
+fields. The finding says "one construction path" but names none of the issue
+creators. As a Zod caller, I cannot apply that change through the validation
+API. Detection reproduced; a usable caller rewrite and a speedup did not.
+`examples/README.md` records the trial and its megamorphic-only preset.
 
 Found while giving every rule an end-to-end example. `examples/` can only hold a
 rule whose printed fix is a change to the function the rule fired on, and this

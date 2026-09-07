@@ -16,6 +16,58 @@ version and commit, and `examples/LICENSE-MIT` reproduces the permission notice
 that must travel with them. The point of the whole exercise is that the code
 measured here is somebody else's.
 
+## Successful megamorphic detections: validation and timestamp imports
+
+**PASS for locating candidates in real libraries; no verified speedup.** The
+2026-09-07 trial exercised Zod validation and date-fns timestamp parsing, then
+ran jitmax on their source. The two megamorphic rules are the main focus of
+these user trials. The configuration merge below exercises a different rule.
+
+- Zod `prefixIssues` reported `megamorphic-elements` on its issue array,
+  counting 12 declared property sets. The caller accepted a valid record and
+  checked every error path for a record with invalid name, email, age, score,
+  quota, role, date and active fields. The report points to
+  `packages/zod/src/v4/core/util.ts:842` at revision
+  `5e608851fbc7659855e096239e36b9147af8a187` of `colinhacks/zod`.
+- date-fns `parse` reached `Parser.run` and reported `megamorphic-dispatch`
+  on `this.parse`, counting at least 31 parser implementations. The caller
+  checked timestamp imports with positive, negative and zero offsets, including
+  a leap-day rollover, against explicit UTC timestamps. The report points to
+  `src/parse/_lib/Parser.ts:16`, from the `pkgs/core` package root at revision
+  `a0a39220522ed1228445792c768ed887709aea5f` of `date-fns/date-fns`.
+
+Use `megamorphic.toml` to focus on these rules. It disables the other six
+rules through the normal configuration interface. Suppressed findings remain
+counted in the report; unresolved calls can still make coverage incomplete.
+
+To reproduce the detections, put `/** @jitmax */` on Zod's `prefixIssues` and
+date-fns's `parse`. Run from the Zod repository root:
+
+```sh
+node /path/to/jitmax/bin/jitmax.ts /path/to/jitmax/examples/megamorphic.toml packages/zod/src/v4/core/util.ts
+```
+
+Run from date-fns's `pkgs/core` directory:
+
+```sh
+node /path/to/jitmax/bin/jitmax.ts /path/to/jitmax/examples/megamorphic.toml src/parse/index.ts
+```
+
+Both runs exit 1 with a megamorphic finding. These source snapshots also appear
+in the survey below; the trial repeats detection on real caller tasks. It does
+not establish runtime map counts, whether the sites dominate those tasks, or
+whether changing them improves performance. Node v22.23.2 ran both callers;
+date-fns needed `--experimental-transform-types`, and Bun bundled the Zod caller
+for Node.
+
+My user assessment: naming the source location and, for dispatch, concrete
+parser classes gives me somewhere to investigate. But "four or fewer" and
+"one construction path" give me no change I can make through the libraries'
+public APIs. Zod's report does not name the issue creators I would need to edit.
+Neither report offers a caller-level rewrite or proves that my data sees the
+reported number of shapes. I count these as detection successes only, not
+successful performance fixes. TC-19 and TC-33 record those limits.
+
 ## Successful checkout trial: merging service configuration
 
 **PASS for the tested ordinary configuration inputs.** On 2026-09-07, the
@@ -68,19 +120,19 @@ opinions from using the public commands, not a review of the checker internals.
 
 ## Measured library examples
 
-**Three of the eight rules have an end-to-end example, and five cannot have
-one** as things stand: `accumulating-spread` (radash `assign`, remeda
+**Three of the eight rules have measured end-to-end rewrites**:
+`accumulating-spread` (radash `assign`, remeda
 `mergeAll`), `delete-property` (es-toolkit `omit`) and `chained-allocation`
-(zod `cleanEnum`) do. `megamorphic-elements`, `megamorphic-dispatch`,
+(zod `cleanEnum`). `megamorphic-elements`, `megamorphic-dispatch`,
 `allocating-select`, `closed-world` and `interface-dispatch` do not, and the
-last section of this file says why for each.
+last section of this file distinguishes those gaps from detection successes.
 
 Every rule's cost in `docs/rules.md` is a microbenchmark, and a microbenchmark
 cannot say what a program gets. So: take a function a library ships, apply the
 fix jitmax printed on it and nothing else, and time the whole call the way a
 caller makes it. `make example` prints the findings, then runs the sweep.
 
-Nothing here was searched for. Eleven libraries were cloned shallow and
+The measured functions come from the survey. Eleven libraries were cloned shallow and
 annotated by `examples/annotate.js` — every function not nested inside another
 whose body loops — and these are the findings that came back. radash is the
 twelfth, marked by hand a round earlier, and it took fixing three classes of
@@ -342,11 +394,11 @@ a *choice* between two values where the incumbent almost always wins. Twenty-two
 codebases is a large enough net that this stops reading as a gap in the search
 and starts reading as a verdict on the rule. `BUGS.md` TC-18.
 
-## Which rules have an end-to-end example, and which cannot have one
+## Which rules have measured end-to-end rewrites
 
-`examples/` can only hold a rule whose printed fix is a change to the function
-the rule fired on. That is not a property of every rule here, and saying which
-is which is worth more than four more tables.
+The measured pairs in `examples/` apply the printed fix to a vendored library
+function. A detection trial also exercises a caller, but it does not establish
+that a rewrite preserves behavior or improves performance.
 
 | Rule | End to end |
 |---|---|
@@ -354,6 +406,6 @@ is which is worth more than four more tables.
 | `delete-property` | es-toolkit `omit` — **1.62-3.32x**, and a width past which it stops |
 | `chained-allocation` | zod `cleanEnum` — **1.10-1.12x** at 16 members clears the broad-warning bar; **rejected under rule 6 at 256** (1.03-1.10x — lower bound under 1.05x, point estimate under 1.10x), published above |
 | `allocating-select` | **no instance of the measured shape in 2953 functions.** Its six findings are all `x = advance(x, step)` — `date = addMinutes(date, step)` in four date-fns functions, `sink = lazy(sink)` in es-toolkit's `pipe`. The benchmark measured a *choice* between two values where the incumbent almost always wins, and the fix, "compare first and assign only when x really changes", saves an allocation exactly on the passes that change nothing. A cursor changes on every pass. `BUGS.md` TC-18 |
-| `megamorphic-elements` | **structurally impossible.** The rule fires on a *parameter*, so its fix — "get the element type to four shapes or fewer, or give it one construction path" — is always a change to whoever built the array, never to the function that was flagged. No before/after pair of the flagged function can carry it. `BUGS.md` TC-19 |
-| `megamorphic-dispatch` | **nothing to demonstrate.** Zero findings in 850 functions |
+| `megamorphic-elements` | **Detection success on Zod validation; no measured rewrite.** The reported function receives issues built elsewhere, and the advice does not identify their creators. `BUGS.md` TC-19 |
+| `megamorphic-dispatch` | **Detection success on date-fns timestamp parsing; no measured rewrite.** The report locates the parser dispatch, but gives the caller no direct replacement. `BUGS.md` TC-33 |
 | `closed-world`, `interface-dispatch` | make no speed claim; they report what was not checked |
