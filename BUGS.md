@@ -26,6 +26,47 @@ Review queue. Found during audits, fixed only when the owner asks.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
+## TC-137 — the config merge example loses a JSON key after the suggested mutation (2026-09-07, open)
+
+A user following the `accumulating-spread` finding can choose the mutation
+shipped in `examples/radash-assign.after.ts`. It passes jitmax, but it does not
+preserve the result for an override with an own `__proto__` key. The spread
+version keeps the key and an ordinary prototype. The mutation drops the key
+and makes its value the returned object's prototype. An inherited `enabled`
+value can then appear where the caller expects only merged configuration.
+This reproduction changes the returned object, not the global Object prototype.
+
+Run from the checkout:
+
+```sh
+node --input-type=module <<'JS'
+import * as before from './examples/radash-assign.before.ts';
+import * as after from './examples/radash-assign.after.ts';
+const overrides = JSON.parse('{"__proto__":{"enabled":true},"port":8080}');
+for (const [name, variant] of Object.entries({ before, after })) {
+  const result = variant.assign({}, overrides);
+  console.log(name, JSON.stringify(result),
+    'own key:', Object.hasOwn(result, '__proto__'),
+    'inherited enabled:', result.enabled,
+    'plain prototype:', Object.getPrototypeOf(result) === Object.prototype);
+}
+JS
+node bin/jitmax.ts examples/radash-assign.after.ts
+```
+
+Observed on Node v22.23.2: before has own key `true`, inherited enabled
+`undefined`, plain prototype `true`; after has own key `false`, inherited
+enabled `true`, plain prototype `false`. The checker exits 0 and says every
+annotated function is clean. The finding's note warns about read performance
+but gives no warning about this change in behavior.
+
+- **Severity:** high
+- **Scope:** suggested rewrite and public success example
+- **Affected:** `examples/radash-assign.after.ts`, `accumulating-spread` advice
+- **Source:** reproduction above; `examples/config-check.ts` covers ordinary inputs
+- **Status:** open
+- **Fix:**
+
 ## TC-135 — the dataflow walk steps into the throw-only stub the callee walk refuses (2026-09-01, open)
 
 `bb9ebbf` made a method whose whole body is one `throw` a declaration:
@@ -153,6 +194,10 @@ also found no repository. The README and site called that an immediate install.
 The code is ready to publish; the remote is not. This project forbids agent
 pushes, so no code change can create the missing ref. Until a human publishes
 one, the only working path is an existing checkout or a locally packed tarball.
+
+Fresh user trial, 2026-09-07: `bunx github:kronael/jitmax` exited 1 with
+`GET https://codeload.github.com/kronael/jitmax/legacy.tar.gz/ - 404`.
+The documented checkout command did run the radash configuration example.
 
 - **Severity:** high
 - **Scope:** distribution and first contact
@@ -723,6 +768,15 @@ arguments varies across calls. If it does not separate, publish the null.
 Found 2026-08-29 in the TC-75 trial.
 
 ## TC-75 — first-contact trial: three users, README only, no other help (2026-08-29, open, data)
+
+User command trial, 2026-09-07: the radash configuration walkthrough in
+`examples/README.md` completed from the checkout. `node bin/jitmax.ts --help`
+exited 2 with `jitmax takes no options` and a usage line, without explaining
+annotations. The finding's note printed benchmark ratios, while its footer
+said `No cost is printed beside a finding.` My assessment: the precise file and
+line help, but that wording makes the performance advice harder to interpret.
+The ordinary caller inputs passed; a JSON-key result failed as recorded in
+TC-137. Public installation still failed as recorded in TC-133.
 
 Three engineers were given a codebase, the tool, and its README, and nothing
 else — no BUGS.md, no diary, no notes. They were told to make the code faster

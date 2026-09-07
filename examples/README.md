@@ -16,6 +16,58 @@ version and commit, and `examples/LICENSE-MIT` reproduces the permission notice
 that must travel with them. The point of the whole exercise is that the code
 measured here is somebody else's.
 
+## Successful checkout trial: merging service configuration
+
+**PASS for the tested ordinary configuration inputs.** On 2026-09-07, the
+local checkout identified repeated copying in radash's real `assign` function.
+The mutation shown in `radash-assign.after.ts` cleared the finding and preserved
+the expected merged values and both inputs. This replays an existing library
+example with a caller's task: combine service defaults with nested overrides.
+It is not a new library discovery or a new speed measurement.
+
+Run from the jitmax checkout with its dependencies installed:
+
+```sh
+node bin/jitmax.ts examples/radash-assign.before.ts
+node examples/config-check.ts
+node bin/jitmax.ts examples/radash-assign.after.ts
+```
+
+The first command exits 1 and reports `accumulating-spread` on the reducer's
+copy of `acc`. The last exits 0 and reports `every annotated function is clean.`
+The caller check exits 0 and prints:
+
+```text
+PASS nested service options; inputs unchanged
+PASS empty overrides; inputs unchanged
+PASS false, zero, empty string and null overrides; inputs unchanged
+```
+
+The nested case keeps the default port and retry delay, changes retry attempts
+and log level, and replaces the hosts array. Both implementations must match an
+explicit expected object; matching each other alone does not pass the check.
+Run `node examples/config-check.ts` again after changing either implementation.
+
+**FAIL for arbitrary JSON keys.** With an own `__proto__` key from `JSON.parse`,
+the mutation drops that key and changes the returned object's prototype.
+The checker still calls that function clean. The reproduction is in
+`BUGS.md` TC-137. The success above covers only the inputs in `config-check.ts`;
+it does not establish that the rewrite preserves radash's full contract.
+
+**Public installation failed.** The README's `bunx github:kronael/jitmax`
+command exited 1 with a GitHub archive 404. The checkout command above works;
+the public route remains blocked by TC-133. The trial ran on Node v22.23.2.
+
+My user assessment: the file, line and explanation of repeated copying helped
+me locate the work. The fix text then asked me to choose between faster merging
+and faster reads without measuring my caller. Its note printed benchmark
+ratios, followed by a footer saying no cost is printed beside a finding. I
+found that confusing. `--help` also exited 2 with only a usage line, so I needed
+the README to learn how to mark a function. These are my observations and
+opinions from using the public commands, not a review of the checker internals.
+
+## Measured library examples
+
 **Three of the eight rules have an end-to-end example, and five cannot have
 one** as things stand: `accumulating-spread` (radash `assign`, remeda
 `mergeAll`), `delete-property` (es-toolkit `omit`) and `chained-allocation`
