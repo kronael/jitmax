@@ -5,6 +5,18 @@ The Bun repository workflow needs no npm publication or release tag. Public
 GitHub access is blocked by TC-133; the README gives an existing-checkout route.
 Entries below record their versions' behavior and trials.
 
+## [Unreleased]
+
+- The linked `jitmax` executable requires Bun and runs unbuilt repository installs.
+  Explicit Node invocation remains available for compiled installations.
+- Install archives retain six essential Markdown guides and exclude internal notes.
+- The landing page includes inline setup, a finding example, playback controls and load-error retry.
+- Object rewrites preserve own `__proto__` keys and avoid inherited setters.
+  Fresh measurements include slower results; no rewrite is an unconditional speedup.
+- Receiver tracing reports throw-only methods as unchecked rather than claiming to follow an implementation.
+
+Release remains blocked by public GitHub access: the repository install returns 404.
+
 ## [v0.14.1] — 20260908
 
 > jitmax v0.14.1 — source links and checked configuration

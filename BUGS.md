@@ -140,7 +140,7 @@ replacement. The example's behavior remains unsafe for these inputs.
 - **Status:** resolved-not-yet-removed; not deployed
 - **Fix:** 1eeab93
 
-## TC-135 — the dataflow walk steps into the throw-only stub the callee walk refuses (2026-09-01, open)
+## ✅ FIXED 2026-09-08 — TC-135 — receiver tracing follows a throw-only stub (2026-09-01, fixed)
 
 `bb9ebbf` made a method whose whole body is one `throw` a declaration:
 `followable` in `lib/scan.ts` refuses it and `isDispatchDecl` reads the site as
@@ -168,9 +168,10 @@ not implement, and no finding says that today.
 - **Severity:** low
 - **Scope:** walk
 - **Affected:** `lib/scan.ts` `reach` (the `one.follow` push), `lib/flow.ts` `methodBody`
-- **Source:** the reproduction above, `node bin/jitmax.ts hot.ts`
-- **Status:** open
-- **Fix:** one predicate on both paths, and a finding for the stub-only receiver
+- **Source:** the reproduction above, with a visible `slotSize(new SlotHolder())` caller
+- **Status:** resolved-not-yet-removed; not deployed
+- **Fix:** 44eb0e0 applies `followable` on both paths. The call stays an
+  `interface-dispatch` finding; the stub's helper is not reached or counted as followed.
 
 ## TC-136 — 689 published rows carry no reading of the machine at all (2026-09-02, open, owner decision)
 
