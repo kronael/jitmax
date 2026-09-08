@@ -36,6 +36,11 @@ function readRows(rows: Row[]): number {
 readRows(makeRows());
 const partial = Math.random() ? handler : JSON.parse('{}');
 partial.run();
+interface Runnable { run(): number }
+const partialHolder: { handler: Runnable } = Math.random()
+  ? { handler: new Handler() } : JSON.parse('{}');
+/** @jitmax */
+function readPartial() { return partialHolder.handler.run(); }
 const deep0 = { end: 1 };
 ${Array.from({ length: 55 }, (_, i) => `const deep${i + 1} = deep${i};`).join('\n')}
 `;
@@ -94,6 +99,23 @@ test('receiver origins expose their source node and retain the followed body', (
   assert.match(partial.unknown.join(' '), /JSON/);
   flow.sources(find(ts.isIdentifier, 'partial'));
   assert.equal(flow.receiver(partialCall), partial);
+  const property = find(ts.isPropertyAccessExpression, 'partialHolder.handler');
+  const sources = flow.sources(property);
+  assert.equal(sources.origins.size, 1);
+  assert.match([...sources.unknown].join(' '), /JSON/);
+  const throughProperty = flow.receiver(find(ts.isCallExpression, 'partialHolder.handler.run()'));
+  assert.equal(throughProperty.origins.length, 1);
+  assert.match(throughProperty.unknown.join(' '), /JSON/);
+  const result = scan(ts, program);
+  const mark = result.marks.find((mark) => mark.name === 'readPartial');
+  assert.ok(mark);
+  assert.equal(mark.followed, 0);
+  assert.deepEqual(mark.reached.map((body) => body.name), ['readPartial']);
+  assert.equal(mark.escapes.length, 1);
+  assert.match(mark.escapes[0]!.dispatch.unknown.join(' '), /JSON/);
+  assert.deepEqual(check(ts, result.checker, mark).map((finding) => finding.rule), [
+    'interface-dispatch',
+  ]);
 });
 
 /** Keeps the walk's unknown, cycle and budget limits visible.

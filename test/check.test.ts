@@ -786,17 +786,17 @@ test('closed-world fires on the smallest callee it cannot read', () => {
   );
 });
 
-// A method whose whole body is one `throw` is `abstract m(): T;` written in a
-// language with no `abstract`: it declares a contract and implements nothing.
-// The walk followed it as an implementation, which put it on the error path and
-// priced the throw's own callee as a hot unchecked call — nine such warnings in
-// yjs, on code that runs only if the program is broken, while the one
-// nine-implementation hierarchy in that corpus produced no dispatch finding at
-// all (BUGS TC-106). The empty list here is both halves: no closed-world on
-// `slotUnimplemented`, and no interface-dispatch either, because refusing the
-// stub is what let the dataflow walk find `OneSlot.size()` and follow it.
+/** A visible constructed caller resolves the concrete method without walking the throwing stub. */
 test('a method whose whole body throws is a declaration, not an implementation', () => {
   assert.deepStrictEqual(rules('slotSize'), []);
+  const mark = markFor('slotSize');
+  assert.strictEqual(mark.followed, 1);
+  assert.strictEqual(mark.reached.length, 2);
+  const implementation = mark.reached[1]!.node;
+  assert.ok(ts.isMethodDeclaration(implementation));
+  assert.ok(ts.isClassDeclaration(implementation.parent));
+  assert.strictEqual(implementation.parent.name?.text, 'OneSlot');
+  assert.ok(mark.reached.every((body) => !body.node.getText().includes('slotUnimplemented')));
 });
 
 // The walk located both bodies — it prints their positions — and followed

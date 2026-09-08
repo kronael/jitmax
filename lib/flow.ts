@@ -551,6 +551,7 @@ export function readProperty(
   const out = emptyRes();
   out.tainted = base.tainted;
   out.starved = base.starved;
+  for (const u of base.unknown) out.unknown.add(u);
   for (const o of base.origins.values()) {
     if (o.kind === 'literal') {
       merge(out, w.literalProperty(o.node as TS.ObjectLiteralExpression, name, q));
@@ -573,8 +574,7 @@ export function readProperty(
     }
   }
   if (out.origins.size === 0 && out.unknown.size === 0) {
-    if (base.unknown.size > 0) for (const u of base.unknown) out.unknown.add(u);
-    else out.unknown.add(`no visible write to .${name}`);
+    out.unknown.add(`no visible write to .${name}`);
   }
   return out;
 }

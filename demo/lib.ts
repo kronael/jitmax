@@ -506,15 +506,12 @@ class SlotHolder {
   slot: AbstractSlot = new OneSlot();
 }
 
-/** A method whose whole body is one `throw` is `abstract size(): number;`
- * written in a language with no `abstract`. It declares a contract and
- * implements nothing, so the walk does not step into it and follows the one
- * implementation this program builds instead. Silent: `OneSlot.size()` is
- * clean, and the stub's callee is never priced (BUGS TC-106). */
+// The visible caller supplies OneSlot; its concrete method is clean.
 /** @jitmax */
 export function slotSize(h: SlotHolder): number {
   return h.slot.size();
 }
+slotSize(new SlotHolder());
 
 function uploadFloat(v: number[], out: number[]): void {
   out[0] = v[0] ?? 0;
