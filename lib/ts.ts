@@ -76,6 +76,16 @@ export function program(ts: Ts, cwd: string, inputs: string[]): TS.Program {
       );
     }
     parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(configPath));
+    // Explicit paths replace only the config's file selection, not its options.
+    const errors = parsed.errors.filter((d) =>
+      inputs.length === 0 || (d.code !== 18002 && d.code !== 18003)
+    );
+    if (errors.length > 0) {
+      const details = errors.map((d) =>
+        `TS${d.code}: ${ts.flattenDiagnosticMessageText(d.messageText, ' ')}`
+      );
+      throw new Error(`${configPath}: ${details.join('\n')} — nothing here was checked`);
+    }
   }
   // The same two options the path run adds below, or the two invocations do
   // not agree: this line passed `parsed.options` alone, so a tsconfig that left

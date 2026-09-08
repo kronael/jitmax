@@ -91,16 +91,13 @@ Exit codes: 0 checked and clean; 1 findings or incomplete coverage;
 
   const configFile = tsconfigOf(ts, cwd);
   const p = program(ts, cwd, inputs);
-  // A file that does not parse yields a garbage AST, every type-based rule
-  // goes quiet on it, and the run reported `every annotated function is clean`
-  // and exited 0 — a gate reads that as a pass. Same class as TC-7 and TC-17:
-  // the tool must never call a run clean when it could not read the code.
-  // Syntax only: a type error is somebody's build problem and not evidence
-  // that this tool could not look.
-  const broken = p.getSyntacticDiagnostics();
+  // Validate compiler options and syntax, not the project's semantic type errors.
+  const options = p.getOptionsDiagnostics();
+  const broken = options.length > 0 ? options : p.getSyntacticDiagnostics();
   if (broken.length > 0) {
     const details = broken.map((d) => {
-      let at = d.file ? rel(cwd, d.file.fileName) : '<unknown>';
+      let at = d.file ? rel(cwd, d.file.fileName) :
+        configFile ? rel(cwd, configFile) : '<compiler options>';
       if (d.file && d.start !== undefined) {
         const pos = d.file.getLineAndCharacterOfPosition(d.start);
         at += `:${pos.line + 1}:${pos.character + 1}`;
@@ -109,7 +106,8 @@ Exit codes: 0 checked and clean; 1 findings or incomplete coverage;
         ts.flattenDiagnosticMessageText(d.messageText, '\n  ');
     });
     throw new Error(
-      `${plural(broken.length, 'syntax error')} — nothing here was ` +
+      `${plural(broken.length, options.length > 0 ? 'configuration error' : 'syntax error')}` +
+        ' — nothing here was ' +
         `checked. Fix these errors and run jitmax again:\n${details.join('\n')}`
     );
   }

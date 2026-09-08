@@ -1,9 +1,8 @@
 import fs from 'node:fs';
+import { resolveDisabled } from './rules.ts';
 
 export interface Config {
-  // Raw keys from [rules]: a rule name or a defect code, unexpanded. Expanding
-  // and validating them against what the checker actually knows is
-  // resolveDisabled()'s job in rules.ts — config.ts only reads the file.
+  // Validated [rules] keys, with defect codes left unexpanded.
   disabled: Set<string>;
   // [profile] min_self_pct — the share of sampled time a function must own
   // before profile mode calls it hot. A constant nobody has measured, so the
@@ -48,7 +47,7 @@ function parseValue(raw: string, path: string, lineNo: number): TomlValue {
 // A real TOML file with arrays, inline tables or multi-line strings will fail
 // loudly here rather than being silently misread.
 function parseToml(text: string, path: string): Record<string, TomlTable> {
-  const tables: Record<string, TomlTable> = {};
+  const tables: Record<string, TomlTable> = Object.create(null);
   let current: TomlTable | undefined;
   const lines = text.split('\n');
   for (let i = 0; i < lines.length; i++) {
@@ -59,7 +58,7 @@ function parseToml(text: string, path: string): Record<string, TomlTable> {
     const header = line.match(/^\[([^[\]]+)\]$/);
     if (header?.[1] !== undefined) {
       const name = header[1].trim();
-      current = tables[name] ??= {};
+      current = tables[name] ??= Object.create(null);
       continue;
     }
 
@@ -94,6 +93,7 @@ export function loadConfig(configPath: string): Config {
     }
   }
   const rules = tables.rules ?? {};
+  resolveDisabled(Object.keys(rules));
   const disabled = new Set<string>();
   for (const [key, value] of Object.entries(rules)) {
     if (typeof value !== 'boolean') {

@@ -918,9 +918,12 @@ test('a defect code expands to every rule that carries it', () => {
 });
 
 test('an unknown rule name or defect code fails loudly instead of silently disabling nothing', () => {
-  assert.throws(() => resolveDisabled(['not-a-real-rule']), /unknown rule or defect code/);
+  for (const key of ['not-a-real-rule', '__proto__', 'constructor', 'toString']) {
+    assert.throws(() => resolveDisabled([key]), /unknown rule or defect code/);
+  }
 });
 
+/** Checks both boolean settings against the rule vocabulary without inherited table keys. */
 test('a TOML config disables a rule by name and by defect code', () => {
   const cfg = loadConfig(path.join(import.meta.dirname, 'fixtures', 'disable.toml'));
   assert.deepStrictEqual([...cfg.disabled].sort(), ['TC-9', 'delete-property']);
@@ -928,6 +931,29 @@ test('a TOML config disables a rule by name and by defect code', () => {
     [...resolveDisabled(cfg.disabled)].sort(),
     ['chained-allocation', 'delete-property', 'megamorphic-elements']
   );
+  fs.mkdirSync(path.join(root, 'tmp'), { recursive: true });
+  const dir = fs.mkdtempSync(path.join(root, 'tmp', 'test-config-'));
+  const file = path.join(dir, 'rules.toml');
+  try {
+    fs.writeFileSync(file, '[rules]\ndelete-property = true\nTC-9 = true\n');
+    assert.deepStrictEqual([...loadConfig(file).disabled], []);
+    for (const key of ['not-a-real-rule', '__proto__', 'constructor', 'toString']) {
+      for (const value of ['true', 'false']) {
+        fs.writeFileSync(file, `[rules]\n${key} = ${value}\n`);
+        assert.throws(() => loadConfig(file), /unknown rule or defect code/);
+      }
+    }
+    for (const table of ['__proto__', 'constructor', 'toString']) {
+      fs.writeFileSync(file, `[${table}]\n__jitmax_config_probe__ = true\n`);
+      assert.throws(() => loadConfig(file), /unknown table/);
+      for (const target of [Object.prototype, Object, Object.prototype.toString]) {
+        assert.strictEqual(Object.hasOwn(target, '__jitmax_config_probe__'), false);
+      }
+    }
+  } finally {
+    fs.unlinkSync(file);
+    fs.rmdirSync(dir);
+  }
 });
 
 // The same place the promise is made: `@jitmax -key` disables a rule for
@@ -2028,23 +2054,64 @@ test('an erased token does not change what the receiver is', () => {
 // A tsconfig that does not parse must not degrade the run to default compiler
 // options and then call the result clean. That is TC-76's degraded run with the
 // diagnostic removed (BUGS TC-114).
+/** Checks invalid config fails, while explicit paths can replace empty file selections. */
 test('a tsconfig that does not parse fails the run', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jitmax-badconfig-'));
-  fs.writeFileSync(path.join(dir, 'tsconfig.json'), '{ "compilerOptions": { "strict": true');
-  fs.writeFileSync(
-    path.join(dir, 'entry.ts'),
-    '/** @jitmax */\nexport function k(n: number): number {\n  return n + 1;\n}\n'
-  );
-  const run = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), '.'], {
-    cwd: dir,
-    encoding: 'utf8',
-  });
-  assert.notStrictEqual(run.status, 0, `a broken tsconfig exited 0:\n${run.stdout}`);
-  assert.match(`${run.stdout}${run.stderr}`, /nothing here was checked/);
-  assert.ok(
-    !run.stdout.includes('every annotated function is clean'),
-    'the run called itself clean over default options'
-  );
+  fs.mkdirSync(path.join(root, 'tmp'), { recursive: true });
+  const dir = fs.mkdtempSync(path.join(root, 'tmp', 'test-badconfig-'));
+  const config = path.join(dir, 'tsconfig.json');
+  const entry = path.join(dir, 'entry.ts');
+  fs.writeFileSync(entry,
+    '/** @jitmax */\nexport function k(n: number): number { return n + 1; }\n');
+  try {
+    const invalid = [
+      '{ "compilerOptions": { "strict": true',
+      '{ "compilerOptions": { "moduleResolution": "bundlr" } }',
+      '{ "compilerOptions": { "strcit": true } }',
+      '{ "extends": "./missing.json" }',
+      '{ "files": "entry.ts" }',
+    ];
+    for (const text of invalid) {
+      fs.writeFileSync(config, text);
+      for (const inputs of [[], ['entry.ts']]) {
+        assert.throws(() => program(ts, dir, inputs), /nothing here was checked/);
+      }
+    }
+    fs.writeFileSync(config, invalid[1]!);
+    const run = spawnSync(process.execPath,
+      [path.join(root, 'bin', 'jitmax.ts'), 'entry.ts'],
+      { cwd: dir, encoding: 'utf8' });
+    assert.strictEqual(run.status, 2, run.stderr);
+    assert.strictEqual(run.stdout, '');
+    assert.match(run.stderr, /TS6046/);
+    assert.match(run.stderr, /nothing here was checked/);
+    fs.writeFileSync(config, JSON.stringify({
+      compilerOptions: { module: 'commonjs', moduleResolution: 'nodenext' },
+      files: ['entry.ts'],
+    }));
+    for (const inputs of [[], ['entry.ts']]) {
+      const conflict = spawnSync(process.execPath,
+        [path.join(root, 'bin', 'jitmax.ts'), ...inputs],
+        { cwd: dir, encoding: 'utf8' });
+      assert.strictEqual(conflict.status, 2, conflict.stderr);
+      assert.strictEqual(conflict.stdout, '');
+      assert.match(conflict.stderr, /configuration error/);
+      assert.match(conflict.stderr, /tsconfig.json: TS5110/);
+      assert.match(conflict.stderr, /nothing here was checked/);
+    }
+    for (const selection of [{ files: [] }, { include: ['missing/**/*.ts'] }]) {
+      fs.writeFileSync(config, JSON.stringify({
+        ...selection, compilerOptions: { strict: true },
+      }));
+      assert.throws(() => program(ts, dir, []), /nothing here was checked/);
+      const selected = program(ts, dir, ['entry.ts']);
+      assert.ok(selected.getSourceFile(entry));
+      assert.strictEqual(selected.getCompilerOptions().strict, true);
+    }
+  } finally {
+    fs.unlinkSync(config);
+    fs.unlinkSync(entry);
+    fs.rmdirSync(dir);
+  }
 });
 
 // A method read off a value typed `any` resolves to NOTHING — not to

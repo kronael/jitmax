@@ -81,7 +81,7 @@ export function check(ts: Ts, checker: TS.TypeChecker, mark: Mark): Finding[] {
 export function resolveDisabled(keys: Iterable<string>): Set<string> {
   const rules = new Set<string>();
   for (const key of keys) {
-    if (key in EVIDENCE) {
+    if (Object.hasOwn(EVIDENCE, key)) {
       rules.add(key);
       continue;
     }
