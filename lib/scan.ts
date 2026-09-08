@@ -733,7 +733,7 @@ function reach(
               const r = flow.receiver(node);
               const one =
                 r.origins.length === 1 && r.unknown.length === 0 ? r.origins[0] : undefined;
-              if (one?.follow !== undefined) {
+              if (one?.follow !== undefined && followable(ts, one.follow)) {
                 followed++;
                 if (!seen.has(one.follow)) {
                   if (reached.length >= MAX_BODIES) {

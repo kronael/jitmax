@@ -18,8 +18,8 @@ const evidence: Evidence = {
     '22-codebase survey, so disabling closed-world to quiet it also disabled the one cause ' +
     'that is honest about not being able to look (BUGS TC-93)',
   silent:
-    'a call whose receiver reaches it as one implementation is a monomorphic site and this ' +
-    'rule says nothing about it — the walk follows that one body instead of reporting it. ' +
+    'a call with one known receiver implementation and a checkable body stays silent: ' +
+    'the walk follows that body. A throw-only method is a declaration, not an implementation. ' +
     "Two to four are inside V8's four-map budget: the finding says so in those words and " +
     "never carries megamorphic-dispatch's claim. Five or more is a real megamorphic call " +
     'site and belongs to megamorphic-dispatch, which carries the sweep',
@@ -59,8 +59,8 @@ const detect: EscapeRule = (mark, add) => {
           : d.count >= 2
           ? `calls ${c.text} through an interface${reached(d)}, and their bodies are not ` +
             'followed; the promise stops here'
-          : `calls ${c.text} through an interface, so the walk cannot tell which ` +
-            'implementation runs here; the promise stops here',
+          : `calls ${c.text} through an interface, but no single checkable ` +
+            'implementation was resolved; the promise stops here',
       fix:
         `inspect the implementations of ${c.text}; annotate a concrete implementation to ` +
         'check its body, or review it separately and add -interface-dispatch to this ' +

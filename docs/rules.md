@@ -316,8 +316,9 @@ readable and padded, the rule's is unreadable and unsized. Every finding prints
 
 ## interface-dispatch
 
-**What it detects.** A call through an interface, whose body IS here but cannot
-be picked.
+**What it detects.** A call through an interface without one resolved,
+checkable implementation. A throw-only method counts as a declaration;
+the checker reports the call without walking the stub's error path.
 
 **It fires on** `runTrio`, where three classes implement the interface the
 receiver is typed as:

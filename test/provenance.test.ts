@@ -41,6 +41,11 @@ const partialHolder: { handler: Runnable } = Math.random()
   ? { handler: new Handler() } : JSON.parse('{}');
 /** @jitmax */
 function readPartial() { return partialHolder.handler.run(); }
+declare function slotUnimplemented(): Error;
+class ThrowOnly { size(): number { throw slotUnimplemented(); } }
+const slot = new ThrowOnly();
+/** @jitmax */
+function readStub() { return slot.size(); }
 const deep0 = { end: 1 };
 ${Array.from({ length: 55 }, (_, i) => `const deep${i + 1} = deep${i};`).join('\n')}
 `;
@@ -116,6 +121,14 @@ test('receiver origins expose their source node and retain the followed body', (
   assert.deepEqual(check(ts, result.checker, mark).map((finding) => finding.rule), [
     'interface-dispatch',
   ]);
+  const stub = result.marks.find((mark) => mark.name === 'readStub');
+  assert.ok(stub);
+  assert.equal(stub.followed, 0);
+  assert.deepEqual(stub.reached.map((body) => body.name), ['readStub']);
+  assert.equal(stub.escapes[0]?.dispatch.count, 1);
+  const findings = check(ts, result.checker, stub);
+  assert.deepEqual(findings.map((finding) => finding.rule), ['interface-dispatch']);
+  assert.match(findings[0]?.message ?? '', /no single checkable implementation/);
 });
 
 /** Keeps the walk's unknown, cycle and budget limits visible.
