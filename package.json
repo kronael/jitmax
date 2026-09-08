@@ -10,9 +10,11 @@
     "lib/",
     "docs/",
     "ARCHITECTURE.md",
+    "BUGS.md",
     "bench/README.md",
     "test/README.md",
     "examples/README.md",
+    "examples/megamorphic.toml",
     "README.md",
     "LICENSE"
   ],

@@ -2986,6 +2986,10 @@ test('an installed copy can run without a type stripper', () => {
   // `files` is what carries it into the tarball. Either one missing leaves the
   // shim with nothing to prefer and the install back where TC-72 found it.
   assert.ok(pkg.files.includes('dist/'), 'package.json files no longer ships dist/');
+  for (const file of ['examples/megamorphic.toml', 'BUGS.md']) {
+    assert.ok(pkg.files.includes(file), `package.json files must ship ${file}`);
+    assert.ok(fs.existsSync(path.join(root, file)), `${file} must exist`);
+  }
   assert.match(pkg.scripts.prepare ?? '', /tsconfig\.build\.json/);
   const build = JSON.parse(fs.readFileSync(path.join(root, 'tsconfig.build.json'), 'utf8')) as {
     compilerOptions: { noEmit: boolean; outDir: string };
