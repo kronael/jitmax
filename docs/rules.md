@@ -1,5 +1,9 @@
 # The rules
 
+For installation and your first scan, use the [README quick start](../README.md#quick-start).
+It covers Bun, TypeScript and the checkout fallback while public GitHub access
+is blocked by TC-133. Bun runs the checker; these rules concern V8 performance.
+
 What each of the eight rules detects, what makes it fire, where it stays quiet,
 and what the fix is.
 
@@ -436,15 +440,30 @@ cause no longer switches off the honest "no body anywhere" one.
 
 ## Turning a rule off
 
-Both layers — the TOML `[rules]` table and the per-function override — accept
-two forms of key: a rule name (`megamorphic-elements`)
-disables that rule; a defect code (`TC-9`) disables every rule that carries it
-— see the `known defects` legend after the findings, or `BUGS.md`, for what a
-code names. An unknown name or code fails loudly with exit `2`, the same as a
+Save the following as `rules.toml` in your project's root:
+
+```toml
+[rules]
+"megamorphic-elements" = false
+"TC-9" = false
+```
+
+While GitHub access is blocked, use the
+[checkout command prefix](../README.md#use-an-existing-checkout).
+The repository command is `bunx github:kronael/jitmax rules.toml src`.
+Run from your project's root and replace `src` with your source directory.
+For a megamorphic-only scan, use the [supplied preset](../examples/megamorphic.toml).
+
+Both layers accept a rule name such as `megamorphic-elements` or a defect code
+such as `TC-9`, which selects every rule carrying that code. In TOML, `false`
+disables the selection; `true` does not suppress it. In an annotation, prefix the
+name with `-` to disable it. See the `known defects` legend after the findings
+or `BUGS.md` for what a code names. An unknown name or code fails with exit `2`, the same as a
 missing path. Suppression is never silent: the report always says how many
 findings were removed and by what, e.g.
 `3 findings suppressed (TC-9, megamorphic-elements)` — a clean run that is
 clean because rules were switched off says so.
 
-A per-function override disables those rules for that function and everything
-its walk reaches, and nowhere else. `README.md` has the syntax of both layers.
+A per-function override such as `/** @jitmax -megamorphic-elements -TC-9 */`
+disables those rules for that function and everything its walk reaches,
+and nowhere else.

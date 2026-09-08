@@ -1,5 +1,10 @@
 # Changelog
 
+For current installation and commands, use the [README quick start](README.md#quick-start).
+The Bun repository workflow needs no npm publication or release tag. Public
+GitHub access is blocked by TC-133; the README gives an existing-checkout route.
+Entries below record their versions' behavior and trials.
+
 ## [v0.14.1] — 20260908
 
 > jitmax v0.14.1 — source links and checked configuration

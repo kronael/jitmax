@@ -8,15 +8,19 @@ step, and the benchmark behind the rule. They do not measure your workload.
 
 ## Quick start
 
-Use Bun and TypeScript `>=5.0.0` with the 5.x compiler API. jitmax loads your
-project's TypeScript first, then its own installed copy. Run it from the GitHub
-repository with `bunx`; it needs no npm publication or build step.
+[Install Bun](https://bun.sh/docs/installation), then check `bun --version`.
+Use TypeScript `>=5.0.0 <6`; jitmax needs the 5.x compiler API. It loads your
+project's TypeScript first, then its own installed copy. Install your project's
+dependencies with its usual package manager before scanning it.
+The `bunx` repository command needs no npm publication, release tag or build.
+Bun runs the checker; findings concern V8, not Bun's JavaScriptCore engine.
 
 The public repository currently exposes no Git refs and its download returns
-404. [TC-133](BUGS.md) tracks that access blocker. The commands below need a
-reachable repository before they can run.
+404. [TC-133](BUGS.md) tracks that access blocker. Until it has an accessible
+Git ref, use the [existing-checkout route](#use-an-existing-checkout) below.
+Every `bunx github:kronael/jitmax` command in these docs needs that access.
 
-In your TypeScript project, mark a function you need fast:
+Save this as `hot.ts` in your TypeScript project's root:
 
 ```ts
 /** @jitmax */
@@ -29,35 +33,42 @@ Run from your TypeScript project's root:
 
 ```sh
 bunx github:kronael/jitmax --help
-bunx github:kronael/jitmax src/hot.ts
-bunx github:kronael/jitmax --verbose src/hot.ts
+bunx github:kronael/jitmax hot.ts
 ```
+
+Help exits `0`. The sample reports `every annotated function is clean.` and
+exits `0`. Add `/** @jitmax */` to your own hot function and pass its file next.
+Add `--verbose` to show all retained source locations when it finds a candidate.
 
 Paths choose files, not compiler options. jitmax finds `tsconfig.json` from the
 working directory upward. With no paths, it uses that config's file list;
 with neither paths nor a config, it scans sources under the working directory.
 
-With an existing checkout, run `bun /path/to/jitmax/bin/cli.js src/hot.ts` after installing its dependencies.
+### Use an existing checkout
+
+Replace the quoted paths with your real paths; Windows paths can use `C:/...`:
+
+```sh
+cd "/path/to/jitmax"
+bun install --ignore-scripts
+cd "/path/to/your-project"
+bun "/path/to/jitmax/bin/cli.js" hot.ts
+```
+
+This runs source without a build. For every command below, you can replace
+`bunx github:kronael/jitmax` with `bun "/path/to/jitmax/bin/cli.js"`.
 
 ## Read a finding
 
 Findings name exact positions, including inside callees of the marked function.
-Excerpt from `node bin/jitmax.ts demo`:
+Excerpt from `bun bin/cli.js demo`, run inside the jitmax checkout:
 
 ```text
   demo/lib.ts:46  fiveShapes()
     error  megamorphic-elements
       demo/lib.ts:46:28
-      rows has 5 distinct property sets in its element type; this is a
-      candidate for megamorphic load feedback, not an observed runtime map
-      count
       related: demo/lib.ts:48:30 read: r.x
-      sources: No builder located for this value. Source tracing is partial:
-               no visible caller of fiveShapes — its arguments come from
-               outside this program.
       next: inspect where these elements are built, not just this parameter.
-            If semantics allow, use consistent own properties and insertion
-            order; benchmark the full caller including construction
 ```
 
 `next:` gives an investigation or conditional rewrite; `note:` states its limits.
@@ -68,7 +79,6 @@ where filling it key by key normalizes it too.
 observers. The default shows five locations; `-v` or `--verbose` shows all retained
 locations without deepening analysis or changing findings, suppression or exits.
 These locations are not every allocation or proof of runtime reachability.
-
 Profile the caller, preserve its behavior, and benchmark the full operation
 before keeping a rewrite. A clean result does not prove that a rewrite is safe
 or faster. Read the [rule advice](docs/rules.md) and [known limits](docs/limits.md).
@@ -79,35 +89,24 @@ To focus on megamorphic reads and calls, save the supplied
 [preset](examples/megamorphic.toml) as `megamorphic.toml` in your project:
 
 ```sh
-bunx github:kronael/jitmax megamorphic.toml src/hot.ts
+bunx github:kronael/jitmax megamorphic.toml hot.ts
 ```
 
-It disables the other six rules. Coverage notices still apply.
-For your own settings, save a TOML file such as `rules.toml`:
-
-```toml
-[rules]
-"megamorphic-elements" = false
-"TC-9" = false
-```
-
-```sh
-bunx github:kronael/jitmax rules.toml src
-```
-
-A rule name disables that rule; a defect code disables every rule carrying it.
+It disables the other six rules. Coverage notices still apply. For custom TOML
+settings, see [configuration](docs/rules.md#turning-a-rule-off).
+A `false` setting disables its named rule or every rule carrying its defect code.
 For one function and its callees, use `/** @jitmax -megamorphic-elements -TC-9 */`.
-The report counts suppressions; see [configuration](docs/rules.md#turning-a-rule-off).
-
-A CPU profile can select hot functions without annotations:
+The report counts suppressions.
+A CPU profile can select hot functions without annotations. Replace
+`your-workload.js` with your application's JavaScript entry point and `src`
+with its source directory. Recording the profile requires Node:
 
 ```sh
 node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
 bunx github:kronael/jitmax run.cpuprofile src
 ```
 
-The default selects functions with at least 1% sampled self time. Set
-`[profile] min_self_pct` in a TOML file passed alongside the profile to change it.
+The default selects functions with at least 1% sampled self time; `[profile] min_self_pct` changes it.
 [Profile mapping](ARCHITECTURE.md#profile-mode-in-detail) describes source maps
 and unmatched frames. Pass at most one `.toml` and one `.cpuprofile`, in any order.
 
@@ -127,13 +126,16 @@ clear coverage gaps. Semantic TypeScript errors belong to your compiler check.
 
 ## Development and licence
 
+Work inside the jitmax checkout. Development needs Node `>=22.18`, npm and
+Make. Install dependencies with `npm ci --ignore-scripts`, then run:
+
 ```sh
 make          # lint, test, demo checks
 make verify   # also check pinned V8 citations and the Radash checkout
 ```
 
-`make build` regenerates derived artifacts; normal checks do not run it.
-[Tests](test/README.md) describe their coverage and how to run one test.
+`make build` regenerates evidence artifacts; it is not required to run jitmax.
+See [tests](test/README.md) for coverage and [development](ARCHITECTURE.md#development) for verification prerequisites.
 
 GPL-2.0-only; see [LICENSE](LICENSE). The vendored radash, remeda, es-toolkit
 and zod functions in `examples/` retain their MIT licences, copyright lines,
@@ -143,6 +145,5 @@ affiliated with, endorsed by, or sponsored by Google.
 
 Status: v0.14.1, single machine, eight rules.
 
-Read [architecture](ARCHITECTURE.md) for internals, [benchmarks](bench/README.md)
-for measurements and reruns, [examples](examples/README.md) for real library
-trials and rewrites, and [BUGS.md](BUGS.md) for the open issues.
+Read [architecture](ARCHITECTURE.md) for internals and [benchmarks](bench/README.md) for measurements and reruns.
+See [examples](examples/README.md) for real library trials and rewrites, and [BUGS.md](BUGS.md) for open issues.

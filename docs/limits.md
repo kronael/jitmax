@@ -1,5 +1,10 @@
 # Honest limits
 
+For installation and commands, use the [README quick start](../README.md#quick-start).
+Public GitHub downloads currently return 404; TC-133 tracks that blocker.
+The README gives an existing-checkout route. Bun runs the checker, but the
+findings and measurements below concern V8, not JavaScriptCore.
+
 Where jitmax does not work, where its numbers do not apply, and what its own
 measurements could not answer. Nothing here is a roadmap item. Every entry is a
 statement about the tool as it ships today.

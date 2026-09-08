@@ -1,5 +1,10 @@
 # What the fix is worth on somebody else's code
 
+Start with the [README setup](../README.md#quick-start) for Bun, TypeScript and
+the checkout fallback. Public GitHub commands are blocked by TC-133 until a
+repository ref is accessible. Detection trials and measured speedups are
+separate results below.
+
 Four functions, vendored verbatim from published libraries, with the fix
 jitmax printed on each and nothing else. `diff` a `.before.ts` against its
 `.after.ts` and the fix is the entire change.
@@ -36,23 +41,28 @@ these user trials. The configuration merge below exercises a different rule.
   `src/parse/_lib/Parser.ts:16`, from the `pkgs/core` package root at revision
   `a0a39220522ed1228445792c768ed887709aea5f` of `date-fns/date-fns`.
 
-Use `megamorphic.toml` to focus on these rules. It disables the other six
+Save the [megamorphic preset](megamorphic.toml) as `megamorphic.toml` in the
+directory you will run from. It disables the other six
 rules through the normal configuration interface. Suppressed findings remain
 counted in the report; unresolved calls can still make coverage incomplete.
 
-To reproduce the detections, put `/** @jitmax */` on Zod's `prefixIssues` and
-date-fns's `parse`. Run from the Zod repository root:
+To reproduce the detections, check out the revisions above and install each
+library's dependencies with its package manager. Put `/** @jitmax */` on Zod's
+`prefixIssues` and date-fns's `parse`. Save the preset in the Zod repository
+root and run there. Replace the command prefix with the README's checkout
+route while the GitHub download is unavailable:
 
 ```sh
-node /path/to/jitmax/bin/jitmax.ts /path/to/jitmax/examples/megamorphic.toml packages/zod/src/v4/core/util.ts
+bunx github:kronael/jitmax megamorphic.toml packages/zod/src/v4/core/util.ts
 ```
 
 Install date-fns's workspace dependencies so its inherited
 `@date-fns/dev/config/tsconfig` resolves. A missing inherited config stops jitmax
-before analysis. Then run from date-fns's `pkgs/core` directory:
+before analysis. Save another copy of the preset in date-fns's `pkgs/core`
+directory, then run there:
 
 ```sh
-node /path/to/jitmax/bin/jitmax.ts /path/to/jitmax/examples/megamorphic.toml src/parse/index.ts
+bunx github:kronael/jitmax megamorphic.toml src/parse/index.ts
 ```
 
 Both runs exit 1 with a megamorphic finding. These source snapshots also appear
@@ -94,7 +104,9 @@ the expected merged values and both inputs. This replays an existing library
 example with a caller's task: combine service defaults with nested overrides.
 It is not a new library discovery or a new speed measurement.
 
-Run from the jitmax checkout with its dependencies installed:
+This reproduction needs the jitmax checkout and its
+[development dependencies](../README.md#development-and-licence). Run there;
+the Node commands exercise the recorded caller and checker source directly:
 
 ```sh
 node bin/jitmax.ts examples/radash-assign.before.ts

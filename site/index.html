@@ -91,29 +91,60 @@
 <h2>Use it</h2>
 
 <p>
-  Use Bun and TypeScript <code>&gt;=5.0.0</code> with the 5.x compiler API.
   Run jitmax from the GitHub repository with <code>bunx</code>.
-  It needs no npm publication or build step.
+  <a href="https://bun.sh/docs/installation">Install Bun</a>, then check
+  <code>bun --version</code>. jitmax needs TypeScript <code>&gt;=5.0.0 &lt;6</code>, but no npm
+  publication, release tag or build step. Bun runs the checker; its findings
+  concern V8, not Bun's JavaScriptCore engine.
 </p>
 
 <p>
   The public repository currently exposes no Git refs and its download returns
-  404. TC-133 tracks that access blocker. The commands below need a reachable
-  repository before they can run.
+  404. <a href="https://github.com/kronael/jitmax/blob/HEAD/BUGS.md">TC-133</a>
+  tracks that access blocker. Every repository command below needs an
+  accessible Git ref. GitHub documentation links share that access blocker.
+  If you have a checkout, use the local route below and read its <code>README.md</code>.
 </p>
 
-<p>In your TypeScript project, mark the function:</p>
+<p>
+  Install your TypeScript project's dependencies with its usual package manager.
+  Save this as <code>hot.ts</code> in that project's root:
+</p>
 
 <pre><code>/** @jitmax */
 export function total(rows: { value: number }[]): number {
   return rows.reduce((sum, row) =&gt; sum + row.value, 0);
 }</code></pre>
 
-<p>Run it from the root of your TypeScript repository:</p>
+<p>Run from your project's root once the GitHub repository is accessible:</p>
 
 <pre><code>bunx github:kronael/jitmax --help
-bunx github:kronael/jitmax src/hot.ts
-bunx github:kronael/jitmax --verbose src/hot.ts</code></pre>
+bunx github:kronael/jitmax hot.ts
+bunx github:kronael/jitmax --verbose hot.ts</code></pre>
+
+<p>
+  The sample exits <code>0</code> and reports
+  <code>every annotated function is clean.</code> Mark your own hot function
+  with <code>/** @jitmax */</code> and pass its file next.
+</p>
+
+<p>
+  With an existing jitmax checkout, replace the quoted paths with your real
+  paths; Windows paths can use <code>C:/...</code>. Install its dependencies
+  once, then run from your project's root:
+</p>
+
+<pre><code>cd "/path/to/jitmax"
+bun install --ignore-scripts
+cd "/path/to/your-project"
+bun "/path/to/jitmax/bin/cli.js" hot.ts</code></pre>
+
+<p>
+  For the commands below, replace <code>bunx github:kronael/jitmax</code> with
+  <code>bun "/path/to/jitmax/bin/cli.js"</code> to use that checkout.
+  The <a href="https://github.com/kronael/jitmax/blob/HEAD/README.md#quick-start">README</a>
+  holds the full setup and usage guide.
+</p>
 
 <p>
   Paths choose files, not compiler options. The working directory determines
@@ -123,27 +154,19 @@ bunx github:kronael/jitmax --verbose src/hot.ts</code></pre>
 </p>
 
 <p>
-  With an existing checkout, run
-  <code>bun /path/to/jitmax/bin/cli.js src/hot.ts</code> after installing its dependencies.
-</p>
-
-<p>
   For megamorphic reads and calls, save the
   <a href="https://github.com/kronael/jitmax/blob/HEAD/examples/megamorphic.toml">preset</a>
   as <code>megamorphic.toml</code> in your project. It disables the other six
   rules; coverage notices still apply.
 </p>
 
-<pre><code>bunx github:kronael/jitmax megamorphic.toml src/hot.ts</code></pre>
+<pre><code>bunx github:kronael/jitmax megamorphic.toml hot.ts</code></pre>
 
 <p>
-  Pass your own TOML file to select rules, or a CPU profile to select hot
-  functions without annotations:
+  Follow the <a href="https://github.com/kronael/jitmax/blob/HEAD/docs/rules.md#turning-a-rule-off">TOML example</a>
+  to select rules, or the <a href="https://github.com/kronael/jitmax/blob/HEAD/ARCHITECTURE.md#profile-mode-in-detail">CPU profile guide</a>
+  to select hot functions without annotations. Recording a V8 profile needs Node.
 </p>
-
-<pre><code>bunx github:kronael/jitmax rules.toml src
-node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
-bunx github:kronael/jitmax run.cpuprofile src</code></pre>
 
 <p>
   Each finding names the source, a <code>next:</code> step and the sweep behind

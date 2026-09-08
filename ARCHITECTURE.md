@@ -1,5 +1,9 @@
 # How jitmax is built
 
+For installation and commands, start with the [README quick start](README.md#quick-start).
+It covers Bun, the TypeScript version constraint and the checkout fallback for
+the public GitHub access blocker, TC-133.
+
 One pass over a TypeScript program: load the project's own compiler, find the
 marked functions, walk what they call, run eight detectors over every body the
 walk reaches, and print. There is no cache, no daemon and no incremental mode.
@@ -17,7 +21,7 @@ bin/jitmax.ts        argv, then the pipeline below, then the exit code
 
 ## The pipeline
 
-**Load the project's TypeScript, never a bundled copy.** `lib/ts.ts` resolves
+**Load the project's TypeScript first.** `lib/ts.ts` resolves
 `typescript` from the scanned project first and falls back to this package's
 own. The tool therefore parses with the same compiler the project builds with,
 and reads the same types. It needs the 5.x API: `ts.sys` and
@@ -88,7 +92,10 @@ are counted for the run and never named, because "inline what you need from
 
 ## Profile mode, in detail
 
-Record a profile and hand it over as a suffix-named positional argument:
+From your application's root, record a profile and pass it as a suffix-named
+positional argument. Replace `your-workload.js` with your JavaScript entry
+point and `src` with its source directory. Use the README's checkout command
+prefix while the GitHub download is unavailable:
 
 ```sh
 node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
@@ -113,11 +120,25 @@ exits `1`, because unchecked measured time is not a clean run. `min_self_pct`
 defaults to 1 and is a constant nobody has measured, so the TOML owns it and
 every run prints the value it used.
 
+To change the threshold, save `profile.toml` in your application's root:
+
+```toml
+[profile]
+min_self_pct = 2
+```
+
+Run `bunx github:kronael/jitmax profile.toml run.cpuprofile src` from there.
+Use the README's checkout command prefix while GitHub access is blocked.
+The threshold is a percentage of sampled self time, not elapsed duration.
+
 There is no static hotness estimate. An annotation selects a function by the
 user's judgment; a profile selects it by sampled self time. The report asks the
 user to profile and benchmark the caller before keeping a change.
 
 ## How it runs
+
+Bun runs the checker, but the rules and their benchmark evidence concern V8.
+They do not predict performance under Bun's JavaScriptCore engine.
 
 `bunx github:kronael/jitmax` installs from the repository. The linked executable,
 `bin/cli.js`, requires Bun through its shebang. Bun follows that shebang and can
@@ -151,9 +172,13 @@ its data disagree.
 
 ## Development
 
+Run these commands inside the jitmax checkout after the
+[development setup](README.md#development-and-licence). Node `>=22.18` runs
+the tests and benchmarks; Bun is only required for the Bun launcher workflow.
+
 ```sh
 make          # lint, test, check
-make verify   # the whole pre-publication list: all, v8-check, reality
+make verify   # all, v8-check, reality
 make lint     # tsc --noEmit
 make test     # the unit tests — test/README.md
 make check    # the checker against demo/, where findings are the expected outcome
@@ -164,6 +189,11 @@ make reality  # the checker against a radash checkout, composition and total
 make demo     # re-record demo/demo.gif — a real asciinema run, not a mock-up
 make meme     # re-render the launch loop from demo/meme/
 ```
+
+`make verify` also needs the [pinned V8 source](bench/README.md#what-v8s-source-says)
+and a Radash checkout at the revision used by CI. The checkout steps and pin
+are in [CLAUDE.md](CLAUDE.md) and [.github/workflows/ci.yml](.github/workflows/ci.yml).
+Missing checkouts fail verification; they are not needed for ordinary scans.
 
 `CLAUDE.md` holds the repository's own rules and the measurement protocol in
 full. `BUGS.md` holds the open queue, and the entries commissioned adversarial

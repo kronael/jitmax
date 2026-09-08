@@ -2,6 +2,11 @@
 
 Review queue. Found during audits, fixed only when the owner asks.
 
+For current installation and commands, use the [README quick start](README.md#quick-start).
+The Bun repository workflow is blocked by public GitHub access, tracked in
+TC-133. The README gives an existing-checkout route. Commands inside dated
+reports below reproduce those trials, not the current setup instructions.
+
 > **2026-08-17 — adversarial review.** TC-31 through TC-36 come from a hostile
 > review commissioned to argue the tool is useless. Every one was re-run here
 > before it was written down; the reproductions below are this repository's, not
