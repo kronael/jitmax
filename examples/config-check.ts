@@ -40,6 +40,12 @@ const cases: {
     overrides: { enabled: false, retries: 0, label: '', token: null },
     expected: { enabled: false, retries: 0, label: '', token: null },
   },
+  {
+    name: 'own JSON keys at both levels',
+    defaults: { retry: { attempts: 3 } },
+    overrides: JSON.parse('{"__proto__":{"enabled":true},"retry":{"__proto__":{"debug":true}}}'),
+    expected: JSON.parse('{"retry":{"attempts":3,"__proto__":{"debug":true}},"__proto__":{"enabled":true}}'),
+  },
 ];
 
 for (const entry of cases) {

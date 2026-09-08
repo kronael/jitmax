@@ -268,7 +268,9 @@ function sweep(name: string, env: RunEnv) {
     }
     measured++;
     const shown = runs.map((r) => (r.void ? 'VOID' : `${r.ratio.toFixed(2)}x`)).join(' ');
-    out(`      => ${replicates(runs) ? 'REPLICATES' : 'DISAGREES'}  ${shown}\n\n`);
+    const verdict = need < times ? 'APPENDED; run make numbers for combined evidence'
+      : replicates(runs) ? 'REPLICATES' : 'DISAGREES';
+    out(`      => ${verdict}  ${shown}\n\n`);
   }
 
   const seconds = Math.round((Date.now() - started) / 1000);

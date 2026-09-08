@@ -134,11 +134,11 @@ needs an earlier snapshot. Preserve order and sparse-array behavior, and avoid
 passing an unbounded batch as function arguments. The finished array reads
 the same in the benchmark,
 0.96-1.02x. For the object
-form there is no rewrite this project has measured as a win on both halves:
-assigning the key on `acc` builds faster, 186-200x at n=500, and fills the
-result key by key, which normalizes the object — the spread-built object reads
-0.11-0.12x of what the filled one costs. Benchmark a privately owned mutable
-accumulator including the caller's reads. Preserve aliases, own keys, symbols,
+form, benchmark a privately owned mutable accumulator including the caller's
+reads. The own-property radash rewrite improves both measured halves; remeda's
+whole call costs 0.13x at n=8 and 1.48–1.59x at n=64 (before/after time),
+with no established read benefit. Define own data properties when preserving
+object spread's copy semantics. Preserve aliases, own keys, symbols,
 getters and property order. Assignment can invoke target setters, including
 `__proto__`; it does not have object spread's data-property semantics. See
 [CopyDataProperties](https://tc39.es/ecma262/multipage/abstract-operations.html#sec-copydataproperties)
@@ -251,8 +251,9 @@ refused the rewrite as a defect: assigning `undefined` instead costs
 **The fix it prints.** "assign undefined where the key may stay present, or
 build the object without the key", with the note that assigning undefined is
 equivalent only while nothing downstream tells an absent key from one holding
-undefined, and that the rebuild helps at the smaller of n=12 and n=48 and not
-at the larger, where filling it key by key normalizes it too. Where the walk
+undefined. The own-property rebuild improves reads at n=12 and n=48,
+but makes the whole call slower (0.17–0.51x, before/after time). Benchmark
+construction and reads together. Where the walk
 sees the object reach `Object.keys`, a spread or another observer that tells an
 absent key from one holding `undefined`, the first branch is dropped and the
 observer is named with its file, line and column, even when it is in a caller.

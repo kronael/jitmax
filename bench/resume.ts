@@ -9,7 +9,7 @@
 
 import fs from 'node:fs';
 import { RUNNER } from './driver.ts';
-import { frozen } from './env.ts';
+import { exceedsGate, frozen } from './env.ts';
 
 // A row as `key` and `done` see it: parsed back off a .jl line, every field
 // the runner may have written, nothing guaranteed.
@@ -19,7 +19,7 @@ export type JlRow = Record<string, unknown>;
 // name every field two different cells of the same sweep can differ by.
 export const key = (r: JlRow): string =>
   JSON.stringify([r.variant, r.baseline ?? null, r.mode, r.n, r.family ?? null, r.k ?? null,
-    r.shapes ?? null, r.example ?? null]);
+    r.shapes ?? null, r.example ?? null, r.kernel ?? null]);
 
 // How many runs of each cell this protocol has already written into a file.
 // Rows from earlier protocols are not counted: they are the record of what was
@@ -57,7 +57,7 @@ export function done(file: string): Map<string, number> {
     if (frozen(r as { env?: { load1?: unknown } })) continue;
     const limit = (r.env as { maxRunnable?: number } | undefined)?.maxRunnable;
     const seen = r.runnable as number | undefined;
-    if (limit !== undefined && seen !== undefined && seen > limit) continue;
+    if (exceedsGate(seen, limit)) continue;
     const k = key(r);
     counts.set(k, (counts.get(k) ?? 0) + 1);
   }

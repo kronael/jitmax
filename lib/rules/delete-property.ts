@@ -228,12 +228,6 @@ function distinguisher(
 // delete is the one operation that moves an object to dictionary mode and does
 // not move back.
 //
-// The second half of the fix has a width, measured (BUGS TC-16). Applied to
-// es-toolkit's `omit`, building the object without the property made the
-// caller's reads 11x faster on a 12-key record and nothing at all on a 48-key
-// one — `%HasFastProperties` is false on BOTH sides there, because a wide
-// object filled key by key normalizes exactly as `delete` does. The rule cannot
-// see the width, so the fix line states it instead of pretending it away.
 const detect: Rule = (ts, checker, body, add, mark) => {
   // Deleting an array ELEMENT does not put the array in dictionary mode. It
   // makes the elements backing store holey — PACKED_DOUBLE to HOLEY_DOUBLE, a
@@ -378,8 +372,9 @@ const detect: Rule = (ts, checker, body, add, mark) => {
       // typed by hand, and the test asserted the sentence still said 12 and 48
       // rather than that the data still did (the re-aimed BUGS TC-48).
       const rebuild =
-        `The rebuild helps at the smaller of ${N['ex.omit.sizes']} and not at the larger, ` +
-        'where filling it key by key normalizes it too. Rebuilding changes object identity; ' +
+        `The own-property rebuild improves reads at ${N['ex.omit.sizes']}, ` +
+        `but the whole call is slower (${N['ex.omit.whole']}, before/after time). ` +
+        'Benchmark construction and reads together. Rebuilding changes object identity; ' +
         'preserve aliases, prototypes and property semantics';
       add({
         ...at(body.sf, node),

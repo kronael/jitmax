@@ -136,11 +136,11 @@ export const N = {
   // delete.jl: the three construction-counted sweeps at n=16384 — withdrawn under rule 13, quoted as the refutation it is
   'delete.silent.undef.build.withdrawn': '0.98x and 1.05x and 1.18x',
   // example.jl: radash assign — the whole call, both sizes, three sweeps each
-  'ex.assign.whole': '3.22-4.65x',
+  'ex.assign.whole': '1.18-3.54x',
   // example.jl: radash assign — the caller's reads of the result, both sizes, what each cell's three sweeps agree on
-  'ex.assign.reads': '1.57-2.06x',
+  'ex.assign.reads': '1.66-2.01x',
   // example.jl: es-toolkit omit — the whole call, 12 and 48 keys
-  'ex.omit.whole': '1.62-3.32x',
+  'ex.omit.whole': '0.17-0.51x',
   // arguments.jl: the `arguments` object against a rest parameter, escaping, indexed and length-only — 2 of 9 cells withdrawn as unreplicable (rule 13): argesc|restesc|excl|16384, arglen|restlen|excl|262144
   'args.null': '0.78-1.31',
   // arguments.jl: the cells behind args.null — 2 of 9 cells withdrawn as unreplicable (rule 13): argesc|restesc|excl|16384, arglen|restlen|excl|262144
@@ -162,17 +162,17 @@ export const N = {
   // example.jl: the key counts es-toolkit omit was swept at, which delete-property quotes in its fix
   'ex.omit.sizes': 'n=12 and n=48',
   // example.jl: es-toolkit omit — the caller's reads of the result at 12 keys
-  'ex.omit.reads12': '11.2-11.6x',
-  // example.jl: the same at 48 keys, where the fix stops fixing the read — what its three sweeps agree on
-  'ex.omit.reads48': '0.97-1.04x',
+  'ex.omit.reads12': '10.8-12.0x',
+  // example.jl: the same at 48 keys — what its three sweeps agree on
+  'ex.omit.reads48': '11.3-11.7x',
   // example.jl: zod cleanEnum — the whole call at a 16-member enum, what its three sweeps agree on
   'ex.cleanenum.whole16': '1.10-1.12x',
   // example.jl: the same at 256 members — rejected under rule 6 (the broad-warning bar), quoted as the refutation it is
   'ex.cleanenum.whole256': '1.03-1.10x',
   // example.jl: remeda mergeAll — building the result at n=8
-  'ex.mergeall.build': '1.36-1.38x',
-  // example.jl: the same at n=64 — the triple that disagreed, re-swept, and what these three agree on
-  'ex.mergeall.build64': '18.78-20.87x',
+  'ex.mergeall.build': '0.13x',
+  // example.jl: the same at n=64 — what its three sweeps agree on
+  'ex.mergeall.build64': '1.48-1.59x',
   // example.jl: remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps
-  'ex.mergeall.reads': '0.11-0.12x',
+  'ex.mergeall.reads': '1.00-1.03x',
 };

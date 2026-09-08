@@ -36,19 +36,16 @@ explain the caveats without it.
   but they are printed as refutations, not folded into a range. This bullet said
   the opposite until 2026-08-29, and had contradicted the paragraph above it
   since rule 13 was enforced. `BUGS.md` TC-21, TC-37.
-- **601 published rows were measured under a load gate that could not see a
-  tenant.** Protocol rule 9 refuses to start a cell while the machine is busy.
-  Until 2026-08-21 the gate read the one-minute load average, and on a two-core
-  machine that average was mostly the sweep's own children — one pinned child at
-  a time, each worth about 1.0 in the window — so an idle machine read ~1.5
-  against a gate of 1, while a real tenant sitting behind the harness moved it
-  barely at all. The gate now counts runnable threads outside the harness, read
-  as each row is written, and refuses above `nproc - 1`. The rows written above
-  the old gate are **registered per file in `test/check.test.ts` and withdrawn
-  nowhere**: the old pair cannot say which of them had a real tenant, only that
-  the gate was not answering its question, and withdrawing most of the corpus on
-  a number like that is the owner's call rather than a query's. A new row over
-  the reworked gate fails `make test`. `BUGS.md` TC-46.
+- **605 published rows were measured under a load gate they exceeded.**
+  The raw files retain these rows; the per-file register is in
+  `test/check.test.ts`. Most belong to the one-minute load gate, which could
+  not distinguish the harness from another tenant. The current gate counts
+  runnable threads outside the harness and refuses above `nproc - 1`.
+  The object examples use only `own-properties` rows with per-row readings
+  within this limit. Four rejected rows have replacement sweeps; they remain
+  raw records, not evidence for those examples. Other legacy measurements
+  retain the limits recorded in TC-46. A new over-gate row fails `make test`
+  until its disposition is recorded.
 - **One of V8's two optimizing tiers was switched off the whole time.** This
   Node reports `--maglev` as `default: --no-maglev`, so the ladder under every
   number here is Ignition → Sparkplug → TurboFan, with no Maglev in it. A tier

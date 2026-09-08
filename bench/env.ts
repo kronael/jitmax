@@ -136,6 +136,10 @@ export function environment(maxRunnable: number): Environment {
 export const hasReading = (r: { load1?: unknown; runnable?: unknown }): boolean =>
   typeof r.load1 === 'number' && typeof r.runnable === 'number';
 
+export function exceedsGate(seen: number | undefined, limit: number | undefined): boolean {
+  return seen !== undefined && limit !== undefined && seen > limit;
+}
+
 // The other shape a reading comes in, and the one rule 9 forbids: ONE
 // observation stamped into the sweep record and copied onto every row of an
 // evening's work. `reading()` above refuses to write another; this recognises

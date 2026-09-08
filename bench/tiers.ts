@@ -88,6 +88,7 @@ interface PublishedRow {
   k?: number;
   shapes?: number;
   example?: string;
+  kernel?: string;
   void?: boolean;
   repsBase?: number;
   repsTest?: number;
@@ -356,7 +357,7 @@ const TIERS_JL = path.join(import.meta.dirname, 'tiers.jl');
 
 const cellKey = (r: PublishedRow) =>
   JSON.stringify([r.variant, r.baseline ?? null, r.mode, r.n, r.family ?? null, r.k ?? null,
-    r.shapes ?? null, r.example ?? null]);
+    r.shapes ?? null, r.example ?? null, r.kernel ?? null]);
 
 // The last published row for each cell of a sweep: last because a file holds
 // every sweep ever appended to it and the most recent is the one whose reps

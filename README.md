@@ -72,8 +72,8 @@ Excerpt from `bun bin/cli.js demo`, run inside the jitmax checkout:
 ```
 
 `next:` gives an investigation or conditional rewrite; `note:` states its limits.
-For deletion, the note says the rebuild helps at the smaller of n=12 and n=48 and not at the larger,
-where filling it key by key normalizes it too.
+For deletion, the note says the own-property rebuild improves reads at n=12 and n=48,
+but makes the whole call slower. Measure construction and reads together.
 
 `related:` links representative builders, implementations, allocations or key
 observers. The default shows five locations; `-v` or `--verbose` shows all retained

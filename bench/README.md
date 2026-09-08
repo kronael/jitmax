@@ -116,9 +116,9 @@ prints, straight from the `.jl` files. Nothing here is typed twice, and
 | `1.00-1.06x` | `bench/delete.jl` — assigning undefined instead of deleting, reads only — the fix, not the defect |
 | `0.96-1.12` | `bench/delete.jl` — every interval measured for that cell |
 | `0.98x and 1.05x and 1.18x` | `bench/delete.jl` — the three construction-counted sweeps at n=16384 — withdrawn under rule 13, quoted as the refutation it is |
-| `3.22-4.65x` | `bench/example.jl` — radash assign — the whole call, both sizes, three sweeps each |
-| `1.57-2.06x` | `bench/example.jl` — radash assign — the caller's reads of the result, both sizes, what each cell's three sweeps agree on |
-| `1.62-3.32x` | `bench/example.jl` — es-toolkit omit — the whole call, 12 and 48 keys |
+| `1.18-3.54x` | `bench/example.jl` — radash assign — the whole call, both sizes, three sweeps each |
+| `1.66-2.01x` | `bench/example.jl` — radash assign — the caller's reads of the result, both sizes, what each cell's three sweeps agree on |
+| `0.17-0.51x` | `bench/example.jl` — es-toolkit omit — the whole call, 12 and 48 keys |
 | `0.78-1.31` | `bench/arguments.jl` — the `arguments` object against a rest parameter, escaping, indexed and length-only — 2 of 9 cells withdrawn as unreplicable (rule 13): argesc|restesc|excl|16384, arglen|restlen|excl|262144 |
 | `7` | `bench/arguments.jl` — the cells behind args.null — 2 of 9 cells withdrawn as unreplicable (rule 13): argesc|restesc|excl|16384, arglen|restlen|excl|262144 |
 | `24.3-65.5x` | `bench/sparse.jl` — dictionary elements against a packed array, reads only |
@@ -129,13 +129,13 @@ prints, straight from the `.jl` files. Nothing here is typed twice, and
 | `1.58-1.69x` | `bench/arrays.jl` — the same with construction counted, at RAM size — the older sweep, not re-measured under r2 |
 | `0.96-1.08x` | `bench/arrays.jl` — a union-typed array holding only numbers, both halves, every size — the older sweep, not re-measured under r2 |
 | `n=12 and n=48` | `bench/example.jl` — the key counts es-toolkit omit was swept at, which delete-property quotes in its fix |
-| `11.2-11.6x` | `bench/example.jl` — es-toolkit omit — the caller's reads of the result at 12 keys |
-| `0.97-1.04x` | `bench/example.jl` — the same at 48 keys, where the fix stops fixing the read — what its three sweeps agree on |
+| `10.8-12.0x` | `bench/example.jl` — es-toolkit omit — the caller's reads of the result at 12 keys |
+| `11.3-11.7x` | `bench/example.jl` — the same at 48 keys — what its three sweeps agree on |
 | `1.10-1.12x` | `bench/example.jl` — zod cleanEnum — the whole call at a 16-member enum, what its three sweeps agree on |
 | `1.03-1.10x` | `bench/example.jl` — the same at 256 members — rejected under rule 6 (the broad-warning bar), quoted as the refutation it is |
-| `1.36-1.38x` | `bench/example.jl` — remeda mergeAll — building the result at n=8 |
-| `18.78-20.87x` | `bench/example.jl` — the same at n=64 — the triple that disagreed, re-swept, and what these three agree on |
-| `0.11-0.12x` | `bench/example.jl` — remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps |
+| `0.13x` | `bench/example.jl` — remeda mergeAll — building the result at n=8 |
+| `1.48-1.59x` | `bench/example.jl` — the same at n=64 — what its three sweeps agree on |
+| `1.00-1.03x` | `bench/example.jl` — remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps |
 
 <!-- /generated -->
 

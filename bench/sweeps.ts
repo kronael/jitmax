@@ -374,11 +374,12 @@ export const BENCHMARKS: Record<string, Bench | undefined> = {
       { example: 'remeda-merge-all', sizes: [8, 64] },
       { example: 'estoolkit-omit', sizes: [12, 48] },
       { example: 'zod-clean-enum', sizes: [16, 256] },
-    ].map(({ example, sizes }) => ({
+    ].map(({ example, sizes }): CellDecl => ({
       baseline: `${example}/after`,
       variant: `${example}/before`,
       sizes,
-      extra: { example },
+      extra: example === 'zod-clean-enum' ? { example }
+        : { example, kernel: 'own-properties' },
     })),
   },
 

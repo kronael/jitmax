@@ -63,11 +63,6 @@ const detect: Rule = (ts, checker, body, add) => {
   // { ...acc, [k]: v }, acc.concat(v), and Object.assign({}, acc, …). Each was
   // measured separately, because the constants differ by an order of magnitude.
   //
-  // Which form matched is carried out of here, because the FIX differs by form
-  // and the measurement says so (BUGS TC-16). An array pushed to reads exactly
-  // like an array spread into. An object filled key by key does not: V8
-  // normalizes it, and remeda's mergeAll got a faster build and reads an order
-  // of magnitude slower out of this rule's own advice.
   const spreadsSelf = (name: string, outer: TS.Node): Form | undefined => {
     // `(acc, x) => ({ ...acc, k: x })` wraps the literal in parentheses.
     let node = outer;
@@ -134,11 +129,10 @@ const detect: Rule = (ts, checker, body, add) => {
         'benchmark a privately owned mutable accumulator against the copy, including ' +
         'the caller\'s reads; keep copying when snapshots or read cost require it',
       note:
-        `assigning the key on NAME instead builds faster, ${N['spread.object']} at n=500, ` +
-        'and fills the result key by key, which normalizes the object: the SPREAD-built ' +
-        `object reads ${N['ex.mergeall.reads']} of what the filled one costs (remeda ` +
-        'mergeAll), so the copy is the cheaper one to read ' +
-        'back. Mutation also changes aliases: preserve own keys, symbols, getters and ' +
+        'define own data properties when replacing spread; the remeda example preserves ' +
+        `copy semantics but builds at ${N['ex.mergeall.build']} at n=8 and ` +
+        `${N['ex.mergeall.build64']} at n=64 (before/after time). Its read intervals ` +
+        'span 1.0: no established read benefit. Mutation changes aliases: preserve own keys, symbols, getters and ' +
         'property order. Assignment and Object.assign can invoke target setters, including ' +
         '__proto__; they are not drop-in replacements for object spread. ' +
         'No rule here detects a dictionary-mode object, so the mutating form checks CLEAN',

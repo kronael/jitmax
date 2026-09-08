@@ -30,7 +30,7 @@ import path from 'node:path';
 // definition, in the file that runs the sweeps, and the gate below is the
 // second caller it should always have had (BUGS TC-37).
 import { replicates, RUNNER } from '../bench/driver.ts';
-import { frozen, hasReading } from '../bench/env.ts';
+import { exceedsGate, frozen, hasReading } from '../bench/env.ts';
 // Rule 9's gate as a function of the core count, imported for the same reason:
 // a row is judged against the gate its own machine derives, and the model has
 // one home (bench/env.ts).
@@ -149,7 +149,10 @@ interface Citation {
 // marker predate the field entirely. Withdrawing them is a re-measurement of
 // ten sweeps and an owner's call, not a query (BUGS TC-136); `hasReading` is
 // applied per citation instead, where a sweep HAS been re-measured.
-export const current = (r: Row): boolean => r.runner === RUNNER;
+export const current = (r: Row): boolean => r.runner === RUNNER &&
+  (!['radash-assign', 'remeda-merge-all', 'estoolkit-omit'].includes(r.example ?? '') ||
+    (r.kernel === 'own-properties' && hasReading(r) &&
+      typeof r.env?.maxRunnable === 'number' && !exceedsGate(r.runnable, r.env.maxRunnable)));
 
 // The sweeps that have been re-measured under it, whole. A file moves in here
 // when every cell `bench/sweeps.ts` declares for it has three sweeps under the
@@ -795,7 +798,7 @@ export const CITATIONS: Record<string, Citation> = {
     agg: 'shared',
   },
   'ex.omit.whole': {
-    claims: 'rule',
+    claims: 'nothing',
     file: 'example.jl',
     cells: 'es-toolkit omit — the whole call, 12 and 48 keys',
     pick: (r) => r.example === 'estoolkit-omit' && r.mode === 'incl',
@@ -916,14 +919,10 @@ export const CITATIONS: Record<string, Citation> = {
     agg: 'range',
   },
   'ex.omit.reads48': {
-    claims: 'nothing',
+    claims: 'rule',
     file: 'example.jl',
-    cells: 'the same at 48 keys, where the fix stops fixing the read — what its three sweeps agree on',
+    cells: 'the same at 48 keys — what its three sweeps agree on',
     pick: (r) => r.example === 'estoolkit-omit' && r.mode === 'excl' && r.n === 48,
-    // The sentence quoting this says the interval spans 1.0, which is rule 13's
-    // agreement — not the `range` of the three point estimates it used to
-    // render. README carried both, 0.99-1.05x in the table and 0.97-1.04x in
-    // the prose, for one cell, and nothing compared them.
     agg: 'shared',
   },
   // One key per size. The paragraph about this example gives a figure for each,
@@ -949,7 +948,7 @@ export const CITATIONS: Record<string, Citation> = {
     agg: 'shared',
   },
   'ex.mergeall.build': {
-    claims: 'rule',
+    claims: 'nothing',
     file: 'example.jl',
     cells: 'remeda mergeAll — building the result at n=8',
     pick: (r) => r.example === 'remeda-merge-all' && r.mode === 'incl' && r.n === 8,
@@ -958,12 +957,9 @@ export const CITATIONS: Record<string, Citation> = {
   'ex.mergeall.build64': {
     claims: 'rule',
     file: 'example.jl',
-    cells: 'the same at n=64 — the triple that disagreed, re-swept, and what these three agree on',
+    cells: 'the same at n=64 — what its three sweeps agree on',
     pick: (r) => r.example === 'remeda-merge-all' && r.mode === 'incl' && r.n === 64,
     agg: 'shared',
-    // Two places, not the one the magnitude gives. The end-to-end tables print
-    // every sweep and every agreement at two, and 18.8-20.9x here would be the
-    // same interval spelled two ways nine lines apart.
     dp: 2,
   },
   'ex.mergeall.reads': {
@@ -1122,7 +1118,7 @@ export function overGate(root: string, file: string): { over: number; judged: nu
     const seen = meaningful ? r.runnable : r.load1 ?? r.env?.load1;
     if (limit === undefined || seen === undefined) continue;
     judged++;
-    if (seen > limit) over++;
+    if (exceedsGate(seen, limit)) over++;
   }
   return { over, judged };
 }

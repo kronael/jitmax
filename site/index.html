@@ -212,6 +212,13 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
 
 <h3>Read a finding</h3>
 
+<p>Excerpt from <code>bun bin/cli.js demo</code> in the jitmax checkout:</p>
+<pre><code>demo/lib.ts:46  fiveShapes()
+  error  megamorphic-elements
+    demo/lib.ts:46:28
+    related: demo/lib.ts:48:30 read: r.x
+    next: inspect where these elements are built, not just this parameter.</code></pre>
+
 <p>
   Each finding names the source, a <code>next:</code> step and the sweep behind
   the rule. <code>note:</code> states behavior and measurement limits.
@@ -278,19 +285,18 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
       <td><code>delete o.k</code></td>
       <td>the object moves to a slower kind of storage, and stays there</td>
       <td>12.3&ndash;13.6x per property load. On es-toolkit's <code>omit</code>
-          the whole call moves 1.62&ndash;3.32x &mdash; and the read half
-          <strong>rejects at 48 keys</strong>, 0.97&ndash;1.04x, because filling
-          a wide object key by key normalizes it exactly as
-          <code>delete</code> does.</td>
+          the own-property rebuild improves reads at both tested sizes, but the
+          whole call is <strong>slower: 0.17&ndash;0.51x</strong>. Measure the
+          caller's construction and reads together.</td>
     </tr>
     <tr>
       <td><code>acc = [...acc, v]</code> in a loop</td>
       <td>every pass copies everything the last pass built</td>
       <td>149&ndash;166x at 1000 items. On radash's <code>assign</code> the
-          whole call moves 3.22&ndash;4.65x. On remeda's <code>mergeAll</code>
-          the fix builds 1.36&ndash;1.38x faster and leaves the caller's
-          <em>reads</em> at 0.11&ndash;0.12x &mdash; eight times slower. The
-          printed fix line says that, because the exit code cannot.</td>
+          whole call moves 1.18&ndash;3.54x. On remeda's <code>mergeAll</code>
+          the own-property rewrite is <strong>slower at 8 inputs: 0.13x</strong>
+          and faster at 64: 1.48&ndash;1.59x. Its read intervals span 1.0:
+          no established read benefit. A clean result does not mean faster.</td>
     </tr>
     <tr>
       <td><code>.map(f).filter(g)</code></td>

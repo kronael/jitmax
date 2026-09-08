@@ -125,6 +125,7 @@ The caller check exits 0 and prints:
 PASS nested service options; inputs unchanged
 PASS empty overrides; inputs unchanged
 PASS false, zero, empty string and null overrides; inputs unchanged
+PASS own JSON keys at both levels; inputs unchanged
 ```
 
 The nested case keeps the default port and retry delay, changes retry attempts
@@ -132,11 +133,10 @@ and log level, and replaces the hosts array. Both implementations must match an
 explicit expected object; matching each other alone does not pass the check.
 Run `node examples/config-check.ts` again after changing either implementation.
 
-**FAIL for arbitrary JSON keys.** With an own `__proto__` key from `JSON.parse`,
-the mutation drops that key and changes the returned object's prototype.
-The checker still calls that function clean. The reproduction is in
-`BUGS.md` TC-137. The success above covers only the inputs in `config-check.ts`;
-it does not establish that the rewrite preserves radash's full contract.
+**PASS for own JSON keys at both levels.** The caller also checks an own
+`__proto__` key on the result and on nested retry options. The rewrite defines
+own data properties without invoking inherited setters. This covers the
+recorded inputs, not every possible radash input or prototype.
 
 **Public installation failed.** The README's `bunx github:kronael/jitmax`
 command exited 1 with a GitHub archive 404. The checkout command above works;
@@ -176,12 +176,12 @@ measurement protocol's rule 13 in the full clone's `CLAUDE.md`, all three printe
 
 | Function, and the finding | n | three sweeps | agreement |
 |---|---|---|---|
-| radash `assign` — `accumulating-spread` | 16 | 3.22 / 3.25 / 3.46 | **3.13–3.38** |
-| radash `assign` | 128 | 4.60 / 4.65 / 4.44 | **4.38–4.79** |
-| remeda `mergeAll` — `accumulating-spread` | 8 | 1.36 / 1.37 / 1.38 | **1.33–1.42** |
-| remeda `mergeAll` | 64 | 20.29 / 18.09 / 19.88 | **18.78–20.87** |
-| es-toolkit `omit` — `delete-property` | 12 | 1.70 / 1.77 / 1.62 | **1.67–1.71** |
-| es-toolkit `omit` | 48 | 3.13 / 3.17 / 3.32 | **3.14–3.30** |
+| radash `assign` — `accumulating-spread` | 16 | 1.27 / 1.26 / 1.18 | **1.20–1.27** |
+| radash `assign` | 128 | 3.54 / 3.35 / 3.44 | **3.23–3.53** |
+| remeda `mergeAll` — `accumulating-spread` | 8 | 0.13 / 0.13 / 0.13 | **0.12–0.14** |
+| remeda `mergeAll` | 64 | 1.52 / 1.51 / 1.54 | **1.48–1.59** |
+| es-toolkit `omit` — `delete-property` | 12 | 0.17 / 0.17 / 0.18 | **0.17–0.18** |
+| es-toolkit `omit` | 48 | 0.51 / 0.50 / 0.50 | **0.49–0.52** |
 | zod `cleanEnum` — `chained-allocation` | 16 | 1.05 / 1.20 / 1.14 | **1.10–1.12** |
 | zod `cleanEnum` | 256 | 1.03 / 1.06 / 1.08 | **1.03–1.10** |
 
@@ -190,74 +190,41 @@ cost is actually paid — by the caller, not inside the function:
 
 | Function | n | three sweeps | agreement |
 |---|---|---|---|
-| radash `assign` | 16 / 128 | 1.98 / 1.93 / 2.01 · 1.61 / 1.70 / 1.55 | **1.91–2.06** · **1.57–1.70** |
-| remeda `mergeAll` | 8 / 64 | 0.12 / 0.11 / 0.12 · 0.11 / 0.11 / 0.11 | **0.11–0.12** · **0.11** |
-| es-toolkit `omit` | 12 | 11.18 / 11.65 / 11.29 | **10.89–11.77** |
-| es-toolkit `omit` | 48 | 0.99 / 1.01 / 1.05 | **0.97–1.04, REJECTED** |
+| radash `assign` | 16 / 128 | 1.96 / 1.99 / 1.81 · 1.77 / 1.71 / 1.62 | **1.88–2.01** · **1.66–1.70** |
+| remeda `mergeAll` | 8 / 64 | 1.00 / 1.01 / 1.02 · 1.03 / 1.00 / 1.02 | **0.96–1.05, REJECTED** · **0.98–1.03, REJECTED** |
+| es-toolkit `omit` | 12 | 11.20 / 10.78 / 12.00 | **10.95–11.71** |
+| es-toolkit `omit` | 48 | 11.87 / 11.62 / 10.44 | **11.32–11.74** |
 | zod `cleanEnum` | 16 | 0.98 / 1.11 / 1.01 | **none — DISAGREES** |
 | zod `cleanEnum` | 256 | 1.02 / 1.01 / 1.05 | **0.98–1.07, REJECTED** |
 
-**The honesty condition.** An end-to-end number is far below the microbenchmark
-ratio, always. `accumulating-spread` cites 186-200x for an object spread at
-n=500; applied to radash's `assign` it moves the whole call 3.22-4.65x, because
-the function around that one line also allocates, recurses and branches. That
-gap is the most useful thing in this table: it is what a reader gets, and the
-200x is not.
+**What to keep.** Radash's rewrite improves both measured halves. Remeda's
+rewrite makes the small whole call slower (0.13x), improves the larger call
+(1.48–1.59x), and establishes no read benefit. `omit` improves reads at n=12 and n=48,
+but makes the whole call slower (0.17–0.51x). Keep it only when the caller's
+measured reads repay that cost. Zod's small read cell does not replicate;
+its larger read cell establishes no benefit.
 
-Four things in these tables say something worse than "smaller", and they are
-here at the same size as the wins. **Two of the four were different when this
-section was written**, and the re-measurement moved them in opposite directions
-— which is the reason each cell is run three times and each of the three is
-printed:
+The object rewrites define own data properties, preserving own `__proto__`
+keys without invoking inherited setters. Remeda copies enumerable symbols and
+values; `omit` snapshots values before filtering, including getters of omitted
+keys, and accepts numeric and symbol keys. A clean checker result alone
+does not establish any of these behaviors.
 
-- **`omit` at 48 keys rejects on reads** — 0.97–1.04x, an interval spanning 1.0
-  in all three sweeps. `%HasFastProperties` is false on *both* sides: building a
-  46-key object one key at a time normalizes it just as `delete` does. The fix
-  stops fixing the read somewhere between 12 keys and 48, and the rule still
-  cannot see the width — so the `note:` says it, in the sizes the cells were
-  swept at: *"the rebuild helps at the smaller of n=12 and n=48 and not at the
-  larger, where filling it key by key normalizes it too"*.
-- **`mergeAll` at n=64 stopped disagreeing, and that is not a promotion.** It
-  read 17.34x, 19.34x, 20.10x with no value inside all three intervals, and was
-  printed here as a cell rule 13 refuses. Three fresh sweeps read 20.29x,
-  18.09x, 19.88x and *do* share one, 18.78–20.87x. Six sweeps, the same six
-  numbers scattered over the same range, and the second three happened to
-  overlap. It stays in this list: a cell that agrees on one triple and not on
-  another has shown that its interval is narrower than its spread, which is the
-  thing rule 13 exists to catch, and one agreeing triple does not unshow it.
-- **`mergeAll` reads are 8x slower after the fix**, 0.11–0.12x at both sizes in
-  all six sweeps. `Object.assign(out, item)` in a loop — the form this project's
-  own evidence names as the fix — returns a `[DictionaryProperties]` object,
-  where the spread returns a `[FastProperties]` one. The rule's advice separates
-  the two forms. The **array** benchmark finds no read penalty, 0.96-1.02x, but
-  mutation requires private ownership and no needed snapshots; aliases, element
-  order and sparse-array behavior still matter. The **object** note says
-  *"the SPREAD-built object reads 0.11-0.12x of what the filled one costs"*.
-  Benchmark both construction and the caller's reads. Read the
-  ratio in that direction: the object the defect builds is the CHEAPER one to
-  read back, which is the whole reason the clause exists. Same detection, honest
-  advice — radash's `assign` is the same fix with the reads coming out
-  1.57–2.06x *faster*, which is why it is a condition to check and not a rule to
-  apply. `BUGS.md` TC-16. And zod's `cleanEnum` reads went the other way from
-  `mergeAll`'s: they rejected at 1.00–1.15x and now do not replicate at all
-  (0.98x, 1.11x, 1.01x), so of the six read cells here, one agrees on a real
-  effect, three reject, one is 8x worse and one has stopped agreeing with
-  itself.
-- **`chained-allocation`'s fix is worth almost nothing on the real instance**,
-  and this is the verdict the re-measurement moved. It used to read "worth
-  nothing at either size" — 0.98–1.03x rejecting at a 256-member enum, three
-  sweeps that could not agree at a 16-member one. Re-run, both sizes now clear
-  1.0: **1.10–1.12x** at 16 and **1.03–1.10x** at 256, neither interval spanning
-  it. So the fix is worth something, and what it is worth is three to twelve
-  percent against a rule that cites **1.44-1.52x** for `map` then `filter`,
-  where the loop body is one multiply and the allocation is the whole cost.
-  That figure read 6.48-7.51x until rule 13 was enforced in `lib/derive.ts`:
-  it came from an n=1000 cell whose three sweeps share no common value, and
-  what is left is the cell that replicates. In zod's `cleanEnum` the same two stages sit next to an `Object.entries`
-  allocation neither version avoids and a `Number.parseInt` per key that dwarfs
-  both, and the fused loop pays back most of what it saved by growing its result
-  array instead of getting it pre-sized by `.map()`. Two orders of magnitude
-  between the microbenchmark and the function is the finding either way.
+Measured on 2026-09-08: the three object examples, two sizes and both halves,
+three accepted sweeps per cell. Each sweep has twenty process pairs. The
+`kernel: "own-properties"` rows in `bench/example.jl` identify this code.
+Four rows exceeded the load limit; they remain in the file, are excluded from
+these results, and have replacement sweeps. All twelve accepted cells replicate.
+Zod's code and measurements are unchanged. Node, V8, flags, seeds, affinity and
+load readings accompany every row. Separate tier diagnostics are in
+`bench/tiers.jl`; they do not contribute timings.
+Those probes report tier mismatches for some cells, so a ratio is not proof
+of an isolated storage-layout effect. The results apply to the recorded engine
+and workload, not every caller.
+
+The microbenchmark is not a caller-level forecast. Object spread costs
+186–200x at n=500 in that kernel; radash's complete call moves 1.18–3.54x.
+The code around the copying still allocates, recurses and branches.
 
 **The whole survey, so the four examples are not four picks out of a hat.**
 Twelve libraries, 850 annotated functions, 1546 findings — **53 of them errors,
@@ -433,8 +400,8 @@ that a rewrite preserves behavior or improves performance.
 
 | Rule | End to end |
 |---|---|
-| `accumulating-spread` | radash `assign`, remeda `mergeAll` — **3.22-4.65x**, and a read cost the fix line now carries |
-| `delete-property` | es-toolkit `omit` — **1.62-3.32x**, and a width past which it stops |
+| `accumulating-spread` | radash `assign` improves both measured halves; remeda `mergeAll` has a slower small build, a faster large build, and no established read benefit |
+| `delete-property` | es-toolkit `omit` improves reads at n=12 and n=48, but makes the whole call slower |
 | `chained-allocation` | zod `cleanEnum` — **1.10-1.12x** at 16 members clears the broad-warning bar; **rejected under rule 6 at 256** (1.03-1.10x — lower bound under 1.05x, point estimate under 1.10x), published above |
 | `allocating-select` | **no instance of the measured shape in 2953 functions.** Its six findings are all `x = advance(x, step)` — `date = addMinutes(date, step)` in four date-fns functions, `sink = lazy(sink)` in es-toolkit's `pipe`. The benchmark measured a *choice* between two values where the incumbent almost always wins, and the fix, "compare first and assign only when x really changes", saves an allocation exactly on the passes that change nothing. A cursor changes on every pass. `BUGS.md` TC-18 |
 | `megamorphic-elements` | **Detection success on Zod validation; no measured rewrite.** The reported function receives issues built elsewhere, and the advice does not identify their creators. `BUGS.md` TC-19 |

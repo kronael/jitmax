@@ -419,9 +419,11 @@ test('accumulator advice separates read cost from ownership and copy semantics',
   assert.match(noteFor('collect'), /aliases observe/);
   assert.match(noteFor('collect'), /sparse-array/);
   assert.match(fixFor('collectObject'), /benchmark a privately owned/);
-  assert.match(noteFor('collectObject'), /normalizes the object/);
+  assert.match(noteFor('collectObject'), /define own data properties/);
   assert.match(noteFor('collectObject'), /checks CLEAN/);
-  assert.match(noteFor('collectByAssign'), /normalizes the object/);
+  assert.match(noteFor('collectByAssign'), /read intervals span 1.0/);
+  assert.ok(noteFor('collectObject').includes(N['ex.mergeall.build']));
+  assert.ok(noteFor('collectObject').includes(N['ex.mergeall.build64']));
   assert.match(noteFor('collectObject'), /target setters, including __proto__/);
   const source = JSON.parse('{"__proto__":{"tag":"own"}}');
   const copied = { ...source };
@@ -486,7 +488,7 @@ test('delete on a null-prototype object stays silent: it was never fast', () => 
 // the literal `12 keys and not at 48`, so the two integers could stop being
 // what example.jl holds and nothing would fail — the re-aimed TC-48. It now
 // reads the derived pair and requires the fix to quote it.
-test('the delete fix says where the rebuild stops paying, in the swept sizes', () => {
+test('the delete fix states the rebuild tradeoff at the swept sizes', () => {
   const f = rawFindings('drop').find((x) => x.rule === 'delete-property');
   const sizes = N['ex.omit.sizes'];
   assert.match(sizes, /^n=\d+ and n=\d+$/, `ex.omit.sizes reads "${sizes}"`);
@@ -520,16 +522,16 @@ test('every published copy of the delete fix quotes the swept sizes', () => {
   for (const file of [
     'README.md',
     path.join('examples', 'README.md'),
-    path.join('examples', 'estoolkit-omit.before.ts'),
+    path.join('docs', 'rules.md'),
   ]) {
     // The sentence wraps across lines in prose and inside a `//` transcript, so
     // the file is flattened before it is matched.
     const flat = fs
       .readFileSync(path.join(root, file), 'utf8')
       .replace(/\n\s*(\/\/)?\s*/g, ' ');
-    for (const m of flat.matchAll(/the rebuild helps at ([^,]+),/gi)) {
+    for (const m of flat.matchAll(/improves reads at ([^,]+),/gi)) {
       copies++;
-      if (!m[1]!.includes(sizes)) typed.push(`${file}: "the rebuild helps at ${m[1]}"`);
+      if (!m[1]!.includes(sizes)) typed.push(`${file}: "improves reads at ${m[1]}"`);
     }
   }
   assert.ok(copies >= 3, `the fix sentence was found ${copies} times — the regex has drifted`);
@@ -2601,6 +2603,51 @@ test('every example before half reports its finding and every after half is clea
   );
 });
 
+test('object example rewrites preserve copied properties', async () => {
+  const { assign } = await import('../examples/radash-assign.after.ts');
+  const { mergeAll } = await import('../examples/remeda-merge-all.after.ts');
+  const { omit } = await import('../examples/estoolkit-omit.after.ts');
+  const symbol = Symbol('setting');
+  const input = JSON.parse('{"__proto__":{"enabled":true},"setting":4,"1":"one"}');
+  input[symbol] = 5;
+  Object.defineProperty(input, 'hidden', { value: 6 });
+  let setters = 0;
+  Object.defineProperty(Object.prototype, 'setting', {
+    set() { setters++; }, configurable: true,
+  });
+  try {
+    for (const result of [assign({}, input), mergeAll([input]), omit(input, [])]) {
+      assert.strictEqual(Object.getPrototypeOf(result), Object.prototype);
+      assert.deepStrictEqual(Object.getOwnPropertyDescriptor(result, '__proto__'), {
+        value: { enabled: true }, writable: true, enumerable: true, configurable: true,
+      });
+      assert.strictEqual(Object.getOwnPropertyDescriptor(result, 'setting')?.value, 4);
+      assert.strictEqual(Object.hasOwn(result, 'hidden'), false);
+    }
+    assert.strictEqual(setters, 0);
+    assert.deepStrictEqual(mergeAll([input]), { ...input });
+    assert.deepStrictEqual(omit(input, [symbol, 1]), {
+      ['__proto__']: { enabled: true }, setting: 4,
+    });
+    let reads = 0;
+    const source = { get dropped() { reads++; return 1; }, keep: 2 };
+    assert.deepStrictEqual(omit(source, ['dropped']), { keep: 2 });
+    assert.strictEqual(reads, 1);
+    let keyReads = 0;
+    const keys = Object.defineProperty(['dropped' as const], '0', {
+      get() { keyReads++; return 'dropped'; },
+    });
+    assert.deepStrictEqual(omit(source, keys), { keep: 2 });
+    assert.strictEqual(keyReads, 1);
+    const run = spawnSync(process.execPath, ['examples/config-check.ts'], {
+      cwd: root, encoding: 'utf8',
+    });
+    assert.strictEqual(run.status, 0, run.stderr || run.stdout);
+  } finally {
+    Reflect.deleteProperty(Object.prototype, 'setting');
+  }
+});
+
 // The licence of somebody else's code, checked the way every number here is
 // checked. `examples/` redistributes four MIT libraries, and MIT requires the
 // permission notice to travel with each of them. That was wrong from the day
@@ -2672,8 +2719,6 @@ const HISTORICAL: Record<string, string> = {
   // Superseded ranges, quoted as superseded.
   '4.42-4.79x': 'closed-world before three replications, quoted as what it used to read',
   '3.21-4.95x': 'closed-world before rule 13 withdrew its n=100000 cell',
-  '6.48-7.51x': 'map-then-filter before rule 13 was enforced in lib/derive.ts',
-  '1.00-1.15x': 'zod cleanEnum reads at 16 as they rejected before re-measurement',
   // Rules this project withdrew. Their costs are real and ship nothing — and
   // where the rows are still in the repo the cost is DERIVED like every other,
   // withdrawn rule or not: `boxed-elements`' three figures read out of
@@ -2688,20 +2733,9 @@ const HISTORICAL: Record<string, string> = {
   // number cell at n=100000 was re-measured and disagrees at 0.89x, 0.97x and
   // 1.03x, so `select.silent.number.withdrawn` quotes the figure out of the
   // rows (BUGS TC-134). The register refuses an entry the data now supplies.
-  '17.34x': 'one of three disagreeing sweeps of remeda mergeAll at n=64, before it was re-swept',
-  '19.34x': 'one of three disagreeing sweeps of remeda mergeAll at n=64, before it was re-swept',
-  '20.10x': 'one of three disagreeing sweeps of remeda mergeAll at n=64, before it was re-swept',
-  '20.29x': 'one of the three fresh sweeps that do agree',
-  '18.09x': 'one of the three fresh sweeps that do agree',
-  '19.88x': 'one of the three fresh sweeps that do agree',
-  '0.98-1.03x': 'the cleanEnum read cells, rejecting at a 256-member enum',
-  '1.11x': 'one of three sweeps of zod cleanEnum reads at 16, the cell DISAGREE withdraws',
-  '1.01x': 'one of three sweeps of zod cleanEnum reads at 16, the cell DISAGREE withdraws',
   // Ordinary prose, not a measurement of anything.
   '1.10x': "rule 6's broad-warning point-estimate bar, a protocol constant",
   '2x': "the calibration tolerance: a cell missing 120ms by more than this throws",
-  '8x': 'a ratio of two published ratios, said in words',
-  '200x': 'a round figure in a sentence about what a microbenchmark is not',
   '5x': 'an anecdote about what %GetOptimizationStatus reported during a slowdown',
 };
 
@@ -3227,7 +3261,8 @@ const OVER_GATE: Record<string, [number, number]> = {
   'chained.jl': [58, 72],
   'delete.jl': [46, 48],
   'dispatch.jl': [205, 240],
-  'example.jl': [45, 48],
+  // Four excluded own-properties rows have replacement sweeps.
+  'example.jl': [49, 88],
   'inline.jl': [4, 6],
   // 36 judgeable rows, not 18: the eighteen frozen ones the note above
   // describes, plus the eighteen that re-measured the same six cells with the
@@ -3347,6 +3382,18 @@ test('resume counts a cell\'s runs within its gate, not its rows', () => {
   fs.appendFileSync(file, `${JSON.stringify(row(false, { runner: 'r1' }))}\n`);
   fs.appendFileSync(file, `${JSON.stringify(row(false, { runnable: undefined, load1: 9, env: { maxLoad: 1, cores: 2 } }))}\n`);
   assert.strictEqual(done(file).get(cell), 2);
+  const revised = row(false, { kernel: 'own-properties' });
+  fs.appendFileSync(file, `${JSON.stringify(revised)}\n`);
+  assert.strictEqual(done(file).get(key(revised)), 1);
+  assert.strictEqual(done(file).get(cell), 2);
+  const example: Row = {
+    runner: 'r2', variant: 'before', mode: 'incl', n: 8,
+    example: 'remeda-merge-all', kernel: 'own-properties',
+    load1: 0, runnable: 0, env: { maxRunnable: 1 },
+  };
+  assert.strictEqual(current(example), true);
+  assert.strictEqual(current({ ...example, runnable: 2 }), false);
+  assert.strictEqual(current({ ...example, kernel: undefined }), false);
 });
 
 // Rule 9 says the reading travels IN the row because a sweep runs for hours
