@@ -31,6 +31,73 @@ reports below reproduce those trials, not the current setup instructions.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
+## TC-142 — the site and examples guide disagree on survey counts (2026-09-08, open)
+
+The site reports five megamorphic-element findings for TypeScript 5.9.3; the
+examples guide reports 20 for the same 465 annotated functions. Its 22-codebase
+summary says eight sites across 2,953 functions; the guide says 29. The site
+also gives 4,140 findings for typescript-eslint 8.67.0 while the guide gives
+2,882 for the same 311 annotations. Both describe missing dependencies.
+The guide explains the intersection-type change behind its 29-site result,
+but the site presents eight as the current count. The browser/manual pass
+establishes conflicting reader-facing claims, not which raw run is authoritative.
+
+- **Severity:** medium
+- **Scope:** published survey results
+- **Affected:** `site/index.html`, `examples/README.md`
+- **Source:** `site/index.html:317`, `site/index.html:342`, `site/index.html:375`; `examples/README.md:332`, `examples/README.md:405`
+- **Status:** open
+- **Fix:**
+
+## TC-141 — landing-page ratios and relative dates need outside explanation (2026-09-08, open)
+
+The landing page presents benchmark ratios without stating the numerator and
+denominator. Some rows explain the direction in words, but the definition is
+not on the page. It also calls a number `one day old`, describes figures from
+`a week ago`, and says cells are withdrawn `today`, without a visible update
+date. A novice walkthrough could not establish their dates or a consistent
+ratio interpretation from the page alone. The examples guide defines
+before/after; its public link is blocked by TC-133.
+
+- **Severity:** low
+- **Scope:** landing-page measurement explanations
+- **Affected:** `site/index.html:212`, `site/index.html:401`
+- **Source:** `tmp/novice-audit/evidence/04-page-text.txt`; `examples/README.md`
+- **Status:** open
+- **Fix:**
+
+## TC-138 — the back control covers the landing title at narrower widths (2026-09-08, open)
+
+The local landing-page preview with the deployed shared stylesheet places the
+fixed back control over the title at 1024 and 768 pixels. At 768 pixels it
+covers most of `jitmax`; it also covers table content at the captured scroll
+position. Document width matches viewport width, so this is overlapping content,
+not document-level horizontal overflow. The main reviewer inspected the 768px
+screenshot. This is a local preview observation, not a live deployment check.
+
+- **Severity:** medium
+- **Scope:** landing-page layout
+- **Affected:** `site/index.html`, shared `/pub/krons/assets/hub.css`
+- **Source:** `tmp/novice-audit/evidence/10-1024.png`, `10-768.png`, `10-768-table.png`; `site/index.html:32`
+- **Status:** open
+- **Fix:**
+
+## TC-139 — the landing recording has no pause control or visible load error (2026-09-08, open)
+
+The recording plays and loops without visible playback controls. Clicking it
+while playing leaves `paused:false`. Blocking its MP4 request produces a static
+poster, `readyState:0` and `networkState:3`, without visible failure or retry
+text. The caption still describes a recording. The browser restored playback
+after removing the request block. An unrelated preview-server interruption was
+recorded separately and is not evidence for this issue.
+
+- **Severity:** medium
+- **Scope:** landing-page recording
+- **Affected:** `site/index.html:40`
+- **Source:** `tmp/novice-audit/docs/ux-13yo/landing.md`, `tmp/novice-audit/evidence/09-media-block-confirmed.json`
+- **Status:** open
+- **Fix:**
+
 ## TC-137 — the config merge example loses a JSON key after the suggested mutation (2026-09-07, open)
 
 A user following the `accumulating-spread` finding can choose the mutation
