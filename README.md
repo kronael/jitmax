@@ -142,7 +142,7 @@ versions and commits. [examples/LICENSE-MIT](examples/LICENSE-MIT) carries their
 permission notices. V8 is a trademark of Google LLC; this project is not
 affiliated with, endorsed by, or sponsored by Google.
 
-Status: v0.14.0, single machine, eight rules.
+Status: v0.14.1, single machine, eight rules.
 
 Read [architecture](ARCHITECTURE.md) for internals, [benchmarks](bench/README.md)
 for measurements and reruns, [examples](examples/README.md) for real library

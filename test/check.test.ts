@@ -2904,6 +2904,12 @@ test('every published surface states this version and this many rules', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as {
     version: string;
   };
+  const lock = JSON.parse(doc('package-lock.json')) as {
+    version: string;
+    packages: { '': { version: string } };
+  };
+  assert.strictEqual(lock.version, pkg.version, 'package-lock.json root version');
+  assert.strictEqual(lock.packages[''].version, pkg.version, 'package-lock.json package version');
   const readme = doc('README.md');
   const page = fs.readFileSync(path.join(root, 'site', 'index.html'), 'utf8');
 

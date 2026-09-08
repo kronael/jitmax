@@ -1,5 +1,34 @@
 # Changelog
 
+## [v0.14.1] — 20260908
+
+> jitmax v0.14.1 — source links and checked configuration
+>
+> Findings show relevant source locations and rewrite conditions; invalid configuration stops the check.
+>
+> • `--verbose` shows all retained source locations, with explicit tracing limits.
+> • Configuration errors name the failing input and exit 2.
+> • All eight rules give next steps with behavior and measurement limits.
+>
+> Full notes: https://github.com/kronael/jitmax/blob/main/CHANGELOG.md
+
+- Findings include exact columns and related builders, implementations, allocations and key observers.
+  Bounded source tracing retains unknown branches through property reads.
+- TOML tables cannot mutate `Object.prototype` or inherited constructor properties.
+  Both boolean rule settings reject unknown and inherited names through the shared rule registry.
+- Invalid compiler options, conflicting option combinations and missing inherited configs exit 2.
+  Explicit paths replace file selection only; source type errors remain the compiler's concern.
+- `next:` and `note:` distinguish conditional rewrites from evidence, including ownership,
+  setters, callback order, sparse arrays and object identity. Help works without a valid project.
+- The package includes the megamorphic preset and issue notes; package and lockfile versions agree.
+  The guide and site provide checkout-first commands and the complete exit contract.
+
+### Known limits
+
+- Counts describe static evidence, not runtime maps or caller speedups. Zod builder tracing remains partial.
+- Public installation requires an owner-published Git ref. No public ref is available; use a checkout or local package.
+- The configuration-merge example still has the input limits recorded in TC-137; benchmark evidence limits remain in TC-136.
+
 ## [v0.14.0] — 20260902
 
 > jitmax v0.14.0 — the report is readable now, and every change cites the source that asked for it
