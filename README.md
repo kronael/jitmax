@@ -122,7 +122,7 @@ jitmax — 64 annotated functions, 31 errors
     error  delete-property
       demo/lib.ts:170:3
       delete o[k] puts its object in dictionary mode
-      fix: assign undefined where the key may stay present, or build the
+      next: assign undefined where the key may stay present, or build the
            object without the key
       note: assigning undefined is equivalent only while nothing downstream
             tells an absent key from one holding undefined: spread and
@@ -138,19 +138,33 @@ jitmax — 64 annotated functions, 31 errors
     TC-9   rules fire outside the conditions their own evidence establishes
 ```
 
-Four things, and the second is the point:
+Read each finding in this order:
 
 - **the line** — which is inside `dropInner`, a function nobody annotated.
   `viaCallee` has the annotation; jitmax followed the call and reported where
-  the cost actually is.
+  the candidate is.
 - **the sweep that priced the rule**, named, so you can read the cost in
   `bench/README.md` and re-run it yourself with `make bench-*`.
-- **the fix**, concretely, not "consider optimising" — and under `note:`, where
-  the fix itself stops paying, wherever applying it to somebody else's function
-  found a limit.
+- **the next step**, under `next:` — an investigation or conditional rewrite,
+  with behavior and measurement limits under `note:`. It is not an automatic fix.
 - **what it could not check** — a call that resolves to a declaration with no
   body is listed by name, and a walk that hits its limit prints
   `WALK TRUNCATED`, exits `1`, and is never reported as clean.
+
+`related:` links to the source behind the finding: a property read, a class or
+factory, a returned allocation, or a consumer that observes key presence.
+`sources:` states when builder tracing is partial. Locations are representative
+source groups, not an inventory of allocations or observed runtime paths.
+
+The default report shows up to five related locations per finding. To see
+every available location, add `-v` or `--verbose`:
+
+```sh
+node /path/to/jitmax/bin/jitmax.ts --verbose src/hot.ts
+```
+
+This only expands the report. It does not deepen analysis or change findings,
+suppression, or exit codes.
 
 ## What it guarantees
 

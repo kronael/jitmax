@@ -30,7 +30,7 @@
   "type": "module",
   "scripts": {
     "prepare": "tsc -p tsconfig.build.json",
-    "test": "node --test test/check.test.ts test/tiers.test.ts",
+    "test": "node --test test/check.test.ts test/tiers.test.ts test/provenance.test.ts",
     "lint": "tsc --noEmit"
   },
   "engines": {

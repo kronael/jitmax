@@ -9,17 +9,18 @@ import { blinded, findingKey, plural, rel, render, type Blind } from '../lib/rep
 import { DEFAULT_MIN_SELF_PCT, loadConfig } from '../lib/config.ts';
 
 function main() {
-  const args = process.argv.slice(2);
-  if (args.includes('-h') || args.includes('--help')) {
+  const argv = process.argv.slice(2);
+  if (argv.includes('-h') || argv.includes('--help')) {
     process.stdout.write(`jitmax — check hot TypeScript functions and their callees
 
-Usage: jitmax [config.toml] [run.cpuprofile] [path…]
+Usage: jitmax [-v] [config.toml] [run.cpuprofile] [path…]
 
 Examples:
   jitmax src/hot.ts          Check annotated functions in one file
   jitmax src                 Check annotated functions in a directory
   jitmax rules.toml src      Apply rule settings from a TOML file
   jitmax run.cpuprofile src  Select hot functions from a CPU profile
+  jitmax -v src/hot.ts       Show all available related source locations
   jitmax                    Use the tsconfig file list
 
 Mark a hot function: /** @jitmax */
@@ -39,11 +40,14 @@ Or pass a TOML file:
   "megamorphic-elements" = false
 
 Options: -h, --help  Show this help and exit; other arguments are ignored.
+         -v, --verbose  Show all available related source locations.
 Exit codes: 0 checked and clean; 1 findings or incomplete coverage;
             2 the tool failed (input, configuration, or syntax error).
 `);
     return;
   }
+  const verbose = argv.includes('-v') || argv.includes('--verbose');
+  const args = argv.filter((arg) => arg !== '-v' && arg !== '--verbose');
   const flag = args.find((a) => a.startsWith('-'));
   if (flag !== undefined) {
     throw new Error(
@@ -199,7 +203,8 @@ Exit codes: 0 checked and clean; 1 findings or incomplete coverage;
     results,
     { count: suppressedSites.size, keys: [...allKeys].sort() },
     blind,
-    fromProfile === undefined ? 'annotated function' : 'hot function'
+    fromProfile === undefined ? 'annotated function' : 'hot function',
+    verbose
   );
   process.stdout.write(out + '\n');
   if (fromProfile !== undefined) process.stdout.write(fromProfile + '\n');

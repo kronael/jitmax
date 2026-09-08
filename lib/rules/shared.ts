@@ -1,6 +1,6 @@
 import type * as TS from 'typescript';
 import type { Ts } from '../ts.ts';
-import { isFunctionLike, type Body, type Dispatch, type Mark, type Site } from '../scan.ts';
+import { at, isFunctionLike, type Body, type Dispatch, type Mark, type Site } from '../scan.ts';
 
 export interface Evidence {
   cost: string;
@@ -45,7 +45,8 @@ export interface Finding extends Site {
   // first and fourth clause.
   fix: string;
   note?: string;
-  read?: Site & { expression: string };
+  related?: Array<Site & { name: string }>;
+  relatedNote?: string;
   evidence: Evidence | null;
 }
 
@@ -56,6 +57,39 @@ export interface Finding extends Site {
 export const cells = (n: string): string => `${n} cell${n === '1' ? '' : 's'}`;
 
 export type Add = (f: Omit<Finding, 'evidence'>) => void;
+
+export function sourceHints(
+  mark: Mark,
+  node: TS.Node,
+  elements = false
+): Pick<Finding, 'related' | 'relatedNote'> {
+  if (!mark.flow) throw new Error('source tracing requires a scanned function');
+  const result = mark.flow.sources(node, elements);
+  const limits = [...result.unknown];
+  if (result.tainted) limits.push('cyclic flow can hide sources');
+  if (result.starved) limits.push('the source tracing budget was exhausted');
+  const related = [...result.origins.values()].map((origin) => ({
+    ...at(origin.node.getSourceFile(), origin.node),
+    name: `${origin.kind === 'class' ? 'class' : 'builder'}: ${origin.name}`,
+  }));
+  return {
+    related,
+    relatedNote:
+      (related.length ? 'Representative sources, not every allocation or runtime path.' :
+        'No builder located for this value.') +
+      (limits.length ? ` Source tracing is partial: ${limits.join('; ')}.` : ''),
+  };
+}
+
+export function dispatchHints(d: Dispatch): Pick<Finding, 'related' | 'relatedNote'> {
+  return {
+    related: d.sources,
+    relatedNote:
+      (d.sources.length ? 'Representative receiver sources; not every allocation or runtime path.' :
+        'No receiver source located.') +
+      (d.unknown.length ? ` Source tracing is partial: ${d.unknown.join('; ')}.` : ''),
+  };
+}
 // The mark is the whole annotated call tree. Most rules are about one body and
 // ignore it; `delete-property` reads it, because whether "assign undefined" is
 // a rewrite or a data corruption depends on what the REST of the tree does

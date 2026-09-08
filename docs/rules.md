@@ -49,7 +49,10 @@ element, so no site exists for a fifth map to reach.
 
 **How to act.** The report names the collection declaration and the first
 property read found through it, both with line and column. Inspect where those
-elements are built. If semantics allow, use consistent own properties and
+elements are built: related locations include representative class and literal
+sources when the bounded flow query can find them. Missing, cyclic and
+budget-limited source paths are stated, not inferred from type names.
+If semantics allow, use consistent own properties and
 insertion order, then benchmark the full caller including construction.
 Adding a property can change enumeration and presence checks; a type assertion
 changes neither the object nor its runtime shape. Library callers may need an
@@ -82,7 +85,8 @@ types, for a method on a class, is where the measurement found no effect.
 which body runs — a different question from how many shapes reach it.
 
 **How to act.** Inspect the receiver builders or named implementations and
-profile the reported call. If a runtime guard can separate receiver kinds,
+profile the reported call. Related locations point to the source definitions
+the flow walk found; `--verbose` shows every available location. If a runtime guard can separate receiver kinds,
 test dedicated call sites and benchmark the full caller. Splitting sites can
 add branches and code size; a type assertion does not specialize a call.
 Library callers may need an upstream change.
@@ -273,8 +277,11 @@ a fact about the *benchmark*: the sweep's small variant costs nothing. Written
 down as a silence, it was the bound described as the trigger, which is `BUGS.md`
 TC-33 in one sentence.
 
-**The fix it prints.** "inline what you need from *callee*, or accept that this
-call is unchecked".
+**How to act.** Inspect related implementations when the walk located bodies
+but did not follow them. Otherwise resolve the dependency to TypeScript source,
+or review it separately and add `-closed-world` to the root's `@jitmax`
+annotation. A `.d.ts` describes an API, not its implementation. Missing source
+does not prove that V8 failed to inline the runtime code.
 
 **The cost.** 4.64-4.95x for a callee past the inlining budget against the same
 callee under it, in `bench/inline.jl`. That is a bound on what ONE unchecked
@@ -305,9 +312,11 @@ export function runTrio(vs: number[]): number {
 receiver: the walk follows it instead of reporting, and finds the
 `accumulating-spread` inside it.
 
-**The fix it prints.** "check the implementations of op.run yourself, or narrow
-the value to one of them at this call", with the note not to inline the
-abstraction away on this rule's account.
+**How to act.** Inspect the related implementations. Annotate a concrete
+implementation to check its body, or review it separately and add
+`-interface-dispatch` to the root's `@jitmax` annotation. Do not remove an
+abstraction or add a type assertion to clear this finding: a type assertion
+does not select a runtime implementation.
 
 **The cost.** None. This rule makes no speed claim; it reports what was not
 checked.

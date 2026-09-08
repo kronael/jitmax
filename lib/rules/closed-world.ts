@@ -1,6 +1,6 @@
 import { N } from '../numbers.ts';
 import { megamorphicCall } from './megamorphic-dispatch.ts';
-import { cells, reached, type EscapeRule, type Evidence, type RuleModule } from './shared.ts';
+import { cells, reached, dispatchHints, type EscapeRule, type Evidence, type RuleModule } from './shared.ts';
 
 // The rule's name, once. It was a terminal string in the finding and a second
 // terminal string in the exported rule below, and the pair that drifted was in
@@ -64,6 +64,7 @@ const detect: EscapeRule = (mark, add) => {
       file: c.file,
       line: c.line,
       column: c.column,
+      ...dispatchHints(d),
       rule: NAME,
       // What reaches the receiver, when anything does. `const f = pick ? a : b`
       // has no body the callee walk can follow and two the dataflow walk can
@@ -88,12 +89,14 @@ const detect: EscapeRule = (mark, add) => {
           : `calls ${c.text}, which we have no body for; the promise stops here`,
       fix:
         d.located > 0
-          ? `read the ${d.located} implementations named above, or give this call one of them`
-          : `inline what you need from ${c.text}, or accept that this call is unchecked`,
+          ? 'inspect the related implementations; their bodies are not checked through this call'
+          : `resolve ${c.text} to its TypeScript implementation, or review the dependency ` +
+            'separately and add -closed-world to this root\'s @jitmax annotation',
       note:
         d.located > 0
           ? 'they are located, not missing, and what is inside them is unchecked'
-          : undefined,
+          : 'missing source does not prove V8 failed to inline. A .d.ts declares an API, ' +
+            'not its implementation; copying declarations alone does not make a body readable',
     });
   }
 };

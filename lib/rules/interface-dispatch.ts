@@ -1,5 +1,5 @@
 import { megamorphicCall } from './megamorphic-dispatch.ts';
-import { reached, type EscapeRule, type Evidence, type RuleModule } from './shared.ts';
+import { reached, dispatchHints, type EscapeRule, type Evidence, type RuleModule } from './shared.ts';
 
 // The rule's name, once. It was a terminal string in the finding and a second
 // terminal string in the exported rule below, and the pair that drifted was in
@@ -49,6 +49,7 @@ const detect: EscapeRule = (mark, add) => {
       file: c.file,
       line: c.line,
       column: c.column,
+      ...dispatchHints(d),
       rule: NAME,
       message:
         d.unknown.length > 0
@@ -61,9 +62,12 @@ const detect: EscapeRule = (mark, add) => {
           : `calls ${c.text} through an interface, so the walk cannot tell which ` +
             'implementation runs here; the promise stops here',
       fix:
-        `check the implementations of ${c.text} yourself, or narrow the value to one of ` +
-        'them at this call',
-      note: "do not inline the abstraction away on this rule's account",
+        `inspect the implementations of ${c.text}; annotate a concrete implementation to ` +
+        'check its body, or review it separately and add -interface-dispatch to this ' +
+        'root\'s @jitmax annotation',
+      note:
+        'do not inline the abstraction away on this rule\'s account. A type assertion ' +
+        'does not select a runtime implementation; this finding describes unchecked code',
     });
   }
 };

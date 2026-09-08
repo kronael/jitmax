@@ -65,6 +65,16 @@ The diagnostic workflow also passes: Zod's report names the collection at
 `util.ts:844:5`. date-fns names the call at `Parser.ts:16:20`. Both distinguish
 static counts from runtime evidence and retain their coverage notices.
 
+**PASS for locating date-fns implementation sources.** Related locations include
+`src/parse/_lib/parsers/EraParser.ts:6:1` and `YearParser.ts:19:1`.
+The default report shows five source locations and states how many it omits;
+add `--verbose` to see all available parser sources. These are class definitions,
+not every allocation or proof of runtime reachability.
+
+**Builder tracing remains partial for Zod.** The bounded source query finds no
+issue builder through the cyclic flow and prints that reason. It still locates
+the property read. This is not a builder-location success.
+
 My user assessment: the locations and named parser classes give me somewhere
 to investigate. The advice identifies a builder or call-site change and says
 when a library caller needs upstream help. Zod's report does not name the issue
@@ -187,7 +197,7 @@ printed:
   in all three sweeps. `%HasFastProperties` is false on *both* sides: building a
   46-key object one key at a time normalizes it just as `delete` does. The fix
   stops fixing the read somewhere between 12 keys and 48, and the rule still
-  cannot see the width — so the `fix:` line says it, in the sizes the cells were
+  cannot see the width — so the `next:` line says it, in the sizes the cells were
   swept at: *"the rebuild helps at the smaller of n=12 and n=48 and not at the
   larger, where filling it key by key normalizes it too"*.
 - **`mergeAll` at n=64 stopped disagreeing, and that is not a promotion.** It

@@ -7,6 +7,8 @@ import {
   megamorphicCandidate,
   MAX_CACHED_MAPS,
   objectShapes,
+  sourceHints,
+  dispatchHints,
   walk,
   type Add,
   type Evidence,
@@ -70,7 +72,7 @@ const evidence: Evidence = {
 // megamorphic load from the type of a parameter without checking that anything
 // is loaded, and the fixture that proves it reads `rows.length` and nothing
 // else. A rule with the same hole in it would be the same defect twice.
-const detect: Rule = (ts, checker, body, add) => {
+const detect: Rule = (ts, checker, body, add, mark) => {
   // A method called on the elements of an array parameter is one union reaching
   // one site, and `megamorphic-elements` already reports that parameter.
   // Reporting both bills one defect twice — the mistake chained-allocation's
@@ -88,6 +90,7 @@ const detect: Rule = (ts, checker, body, add) => {
       if (shapes > MAX_CACHED_MAPS && !claimed.has(t)) {
         add({
           ...at(body.sf, node),
+          ...sourceHints(mark, recv),
           rule: NAME,
           // Counted the same way as megamorphic-elements, and for the same
           // reason: five names for one property set are one map (TC-42).
@@ -139,6 +142,7 @@ export function megamorphicCall(c: Call, add: Add): boolean {
     file: c.file,
     line: c.line,
     column: c.column,
+    ...dispatchHints(d),
     rule: NAME,
     message:
       `${d.recv} reaches this call as at least ${d.count} implementations built by ` +

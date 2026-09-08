@@ -938,14 +938,14 @@ test('megamorphic findings locate the read and retain the collection location', 
   const mark = markFor('fiveShapes');
   const findings = rawFindings('fiveShapes');
   const f = findings.find((f) => f.rule === 'megamorphic-elements');
-  assert.ok(f?.read);
-  assert.strictEqual(f.read.expression, 'r.x');
-  assert.ok(f.read.line > f.line, 'the read is distinct from its collection declaration');
-  const pos = mark.sf.getPositionOfLineAndCharacter(f.read.line - 1, f.read.column - 1);
-  assert.strictEqual(mark.sf.text.slice(pos, pos + f.read.expression.length), 'r.x');
+  const read = f?.related?.find((source) => source.name === 'read: r.x');
+  assert.ok(f && read);
+  assert.ok(read.line > f.line, 'the read is distinct from its collection declaration');
+  const pos = mark.sf.getPositionOfLineAndCharacter(read.line - 1, read.column - 1);
+  assert.strictEqual(mark.sf.text.slice(pos, pos + 3), 'r.x');
   const out = render(root, [{ mark, findings }]);
   assert.ok(out.includes(`demo/lib.ts:${f.line}:${f.column}`));
-  assert.ok(out.includes(`read: demo/lib.ts:${f.read.line}:${f.read.column} r.x`));
+  assert.ok(out.includes(`related: demo/lib.ts:${read.line}:${read.column} read: r.x`));
   assert.match(out.replace(/\s+/g, ' '), /not an observed runtime map count/);
   assert.match(out, /type assertions do not change runtime shapes/);
 });
@@ -959,6 +959,70 @@ test('the report prints exact finding positions and qualifies workload costs', (
   }
   assert.match(out, /Static findings are candidates, not measured costs in this workload/);
   assert.doesNotMatch(out, /Every rule is measured|No cost is printed/);
+});
+
+/** Checks that each counted implementation links to source, without adding findings. */
+test('dispatch and coverage findings link the implementations the walk already found', () => {
+  for (const name of ['runAll', 'runTrio', 'syncUniforms']) {
+    const mark = markFor(name);
+    const findings = rawFindings(name);
+    assert.strictEqual(findings.length, 1);
+    const related = findings[0]!.related ?? [];
+    assert.strictEqual(related.length, name === 'runAll' ? 5 : name === 'runTrio' ? 3 : 2);
+    const out = render(root, [{ mark, findings }]);
+    for (const site of related) {
+      assert.strictEqual(site.file, mark.file);
+      const pos = mark.sf.getPositionOfLineAndCharacter(site.line - 1, site.column - 1);
+      assert.match(mark.sf.text.slice(pos), /^(class |function )/);
+      assert.ok(out.includes(`related: demo/lib.ts:${site.line}:${site.column}`));
+    }
+  }
+});
+
+/** Checks that declared union members are not invented as builder locations. */
+test('unlocated builders remain explicit beside a megamorphic read', () => {
+  const f = rawFindings('fiveShapes')[0]!;
+  assert.strictEqual(f.related?.length, 1);
+  assert.match(f.relatedNote ?? '', /No builder located/);
+  assert.match(f.relatedNote ?? '', /no visible caller/);
+});
+
+/** Checks that a long related-source list has an explicit display limit. */
+test('the report counts omitted related locations without hiding the finding', () => {
+  const mark = markFor('runAll');
+  const original = rawFindings('runAll')[0]!;
+  const related = Array.from({ length: 8 }, (_, i) => ({
+    file: mark.file, line: i + 1, column: 1, name: `source ${i + 1}`,
+  }));
+  const out = render(root, [{ mark, findings: [{ ...original, related }] }]);
+  assert.strictEqual((out.match(/related:/g) ?? []).length, 5);
+  assert.match(out, /3 more related source locations omitted/);
+  assert.match(out, /1 error/);
+  assert.match(out, /Representative receiver sources/);
+  assert.match(out, /use --verbose/);
+  const verbose = render(root, [{ mark, findings: [{ ...original, related }] }],
+    undefined, undefined, undefined, true);
+  assert.strictEqual((verbose.match(/related:/g) ?? []).length, 8);
+  assert.doesNotMatch(verbose, /omitted/);
+});
+
+/** Checks both verbosity flags through the CLI without changing its findings or exit code. */
+test('CLI verbosity expands source locations without changing the result', () => {
+  const input = path.join(root, 'test', 'fixtures', 'builders.ts');
+  const baseline = spawnSync(process.execPath, [path.join(root, 'bin', 'cli.js'), input],
+    { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(baseline.status, 1, baseline.stderr);
+  assert.strictEqual((baseline.stdout.match(/related:/g) ?? []).length, 5);
+  assert.match(baseline.stdout, /1 more related source location omitted/);
+  for (const flag of ['-v', '--verbose']) {
+    const run = spawnSync(process.execPath, [
+      path.join(root, 'bin', 'cli.js'), input, flag,
+    ], { cwd: root, encoding: 'utf8' });
+    assert.strictEqual(run.status, 1, run.stderr);
+    assert.strictEqual(run.stdout.split('\n')[0], baseline.stdout.split('\n')[0]);
+    assert.strictEqual((run.stdout.match(/related:/g) ?? []).length, 6);
+    assert.doesNotMatch(run.stdout, /related source locations omitted/);
+  }
 });
 
 // Every line fits 78 columns. A finding's fix ran to 553 characters on one
@@ -2776,11 +2840,12 @@ test('every published surface states this version and this many rules', () => {
   assert.ok(claimedTests, 'test/README.md no longer prints a test count beside `make test`');
   const real =
     (fs.readFileSync(path.join(root, 'test', 'check.test.ts'), 'utf8').match(/^test\(/gm) ?? []).length +
-    (fs.readFileSync(path.join(root, 'test', 'tiers.test.ts'), 'utf8').match(/^test\(/gm) ?? []).length;
+    (fs.readFileSync(path.join(root, 'test', 'tiers.test.ts'), 'utf8').match(/^test\(/gm) ?? []).length +
+    (fs.readFileSync(path.join(root, 'test', 'provenance.test.ts'), 'utf8').match(/^test\(/gm) ?? []).length;
   assert.strictEqual(
     Number(claimedTests[1]),
     real,
-    `test/README.md says ${claimedTests[1]} unit tests; the two test files define ${real}`
+    `test/README.md says ${claimedTests[1]} unit tests; the test files define ${real}`
   );
 });
 

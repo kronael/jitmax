@@ -9,6 +9,7 @@ import {
   megamorphicCandidate,
   MAX_CACHED_MAPS,
   objectShapes,
+  sourceHints,
   walk,
   type Evidence,
   type Rule,
@@ -164,7 +165,7 @@ function scopeOf(ts: Ts, decl: TS.Node, body: Body): TS.Node {
   return n ?? body.node;
 }
 
-const detect: Rule = (ts, checker, body, add) => {
+const detect: Rule = (ts, checker, body, add, mark) => {
   for (const { p, element } of arrayValues(ts, checker, body)) {
     const shapes = objectShapes(ts, checker, element);
     if (shapes <= MAX_CACHED_MAPS) continue;
@@ -178,6 +179,7 @@ const detect: Rule = (ts, checker, body, add) => {
     // never reads a property (BUGS TC-8).
     const read = readsFromElement(ts, checker, scopeOf(ts, p, body), p, element);
     if (!read) continue;
+    const sources = sourceHints(mark, p.name, true);
     add({
       ...at(body.sf, p),
       rule: NAME,
@@ -196,7 +198,11 @@ const detect: Rule = (ts, checker, body, add) => {
         'type assertions do not change runtime shapes. Adding a missing property ' +
         'can change key enumeration and presence checks. Library callers may need ' +
         'an upstream change; no automatic rewrite is established here',
-      read: { ...at(body.sf, read), expression: read.getText(body.sf) },
+      related: [
+        { ...at(body.sf, read), name: `read: ${read.getText(body.sf)}` },
+        ...(sources.related ?? []),
+      ],
+      relatedNote: sources.relatedNote,
     });
   }
 };

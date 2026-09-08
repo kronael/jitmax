@@ -1994,6 +1994,12 @@ stand.
 
 ## TC-19 — megamorphic-elements prints a fix nobody at the finding can apply (2026-08-15, partial, proposal)
 
+The bounded source query reports representative class and literal builders
+through visible values, factory returns and collection elements. Unknown,
+cyclic and exhausted paths are labelled. Zod's issue flow remains cyclic and
+locates no builder; date-fns's parser finding links its class definitions.
+`--verbose` expands all retained source locations, not the analysis budget.
+
 User trial, 2026-09-07: a fresh Zod source worktree at `5e608851` with only
 `prefixIssues` annotated reports 12 declared property sets at
 `packages/zod/src/v4/core/util.ts:842`. A caller validating records checked
@@ -2011,9 +2017,9 @@ one never is.
 
 The rule counts declared property sets on a collection and names a read inside
 the callee. For a parameter, that callee receives an array already built. The
-advice identifies construction as the place to investigate, but the report
-does not locate those builders. They can belong to a caller in a file the
-walk never visits. No verified before/after pair covers that change.
+advice identifies construction as the place to investigate, but the bounded
+query does not locate every builder. They can belong to an unknown or cyclic
+source path. No verified before/after pair covers Zod's issue construction.
 
 The survey that found it also refutes what README said until today. Extended
 from five libraries to twelve — 850 annotated functions — `megamorphic-elements`
@@ -2025,9 +2031,10 @@ previous survey suggested; it is narrow, and its advice is misaddressed.
 
 Remaining proposals:
 
-1. **Report at the construction site.** Needs whole-program flow to the
-   parameter, which this tool does not have and which the annotation model
-   (one root, its call tree) does not obviously give it.
+1. **Extend collection tracing through mutations and cycles.** The source
+   query shares the receiver walk's coalesced origins and budgets; it does not
+   enumerate every array write or allocation. A broader query needs an explicit
+   coverage model and must not change detection through cache side effects.
 2. **Withdraw the rule** on the grounds that a warning nobody at the site can
    act on is not worth a false-positive budget. TC-8 and TC-2 are already open
    against it.

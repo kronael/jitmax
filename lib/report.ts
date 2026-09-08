@@ -145,7 +145,8 @@ export function render(
   },
   // What the functions in this run are. An annotation is the author asserting
   // hotness; a profile is a measurement of it. The report says which.
-  subject = 'annotated function'
+  subject = 'annotated function',
+  verbose = false
 ): string {
   const out: string[] = [];
   // Counted first, then rendered, because the fan-in is printed ON the finding
@@ -359,14 +360,22 @@ export function render(
       const from = reach.get(findingKey(f)) ?? 1;
       const alsoFrom = from > 1 ? ` — reached by ${from} annotated functions` : '';
       out.push(...wrap('      ', `${rel(cwd, f.file)}:${f.line}:${f.column}${alsoFrom}`));
-      if (f.read) {
+      out.push(...wrap('      ', f.message));
+      const related = f.related ?? [];
+      const shownSources = verbose ? related : related.slice(0, 5);
+      for (const source of shownSources) {
         out.push(
-          ...wrap('      read: ',
-            `${rel(cwd, f.read.file)}:${f.read.line}:${f.read.column} ${f.read.expression}`)
+          ...wrap('      related: ',
+            `${rel(cwd, source.file)}:${source.line}:${source.column} ${source.name}`)
         );
       }
-      out.push(...wrap('      ', f.message));
-      out.push(...wrap('      fix: ', f.fix));
+      if (related.length > shownSources.length) {
+        out.push(...wrap('      ',
+          `${plural(related.length - shownSources.length, 'more related source location')} omitted; ` +
+          'use --verbose to show all available locations'));
+      }
+      if (f.relatedNote) out.push(...wrap('      sources: ', f.relatedNote));
+      out.push(...wrap('      next: ', f.fix));
       if (f.note !== undefined) out.push(...wrap('      note: ', f.note));
       // The sweep that priced the RULE, named — and no ratio. A ratio is a
       // property of the input: chained allocation is one number at n=1000 and

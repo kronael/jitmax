@@ -19,7 +19,7 @@ verify: all v8-check reality
 build: numbers builtins
 
 test:
-	node --test test/check.test.ts test/tiers.test.ts
+	node --test test/check.test.ts test/tiers.test.ts test/provenance.test.ts
 
 lint:
 	npx tsc --noEmit

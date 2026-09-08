@@ -4,6 +4,14 @@ Where jitmax does not work, where its numbers do not apply, and what its own
 measurements could not answer. Nothing here is a roadmap item. Every entry is a
 statement about the tool as it ships today.
 
+- **Builder locations are representative, not complete.** The source query
+  shares the bounded receiver-flow analysis. It coalesces same-key literals
+  and array origins, and can stop on unknown inputs, cycles or its budget.
+  A source location does not prove that its value reaches a site at runtime.
+  `--verbose` reveals all locations the query retained, not hidden allocations
+  or paths the query could not follow. Zod's `prefixIssues` trial locates the
+  read but no builder through its cyclic issue flow.
+
 - These ratios come from a microbenchmark, a small speed test, on one machine
   (Node v22.23.2, V8 12.4). They show that a pattern *can* cost that much. They
   do not say it costs that much in your workload.

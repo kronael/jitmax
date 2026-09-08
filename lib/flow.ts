@@ -52,12 +52,13 @@ export interface Res {
 // when it exists and can be walked; `origins` and `unknown` are the counted
 // answer either way.
 export interface Traced {
-  origins: Array<{ name: string; follow: TS.Node | undefined }>;
+  origins: Array<{ name: string; node: TS.Node; follow: TS.Node | undefined }>;
   unknown: string[];
 }
 
 export interface Flow {
   receiver(call: TS.CallExpression | TS.NewExpression): Traced;
+  sources(node: TS.Node, elements?: boolean): Res;
 }
 
 export interface Query {
@@ -1044,17 +1045,19 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
       res = w.valueOf(callee, q);
     }
 
-    const origins: Array<{ name: string; follow: TS.Node | undefined }> = [];
+    const origins: Traced['origins'] = [];
     for (const o of res.origins.values()) {
       if (method === undefined) {
         // A bare call: only a function origin is a body to follow, and a
         // non-function origin says nothing about the call target.
-        if (o.kind === 'function') origins.push({ name: o.name, follow: bodyOf(ts, o.node) });
+        if (o.kind === 'function') {
+          origins.push({ name: o.name, node: o.node, follow: bodyOf(ts, o.node) });
+        }
         continue;
       }
       if (o.kind === 'function') continue;
       if (!carries(ts, o, method)) continue;
-      origins.push({ name: o.name, follow: methodBody(o, method, q) });
+      origins.push({ name: o.name, node: o.node, follow: methodBody(o, method, q) });
     }
     const unknowns = [...res.unknown];
     // A cycle-cut walk may have dropped origins flowing around the loop, so
@@ -1090,7 +1093,13 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     return bodyOf(ts, fns[0]!.node);
   }
 
-  return { receiver };
+  function sources(node: TS.Node, elements = false): Res {
+    const q: Query = { budget: VISIT_BUDGET, stack: new Set(), reading: new Set() };
+    const res = w.valueOf(node, q);
+    return elements ? elementsOf(w, res, q) : res;
+  }
+
+  return { receiver, sources };
 }
 
 // Which parameter of an array callback holds an ELEMENT. Not shared.ts's

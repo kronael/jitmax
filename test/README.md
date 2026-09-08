@@ -3,18 +3,19 @@
 What the suite guards, and how to run one test.
 
 ```sh
-make test    # 182 unit tests, including the must-stay-silent cases
+make test    # 191 unit tests, including the must-stay-silent cases
 node --test --test-name-pattern '<name>' test/check.test.ts   # one test
-node --test test/check.test.ts test/tiers.test.ts             # what make test runs
+node --test test/check.test.ts test/tiers.test.ts test/provenance.test.ts
 ```
 
 There is no build step. Node runs the TypeScript directly, and a test file is
 run by name.
 
-## The two files
+## The test files
 
 `test/check.test.ts` holds the checker's tests and every register described
 below. `test/tiers.test.ts` holds the tier diagnostic's tests.
+`test/provenance.test.ts` checks representative builder sources and tracing limits.
 `test/fixtures/` holds the TOML config a test loads and a call chain longer
 than the walk's cap, which is how the truncation contract is exercised.
 

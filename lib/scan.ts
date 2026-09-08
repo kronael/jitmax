@@ -36,6 +36,7 @@ export interface Site {
 export interface Dispatch {
   count: number;
   names: string[];
+  sources: Array<Site & { name: string }>;
   unknown: string[];
   recv: string;
   method: string;
@@ -91,6 +92,7 @@ export interface Mark extends Site {
   name: string;
   node: TS.SignatureDeclaration;
   sf: TS.SourceFile;
+  flow: Flow | undefined;
   // The annotated function first, then every callee we could follow into. This
   // is the closed world: njit compiles the whole call tree, so the rules run
   // over the whole call tree.
@@ -249,6 +251,7 @@ function newMark(
     name: nameOf(ts, node),
     node,
     sf,
+    flow: undefined,
     reached: [],
     escapes: [],
     platform: 0,
@@ -775,6 +778,10 @@ function reach(
                       count: r.origins.length,
                       located: r.origins.filter((o) => o.follow !== undefined).length,
                       names: r.origins.map((o) => o.name).slice(0, 6),
+                      sources: r.origins.map((origin) => ({
+                        ...at(origin.node.getSourceFile(), origin.node),
+                        name: origin.name,
+                      })),
                       unknown: r.unknown.slice(0, 2),
                       recv: prop ? prop.expression.getText(body.sf) : text,
                       method: prop ? prop.name.text : '',
@@ -908,6 +915,7 @@ export function scan(
     mark.lowered = lowered;
     mark.followed = followed;
     mark.truncated = truncated;
+    mark.flow = flow;
     for (const call of calls) untyped.set(siteKey(call), call);
   }
   // Only the files the walk actually read. A module nothing annotated imports

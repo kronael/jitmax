@@ -46,9 +46,18 @@ that is a parameter leads to every visible call site of its function; an
 argument is a local, a field or another parameter, and each is followed to an
 allocation — an object literal, a `new`, a factory return — to a fixpoint. That
 is ordinary 0-CFA: a flow analysis that gives each variable one set of possible
-origins for the whole program, without tracking the path taken to reach it. It
-undercounts and never overcounts, which is why five origins is an error and
-four is a note.
+origins for the whole program, without tracking the path taken to reach it.
+These are static possibilities, not a runtime map count: branches can exclude
+origins from a particular call, while coalescing and analysis limits can omit
+others. Detection uses its existing thresholds; source metadata does not alter them.
+
+**Locate sources.** Each scanned mark holds the program's shared `Flow`.
+After scanning finishes, megamorphic rules query `Flow.sources` through the
+same `valueOf` and `elementsOf` walkers, with their existing cache and budgets.
+Receiver origins also carry their existing source nodes. Classes point to
+class declarations; literal and array identities retain representative nodes.
+Cyclic, unknown and exhausted queries stay labelled as partial. No second
+flow analysis is built for diagnostic locations.
 
 **Detect.** Every rule is one file in `lib/rules/`, holding its detector, its
 `EVIDENCE` and its name together. `lib/rules/index.ts` is the ONE register
@@ -57,11 +66,14 @@ it — and `lib/rules/shared.ts` is what more than one of them needs. Each rule
 matches inside a single body; the walk widens where the rules are applied and
 does not widen what one rule can see (`docs/limits.md`).
 
-**Report.** `lib/report.ts` prints one finding per site, its fix and the note
+**Report.** `lib/report.ts` prints one finding per site, its next step and the note
 under it, the sweep that priced the rule, and every `known defect` code the
 rule carries — what each code says is printed once, after the findings. It also
 prints what the run could not check: calls into the platform, calls lowered to
 inline code, and how many findings a config suppressed and by what.
+Rules attach related source locations through one field. The report shows five
+per finding by default and all available locations with `--verbose`. This is a
+display limit, separate from the flow walk's analysis limits.
 
 ## Which calls are not holes
 
