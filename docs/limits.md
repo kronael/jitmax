@@ -9,6 +9,10 @@ Where jitmax does not work, where its numbers do not apply, and what its own
 measurements could not answer. Nothing here is a roadmap item. Every entry is a
 statement about the tool as it ships today.
 
+References to `BUGS.md` name the internal issue history in the full Git clone.
+That queue is not installed. The limits below and the report's defect legend
+explain the caveats without it.
+
 - **Builder locations are representative, not complete.** The source query
   shares the bounded receiver-flow analysis. It coalesces same-key literals
   and array origins, and can stop on unknown inputs, cycles or its budget.
@@ -60,8 +64,8 @@ statement about the tool as it ships today.
   with `append = (a, x) => [...a, x]` next to it, is a loop in one body and a
   copy in another, and no rule here joins them, even though the walk reads both
   files. Hoisting the measured pattern into a helper silences the tool.
-  `BUGS.md` TC-43 holds the two forms this still misses and what closing them
-  would take.
+  `chained-allocation` also misses stages split across local bindings, such as
+  `const doubled = xs.map(f); const kept = doubled.filter(g)`. Both gaps are TC-43.
 - `megamorphic-elements` used to report from the parameter's type alone, so a
   function whose only contact with the array was `rows.length` triggered it —
   46 of vue's 46 findings were that shape, and 38 of them survived nothing else.

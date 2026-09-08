@@ -7,6 +7,9 @@ is blocked by TC-133. Bun runs the checker; these rules concern V8 performance.
 What each of the eight rules detects, what makes it fire, where it stays quiet,
 and what the fix is.
 
+`TC-` codes identify known defects. The report explains each cited code; the
+full Git clone's `BUGS.md` contains the internal issue history, not an installed guide.
+
 Eight rules ship. The first six check every function in the call tree. The
 last two report where the walk stops — one for a callee with no body anywhere,
 one for a call the walk cannot bind to a single implementation. A *hidden class*
@@ -458,7 +461,7 @@ Both layers accept a rule name such as `megamorphic-elements` or a defect code
 such as `TC-9`, which selects every rule carrying that code. In TOML, `false`
 disables the selection; `true` does not suppress it. In an annotation, prefix the
 name with `-` to disable it. See the `known defects` legend after the findings
-or `BUGS.md` for what a code names. An unknown name or code fails with exit `2`, the same as a
+for what a code names. An unknown name or code fails with exit `2`, the same as a
 missing path. Suppression is never silent: the report always says how many
 findings were removed and by what, e.g.
 `3 findings suppressed (TC-9, megamorphic-elements)` — a clean run that is

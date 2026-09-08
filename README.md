@@ -16,8 +16,8 @@ The `bunx` repository command needs no npm publication, release tag or build.
 Bun runs the checker; findings concern V8, not Bun's JavaScriptCore engine.
 
 The public repository currently exposes no Git refs and its download returns
-404. [TC-133](BUGS.md) tracks that access blocker. Until it has an accessible
-Git ref, use the [existing-checkout route](#use-an-existing-checkout) below.
+404. Until it has an accessible Git ref, use the
+[existing-checkout route](#use-an-existing-checkout) below.
 Every `bunx github:kronael/jitmax` command in these docs needs that access.
 
 Save this as `hot.ts` in your TypeScript project's root:
@@ -135,7 +135,7 @@ make verify   # also check pinned V8 citations and the Radash checkout
 ```
 
 `make build` regenerates evidence artifacts; it is not required to run jitmax.
-See [tests](test/README.md) for coverage and [development](ARCHITECTURE.md#development) for verification prerequisites.
+See [development](ARCHITECTURE.md#development) for verification prerequisites; use a full Git clone for development.
 
 GPL-2.0-only; see [LICENSE](LICENSE). The vendored radash, remeda, es-toolkit
 and zod functions in `examples/` retain their MIT licences, copyright lines,
@@ -146,4 +146,4 @@ affiliated with, endorsed by, or sponsored by Google.
 Status: v0.14.1, single machine, eight rules.
 
 Read [architecture](ARCHITECTURE.md) for internals and [benchmarks](bench/README.md) for measurements and reruns.
-See [examples](examples/README.md) for real library trials and rewrites, and [BUGS.md](BUGS.md) for open issues.
+See [examples](examples/README.md) for real library trials and rewrites, and [limits](docs/limits.md) for known gaps.

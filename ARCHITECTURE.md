@@ -146,13 +146,21 @@ run the TypeScript under `node_modules`, so an unbuilt Git install needs neither
 `dist/` nor permission to run `prepare`. Bun's
 [shebang rules](https://bun.sh/docs/pm/bunx#shebangs) and
 [lifecycle policy](https://bun.sh/docs/pm/lifecycle) explain the runtime and
-script handling. Public repository access is tracked in `BUGS.md` TC-133.
+script handling. The [quick start](README.md#quick-start) states the public access blocker.
 
 The shim uses `dist/bin/jitmax.js` when an installed copy contains it; otherwise
 it uses `bin/jitmax.ts`. A checkout always runs the source. npm's `prepare`
 builds `dist/` for compiled packages. Node can run such a package explicitly
 through `node bin/cli.js`; it cannot strip types under `node_modules`.
 For development, `node bin/jitmax.ts` needs Node `>=22.18` and no build step.
+
+Git source archives contain six guides: the README, architecture, rules, limits,
+examples and benchmarks. `.gitattributes` excludes all other Markdown and the
+internal `.claude`, `.diary` and `.ship` directories. `package.json` lists the
+same guides for package archives. Runtime sources, the rule preset and licences
+remain available. Git source archives also keep the examples and raw evidence.
+[Git export rules](https://git-scm.com/docs/git-archive#ATTRIBUTES) affect archives,
+not full clones or installers that clone Git dependencies directly.
 
 ## The derived artifacts
 
@@ -172,7 +180,7 @@ its data disagree.
 
 ## Development
 
-Run these commands inside the jitmax checkout after the
+Run these commands inside a full Git clone of jitmax after the
 [development setup](README.md#development-and-licence). Node `>=22.18` runs
 the tests and benchmarks; Bun is only required for the Bun launcher workflow.
 
@@ -192,10 +200,10 @@ make meme     # re-render the launch loop from demo/meme/
 
 `make verify` also needs the [pinned V8 source](bench/README.md#what-v8s-source-says)
 and a Radash checkout at the revision used by CI. The checkout steps and pin
-are in [CLAUDE.md](CLAUDE.md) and [.github/workflows/ci.yml](.github/workflows/ci.yml).
+are in `.github/workflows/ci.yml` in the full clone.
 Missing checkouts fail verification; they are not needed for ordinary scans.
 
-`CLAUDE.md` holds the repository's own rules and the measurement protocol in
-full. `BUGS.md` holds the open queue, and the entries commissioned adversarial
-reviews produced — each reviewer told to argue the tool is worthless, every
-finding re-run here before it was written down.
+The full clone also contains the contributor instructions in `CLAUDE.md`, the
+issue queue in `BUGS.md`, and the test guide in `test/README.md`. These internal
+notes are not installed guides. Findings explain their cited defect codes in
+the report; [known limits](docs/limits.md) describe the practical gaps.

@@ -2,7 +2,7 @@
 
 To scan your own code, use the [README quick start](../README.md#quick-start).
 It covers Bun and the checkout fallback for the public GitHub access blocker,
-TC-133. The commands below are for reproducing evidence in a jitmax checkout.
+TC-133. The commands below reproduce evidence in a full Git clone of jitmax.
 Complete the [development setup](../README.md#development-and-licence) first.
 Benchmarks run on Node/V8, even when you run the checker with Bun.
 
@@ -13,8 +13,9 @@ cost on this machine, and **a V8 citation**, which says what mechanism in the
 engine exists. Neither substitutes for the other. A benchmark cannot say why; a
 citation cannot say what it costs. Both are below, and both are re-runnable.
 
-The protocol these sweeps obey is written out in full, rule by rule, in
-`CLAUDE.md` under "The measurement protocol". `bench/driver.ts` implements it,
+The full Git clone's `CLAUDE.md` documents the measurement protocol.
+`BUGS.md` references also name internal notes in that clone; neither note ships
+in install archives. `bench/driver.ts` implements the protocol,
 `bench/sweeps.ts` holds the cells, `bench/run.ts` is the runner, and
 `bench/kernel.ts` is the contract a workload meets.
 
@@ -235,4 +236,5 @@ Three of these say something the benchmark alone could not:
 
 `make v8-check` verifies every citation above against a pinned checkout and
 fails with the drifted line. It exits non-zero when the checkout is missing
-rather than reporting success. `CLAUDE.md` has the three clone commands.
+rather than reporting success. The full clone's `.github/workflows/ci.yml`
+contains the checkout commands and reads the V8 revision from the pin above.

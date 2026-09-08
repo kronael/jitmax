@@ -5,6 +5,9 @@ the checkout fallback. Public GitHub commands are blocked by TC-133 until a
 repository ref is accessible. Detection trials and measured speedups are
 separate results below.
 
+`BUGS.md` references point to the internal issue history in the full Git clone.
+The installed guides retain each trial's result and limits without that queue.
+
 Four functions, vendored verbatim from published libraries, with the fix
 jitmax printed on each and nothing else. `diff` a `.before.ts` against its
 `.after.ts` and the fix is the entire change.
@@ -167,7 +170,7 @@ twelfth, marked by hand a round earlier, and it took fixing three classes of
 false positive to get that run from eight findings to one. The
 ratio is before/after, so above 1.0 the shipped code costs that much more and
 **below 1.0 the fix made it slower**. Three whole sweeps per cell, per the
-measurement protocol's rule 13 in `CLAUDE.md`, all three printed.
+measurement protocol's rule 13 in the full clone's `CLAUDE.md`, all three printed.
 
 **The whole call, which is what a caller gets:**
 

@@ -72,8 +72,10 @@ this file is compared against the tests the three files actually define.
 
 **The packaging contract.** The linked executable selects Bun, which can run
 an unbuilt Git install from TypeScript. An installed copy with `dist/` runs
-compiled JavaScript; a checkout runs source. The suite checks the entry point
-and package contents (`BUGS.md` TC-72, TC-130). Public GitHub access needs a
+compiled JavaScript; a checkout runs source. The suite checks the entry point,
+package guide list and an actual Git archive. It requires runtime sources,
+licences and the preset, and rejects internal notes. This test guide belongs
+to the full clone, not the install archive. Public GitHub access needs a
 separate `bunx github:kronael/jitmax --help` check; TC-133 tracks that blocker.
 
 ## What it does not do

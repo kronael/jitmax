@@ -1,0 +1,10 @@
+*.md export-ignore
+/README.md -export-ignore
+/ARCHITECTURE.md -export-ignore
+/docs/rules.md -export-ignore
+/docs/limits.md -export-ignore
+/examples/README.md -export-ignore
+/bench/README.md -export-ignore
+/.claude export-ignore
+/.diary export-ignore
+/.ship export-ignore

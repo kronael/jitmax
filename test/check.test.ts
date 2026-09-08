@@ -2969,8 +2969,8 @@ test('every published surface states this version and this many rules', () => {
 
 /**
  * Checks the installed executable contract using the package manifest.
- * Assumes source and build configuration ship together.
- * Verifies Bun selects the source runtime and Node builds remain available.
+ * Assumes Git and tar are available in the development checkout.
+ * Verifies runtime, licences and user guides ship without internal notes.
  */
 test('installed copies support Bun source and explicit Node builds', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as {
@@ -2991,10 +2991,34 @@ test('installed copies support Bun source and explicit Node builds', () => {
 
   // Node loads the compiled entry emitted by prepare and included in packs.
   assert.ok(pkg.files.includes('dist/'), 'package.json files no longer ships dist/');
-  for (const file of ['examples/megamorphic.toml', 'BUGS.md']) {
+  const guides = DOCS.filter((file) => file !== path.join('test', 'README.md'))
+    .map((file) => file.split(path.sep).join('/'));
+  const required = ['bin/cli.js', 'bin/jitmax.ts', 'lib/rules/index.ts',
+    'package.json', 'LICENSE', 'examples/LICENSE-MIT',
+    'examples/megamorphic.toml', 'examples/config-check.ts',
+    'bench/shape-sets.jl', 'demo/demo.gif', ...guides];
+  for (const file of ['examples/megamorphic.toml', 'examples/LICENSE-MIT', ...guides]) {
     assert.ok(pkg.files.includes(file), `package.json files must ship ${file}`);
     assert.ok(fs.existsSync(path.join(root, file)), `${file} must exist`);
   }
+  assert.deepStrictEqual(pkg.files.filter((file) => file.endsWith('.md')).sort(), guides.sort());
+  assert.ok(!pkg.files.includes('docs/'), 'package docs must use the explicit guide list');
+  for (const file of ['bin/', 'lib/', 'LICENSE', 'demo/demo.gif'])
+    assert.ok(pkg.files.includes(file), `package.json files must ship ${file}`);
+  const archive = spawnSync('git', ['archive', '--worktree-attributes', 'HEAD'], {
+    cwd: root, maxBuffer: 16 * 1024 * 1024,
+  });
+  assert.strictEqual(archive.status, 0, String(archive.stderr || archive.error));
+  const listing = spawnSync('tar', ['-tf', '-'], {
+    input: archive.stdout, encoding: 'utf8',
+  });
+  assert.strictEqual(listing.status, 0, String(listing.stderr || listing.error));
+  const files = listing.stdout.trim().split('\n');
+  assert.deepStrictEqual(files.filter((file) => file.endsWith('.md')).sort(), guides.sort());
+  assert.ok(!files.some((file) => /^\.(?:claude|diary|ship)(?:\/|$)/.test(file)),
+    'source archives must exclude internal working notes');
+  for (const file of required)
+    assert.ok(files.includes(file), `source archives must retain ${file}`);
   assert.match(pkg.scripts.prepare ?? '', /tsconfig\.build\.json/);
   const build = JSON.parse(fs.readFileSync(path.join(root, 'tsconfig.build.json'), 'utf8')) as {
     compilerOptions: { noEmit: boolean; outDir: string };

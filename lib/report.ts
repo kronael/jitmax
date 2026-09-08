@@ -402,7 +402,7 @@ export function render(
   if (cited.size > 0) {
     const codes = [...cited].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
     const width = Math.max(...codes.map((code) => code.length));
-    out.push('', '  known defects cited above, from BUGS.md:');
+    out.push('', '  known defects cited above:');
     for (const code of codes) {
       out.push(...wrap(`    ${code.padEnd(width)}  `, DEFECT[code] ?? code));
     }
