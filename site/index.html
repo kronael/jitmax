@@ -25,21 +25,25 @@
 .hub-container td { font-variant-numeric: tabular-nums; }
 .hub-container table { display: block; overflow-x: auto; }
 .cap { font-size: 0.9em; opacity: 0.75; margin-top: -0.8em; }
+.hub-container .back-btn { position: static; display: inline-block;
+                           margin-bottom: 1em; }
 </style>
 </head>
 <body>
 
-<a href="/pub/" class="back-btn">&larr; back</a>
 <button class="theme-toggle" aria-label="Toggle theme"></button>
 
 <div class="hub-container">
 
+<a href="/pub/" class="back-btn">&larr; back</a>
 <h1>jitmax</h1>
 <p class="hub-subtitle">mark the function you need fast, and find out what is wrong with it</p>
 
-<video autoplay loop muted playsinline poster="jitmax-card.png"
+<video id="demo" src="jitmax.mp4" controls muted playsinline
+       preload="metadata" poster="jitmax-card.png"
+       onerror="document.getElementById('media-error').hidden = false"
+       onloadeddata="document.getElementById('media-error').hidden = true"
        aria-label="Three parts: a comic panel, a real terminal recording, and the word V8 with the measured cost.">
-  <source src="jitmax.mp4" type="video/mp4">
   <img src="jitmax.gif" alt="Three parts: a comic panel, a real terminal recording, and the word V8 with the measured cost.">
 </video>
 
@@ -48,6 +52,12 @@
   against a function radash ships, vendored into <code>examples/</code>
   unchanged. <code>make meme</code> rebuilds the whole film from a clean
   checkout.
+</p>
+
+<p id="media-error" role="alert" hidden>
+  The recording could not load.
+  <button type="button" onclick="document.getElementById('demo').load()">Retry video</button>
+  or <a href="#use">follow the text guide</a>.
 </p>
 
 <div class="tldr-box">
@@ -72,12 +82,11 @@
 </p>
 
 <p>
-  One line can keep four shapes in its head. Send a fifth through and the bet is
-  off — V8 throws the specialised version away and goes back to looking the
-  answer up, every call, forever. Your code still returns exactly what it
-  returned before. There is no error, no warning, no log line. The function
-  simply costs more than it did last week, and the profiler points at a line
-  that looks completely ordinary.
+  At the measured sites, V8 caches up to four object shapes. A fifth can move
+  the site to a megamorphic lookup path. The JavaScript still returns the same
+  result, so a functional test does not reveal that cost. jitmax looks for
+  source patterns that can cause it; only a profile and benchmark can show
+  whether it matters in your workload.
 </p>
 
 <p>
@@ -88,7 +97,7 @@
   review.
 </p>
 
-<h2>Use it</h2>
+<h2 id="use">Use it</h2>
 
 <p>
   Run jitmax from the GitHub repository with <code>bunx</code>.
@@ -153,20 +162,55 @@ bun "/path/to/jitmax/bin/cli.js" hot.ts</code></pre>
   under the working directory.
 </p>
 
+<h3>Focus on megamorphic reads and calls</h3>
+
 <p>
-  For megamorphic reads and calls, save the
-  <a href="https://github.com/kronael/jitmax/blob/HEAD/examples/megamorphic.toml">preset</a>
-  as <code>megamorphic.toml</code> in your project. It disables the other six
-  rules; coverage notices still apply.
+  Save this as <code>megamorphic.toml</code> in your project's root.
+  It disables the other six rules; coverage notices still apply.
 </p>
+
+<pre><code>[rules]
+megamorphic-elements = true
+megamorphic-dispatch = true
+accumulating-spread = false
+chained-allocation = false
+allocating-select = false
+delete-property = false
+closed-world = false
+interface-dispatch = false</code></pre>
+
+<p>Run the checker with that config:</p>
 
 <pre><code>bunx github:kronael/jitmax megamorphic.toml hot.ts</code></pre>
 
 <p>
-  Follow the <a href="https://github.com/kronael/jitmax/blob/HEAD/docs/rules.md#turning-a-rule-off">TOML example</a>
-  to select rules, or the <a href="https://github.com/kronael/jitmax/blob/HEAD/ARCHITECTURE.md#profile-mode-in-detail">CPU profile guide</a>
-  to select hot functions without annotations. Recording a V8 profile needs Node.
+  To select different rules, edit the same table: <code>false</code> disables
+  a rule and <code>true</code> leaves it enabled. Omitted rules stay enabled.
+  The report states what you suppressed. An unknown rule name exits <code>2</code>.
 </p>
+
+<h3>Select functions from a CPU profile</h3>
+
+<p>
+  Record a V8 CPU profile with Node from your application's root.
+  Replace <code>your-workload.js</code> with its JavaScript entry point and
+  <code>src</code> with its source directory. This route needs no annotations.
+</p>
+
+<pre><code>node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
+bunx github:kronael/jitmax run.cpuprofile src</code></pre>
+
+<p>
+  The default selects functions with at least 1% sampled self time.
+  To change that threshold, add <code>[profile]</code> and
+  <code>min_self_pct = 2</code> on separate lines in your TOML file, then run
+  <code>bunx github:kronael/jitmax megamorphic.toml run.cpuprofile src</code>.
+  Transformed JavaScript needs source maps beside the generated files.
+  The report names unmatched frames and exits <code>1</code> when coverage is
+  incomplete. Pass at most one TOML file and one CPU profile.
+</p>
+
+<h3>Read a finding</h3>
 
 <p>
   Each finding names the source, a <code>next:</code> step and the sweep behind
@@ -203,10 +247,17 @@ bun "/path/to/jitmax/bin/cli.js" hot.ts</code></pre>
 <h2>What it looks for</h2>
 
 <p>
-  Eight rules ship. The third column carries the argument: the microbenchmark
-  ratio first, then what the same fix did to somebody else's function. The
-  second number is always smaller than the first, and three times it is below
-  one.
+  Eight rules ship. The third column separates microbenchmarks from rewrites
+  of real library functions. A faster isolated operation can still make its
+  caller slower.
+</p>
+
+<p>
+  Each ratio is <strong>before time divided by after time</strong>.
+  Above 1 means the rewrite took less time; below 1 means it took more time.
+  A ratio of 1 means equal time. Build time, later reads and the full operation
+  are different measurements. The ranges below apply only to the measured
+  inputs, engine and hardware, not to your function.
 </p>
 
 <table>
@@ -219,10 +270,9 @@ bun "/path/to/jitmax/bin/cli.js" hot.ts</code></pre>
       <td>V8 remembers four. A fifth makes it look up every time.</td>
       <td>3.4&ndash;11.3x on reads &mdash; highest in L1, lowest at RAM size,
           where memory bandwidth dominates instead. Two to four shapes cost
-          0.95&ndash;1.47x, so the step really is at the fifth. This number is
-          one day old: the rule used to quote a sweep that varies key
-          <em>order</em> &mdash; five V8 maps, and one TypeScript type &mdash;
-          which is a program the rule stays silent on.</td>
+          0.95&ndash;1.47x. The rule counts declared property sets, not runtime
+          V8 maps. Objects with the same keys in different insertion orders
+          can have different maps while this rule stays silent.</td>
     </tr>
     <tr>
       <td><code>delete o.k</code></td>
@@ -245,10 +295,9 @@ bun "/path/to/jitmax/bin/cli.js" hot.ts</code></pre>
     <tr>
       <td><code>.map(f).filter(g)</code></td>
       <td>the first array is built, then thrown away</td>
-      <td>1.44&ndash;1.52x. A week ago this page carried a figure four times
-          larger, taken from a cell whose three sweeps read 6.48x, 6.58x and
-          7.51x. No value sits inside all three intervals, so the cell is
-          withdrawn and what is left is the size that replicates. On zod's
+      <td>1.44&ndash;1.52x. A separate cell measured 6.48x, 6.58x and
+          7.51x across three sweeps. Their intervals share no value, so that
+          cell is withdrawn. On zod's
           <code>cleanEnum</code> the same fix is worth
           <strong>1.10&ndash;1.12x at a 16-member enum, and nothing this
           project will claim at 256</strong>: that cell measured 1.03&ndash;1.10x,
@@ -258,12 +307,11 @@ bun "/path/to/jitmax/bin/cli.js" hot.ts</code></pre>
     <tr>
       <td><code>x = Lib.min(x, y)</code> in a loop</td>
       <td>a fresh object every pass, even when nothing changed</td>
-      <td>2.60&ndash;2.89x. <strong>It fires at 29 distinct sites across 2953 real
-          functions in 22 codebases, and not once on that shape.</strong> Every
-          finding is a value being advanced or wrapped &mdash; it changes on
-          every pass, so &ldquo;compare first&rdquo; saves nothing. At that
-          size the absence stops being a gap in the search.
-          <code>BUGS.md</code> TC-18.</td>
+      <td>2.60&ndash;2.89x. The recorded survey found allocations, but none
+          matched the benchmark's unchanged-value case. Values advanced or
+          were wrapped on every pass, so comparing first saved no allocation.
+          Treat the rewrite as conditional advice, not a demonstrated win
+          on those programs. <code>BUGS.md</code> TC-18.</td>
     </tr>
     <tr>
       <td>a method called on five classes</td>
@@ -280,8 +328,8 @@ bun "/path/to/jitmax/bin/cli.js" hot.ts</code></pre>
       <td>4.64&ndash;4.95x for a callee past V8's inlining budget. The rule makes
           no claim about your callee, and says so under every finding as
           <code>known defect: TC-33</code>. Node&rsquo;s own API is not among its
-          findings at all &mdash; 54,687 calls into the platform are counted for
-          the run and never listed, because nobody can inline
+          findings at all &mdash; calls into the platform are counted for
+          the run and never listed. The checker cannot follow
           <code>path.join</code>. Nor is a method read off a value typed
           <code>any</code>: nothing resolves there, so the run reports what it
           could not see instead of naming a body it never found. Read it as
@@ -290,60 +338,52 @@ bun "/path/to/jitmax/bin/cli.js" hot.ts</code></pre>
     <tr>
       <td>a call through an interface</td>
       <td>the body is in the checkout; the walk just cannot tell which one runs</td>
-      <td>its own rule since v0.11.0. It used to be the loudest case of the row
-          above, which meant switching that row off also switched off the honest
-          &ldquo;no body anywhere&rdquo; finding. Together these two and the
-          dispatch row are <strong>98.6% of every finding</strong> across the
-          22-codebase survey &mdash; all three fail a run since 2026-08-31, which
-          is why the split matters more than the count: each is silenceable on
-          its own. The receiver&rsquo;s
+      <td>A coverage finding, not a cost estimate. It has its own rule name,
+          so you can suppress it without suppressing calls whose bodies are
+          absent. The receiver&rsquo;s
           origins are traced by dataflow, so a finding names the implementations
           that reach it instead of guessing from the type.</td>
     </tr>
   </tbody>
 </table>
 
-<h2>On two programs nobody calls fast</h2>
+<h2>Findings in real TypeScript programs</h2>
 
 <p>
-  Twelve utility libraries were surveyed the same way &mdash; cloned shallow,
-  annotated by rule and not by hand. Between them the flagship rule fired on
-  one function, and the sharpest cliff this project measured never fired at
-  all. A library is a pipeline; neither shape lives there. So the same run went
-  at two programs whose slowness is the reason other tools exist.
+  The recorded survey runs the checker on library and application checkouts,
+  with functions selected by <code>examples/annotate.js</code>.
+  The <a href="https://github.com/kronael/jitmax/blob/HEAD/examples/README.md#two-applications-and-the-rules-twelve-libraries-could-not-reach">examples survey</a>
+  holds the counts and run limits. In a checkout, read
+  <code>examples/README.md</code>. These are detection examples, not measured
+  speedups for those applications.
 </p>
 
 <p>
-  <strong>TypeScript 5.9.3</strong>, the compiler Microsoft is rewriting in Go
-  for speed: 465 functions annotated, <strong>five megamorphic-element
-  findings</strong> against ten in all twelve libraries. The widest is
-  <code>checker.ts:44260</code> &mdash; <code>checkUnusedIdentifiers</code>
+  <strong>TypeScript 5.9.3:</strong>
+  <code>checker.ts:44260</code>, <code>checkUnusedIdentifiers</code>,
   reads <code>node.kind</code> off every element of a
   <code>PotentiallyUnusedIdentifier[]</code>, and that union is
-  <strong>20 distinct property sets at one load site</strong>, against the four
-  V8 caches. A union member is not a V8 map, and that caveat holds here; 20
-  against 4 is still the widest gap this survey has found.
+  <strong>20 distinct property sets at one load site</strong>.
+  A union member is not a runtime V8 map. Profile the actual read before
+  deciding whether to change the representation.
 </p>
 
 <p>
-  <strong>typescript-eslint 8.67.0</strong>, the linter every speed-first
-  rewrite benchmarks itself against: 311 functions annotated, and
-  <strong>megamorphic-dispatch fired for the first time on code this project
-  did not write</strong> &mdash; <code>no-misused-promises.ts:543</code> calls
+  <strong>typescript-eslint 8.67.0:</strong>
+  <code>no-misused-promises.ts:543</code> calls
   <code>tsNode.name.getText()</code> on a name that reaches it as six distinct
-  property sets. Its plainest finding needs no caveat at all:
+  property sets. This is a method call, not just a property read.
   <code>typescript-estree/src/ast-converter.ts:48</code> deletes
-  <code>range</code> and <code>loc</code> from <em>every node of the converted
-  AST</em>, and every rule that reads those nodes afterwards reads them out of
-  dictionary mode.
+  <code>range</code> and <code>loc</code> from converted AST nodes when the
+  parser is asked not to emit them. Any rewrite must preserve that absence,
+  not merely assign <code>undefined</code>.
 </p>
 
 <p>
-  It also reported <strong>4140 findings</strong> on that linter, and 4115 of
-  them are one rule naming an import the program could not resolve, because the
-  checkout had no dependencies installed. That is a defect in this tool, it is
-  filed as <code>BUGS.md</code> TC-51, and it is why these two runs are quoted
-  beside the twelve-library survey rather than folded into it.
+  Those application checkouts had no dependencies installed. Their unresolved
+  imports produce coverage findings, not evidence that the imports are slow.
+  Install your project's dependencies before scanning. The recorded run
+  counts describe those checkouts and checker revisions, not a fresh audit.
 </p>
 
 <h2>Why the numbers are worth anything</h2>
@@ -360,57 +400,41 @@ bun "/path/to/jitmax/bin/cli.js" hot.ts</code></pre>
   </li>
   <li>
     Two rules also record a <strong>real cost they deliberately do not
-    report</strong> — a different thing, filed under the same heading until
-    recently. An object carrying its own function costs 3.5&ndash;15.8x from the
+    report</strong>. An object carrying its own function costs 3.5&ndash;15.8x from the
     <em>second</em> shape, and no declared type separates that from the case
-    where four are free. The rule misses it rather than guessing, and now says
-    which of the two it is doing.
+    where four are free. The rule states that detection limit.
   </li>
   <li>
-    Two rules now <strong>read their own limit instead of printing it</strong>.
-    The flagship rule used to report a megamorphic load from a parameter&rsquo;s
-    type without checking that anything read a property off it: on vue that was
-    46 findings, and 38 of them were functions touching nothing but
-    <code>rows.length</code>. It now requires the read, and fires at
-    <strong>eight distinct lines</strong> in 2,953 annotated functions across 22
-    codebases &mdash; five in the TypeScript compiler, two in vue, one in zod. The same survey caught that fix overshooting &mdash;
-    reading the receiver&rsquo;s type off <code>(iss as any).path</code>
-    returned <code>any</code>, which silenced zod&rsquo;s ten real findings
-    along with the 38 &mdash; so the cast is unwrapped and they are back. The
+    The element rule <strong>requires a property read off an element</strong>.
+    Reading only <code>rows.length</code> does not trigger it.
+    A cast such as <code>(iss as any).path</code> does not hide the underlying
+    receiver type from that check. The
     chaining rule stays silent when a <code>.slice(0,&nbsp;10)</code> in the
     chain bounds it three orders of magnitude below the smallest size its sweep
     covers, with the threshold read off the sweep rather than typed in.
   </li>
   <li>
-    A finding is counted <strong>once per line, not once per caller</strong>.
-    A line reached from 28 annotated functions used to be 28 findings, so the
-    headline reported the call-graph fan-in rather than the work. The TypeScript
-    compiler went from 90 errors to 24. The fan-in is still printed, on the
-    finding, because a line reached by 28 callers is a better fix than one
-    reached by one.
+    A finding is counted <strong>once per source site, not once per caller</strong>.
+    The report also names how many annotated functions reach it.
   </li>
   <li>
     A finding carries <strong>no cost</strong>. It names the rule, the fix and
     the sweep. The ratio depends on the size of your data, the annotation does
-    not carry that, and a number printed at a site that cannot support one is
-    the defect this project spent a week finding in itself.
+    not carry that, and the checker does not time your function.
   </li>
   <li>
     Every cell is measured three whole times. A cell whose three sweeps share no
-    common value is withdrawn where the number is made, not noted in a log —
-    22 cells are withdrawn today, and two of them were headline numbers on this
-    page a week ago.
+    common value is withdrawn from published aggregates. Its raw observations
+    remain available in <code>bench/*.jl</code>.
   </li>
   <li>
-    A sweep refuses to start on a busy machine, and until 2026-08-21 that gate
-    was <strong>reading the wrong number</strong>. It watched the one-minute
-    load average, which on two cores was mostly the sweep&rsquo;s own children,
-    so it tripped on an idle machine and barely moved for a real tenant sitting
-    behind it. It now counts runnable threads outside the harness, read as each
-    row is written. The <strong>592 rows published above the old gate are
-    registered file by file in the test suite and withdrawn nowhere</strong>:
-    the old reading cannot say which of them had a tenant, only that it was not
-    answering the question. A new row over the reworked gate fails the build.
+    A sweep refuses to start when too many other threads are runnable.
+    Each row records the machine state and allowed load.
+    The corpus also contains measurements taken above a one-minute-load gate.
+    Those rows remain in the evidence; that reading cannot establish whether
+    another process competed with the benchmark. Read
+    <code>bench/README.md</code> and <code>docs/limits.md</code> for the protocol
+    and corpus limits.
   </li>
   <li>
     Every number here is read out of the raw timing rows, never typed by hand.
