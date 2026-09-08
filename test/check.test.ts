@@ -2967,11 +2967,12 @@ test('every published surface states this version and this many rules', () => {
   );
 });
 
-// The packaging contract, which nothing checked and which was broken for two
-// releases (BUGS TC-72, TC-130). Both halves are one-line settings a tidying
-// edit can undo silently, and neither shows up in a run from a clone — the
-// only place they are visible is somebody else's `npx`.
-test('an installed copy can run without a type stripper', () => {
+/**
+ * Checks the installed executable contract using the package manifest.
+ * Assumes source and build configuration ship together.
+ * Verifies Bun selects the source runtime and Node builds remain available.
+ */
+test('installed copies support Bun source and explicit Node builds', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as {
     bin: Record<string, string>;
     files: string[];
@@ -2979,18 +2980,16 @@ test('an installed copy can run without a type stripper', () => {
     peerDependencies: Record<string, string>;
   };
 
-  // Node refuses to strip types from any file under node_modules, so the entry
-  // point a package manager links has to be JavaScript. `bin/jitmax.ts` was
-  // that entry, and every installed copy died on its first line.
+  // Explicit Node invocation needs JavaScript under node_modules.
   const entry = pkg.bin.jitmax;
   assert.ok(entry.endsWith('.js'), `package.json bin.jitmax is ${entry}; Node cannot strip types under node_modules`);
   assert.ok(fs.existsSync(path.join(root, entry)), `package.json bin.jitmax names ${entry}, which does not exist`);
-  // The shim's fallback, which is what a clone and bun run.
+  assert.strictEqual(doc(entry).split('\n')[0], '#!/usr/bin/env bun',
+    'bunx must use Bun to run source under node_modules without prepare');
+  // Bun can load source when dependency lifecycle scripts are blocked.
   assert.ok(fs.existsSync(path.join(root, 'bin', 'jitmax.ts')));
 
-  // The compiled half: `prepare` emits it on pack and on a git install, and
-  // `files` is what carries it into the tarball. Either one missing leaves the
-  // shim with nothing to prefer and the install back where TC-72 found it.
+  // Node loads the compiled entry emitted by prepare and included in packs.
   assert.ok(pkg.files.includes('dist/'), 'package.json files no longer ships dist/');
   for (const file of ['examples/megamorphic.toml', 'BUGS.md']) {
     assert.ok(pkg.files.includes(file), `package.json files must ship ${file}`);

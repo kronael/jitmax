@@ -92,7 +92,7 @@ Record a profile and hand it over as a suffix-named positional argument:
 
 ```sh
 node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
-jitmax run.cpuprofile src
+bunx github:kronael/jitmax run.cpuprofile src
 ```
 
 Every function at or above `[profile] min_self_pct` of the profile's sampled
@@ -117,14 +117,21 @@ There is no static hotness estimate. An annotation selects a function by the
 user's judgment; a profile selects it by sampled self time. The report asks the
 user to profile and benchmark the caller before keeping a change.
 
-## How it ships
+## How it runs
 
-**An installed copy runs compiled JavaScript; a checkout runs the TypeScript.**
-Node refuses to strip types from any file under `node_modules`, so the `bin`
-entry is a JavaScript shim: it prefers `dist/`, which npm's `prepare` compiles
-into every packed and every git-installed copy, and falls back to
-`bin/jitmax.ts` where there is no `dist/` — a checkout, or bun, which reads
-TypeScript anywhere. A checkout still needs no build step. `BUGS.md` TC-72.
+`bunx github:kronael/jitmax` installs from the repository. The linked executable,
+`bin/cli.js`, requires Bun through its shebang. Bun follows that shebang and can
+run the TypeScript under `node_modules`, so an unbuilt Git install needs neither
+`dist/` nor permission to run `prepare`. Bun's
+[shebang rules](https://bun.sh/docs/pm/bunx#shebangs) and
+[lifecycle policy](https://bun.sh/docs/pm/lifecycle) explain the runtime and
+script handling. Public repository access is tracked in `BUGS.md` TC-133.
+
+The shim uses `dist/bin/jitmax.js` when an installed copy contains it; otherwise
+it uses `bin/jitmax.ts`. A checkout always runs the source. npm's `prepare`
+builds `dist/` for compiled packages. Node can run such a package explicitly
+through `node bin/cli.js`; it cannot strip types under `node_modules`.
+For development, `node bin/jitmax.ts` needs Node `>=22.18` and no build step.
 
 ## The derived artifacts
 

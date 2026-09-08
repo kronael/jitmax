@@ -200,6 +200,13 @@ Fresh user trial, 2026-09-07: `bunx github:kronael/jitmax` exited 1 with
 `GET https://codeload.github.com/kronael/jitmax/legacy.tar.gz/ - 404`.
 The documented checkout command did run the radash configuration example.
 
+Fresh user trial, 2026-09-08: `bunx github:kronael/jitmax --help` exits 1
+with the same codeload 404; `git ls-remote origin HEAD 'refs/heads/*'`
+returns no refs. A source archive without `dist/` installs through bunx and
+runs with the Bun shebang: help and clean input exit 0, a megamorphic finding
+exits 1, and missing input exits 2. This verifies source installation, not
+public GitHub access.
+
 - **Severity:** high
 - **Scope:** distribution and first contact
 - **Affected:** README, site, GitHub install

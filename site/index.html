@@ -91,11 +91,16 @@
 <h2>Use it</h2>
 
 <p>
-  Use Node <code>&gt;=22.18</code> and TypeScript <code>&gt;=5.0.0</code> with
-  the 5.x compiler API. In a jitmax checkout, install its dependencies once:
+  Use Bun and TypeScript <code>&gt;=5.0.0</code> with the 5.x compiler API.
+  Run jitmax from the GitHub repository with <code>bunx</code>.
+  It needs no npm publication or build step.
 </p>
 
-<pre><code>npm install</code></pre>
+<p>
+  The public repository currently exposes no Git refs and its download returns
+  404. TC-133 tracks that access blocker. The commands below need a reachable
+  repository before they can run.
+</p>
 
 <p>In your TypeScript project, mark the function:</p>
 
@@ -106,19 +111,39 @@ export function total(rows: { value: number }[]): number {
 
 <p>Run it from the root of your TypeScript repository:</p>
 
-<pre><code>node /path/to/jitmax/bin/jitmax.ts --help
-node /path/to/jitmax/bin/jitmax.ts src/hot.ts
-node /path/to/jitmax/bin/jitmax.ts --verbose src/hot.ts</code></pre>
+<pre><code>bunx github:kronael/jitmax --help
+bunx github:kronael/jitmax src/hot.ts
+bunx github:kronael/jitmax --verbose src/hot.ts</code></pre>
 
 <p>
   Paths choose files, not compiler options. The working directory determines
   which <code>tsconfig.json</code> jitmax reads. With no path argument it uses
   that config's file list; with neither paths nor a config it scans sources
-  under the working directory. The public commands
-  <code>bunx github:kronael/jitmax</code> and
-  <code>npx github:kronael/jitmax</code> remain blocked by TC-133: the GitHub
-  remote has no published ref. The package is not on npm. Use a checkout.
+  under the working directory.
 </p>
+
+<p>
+  With an existing checkout, run
+  <code>bun /path/to/jitmax/bin/cli.js src/hot.ts</code> after installing its dependencies.
+</p>
+
+<p>
+  For megamorphic reads and calls, save the
+  <a href="https://github.com/kronael/jitmax/blob/HEAD/examples/megamorphic.toml">preset</a>
+  as <code>megamorphic.toml</code> in your project. It disables the other six
+  rules; coverage notices still apply.
+</p>
+
+<pre><code>bunx github:kronael/jitmax megamorphic.toml src/hot.ts</code></pre>
+
+<p>
+  Pass your own TOML file to select rules, or a CPU profile to select hot
+  functions without annotations:
+</p>
+
+<pre><code>bunx github:kronael/jitmax rules.toml src
+node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
+bunx github:kronael/jitmax run.cpuprofile src</code></pre>
 
 <p>
   Each finding names the source, a <code>next:</code> step and the sweep behind
@@ -395,9 +420,9 @@ node /path/to/jitmax/bin/jitmax.ts --verbose src/hot.ts</code></pre>
 <div class="hub-footer">
   <p>
     v0.14.1, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
-    those terms; a derivative work carries the same licence. The package is
-    ready, but no Git ref is public yet; TC-133 tracks that blocker. An existing
-    checkout needs Node 22.18 or newer and has no build step.
+    those terms; a derivative work carries the same licence. The repository
+    command uses Bun; TC-133 tracks public access. Development with Node
+    needs version 22.18 or newer and has no build step.
   </p>
 </div>
 

@@ -64,10 +64,11 @@ rules; `README.md`, `docs/rules.md`, `examples/README.md` and
 `site/index.html` are held to them. The count beside `make test` at the top of
 this file is compared against the tests the three files actually define.
 
-**The packaging contract.** An installed copy runs compiled JavaScript from
-`dist/`, and a checkout runs the TypeScript. Neither half shows up in a run
-from a clone — the only place they are visible is somebody else's `npx` — so
-both are asserted here (`BUGS.md` TC-72, TC-130).
+**The packaging contract.** The linked executable selects Bun, which can run
+an unbuilt Git install from TypeScript. An installed copy with `dist/` runs
+compiled JavaScript; a checkout runs source. The suite checks the entry point
+and package contents (`BUGS.md` TC-72, TC-130). Public GitHub access needs a
+separate `bunx github:kronael/jitmax --help` check; TC-133 tracks that blocker.
 
 ## What it does not do
 

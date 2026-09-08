@@ -8,13 +8,13 @@ step, and the benchmark behind the rule. They do not measure your workload.
 
 ## Quick start
 
-Use Node `>=22.18` and TypeScript `>=5.0.0` with the 5.x compiler API. jitmax
-loads your project's TypeScript first, then its own installed copy.
-In a jitmax checkout, install dependencies once:
+Use Bun and TypeScript `>=5.0.0` with the 5.x compiler API. jitmax loads your
+project's TypeScript first, then its own installed copy. Run it from the GitHub
+repository with `bunx`; it needs no npm publication or build step.
 
-```sh
-npm install
-```
+The public repository currently exposes no Git refs and its download returns
+404. [TC-133](BUGS.md) tracks that access blocker. The commands below need a
+reachable repository before they can run.
 
 In your TypeScript project, mark a function you need fast:
 
@@ -28,18 +28,16 @@ export function total(rows: { value: number }[]): number {
 Run from your TypeScript project's root:
 
 ```sh
-node /path/to/jitmax/bin/jitmax.ts --help
-node /path/to/jitmax/bin/jitmax.ts src/hot.ts
-node /path/to/jitmax/bin/jitmax.ts --verbose src/hot.ts
+bunx github:kronael/jitmax --help
+bunx github:kronael/jitmax src/hot.ts
+bunx github:kronael/jitmax --verbose src/hot.ts
 ```
 
 Paths choose files, not compiler options. jitmax finds `tsconfig.json` from the
 working directory upward. With no paths, it uses that config's file list;
 with neither paths nor a config, it scans sources under the working directory.
 
-Public installation is blocked by [TC-133](BUGS.md): `bunx github:kronael/jitmax`
-and `npx github:kronael/jitmax` require a published Git ref. The package is not
-on npm. Use a checkout until that ref is available.
+With an existing checkout, run `bun /path/to/jitmax/bin/cli.js src/hot.ts` after installing its dependencies.
 
 ## Read a finding
 
@@ -77,10 +75,11 @@ or faster. Read the [rule advice](docs/rules.md) and [known limits](docs/limits.
 
 ## Select rules or hot functions
 
-To focus on megamorphic reads and calls, use the supplied preset:
+To focus on megamorphic reads and calls, save the supplied
+[preset](examples/megamorphic.toml) as `megamorphic.toml` in your project:
 
 ```sh
-node /path/to/jitmax/bin/jitmax.ts /path/to/jitmax/examples/megamorphic.toml src/hot.ts
+bunx github:kronael/jitmax megamorphic.toml src/hot.ts
 ```
 
 It disables the other six rules. Coverage notices still apply.
@@ -93,7 +92,7 @@ For your own settings, save a TOML file such as `rules.toml`:
 ```
 
 ```sh
-node /path/to/jitmax/bin/jitmax.ts rules.toml src
+bunx github:kronael/jitmax rules.toml src
 ```
 
 A rule name disables that rule; a defect code disables every rule carrying it.
@@ -104,7 +103,7 @@ A CPU profile can select hot functions without annotations:
 
 ```sh
 node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
-node /path/to/jitmax/bin/jitmax.ts run.cpuprofile src
+bunx github:kronael/jitmax run.cpuprofile src
 ```
 
 The default selects functions with at least 1% sampled self time. Set
