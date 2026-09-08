@@ -31,7 +31,7 @@ reports below reproduce those trials, not the current setup instructions.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
-## TC-142 — the site and examples guide disagree on survey counts (2026-09-08, open)
+## ✅ FIXED 2026-09-08 — TC-142 — the site and examples guide disagree on survey counts (2026-09-08, fixed)
 
 The site reports five megamorphic-element findings for TypeScript 5.9.3; the
 examples guide reports 20 for the same 465 annotated functions. Its 22-codebase
@@ -46,10 +46,10 @@ establishes conflicting reader-facing claims, not which raw run is authoritative
 - **Scope:** published survey results
 - **Affected:** `site/index.html`, `examples/README.md`
 - **Source:** `site/index.html:317`, `site/index.html:342`, `site/index.html:375`; `examples/README.md:332`, `examples/README.md:405`
-- **Status:** open
-- **Fix:**
+- **Status:** resolved-not-yet-removed; not deployed
+- **Fix:** 6d2809e
 
-## TC-141 — landing-page ratios and relative dates need outside explanation (2026-09-08, open)
+## ✅ FIXED 2026-09-08 — TC-141 — landing-page ratios and relative dates need outside explanation (2026-09-08, fixed)
 
 The landing page presents benchmark ratios without stating the numerator and
 denominator. Some rows explain the direction in words, but the definition is
@@ -63,10 +63,10 @@ before/after; its public link is blocked by TC-133.
 - **Scope:** landing-page measurement explanations
 - **Affected:** `site/index.html:212`, `site/index.html:401`
 - **Source:** `tmp/novice-audit/evidence/04-page-text.txt`; `examples/README.md`
-- **Status:** open
-- **Fix:**
+- **Status:** resolved-not-yet-removed; not deployed
+- **Fix:** 6d2809e
 
-## TC-138 — the back control covers the landing title at narrower widths (2026-09-08, open)
+## ✅ FIXED 2026-09-08 — TC-138 — the back control covers the landing title at narrower widths (2026-09-08, fixed)
 
 The local landing-page preview with the deployed shared stylesheet places the
 fixed back control over the title at 1024 and 768 pixels. At 768 pixels it
@@ -79,10 +79,10 @@ screenshot. This is a local preview observation, not a live deployment check.
 - **Scope:** landing-page layout
 - **Affected:** `site/index.html`, shared `/pub/krons/assets/hub.css`
 - **Source:** `tmp/novice-audit/evidence/10-1024.png`, `10-768.png`, `10-768-table.png`; `site/index.html:32`
-- **Status:** open
-- **Fix:**
+- **Status:** resolved-not-yet-removed; not deployed
+- **Fix:** 6d2809e
 
-## TC-139 — the landing recording has no pause control or visible load error (2026-09-08, open)
+## ✅ FIXED 2026-09-08 — TC-139 — the landing recording has no pause control or visible load error (2026-09-08, fixed)
 
 The recording plays and loops without visible playback controls. Clicking it
 while playing leaves `paused:false`. Blocking its MP4 request produces a static
@@ -95,10 +95,10 @@ recorded separately and is not evidence for this issue.
 - **Scope:** landing-page recording
 - **Affected:** `site/index.html:40`
 - **Source:** `tmp/novice-audit/docs/ux-13yo/landing.md`, `tmp/novice-audit/evidence/09-media-block-confirmed.json`
-- **Status:** open
-- **Fix:**
+- **Status:** resolved-not-yet-removed; not deployed
+- **Fix:** 6d2809e
 
-## TC-137 — the config merge example loses a JSON key after the suggested mutation (2026-09-07, open)
+## ✅ FIXED 2026-09-08 — TC-137 — the config merge example loses a JSON key after the suggested mutation (2026-09-07, fixed)
 
 A user following the `accumulating-spread` finding can choose the mutation
 shipped in `examples/radash-assign.after.ts`. It passes jitmax, but it does not
@@ -137,8 +137,8 @@ replacement. The example's behavior remains unsafe for these inputs.
 - **Scope:** suggested rewrite and public success example
 - **Affected:** `examples/radash-assign.after.ts`, `accumulating-spread` advice
 - **Source:** reproduction above; `examples/config-check.ts` covers ordinary inputs
-- **Status:** open
-- **Fix:**
+- **Status:** resolved-not-yet-removed; not deployed
+- **Fix:** 1eeab93
 
 ## TC-135 — the dataflow walk steps into the throw-only stub the callee walk refuses (2026-09-01, open)
 
