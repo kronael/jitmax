@@ -47,7 +47,9 @@ date-fns's `parse`. Run from the Zod repository root:
 node /path/to/jitmax/bin/jitmax.ts /path/to/jitmax/examples/megamorphic.toml packages/zod/src/v4/core/util.ts
 ```
 
-Run from date-fns's `pkgs/core` directory:
+Install date-fns's workspace dependencies so its inherited
+`@date-fns/dev/config/tsconfig` resolves. A missing inherited config stops jitmax
+before analysis. Then run from date-fns's `pkgs/core` directory:
 
 ```sh
 node /path/to/jitmax/bin/jitmax.ts /path/to/jitmax/examples/megamorphic.toml src/parse/index.ts
@@ -197,7 +199,7 @@ printed:
   in all three sweeps. `%HasFastProperties` is false on *both* sides: building a
   46-key object one key at a time normalizes it just as `delete` does. The fix
   stops fixing the read somewhere between 12 keys and 48, and the rule still
-  cannot see the width — so the `next:` line says it, in the sizes the cells were
+  cannot see the width — so the `note:` says it, in the sizes the cells were
   swept at: *"the rebuild helps at the smaller of n=12 and n=48 and not at the
   larger, where filling it key by key normalizes it too"*.
 - **`mergeAll` at n=64 stopped disagreeing, and that is not a promotion.** It
@@ -211,12 +213,12 @@ printed:
 - **`mergeAll` reads are 8x slower after the fix**, 0.11–0.12x at both sizes in
   all six sweeps. `Object.assign(out, item)` in a loop — the form this project's
   own evidence names as the fix — returns a `[DictionaryProperties]` object,
-  where the spread returns a `[FastProperties]` one. `accumulating-spread` fixed
-  a quadratic build and created a per-load cost it never mentioned, so the rule
-  now prints a different fix for each form: pushing onto an **array** costs the
-  reader nothing (0.96-1.02x) and carries no condition, and the **object** form
-  says *"that fills the result key by key, which normalizes the object: the
-  SPREAD-built object reads 0.11-0.12x of what the filled one costs"*. Read the
+  where the spread returns a `[FastProperties]` one. The rule's advice separates
+  the two forms. The **array** benchmark finds no read penalty, 0.96-1.02x, but
+  mutation requires private ownership and no needed snapshots; aliases, element
+  order and sparse-array behavior still matter. The **object** note says
+  *"the SPREAD-built object reads 0.11-0.12x of what the filled one costs"*.
+  Benchmark both construction and the caller's reads. Read the
   ratio in that direction: the object the defect builds is the CHEAPER one to
   read back, which is the whole reason the clause exists. Same detection, honest
   advice — radash's `assign` is the same fix with the reads coming out

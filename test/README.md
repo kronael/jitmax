@@ -62,7 +62,7 @@ clean, because a judged count of 0 has answered no question.
 statement of the version and `lib/rules/index.ts` the one register of the
 rules; `README.md`, `docs/rules.md`, `examples/README.md` and
 `site/index.html` are held to them. The count beside `make test` at the top of
-this file is compared against the tests the two files actually define.
+this file is compared against the tests the three files actually define.
 
 **The packaging contract.** An installed copy runs compiled JavaScript from
 `dist/`, and a checkout runs the TypeScript. Neither half shows up in a run
@@ -71,8 +71,7 @@ both are asserted here (`BUGS.md` TC-72, TC-130).
 
 ## What it does not do
 
-It does not run benchmarks. A sweep needs a quiet machine and takes hours;
-`make test` must stay under a few seconds. What the suite checks is that the
-numbers on the page are the numbers in the rows, never that the rows are right.
+It does not run benchmarks. A sweep needs a quiet machine. The suite checks that
+the numbers on the page are the numbers in the rows, never that the rows are right.
 Re-running a sweep is the only thing that checks that, and `bench/README.md`
 says how.

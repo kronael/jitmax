@@ -1,30 +1,28 @@
 # jitmax
 
-Mark a TypeScript function `/** @jitmax */` and jitmax tells you which lines in
-it, and in everything it calls, are patterns measured to push V8 off its fast
-path.
-
-The annotation is you saying "this function has to be fast". A finding is one
-line, the fix for it, and the benchmark that priced the rule. When the tool
-could not see everything — a call it cannot follow, a module that will not
-resolve — it says so and exits non-zero, because a run that proves nothing
-about part of your call tree is not a clean run.
+Mark a TypeScript function `/** @jitmax */` to find possible performance problems
+in its body and the callees jitmax can follow. Findings name the source, a next
+step, and the benchmark behind the rule. They do not measure your workload.
 
 ![jitmax finding one line in a function radash ships](demo/demo.gif)
 
 ## Quick start
 
-Use Node 22.18 or newer. In a jitmax checkout, install its dependencies once:
+Use Node `>=22.18` and TypeScript `>=5.0.0` with the 5.x compiler API. jitmax
+loads your project's TypeScript first, then its own installed copy.
+In a jitmax checkout, install dependencies once:
 
 ```sh
 npm install
 ```
 
-In your TypeScript project, mark the function you need fast:
+In your TypeScript project, mark a function you need fast:
 
 ```ts
 /** @jitmax */
-export function total(rows: Row[]): number { … }
+export function total(rows: { value: number }[]): number {
+  return rows.reduce((sum, row) => sum + row.value, 0);
+}
 ```
 
 Run from your TypeScript project's root:
@@ -32,24 +30,61 @@ Run from your TypeScript project's root:
 ```sh
 node /path/to/jitmax/bin/jitmax.ts --help
 node /path/to/jitmax/bin/jitmax.ts src/hot.ts
+node /path/to/jitmax/bin/jitmax.ts --verbose src/hot.ts
 ```
 
-Pass paths to narrow what is scanned. They choose the file list and nothing
-else: the compiler options still come from the `tsconfig.json` found from the
-directory you run in, so run from the root of the repository you are naming.
-With no path argument, jitmax uses that config's file list. With no config or
-paths, it scans sources under the working directory.
+Paths choose files, not compiler options. jitmax finds `tsconfig.json` from the
+working directory upward. With no paths, it uses that config's file list;
+with neither paths nor a config, it scans sources under the working directory.
 
-Exit 0 means checked and clean; 1 means findings or incomplete coverage;
-2 means the tool failed. `--help` and `-h` exit 0 without loading your project.
+Public installation is blocked by [TC-133](BUGS.md): `bunx github:kronael/jitmax`
+and `npx github:kronael/jitmax` require a published Git ref. The package is not
+on npm. Use a checkout until that ref is available.
 
-Public installation is blocked by TC-133: `bunx github:kronael/jitmax` and
-`npx github:kronael/jitmax` require a published Git ref. The package is not on
-npm. Use a checkout until that ref is available.
+## Read a finding
 
-**Turn a rule off** in a TOML file, given as a positional argument and
-recognised by its `.toml` suffix. Neither layer is required — with no config
-and no overrides, jitmax behaves exactly as above:
+Findings name exact positions, including inside callees of the marked function.
+Excerpt from `node bin/jitmax.ts demo`:
+
+```text
+  demo/lib.ts:46  fiveShapes()
+    error  megamorphic-elements
+      demo/lib.ts:46:28
+      rows has 5 distinct property sets in its element type; this is a
+      candidate for megamorphic load feedback, not an observed runtime map
+      count
+      related: demo/lib.ts:48:30 read: r.x
+      sources: No builder located for this value. Source tracing is partial:
+               no visible caller of fiveShapes — its arguments come from
+               outside this program.
+      next: inspect where these elements are built, not just this parameter.
+            If semantics allow, use consistent own properties and insertion
+            order; benchmark the full caller including construction
+```
+
+`next:` gives an investigation or conditional rewrite; `note:` states its limits.
+For deletion, the note says the rebuild helps at the smaller of n=12 and n=48 and not at the larger,
+where filling it key by key normalizes it too.
+
+`related:` links representative builders, implementations, allocations or key
+observers. The default shows five locations; `-v` or `--verbose` shows all retained
+locations without deepening analysis or changing findings, suppression or exits.
+These locations are not every allocation or proof of runtime reachability.
+
+Profile the caller, preserve its behavior, and benchmark the full operation
+before keeping a rewrite. A clean result does not prove that a rewrite is safe
+or faster. Read the [rule advice](docs/rules.md) and [known limits](docs/limits.md).
+
+## Select rules or hot functions
+
+To focus on megamorphic reads and calls, use the supplied preset:
+
+```sh
+node /path/to/jitmax/bin/jitmax.ts /path/to/jitmax/examples/megamorphic.toml src/hot.ts
+```
+
+It disables the other six rules. Coverage notices still apply.
+For your own settings, save a TOML file such as `rules.toml`:
 
 ```toml
 [rules]
@@ -57,251 +92,58 @@ and no overrides, jitmax behaves exactly as above:
 "TC-9" = false
 ```
 
-or per function, in the same comment as the annotation:
-
-```ts
-/** @jitmax -megamorphic-elements -TC-9 */
-export function other(rows: Row[]): number { … }
-```
-
-A rule name switches off that rule; a defect code switches off every rule
-carrying it. Suppression is never silent — the report says how many findings
-were removed and by what. `docs/rules.md` has both layers in full.
-
-**Focus on megamorphic reads and calls:**
-
 ```sh
-node /path/to/jitmax/bin/jitmax.ts /path/to/jitmax/examples/megamorphic.toml src/hot.ts
+node /path/to/jitmax/bin/jitmax.ts rules.toml src
 ```
 
-This preset disables the other six rules. Coverage notices still apply;
-suppression does not prove that an unreadable call is safe.
+A rule name disables that rule; a defect code disables every rule carrying it.
+For one function and its callees, use `/** @jitmax -megamorphic-elements -TC-9 */`.
+The report counts suppressions; see [configuration](docs/rules.md#turning-a-rule-off).
 
-**Or let a profile decide what is hot.** The annotation is you asserting a
-function is hot; a profile is a measurement of it:
+A CPU profile can select hot functions without annotations:
 
 ```sh
 node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
 node /path/to/jitmax/bin/jitmax.ts run.cpuprofile src
 ```
 
-Every function at or above `[profile] min_self_pct` of the profile's sampled
-self time is marked, and the report says what marked it. Nothing else changes:
-the walk, the rules and the exit code cannot tell a profiled mark from an
-annotated one. `ARCHITECTURE.md` has the source-map handling.
+The default selects functions with at least 1% sampled self time. Set
+`[profile] min_self_pct` in a TOML file passed alongside the profile to change it.
+[Profile mapping](ARCHITECTURE.md#profile-mode-in-detail) describes source maps
+and unmatched frames. Pass at most one `.toml` and one `.cpuprofile`, in any order.
 
-## The eight rules
+## Rules and exit codes
 
-Eight rules ship. The first six check every function in the call tree; the last
-two report where the walk stopped. *Megamorphic* means one code location has
-seen many object shapes — V8 caches four per site, and the fifth costs you the
-cache. Every cost below is a microbenchmark on one machine, and it is a
-property of the input as much as of the code.
+Eight rules ship: megamorphic reads and calls, repeated copying, allocation
+chains, selection candidates and property deletion, plus two coverage rules.
+[The rule reference](docs/rules.md) states each trigger, its evidence and its limits.
 
-| Rule | What it looks for | Measured |
-|---|---|---|
-| [`megamorphic-elements`](docs/rules.md#megamorphic-elements) | the fifth distinct property set at a load site | 3.4-11.3x |
-| [`megamorphic-dispatch`](docs/rules.md#megamorphic-dispatch) | `x.step()` where `x` is one of five object types | 12.9-22.7x |
-| [`accumulating-spread`](docs/rules.md#accumulating-spread) | `[...acc, v]` or `{ ...acc, k: v }` in a loop — quadratic | 149-166x |
-| [`chained-allocation`](docs/rules.md#chained-allocation) | `.map().filter()` allocates a whole array between stages | 1.44-1.52x |
-| [`allocating-select`](docs/rules.md#allocating-select) | `x = Lib.min(x, y)` in a loop returns a new object every pass | 2.60-2.89x |
-| [`delete-property`](docs/rules.md#delete-property) | `delete` demotes an object to dictionary mode | 12.3-13.6x |
-| [`closed-world`](docs/rules.md#closed-world) | a callee with no readable body anywhere in the checkout | 4.64-4.95x |
-| [`interface-dispatch`](docs/rules.md#interface-dispatch) | a call whose body IS here but cannot be picked | no claim |
+Exit `0` means at least one function was checked with no remaining findings or
+reported coverage gaps. Exit `1` means findings, incomplete coverage, or no
+selected functions. Coverage gaps include truncated walks, unresolved modules,
+unmatched hot frames, bodyless annotations and calls through `any` receivers.
+Exit `2` means the tool failed, including invalid input, config or source syntax.
+`--help` and `-h` exit `0` without loading the project. Suppression does not
+clear coverage gaps. Semantic TypeScript errors belong to your compiler check.
 
-Findings do not predict this workload's cost. Ratios in rule notes describe
-the benchmark inputs, not your caller. Profile the caller, preserve its
-observable behavior, and benchmark the full operation before keeping a change.
-
-## What a finding looks like
-
-```
-jitmax — 64 annotated functions, 31 errors
-
-  demo/lib.ts:175  viaCallee()
-    error  delete-property
-      demo/lib.ts:170:3
-      delete o[k] can move an ordinary object into dictionary mode
-      next: assign undefined where the key may stay present, or build the
-           object without the key
-      note: assigning undefined is equivalent only while nothing downstream
-            tells an absent key from one holding undefined: spread and
-            Object.assign copy it; `in`, for-in, hasOwnProperty, Object.keys,
-            Object.values, Object.entries, Object.getOwnPropertyNames and
-            Reflect.ownKeys see it; JSON.stringify does not, it omits both.
-            The rebuild helps at the smaller of n=12 and n=48 and not at the
-            larger, where filling it key by key normalizes it too. Rebuilding
-            changes object identity; preserve aliases, prototypes and property
-            semantics
-      measured in bench/delete.jl
-      known defect: TC-9
-
-  known defects cited above, from BUGS.md:
-    TC-9   rules fire outside the conditions their own evidence establishes
-```
-
-Read each finding in this order:
-
-- **the line** — which is inside `dropInner`, a function nobody annotated.
-  `viaCallee` has the annotation; jitmax followed the call and reported where
-  the candidate is.
-- **the sweep that priced the rule**, named, so you can read the cost in
-  `bench/README.md` and re-run it yourself with `make bench-*`.
-- **the next step**, under `next:` — an investigation or conditional rewrite,
-  with behavior and measurement limits under `note:`. It is not an automatic fix.
-- **what it could not check** — a call that resolves to a declaration with no
-  body is listed by name, and a walk that hits its limit prints
-  `WALK TRUNCATED`, exits `1`, and is never reported as clean.
-
-`related:` links to the source behind the finding: a property read, a class or
-factory, a returned allocation, or a consumer that observes key presence.
-`sources:` states when builder tracing is partial. Locations are representative
-source groups, not an inventory of allocations or observed runtime paths.
-
-The default report shows up to five related locations per finding. To see
-every available location, add `-v` or `--verbose`:
+## Development and licence
 
 ```sh
-node /path/to/jitmax/bin/jitmax.ts --verbose src/hot.ts
+make          # lint, test, demo checks
+make verify   # also check pinned V8 citations and the Radash checkout
 ```
 
-This only expands the report. It does not deepen analysis or change findings,
-suppression, or exit codes.
+`make build` regenerates derived artifacts; normal checks do not run it.
+[Tests](test/README.md) describe their coverage and how to run one test.
 
-## What it guarantees
+GPL-2.0-only; see [LICENSE](LICENSE). The vendored radash, remeda, es-toolkit
+and zod functions in `examples/` retain their MIT licences, copyright lines,
+versions and commits. [examples/LICENSE-MIT](examples/LICENSE-MIT) carries their
+permission notices. V8 is a trademark of Google LLC; this project is not
+affiliated with, endorsed by, or sponsored by Google.
 
-Exit `0` clean, `1` a finding to report OR could not see everything, `2` the
-tool itself failed. A path that does not exist is a `2`, never a clean run.
-Warnings alone do not fail a run.
+Status: v0.14.0, single machine, eight rules.
 
-Four things are a `1` with no finding in them, because a run that proves
-nothing about part of your call tree is not a clean run either: a walk that hit
-its limit, a module that would not resolve (every type it declares reads as
-`any`, so every type-based rule went quiet on the files importing it), a hot
-frame in a profile that matched no function in these sources, and a call that
-reads a method off a value typed `any` — nothing resolves there, so the tool
-cannot tell a `Map` builtin from your own code and says so instead of naming a
-body it never found (`BUGS.md` TC-129).
-
-Every finding is an error, and every error fails the run. The annotation is the
-filter: a finding on a function you said must be fast is actionable by
-definition, so a second severity tier would gate nobody.
-
-## What it costs to be wrong
-
-One number, so it can be checked rather than admired. Rebuilding an
-accumulator inside a loop — `acc = [...acc, r]` — measured **149-166x** slower
-than pushing onto it, at n=1000 with construction counted:
-
-```sh
-make bench-spread
-```
-
-The caveat is the size of the effect, not its direction: the same rule on the
-same machine measures 1766-1889x at n=10000, and applied to a function radash
-ships it moves the whole call 3.22-4.65x, because the code around that one line
-also allocates, recurses and branches. A microbenchmark cannot say what a
-program gets. `bench/README.md` has every number, the rows it came from, and
-the protocol; `examples/README.md` has what four real fixes were worth.
-
-## Why this exists
-
-V8 already optimises your code well. But a short list of ordinary-looking
-patterns quietly turns those optimisations off, and nothing warns you. This is
-that list, measured.
-
-*Where the idea came from:* Numba's `@njit` marks one Python function and pulls
-in its whole call tree. It compiles that tree or stops with a line and a reason.
-jitmax borrows the annotation and the call-tree walk. The jobs differ:
-CPython does not JIT, so Numba must compile; V8 does, so jitmax only tells
-you where your code blocks it.
-
-## When NOT to use this
-
-- **You want a profiler.** This is a static checker. It cannot see how hot a
-  line is unless you hand it a `--cpu-prof` profile, and it never guesses.
-- **You want a number for your program.** Every ratio here comes from a
-  microbenchmark on one machine, with Maglev switched off. It shows a pattern
-  *can* cost that much, never that it costs that much in your workload.
-- **Your hot pattern is spread over two functions.** Every rule matches inside
-  one body. Hoisting the measured pattern into a helper silences the tool.
-- **You need the rule to know your data.** Rules fire outside the conditions
-  their own evidence establishes — the `delete` rule does not know whether
-  anything reads the object afterwards, and its cost is per read. That is
-  `BUGS.md` TC-9, and it is printed under every finding of the rules that
-  carry it.
-- **You run from outside the repository whose paths you name.** The
-  `tsconfig.json` is found from the working directory and never from the path
-  argument, so `jitmax ../other/src` compiles `../other` under this directory's
-  options and its path aliases go unresolved. The run says so, and names the
-  config it should have read (`BUGS.md` TC-76).
-- **You want the two escape rules quiet by default.** `closed-world` and
-  `interface-dispatch` were 96% of every finding across twelve libraries, and
-  they are errors. Switch them off in `[rules]` if you disagree.
-
-`docs/limits.md` is the full list, including the two cells that failed
-replication and the 601 rows measured under a load gate that could not see a
-tenant.
-
-## Requirements
-
-Node `>=22.18`, which strips types itself, so running the tool needs no build
-step. TypeScript `>=5.0.0` as a peer dependency — jitmax loads *your* copy, so
-it parses with the same compiler your build does, and it needs the 5.x API
-(`BUGS.md` TC-130).
-
-## Development
-
-```sh
-make          # lint, test, check
-make verify   # everything a release needs: all, v8-check, reality
-```
-
-`make` never runs `make build`: regenerating the derived artifacts right before
-the drift assertions would compare fresh output against fresh output, and a
-stale committed artifact could never fail again. `ARCHITECTURE.md` has the rest
-of the targets, `CLAUDE.md` the repository's own rules and the measurement
-protocol.
-
-## Licence
-
-**GPL-2.0-only**. The full text is in `LICENSE`. You may use, modify and
-redistribute it under those terms. A derivative work carries the same licence.
-It is not published to npm, and the GitHub remote has no public ref yet. TC-133
-tracks that distribution blocker.
-
-`examples/` is the exception, and deliberately so: the `.before.ts` files are
-functions vendored verbatim from radash, remeda, es-toolkit and zod, all
-**MIT**, and each file carries its upstream's copyright line, version and
-commit. Those files stay under their upstream MIT licence rather than the GPL,
-and `examples/LICENSE-MIT` reproduces the permission notice MIT requires to
-travel with them, alongside the four copyright holders and the commit each
-function came from. The point of the whole exercise is that the code measured
-there is somebody else's.
-
-V8 is a trademark of Google LLC. This project is not affiliated with, endorsed
-by, or sponsored by Google, and every use of the name here is a reference to the
-engine the measurements were taken on.
-
-Status: v0.14.0, single machine, eight rules. Every sweep behind a published
-number is re-measured whole under the current runner, except `bench/arrays.jl`,
-whose three figures price a withdrawn rule and say so where they are printed:
-three sweeps per cell, and a cell whose three share no common value is withdrawn
-by `lib/derive.ts` before the number is written. 31 are withdrawn today, and
-`test/check.test.ts` lists every one.
-
-## How to read this
-
-Each file answers one question. Nothing is repeated between them.
-
-| File | The question it answers |
-|---|---|
-| `README.md` | What is this, why use it, how do I start |
-| `ARCHITECTURE.md` | How is it built inside |
-| `docs/rules.md` | What does each rule detect, and what is the fix |
-| `docs/limits.md` | Where does it not work |
-| `bench/README.md` | How is every number measured, and how do I re-check it |
-| `test/README.md` | What does the suite guard, and how do I run one test |
-| `examples/README.md` | What is a fix worth on somebody else's code |
-| `CLAUDE.md` | The rules of this repository, and the measurement protocol |
-| `BUGS.md` | The open queue: found during audits, fixed when asked |
+Read [architecture](ARCHITECTURE.md) for internals, [benchmarks](bench/README.md)
+for measurements and reruns, [examples](examples/README.md) for real library
+trials and rewrites, and [BUGS.md](BUGS.md) for the open issues.

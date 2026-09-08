@@ -90,45 +90,66 @@
 
 <h2>Use it</h2>
 
-<p>Mark the function:</p>
+<p>
+  Use Node <code>&gt;=22.18</code> and TypeScript <code>&gt;=5.0.0</code> with
+  the 5.x compiler API. In a jitmax checkout, install its dependencies once:
+</p>
+
+<pre><code>npm install</code></pre>
+
+<p>In your TypeScript project, mark the function:</p>
 
 <pre><code>/** @jitmax */
-export function total(rows: Row[]): number { … }</code></pre>
+export function total(rows: { value: number }[]): number {
+  return rows.reduce((sum, row) =&gt; sum + row.value, 0);
+}</code></pre>
 
 <p>Run it from the root of your TypeScript repository:</p>
 
-<pre><code>bunx github:kronael/jitmax</code></pre>
+<pre><code>node /path/to/jitmax/bin/jitmax.ts --help
+node /path/to/jitmax/bin/jitmax.ts src/hot.ts
+node /path/to/jitmax/bin/jitmax.ts --verbose src/hot.ts</code></pre>
 
 <p>
-  With no path argument it reads the repository's <code>tsconfig.json</code>.
-  Add <code>/** @jitmax */</code> above one hot function, then run it again.
-  <code>npx</code> works too, through a compiled <code>dist/</code>, because
-  Node will not strip types under <code>node_modules</code>. The package is
-  ready, but the GitHub remote has no published ref yet, so this public install
-  remains blocked by TC-133.
+  Paths choose files, not compiler options. The working directory determines
+  which <code>tsconfig.json</code> jitmax reads. With no path argument it uses
+  that config's file list; with neither paths nor a config it scans sources
+  under the working directory. The public commands
+  <code>bunx github:kronael/jitmax</code> and
+  <code>npx github:kronael/jitmax</code> remain blocked by TC-133: the GitHub
+  remote has no published ref. The package is not on npm. Use a checkout.
 </p>
 
 <p>
-  It prints the line, what is wrong with it, the fix, and the sweep that priced
-  the rule. It does not print a cost beside the finding: a ratio is a property
+  Each finding names the source, a <code>next:</code> step and the sweep behind
+  the rule. <code>note:</code> states behavior and measurement limits.
+  <code>related:</code> links representative builders, implementations,
+  allocations or key observers; <code>sources:</code> explains partial tracing.
+  The default shows five related locations per finding. Add <code>--verbose</code>
+  or <code>-v</code> to see all retained locations without changing the analysis.
+  These locations do not prove runtime reachability or list every allocation.
+</p>
+
+<p>
+  A finding does not measure your workload. A benchmark ratio is a property
   of the input &mdash; the same rule measured 149&ndash;166x at n=1000 and
   1766&ndash;1889x at n=10000 &mdash; and the annotation says the function is
   hot, not how large its data is. The numbers are on this page and in the
-  <code>bench/*.jl</code> the finding names.
+  <code>bench/*.jl</code> the finding names. Profile the caller, preserve its
+  behavior, and benchmark the full operation before keeping a rewrite.
 </p>
 
 <p>
-  Every finding is an <code>error</code> and every error fails the run. The
-  annotation is the filter: you write <code>/** @jitmax */</code> on a
-  function you need fast, so a finding on one is actionable by definition and a
-  second severity tier gates nobody. Three rules warned until 2026-08-31,
-  because no benchmark measures the program they fire on &mdash; that gap is
-  still stated, as <code>known defect: TC-33</code> under every finding they
-  make, and the <code>[rules]</code> table and a <code>-rulename</code> on the
-  annotation are how you disagree with one. It exits <code>0</code> when
-  everything you marked is clean, <code>1</code> on a finding <em>or</em> when
-  it could not read your whole call tree, and <code>2</code> when the tool
-  itself broke. A run that could not see everything is never a pass.
+  Every unsuppressed finding is an <code>error</code> and fails the run.
+  Configure rules through a positional TOML file or a <code>-rulename</code>
+  on the annotation. The report counts suppressed findings; coverage gaps
+  still fail the run. Exit <code>0</code> means at least one function was
+  checked with no remaining findings or reported coverage gaps.
+  Exit <code>1</code> means findings, incomplete coverage or no selected
+  functions. Exit <code>2</code> means the tool failed, including invalid
+  input, configuration or source syntax. <code>--help</code> exits
+  <code>0</code> without loading the project. A clean result does not prove
+  that a rewrite is safe or faster.
 </p>
 
 <h2>What it looks for</h2>

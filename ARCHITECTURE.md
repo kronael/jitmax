@@ -91,7 +91,7 @@ are counted for the run and never named, because "inline what you need from
 Record a profile and hand it over as a suffix-named positional argument:
 
 ```sh
-node --cpu-prof --cpu-prof-dir=. your-workload.js
+node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
 jitmax run.cpuprofile src
 ```
 
@@ -113,10 +113,9 @@ exits `1`, because unchecked measured time is not a clean run. `min_self_pct`
 defaults to 1 and is a constant nobody has measured, so the TOML owns it and
 every run prints the value it used.
 
-There is no static "hotness" mode and there will not be one — a loop with an
-unknown trip count and a high call-graph fan-in predict hotness weakly, and
-this tool prints "hotness is a property of the workload" under every run it
-makes.
+There is no static hotness estimate. An annotation selects a function by the
+user's judgment; a profile selects it by sampled self time. The report asks the
+user to profile and benchmark the caller before keeping a change.
 
 ## How it ships
 
