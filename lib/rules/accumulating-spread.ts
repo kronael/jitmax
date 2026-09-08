@@ -121,33 +121,27 @@ const detect: Rule = (ts, checker, body, add) => {
     return undefined;
   };
 
-  // Where each half of the advice stops paying, in the words of the sweeps that
-  // established it. The array half has no condition — the finished array reads
-  // the same whichever way it was built. The object half does, and it is not a
-  // caveat: taking it cost remeda's caller more on reads than the quadratic
-  // build ever cost, and this rule shipped for months without saying so.
   const FIX: Record<Form, { fix: string; note: string }> = {
     array: {
-      fix: 'push onto NAME instead of rebuilding it',
-      note: `the finished array reads the same either way, ${N['spread.array.reads']}`,
+      fix: 'push onto NAME only if this code owns it and no caller needs an earlier copy',
+      note:
+        `the finished array reads the same in the benchmark, ${N['spread.array.reads']}. ` +
+        'Mutation changes what aliases observe. Preserve element order and sparse-array ' +
+        'behavior; append batches element by element, not with push(...batch)',
     },
-    // Not an instruction. Assigning the key on NAME is faster to BUILD and
-    // slower to READ, both measured, and jitmax reports the mutating form
-    // as clean — so a reader who takes the instruction and re-runs the tool
-    // gets a green run on an 8x read regression (BUGS TC-38). The exit code
-    // cannot say that, so the text does.
     object: {
       fix:
-        'there is no rewrite here this project has measured as a win on both halves: ' +
-        'mutate where the result is written more than it is read; keep the copy where it ' +
-        'is read hot',
+        'benchmark a privately owned mutable accumulator against the copy, including ' +
+        'the caller\'s reads; keep copying when snapshots or read cost require it',
       note:
         `assigning the key on NAME instead builds faster, ${N['spread.object']} at n=500, ` +
         'and fills the result key by key, which normalizes the object: the SPREAD-built ' +
         `object reads ${N['ex.mergeall.reads']} of what the filled one costs (remeda ` +
-        'mergeAll), so the copy you are being asked to delete is the cheaper one to read ' +
-        'back. No rule here detects a dictionary-mode object, so the mutating form checks ' +
-        'CLEAN',
+        'mergeAll), so the copy is the cheaper one to read ' +
+        'back. Mutation also changes aliases: preserve own keys, symbols, getters and ' +
+        'property order. Assignment and Object.assign can invoke target setters, including ' +
+        '__proto__; they are not drop-in replacements for object spread. ' +
+        'No rule here detects a dictionary-mode object, so the mutating form checks CLEAN',
     },
   };
 

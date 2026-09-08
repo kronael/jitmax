@@ -121,7 +121,7 @@ jitmax — 64 annotated functions, 31 errors
   demo/lib.ts:175  viaCallee()
     error  delete-property
       demo/lib.ts:170:3
-      delete o[k] puts its object in dictionary mode
+      delete o[k] can move an ordinary object into dictionary mode
       next: assign undefined where the key may stay present, or build the
            object without the key
       note: assigning undefined is equivalent only while nothing downstream
@@ -130,7 +130,9 @@ jitmax — 64 annotated functions, 31 errors
             Object.values, Object.entries, Object.getOwnPropertyNames and
             Reflect.ownKeys see it; JSON.stringify does not, it omits both.
             The rebuild helps at the smaller of n=12 and n=48 and not at the
-            larger, where filling it key by key normalizes it too
+            larger, where filling it key by key normalizes it too. Rebuilding
+            changes object identity; preserve aliases, prototypes and property
+            semantics
       measured in bench/delete.jl
       known defect: TC-9
 

@@ -405,13 +405,8 @@ test('the concat form on a STRING stays silent', () => {
   assert.deepStrictEqual(rules('joinByConcat'), []);
 });
 
-// BUGS TC-16: the printed fix is a contract, and one sentence was wrong for
-// half the cases it was printed on. An array pushed to reads exactly like an
-// array spread into (0.96-1.07x); an object filled key by key is normalized,
-// and remeda's mergeAll bought a faster build and reads an order of magnitude
-// slower by following this rule. The two forms therefore print two fixes, and
-// the conditional one is the object.
-test('the fix differs by form: the array half is unconditional and the object half is not', () => {
+/** Checks both accumulator forms on the demo and requires their mutation limits. */
+test('accumulator advice separates read cost from ownership and copy semantics', () => {
   const spreadFor = (name: string) =>
     rawFindings(name).find((x) => x.rule === 'accumulating-spread') ??
     assert.fail(`no accumulating-spread finding on ${name}`);
@@ -420,13 +415,20 @@ test('the fix differs by form: the array half is unconditional and the object ha
   assert.match(fixFor('collect'), /^push onto acc /);
   assert.doesNotMatch(noteFor('collect'), /normalizes/);
   assert.match(fixFor('collectByConcat'), /^push onto acc /);
-  // The object half stopped being an instruction (BUGS TC-38): applying it
-  // makes the build faster and the reads 8x slower, and the tool reports the
-  // result CLEAN — so the text has to carry what the exit code cannot.
-  assert.match(fixFor('collectObject'), /^there is no rewrite here/);
+  assert.match(fixFor('collect'), /owns it.*earlier copy/);
+  assert.match(noteFor('collect'), /aliases observe/);
+  assert.match(noteFor('collect'), /sparse-array/);
+  assert.match(fixFor('collectObject'), /benchmark a privately owned/);
   assert.match(noteFor('collectObject'), /normalizes the object/);
   assert.match(noteFor('collectObject'), /checks CLEAN/);
   assert.match(noteFor('collectByAssign'), /normalizes the object/);
+  assert.match(noteFor('collectObject'), /target setters, including __proto__/);
+  const source = JSON.parse('{"__proto__":{"tag":"own"}}');
+  const copied = { ...source };
+  const assigned = Object.assign({}, source);
+  assert.ok(Object.hasOwn(copied, '__proto__'));
+  assert.ok(!Object.hasOwn(assigned, '__proto__'));
+  assert.notStrictEqual(Object.getPrototypeOf(copied), Object.getPrototypeOf(assigned));
 });
 
 // Three tokens moved the measured defect out of the rule's sight, and both are
@@ -544,7 +546,7 @@ test('every published copy of the delete fix quotes the swept sizes', () => {
 // columns meant to be left alone.
 test('a delete whose object reaches Object.keys loses the assign-undefined rewrite', () => {
   const f = rawFindings('scrub').find((x) => x.rule === 'delete-property');
-  assert.match(f?.note ?? '', /Object\.keys reads o at line \d+/);
+  assert.match(f?.note ?? '', /Object\.keys observes this object/);
   assert.doesNotMatch(f?.fix ?? '', /assign undefined/);
 });
 
@@ -552,7 +554,7 @@ test('a delete whose object reaches Object.keys loses the assign-undefined rewri
 // the check crosses bodies the way the walk does.
 test('the observer check crosses bodies: a spread in the caller reaches a delete in the callee', () => {
   const f = rawFindings('dropThenSpread').find((x) => x.rule === 'delete-property');
-  assert.match(f?.note ?? '', /a spread reads o at line \d+/);
+  assert.match(f?.note ?? '', /a spread observes this object/);
   assert.doesNotMatch(f?.fix ?? '', /assign undefined/);
 });
 
@@ -594,7 +596,7 @@ test('every observer that tells an absent key from an undefined one drops the re
   for (const [fn, op] of observers) {
     const { fix, note } = deleteFinding(fn);
     if (fix.includes('assign undefined')) withRewrite.push(`${fn} (${op})`);
-    if (!new RegExp(`^${op.replace(/\./g, '\\.')} reads o at line \\d+`).test(note ?? '')) {
+    if (!new RegExp(`^${op.replace(/\./g, '\\.')} observes this object`).test(note ?? '')) {
       unnamed.push(`${fn}: ${note}`);
     }
   }
@@ -648,8 +650,25 @@ test('a two-stage chain on a STRING stays silent', () => {
   assert.deepStrictEqual(rules('trimTail'), []);
 });
 
-test('a two-stage chain fires', () => {
+/** Checks a detected map/filter chain and the callback-order risk its advice names. */
+test('a two-stage chain fires with the limits on fusion', () => {
   assert.deepStrictEqual(rules('twoStages'), ['chained-allocation']);
+  const finding = rawFindings('twoStages')[0]!;
+  assert.match(finding.note ?? '', /callback order, side effects, indices, array arguments/);
+  const events: string[] = [];
+  const map = (n: number) => {
+    events.push(`map ${n}`);
+    return n;
+  };
+  const filter = (n: number) => {
+    events.push(`filter ${n}`);
+    return true;
+  };
+  [1, 2].map(map).filter(filter);
+  const separate = events.slice();
+  events.length = 0;
+  for (const n of [1, 2]) filter(map(n));
+  assert.notDeepStrictEqual(events, separate);
 });
 
 // One stage allocates once. That is the baseline the map-then-filter cell was
@@ -817,6 +836,32 @@ test('Object.assign onto the accumulator itself stays silent', () => {
 // returns a fresh Decimal, so the store happens even when nothing changed.
 test('choosing between boxed values with an allocating call fires', () => {
   assert.deepStrictEqual(rules('lowest'), ['allocating-select']);
+});
+
+/** Checks imported conditional allocation and a cross-file observer without changing findings. */
+test('allocation and deletion advice points to the source behind the finding', () => {
+  const dir = path.join('test', 'fixtures', 'rule-advice');
+  const findings = findingsByFunction(dir);
+  const selection = findings.get('lowest')?.find((f) => f.rule === 'allocating-select');
+  assert.ok(selection);
+  assert.match(selection.message, /contains an allocation/);
+  assert.doesNotMatch(selection.message, /every pass/);
+  assert.match(selection.note ?? '', /do not prove selection or allocation on every path/);
+  assert.match(selection.note ?? '', /ties.*object identity.*side effects/);
+  const allocation = selection.related?.[0];
+  assert.ok(allocation);
+  assert.strictEqual(allocation.file, path.join(root, dir, 'helpers.ts'));
+  const allocationLine = fs.readFileSync(allocation.file, 'utf8').split('\n')[allocation.line - 1]!;
+  assert.ok(allocationLine.slice(allocation.column - 1).startsWith('{ value:'));
+  const deletion = findings.get('removeThenList')?.find((f) => f.rule === 'delete-property');
+  assert.ok(deletion);
+  assert.strictEqual(deletion.file, path.join(root, dir, 'helpers.ts'));
+  assert.doesNotMatch(deletion.fix, /assign undefined/);
+  const observer = deletion.related?.[0];
+  assert.ok(observer);
+  assert.strictEqual(observer.file, path.join(root, dir, 'caller.ts'));
+  const observerLine = fs.readFileSync(observer.file, 'utf8').split('\n')[observer.line - 1]!;
+  assert.ok(observerLine.slice(observer.column - 1).startsWith('Object.keys('));
 });
 
 // Math.min returns a number. There is no allocation to remove, and the branch
@@ -1679,7 +1724,7 @@ test('a delete with no map to demote stays out, and a real one still fires', () 
     { cwd: root, encoding: 'utf8' }
   );
   assert.match(run.stdout, /2 annotated functions, 1 error/);
-  assert.match(run.stdout, /delete o\[k\] puts its object in dictionary mode/);
+  assert.match(run.stdout, /delete o\[k\] can move an ordinary object into dictionary mode/);
   for (const quiet of ['hostSlot', 'dataset', 'process.env', 'xs as any', 'al as any']) {
     assert.ok(!run.stdout.includes(quiet), `${quiet} was reported:\n${run.stdout}`);
   }

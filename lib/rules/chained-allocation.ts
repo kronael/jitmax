@@ -163,7 +163,12 @@ const detect: Rule = (ts, checker, body, add) => {
           message:
             `${stageText(inner)} then ${stageText(outer)} allocates a whole array ` +
             'between the stages',
-          fix: 'do the stages in one pass, or one loop',
+          fix: 'fuse the stages into one loop only if their observable behavior stays the same',
+          note:
+            'fusion can interleave callbacks that run in separate passes here. Preserve ' +
+            'callback order, side effects, indices, array arguments and sparse-array holes; ' +
+            'for Object.entries, preserve own enumerable string keys and their order. ' +
+            'Benchmark construction in the caller before keeping the change',
         });
       }
     }

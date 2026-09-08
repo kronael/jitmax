@@ -1,6 +1,6 @@
 import type * as TS from 'typescript';
 import type { Ts } from '../ts.ts';
-import { at, isFunctionLike, symbolOf, targetsOf, unwrap, type Mark } from '../scan.ts';
+import { at, isFunctionLike, symbolOf, targetsOf, unwrap, type Mark, type Site } from '../scan.ts';
 import { N } from '../numbers.ts';
 import { cells, isArray, walk, type Evidence, type Rule, type RuleModule } from './shared.ts';
 
@@ -54,9 +54,8 @@ const evidence: Evidence = {
 // purpose — proving an observer runs only before the delete is control flow
 // this walk does not do, so a hit anywhere drops the rewrite, which errs
 // toward the fix that is always sound.
-interface Observed {
+interface Observed extends Site {
   op: string;
-  line: number;
 }
 
 // The observers that take the object as their first argument. `in`, for-in and
@@ -105,7 +104,7 @@ function objectUses(ts: Ts, checker: TS.TypeChecker, mark: Mark): ObjectUses {
   };
   const see = (sym: TS.Symbol | undefined, op: string, node: TS.Node, sf: TS.SourceFile): void => {
     if (!sym || observed.has(sym)) return;
-    observed.set(sym, { op, line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1 });
+    observed.set(sym, { op, ...at(sf, node) });
   };
   const bodies = new Set(mark.reached.map((b) => b.node));
   const returnsOf = new Map<TS.Node, Set<TS.Symbol>>();
@@ -380,16 +379,19 @@ const detect: Rule = (ts, checker, body, add, mark) => {
       // rather than that the data still did (the re-aimed BUGS TC-48).
       const rebuild =
         `The rebuild helps at the smaller of ${N['ex.omit.sizes']} and not at the larger, ` +
-        'where filling it key by key normalizes it too';
+        'where filling it key by key normalizes it too. Rebuilding changes object identity; ' +
+        'preserve aliases, prototypes and property semantics';
       add({
         ...at(body.sf, node),
         rule: NAME,
-        message: `delete ${node.expression.getText(body.sf)} puts its object in dictionary mode`,
+        message:
+          `delete ${node.expression.getText(body.sf)} can move an ordinary object ` +
+          'into dictionary mode',
         fix: seen
           ? 'build the object without the key'
           : 'assign undefined where the key may stay present, or build the object without the key',
         note: seen
-          ? `${seen.op} reads ${object.getText(body.sf)} at line ${seen.line} and tells an ` +
+          ? `${seen.op} observes this object and tells an ` +
             `absent key from one holding undefined, so assigning undefined is not a rewrite ` +
             `here. ${rebuild}`
           : 'assigning undefined is equivalent only while nothing downstream tells an absent ' +
@@ -397,6 +399,7 @@ const detect: Rule = (ts, checker, body, add, mark) => {
             'hasOwnProperty, Object.keys, Object.values, Object.entries, ' +
             'Object.getOwnPropertyNames and Reflect.ownKeys see it; JSON.stringify does not, ' +
             `it omits both. ${rebuild}`,
+        related: seen ? [{ ...seen, name: `${seen.op} observes key presence` }] : undefined,
       });
     }
   });

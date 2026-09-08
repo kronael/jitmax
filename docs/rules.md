@@ -122,14 +122,20 @@ export function collect(rows: number[]): number[] {
 and `joinByConcat`, which are strings, and V8 appends to a string instead of
 copying it.
 
-**The fix it prints**, for the array form: "push onto acc instead of rebuilding
-it", with the note that the finished array reads the same either way,
+**How to act.** Push into an array only when the code owns it and no caller
+needs an earlier snapshot. Preserve order and sparse-array behavior, and avoid
+passing an unbounded batch as function arguments. The finished array reads
+the same in the benchmark,
 0.96-1.02x. For the object
 form there is no rewrite this project has measured as a win on both halves:
 assigning the key on `acc` builds faster, 186-200x at n=500, and fills the
 result key by key, which normalizes the object — the spread-built object reads
-0.11-0.12x of what the filled one costs. The rule says so, and says to mutate
-where the result is written more than it is read.
+0.11-0.12x of what the filled one costs. Benchmark a privately owned mutable
+accumulator including the caller's reads. Preserve aliases, own keys, symbols,
+getters and property order. Assignment can invoke target setters, including
+`__proto__`; it does not have object spread's data-property semantics. See
+[CopyDataProperties](https://tc39.es/ecma262/multipage/abstract-operations.html#sec-copydataproperties)
+and [Object.assign](https://tc39.es/ecma262/multipage/fundamental-objects.html#sec-object.assign).
 
 **The cost.** 149-166x at n=1000 and 1766-1889x at n=10000, in
 `bench/spread.jl` and `bench/spread-object.jl`. End to end: radash `assign` and
@@ -161,7 +167,13 @@ well; the n=1000 cell it compared against was withdrawn under rule 13, and
 map-then-filter now has no measured silence at any size (`BUGS.md` TC-37,
 TC-9).
 
-**The fix it prints.** "do the stages in one pass, or one loop".
+**How to act.** Fuse stages only when their observable behavior stays the same.
+Preserve callback order, side effects, indices, array arguments and holes;
+for `Object.entries`, preserve own enumerable string keys and their order.
+A fused loop can interleave callbacks that run in separate passes in the
+original expression. [Array.prototype.map's contract](https://tc39.es/ecma262/multipage/indexed-collections.html#sec-array.prototype.map)
+specifies callback arguments, iteration and holes. Benchmark construction in
+the caller before keeping the change.
 
 **The cost.** 1.44-1.52x for map-then-filter with construction counted, and
 3.67-3.76x for `Object.entries(o).map(f)` at n=1000, in `bench/chained.jl`.
@@ -179,8 +191,9 @@ with one of the two sizes rejected. `BUGS.md` TC-83.
 
 ## allocating-select
 
-**What it detects.** `x = Lib.min(x, y)` in a loop returns a new object every
-pass.
+**What it detects.** A loop replaces a stored object through a call with peer
+arguments, and that callee contains an allocation in a returned expression.
+This is not proof that the call selects a candidate or allocates on every path.
 
 **It fires on** `lowest`:
 
@@ -197,8 +210,10 @@ loop still costs 1.10-1.19x, an interval whose lower bound sits under the
 broad-warning bar, and at n=100000 three sweeps read 0.89x, 0.97x and 1.03x, so
 rule 13 withdraws the cell and there is no measurement to warn from.
 
-**The fix it prints.** "compare first and assign only when bucket.lo really
-changes".
+**How to act.** Open the related returned allocation. If the call only selects
+a candidate, compare first and assign only when the chosen value changes.
+Preserve ties, comparison edge cases, identity and call side effects. Keep the
+call if it merges, transforms or must return a fresh object.
 
 **The cost.** 2.60-2.89x where the chosen value outlives the loop, in
 `bench/select.jl`. In 2953 annotated functions the rule never fired on the
@@ -206,7 +221,7 @@ shape it measures; `examples/README.md` has that verdict.
 
 ## delete-property
 
-**What it detects.** `delete` demotes an object to dictionary mode — a slower
+**What it detects.** `delete` can move an ordinary object into dictionary mode — a slower
 storage form V8 uses when an object stops looking like a fixed shape.
 
 **It fires on** `drop`:
@@ -233,7 +248,9 @@ undefined, and that the rebuild helps at the smaller of n=12 and n=48 and not
 at the larger, where filling it key by key normalizes it too. Where the walk
 sees the object reach `Object.keys`, a spread or another observer that tells an
 absent key from one holding `undefined`, the first branch is dropped and the
-observer is named.
+observer is named with its file, line and column, even when it is in a caller.
+Rebuilding changes object identity; preserve aliases, prototypes and property
+semantics before keeping that rewrite.
 
 **The cost.** 12.3-13.6x per property load after the delete, in
 `bench/delete.jl`. End to end: es-toolkit `omit` in `examples/README.md`.

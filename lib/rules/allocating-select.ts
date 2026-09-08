@@ -69,17 +69,17 @@ const detect: Rule = (ts, checker, body, add) => {
   // `new Box(...)`. So read the body the program already has, and require
   // something in it that builds an object. Where there is no body the rule
   // stays out: an unreadable callee is `closed-world`'s finding, not this one's.
-  const builds = (call: TS.CallExpression): boolean => {
+  const builds = (call: TS.CallExpression): TS.Node | undefined => {
     const decl = checker.getResolvedSignature(call)?.declaration;
-    if (!decl || !('body' in decl)) return false;
+    if (!decl || !('body' in decl)) return undefined;
     const fnBody = (decl as { body?: TS.Node }).body;
-    if (!fnBody) return false;
+    if (!fnBody) return undefined;
     // Two limits on where the allocation may sit, both of them cases the rule
     // fired on: it must be inside a `return`, because a scratch array the
     // callee keeps to itself is not the value the loop stores; and the walk
     // stops at a nested function, because an object literal inside a callback
     // the callee never invokes is not an allocation this call makes.
-    let found = false;
+    let found: TS.Node | undefined;
     const visit = (n: TS.Node, returning: boolean): void => {
       if (found) return;
       if (n !== fnBody && isFunctionLike(ts, n)) return;
@@ -90,7 +90,7 @@ const detect: Rule = (ts, checker, body, add) => {
           ts.isObjectLiteralExpression(n) ||
           ts.isArrayLiteralExpression(n))
       ) {
-        found = true;
+        found = n;
         return;
       }
       ts.forEachChild(n, (c) => visit(c, inReturn));
@@ -150,16 +150,27 @@ const detect: Rule = (ts, checker, body, add) => {
         // A second, DIFFERENT argument, or there is nothing to choose between.
         call.arguments.some((a) => a.getText(body.sf) !== target) &&
         allocates(call) &&
-        builds(call) &&
         selectsAmongPeers(node.left, call)
       ) {
+        const allocation = builds(call);
+        if (!allocation) return;
         add({
           ...at(body.sf, node),
           rule: NAME,
           message:
-            `${target} is replaced by ${call.expression.getText(body.sf)}(...), which returns a new ` +
-            'object every pass, including the passes that choose the value it already held',
-          fix: `compare first and assign only when ${target} really changes`,
+            `${target} is replaced by ${call.expression.getText(body.sf)}(...) in a loop; ` +
+            'the callee contains an allocation in a returned expression',
+          fix:
+            `if this call only selects a candidate, compare first and assign ${target} ` +
+            'only when the chosen value changes',
+          note:
+            'matching argument types do not prove selection or allocation on every path. ' +
+            'Preserve ties, comparison edge cases, object identity and call side effects; ' +
+            'keep the call if it merges, transforms or must return a fresh object',
+          related: [{
+            ...at(allocation.getSourceFile(), allocation),
+            name: 'allocation in returned expression',
+          }],
         });
       }
     }

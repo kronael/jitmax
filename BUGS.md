@@ -57,8 +57,9 @@ node bin/jitmax.ts examples/radash-assign.after.ts
 Observed on Node v22.23.2: before has own key `true`, inherited enabled
 `undefined`, plain prototype `true`; after has own key `false`, inherited
 enabled `true`, plain prototype `false`. The checker exits 0 and says every
-annotated function is clean. The finding's note warns about read performance
-but gives no warning about this change in behavior.
+annotated function is clean. The finding's note warns that assignment can
+invoke target setters, including `__proto__`, and is not a drop-in spread
+replacement. The example's behavior remains unsafe for these inputs.
 
 - **Severity:** high
 - **Scope:** suggested rewrite and public success example
