@@ -1286,6 +1286,42 @@ test('a profile matching no function in the program names the frames, and exits 
   assert.strictEqual(run.status, 1);
 });
 
+// TC-128: five key ORDERS of one key set are five maps at one load site, and
+// `%HaveSameMap` says so. No rule can separate them from five builders that
+// agree, because key order is not part of a TypeScript type — the rules record
+// that in `EVIDENCE.unreported`, which nothing printed. A clean run therefore
+// said nothing about an axis measured at the same order as the cases it does
+// report, and silence read as coverage.
+test('a clean run names the axes no rule checks', () => {
+  const file = path.join(root, 'tmp', `test-keyorder-${process.pid}.ts`);
+  fs.writeFileSync(file, [
+    '/** @jitmax */',
+    'export function sumFiveOrders(rows: Array<{ a: number; b: number; c: number }>): number {',
+    '  let s = 0; for (const r of rows) s += r.a + r.b + r.c; return s;',
+    '}',
+    'export function buildFive() {',
+    '  return [{a:1,b:2,c:3}, {a:1,c:3,b:2}, {b:2,a:1,c:3}, {b:2,c:3,a:1}, {c:3,a:1,b:2}];',
+    '}',
+    '',
+  ].join('\n'));
+  const run = (...args: string[]) =>
+    spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), ...args, file],
+      { cwd: root, encoding: 'utf8' });
+  const plain = run();
+  const verbose = run('-v');
+  fs.unlinkSync(file);
+
+  // The rules are right to be quiet here; the run is not right to stop there.
+  assert.match(plain.stdout, /is clean\./);
+  assert.strictEqual(plain.status, 0);
+  assert.match(unwrapped(plain.stdout), /clean means no rule fired\./);
+  assert.match(unwrapped(plain.stdout), /megamorphic-elements/);
+  assert.match(plain.stdout, /run with -v/);
+  // -v carries the sentence itself, key order named.
+  assert.match(unwrapped(verbose.stdout), /five key ORDERS of one key set are five maps/);
+  assert.ok(!/run with -v/.test(verbose.stdout), '-v still points at -v');
+});
+
 // The half that printed `clean`: one frame of two matched, so 0.5% of the
 // measured time was checked and 99.5% was not, and the run said every hot
 // function is clean and exited 0.

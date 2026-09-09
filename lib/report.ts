@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { BUILTINS } from './builtins.ts';
 import type { Mark } from './scan.ts';
-import { DEFECT, type Finding } from './rules.ts';
+import { DEFECT, EVIDENCE, type Finding } from './rules.ts';
 
 // One spelling of the count-and-noun, because a hand-written plural beside a
 // derived numeral is how `1 cells` reached a published sentence (BUGS TC-70).
@@ -445,6 +445,26 @@ export function render(
         '  Profile and benchmark the caller before keeping a change.\n' +
         '  Rule evidence and limits: docs/rules.md; measurements: bench/README.md.'
   );
+
+  // `clean` means no rule fired, which is not the same as nothing here being
+  // slow. Four rules record an axis nothing static can separate — key order at
+  // a load site among them, measured at the same order as the case they DO
+  // report. That text sat in `EVIDENCE.unreported` with no reader, so a clean
+  // run said nothing about it and silence read as coverage (BUGS TC-128).
+  if (clean) {
+    const unchecked = Object.entries(EVIDENCE)
+      .filter(([, e]) => e.unreported)
+      .map(([rule, e]) => [rule, e.unreported as string] as const)
+      .sort();
+    if (unchecked.length > 0) {
+      const names = unchecked.map(([rule]) => rule).join(', ');
+      out.push('', ...wrap('  ', `clean means no rule fired. ${plural(unchecked.length, 'rule')} cannot check an axis at all, and say so: ${names}.`));
+      // The full text is long and a clean run is short; -v is where this tool
+      // already puts detail a reader asks for rather than trips over.
+      if (verbose) for (const [rule, text] of unchecked) out.push(...wrap('    ', `${rule} — ${text}`));
+      else out.push('  run with -v for what each one misses, or read docs/rules.md');
+    }
+  }
   if (nothingChecked) {
     out.push(
       subject === 'annotated function'
