@@ -345,7 +345,7 @@ An unrelated profile with zero program time must still fail as unchecked.
 - **Status:** proposed (redesign, needs sign-off)
 - **Fix:**
 
-## TC-128 — the key-order false negative is invisible at the CLI (2026-08-31, open)
+## ✅ FIXED 2026-09-09 — TC-128 — the key-order false negative is invisible at the CLI (2026-08-31, fixed)
 
 Found by an adversarial audit today. `megamorphic-elements` records this gap
 honestly in its own `unreported` clause — and only in source. Nothing prints it,
@@ -394,8 +394,13 @@ README, and `unreported` reaches neither the terminal nor the exit code. A user
 who never opens `lib/rules/megamorphic-elements.ts` learns nothing about an
 unchecked axis with a measured 4.4-11.5x behind it.
 
-**Recorded, not fixed: it is an output-design decision and needs sign-off.**
-Three shapes it could take, and they are not equivalent:
+**Fixed 2026-09-09 in `76ded7b` as (a), narrowed to clean runs.** The entry's
+own argument against (a) is that an unconditional line becomes noise; the
+false negative it is about only exists on a run with no findings, so the note
+prints there and nowhere else. It names the four rules that carry an
+`unreported` clause and costs four lines; `-v` prints each clause in full.
+A test writes the five-key-order program, asserts the clean exit still says
+clean, and asserts the axis is named. The three shapes considered:
 
 - (a) a per-run coverage line, like the platform and lowered counters:
   `N property reads off array elements were checked for key SETS only — key
