@@ -3029,9 +3029,9 @@ test('installed copies support Bun source and explicit Node builds', () => {
     .map((file) => file.split(path.sep).join('/'));
   const required = ['bin/cli.js', 'bin/jitmax.ts', 'lib/rules/index.ts',
     'package.json', 'LICENSE', 'examples/LICENSE-MIT',
-    'examples/megamorphic.toml', 'examples/config-check.ts',
+    'examples/megamorphic/jitmax.toml', 'examples/config-check.ts',
     'bench/shape-sets.jl', 'demo/demo.gif', ...guides];
-  for (const file of ['examples/megamorphic.toml', 'examples/LICENSE-MIT', ...guides]) {
+  for (const file of ['examples/megamorphic/jitmax.toml', 'examples/LICENSE-MIT', ...guides]) {
     assert.ok(pkg.files.includes(file), `package.json files must ship ${file}`);
     assert.ok(fs.existsSync(path.join(root, file)), `${file} must exist`);
   }

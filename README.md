@@ -86,7 +86,7 @@ or faster. Read the [rule advice](docs/rules.md) and [known limits](docs/limits.
 ## Select rules or hot functions
 
 To focus on megamorphic reads and calls, save the supplied
-[preset](examples/megamorphic.toml) as `jitmax.toml` in your project:
+[preset](examples/megamorphic/jitmax.toml) as `jitmax.toml` in your project:
 
 ```sh
 bunx github:kronael/jitmax jitmax.toml hot.ts

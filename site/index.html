@@ -165,7 +165,7 @@ bun "/path/to/jitmax/bin/cli.js" hot.ts</code></pre>
 <h3>Focus on megamorphic reads and calls</h3>
 
 <p>
-  Save this as <code>megamorphic.toml</code> in your project's root.
+  Save this as <code>jitmax.toml</code> in your project's root.
   It disables the other six rules; coverage notices still apply.
 </p>
 
@@ -181,7 +181,7 @@ interface-dispatch = false</code></pre>
 
 <p>Run the checker with that config:</p>
 
-<pre><code>bunx github:kronael/jitmax megamorphic.toml hot.ts</code></pre>
+<pre><code>bunx github:kronael/jitmax jitmax.toml hot.ts</code></pre>
 
 <p>
   To select different rules, edit the same table: <code>false</code> disables
@@ -204,7 +204,7 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
   The default selects functions with at least 1% sampled self time.
   To change that threshold, add <code>[profile]</code> and
   <code>min_self_pct = 2</code> on separate lines in your TOML file, then run
-  <code>bunx github:kronael/jitmax megamorphic.toml run.cpuprofile src</code>.
+  <code>bunx github:kronael/jitmax jitmax.toml run.cpuprofile src</code>.
   Transformed JavaScript needs source maps beside the generated files.
   The report names unmatched frames and exits <code>1</code> when coverage is
   incomplete. Pass at most one TOML file and one CPU profile.

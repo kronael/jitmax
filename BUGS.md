@@ -45,6 +45,8 @@ explicitly (https://docs.astral.sh/ruff/configuration/). ESLint resolves
 default name and no search. A user who wants rule settings types the path on
 every invocation. The documented name was also three different strings —
 `megamorphic.toml`, `rules.toml`, `config.toml` — now one, `jitmax.toml`.
+The shipped preset lives at `examples/megamorphic/jitmax.toml`: the directory
+names the preset, the file carries the name a project uses.
 
 - **Severity:** low
 - **Scope:** CLI argument handling

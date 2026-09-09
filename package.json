@@ -13,7 +13,7 @@
     "ARCHITECTURE.md",
     "bench/README.md",
     "examples/README.md",
-    "examples/megamorphic.toml",
+    "examples/megamorphic/jitmax.toml",
     "examples/LICENSE-MIT",
     "demo/demo.gif",
     "README.md",

@@ -44,7 +44,7 @@ these user trials. The configuration merge below exercises a different rule.
   `src/parse/_lib/Parser.ts:16`, from the `pkgs/core` package root at revision
   `a0a39220522ed1228445792c768ed887709aea5f` of `date-fns/date-fns`.
 
-Save the [megamorphic preset](megamorphic.toml) as `megamorphic.toml` in the
+Save the [megamorphic preset](megamorphic/jitmax.toml) as `jitmax.toml` in the
 directory you will run from. It disables the other six
 rules through the normal configuration interface. Suppressed findings remain
 counted in the report; unresolved calls can still make coverage incomplete.
@@ -56,7 +56,7 @@ root and run there. Replace the command prefix with the README's checkout
 route while the GitHub download is unavailable:
 
 ```sh
-bunx github:kronael/jitmax megamorphic.toml packages/zod/src/v4/core/util.ts
+bunx github:kronael/jitmax jitmax.toml packages/zod/src/v4/core/util.ts
 ```
 
 Install date-fns's workspace dependencies so its inherited
@@ -65,7 +65,7 @@ before analysis. Save another copy of the preset in date-fns's `pkgs/core`
 directory, then run there:
 
 ```sh
-bunx github:kronael/jitmax megamorphic.toml src/parse/index.ts
+bunx github:kronael/jitmax jitmax.toml src/parse/index.ts
 ```
 
 Both runs exit 1 with a megamorphic finding. These source snapshots also appear

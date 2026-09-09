@@ -457,7 +457,7 @@ While GitHub access is blocked, use the
 [checkout command prefix](../README.md#use-an-existing-checkout).
 The repository command is `bunx github:kronael/jitmax jitmax.toml src`.
 Run from your project's root and replace `src` with your source directory.
-For a megamorphic-only scan, use the [supplied preset](../examples/megamorphic.toml).
+For a megamorphic-only scan, use the [supplied preset](../examples/megamorphic/jitmax.toml).
 
 Both layers accept a rule name such as `megamorphic-elements` or a defect code
 such as `TC-9`, which selects every rule carrying that code. In TOML, `false`
