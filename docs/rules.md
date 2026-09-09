@@ -445,7 +445,7 @@ cause no longer switches off the honest "no body anywhere" one.
 
 ## Turning a rule off
 
-Save the following as `rules.toml` in your project's root:
+Save the following as `jitmax.toml` in your project's root:
 
 ```toml
 [rules]
@@ -455,7 +455,7 @@ Save the following as `rules.toml` in your project's root:
 
 While GitHub access is blocked, use the
 [checkout command prefix](../README.md#use-an-existing-checkout).
-The repository command is `bunx github:kronael/jitmax rules.toml src`.
+The repository command is `bunx github:kronael/jitmax jitmax.toml src`.
 Run from your project's root and replace `src` with your source directory.
 For a megamorphic-only scan, use the [supplied preset](../examples/megamorphic.toml).
 

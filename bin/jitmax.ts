@@ -13,12 +13,12 @@ function main() {
   if (argv.includes('-h') || argv.includes('--help')) {
     process.stdout.write(`jitmax — check hot TypeScript functions and their callees
 
-Usage: jitmax [-v] [config.toml] [run.cpuprofile] [path…]
+Usage: jitmax [-v] [jitmax.toml] [run.cpuprofile] [path…]
 
 Examples:
   jitmax src/hot.ts          Check annotated functions in one file
   jitmax src                 Check annotated functions in a directory
-  jitmax rules.toml src      Apply rule settings from a TOML file
+  jitmax jitmax.toml src     Apply rule settings from a TOML file
   jitmax run.cpuprofile src  Select hot functions from a CPU profile
   jitmax -v src/hot.ts       Show all available related source locations
   jitmax                    Use the tsconfig file list
