@@ -5,17 +5,40 @@ The Bun repository workflow needs no npm publication or release tag. Public
 GitHub access is blocked by TC-133; the README gives an existing-checkout route.
 Entries below record their versions' behavior and trials.
 
-## [Unreleased]
+## [v0.15.0] — 20260909
 
-- The linked `jitmax` executable requires Bun and runs unbuilt repository installs.
-  Explicit Node invocation remains available for compiled installations.
+> jitmax v0.15.0 — Bun runs the repository install
+>
+> The linked command now runs on Bun, so a source checkout works without trusting dependency build scripts.
+>
+> • Linked `jitmax` requires Bun; `node bin/cli.js` still runs a compiled install.
+> • Object rewrites keep own `__proto__` keys and skip inherited setters.
+> • Fresh measurements include slower cases; no rewrite is an unconditional speedup.
+> • Receiver tracing marks a throw-only method unchecked instead of following it.
+> • The landing page carries inline setup, a finding example, playback and retry.
+>
+> Full notes: https://github.com/kronael/jitmax/blob/main/CHANGELOG.md
+
+### Breaking
+
+- Linked commands require Bun. The repository install is the documented entry point and
+  its runtime is pinned in the packaging contract. Node users invoke `node bin/cli.js` on a
+  compiled install, or `node bin/jitmax.ts` in a checkout.
+
+### Changed
+
 - Install archives retain six essential Markdown guides and exclude internal notes.
 - The landing page includes inline setup, a finding example, playback controls and load-error retry.
-- Object rewrites preserve own `__proto__` keys and avoid inherited setters.
-  Fresh measurements include slower results; no rewrite is an unconditional speedup.
-- Receiver tracing reports throw-only methods as unchecked rather than claiming to follow an implementation.
+- Object rewrites preserve own `__proto__` keys and avoid inherited setters. Fresh measurements
+  include slower results; no rewrite is an unconditional speedup.
+- Receiver tracing reports a throw-only method as unchecked rather than claiming to follow an
+  implementation.
 
-Release remains blocked by public GitHub access: the repository install returns 404.
+### Known limits
+
+- Public installation requires an owner-published Git ref. The repository install returns 404
+  and TC-133 stays open; use a checkout or a local package until a ref exists.
+- Counts describe static evidence, not runtime maps or caller speedups.
 
 ## [v0.14.1] — 20260908
 
