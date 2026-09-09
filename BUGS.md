@@ -1480,6 +1480,34 @@ The experiment needs no new benchmark and no new measurement protocol — it reu
 the kernels that already exist and asks them a different question. It is the
 cheapest thing on this queue that changes what gets built next.
 
+**2026-09-09 — the flag this entry names does not exist here, and a better one
+does.** `node --trace-ic` on the pinned runtime (v22.23.2) answers `node: bad
+option: --trace-ic`; V8 compiles that tracer out of release builds, and
+`node --v8-options` lists no IC tracer at all. The experiment as written cannot
+run on this machine.
+
+`%DebugPrint` can, and it is already allowed here — `bench/natives.js` is the
+sanctioned wrapper and `%HaveSameMap` settled TC-36. Given a function, it prints
+the feedback vector slot by slot, with the IC state this entry wants:
+
+    - slot #0 LoadProperty MEGAMORPHIC {          five shapes at one load
+    - slot #0 LoadProperty MONOMORPHIC            one shape, same site
+    - slot #0 SetNamedSloppy MEGAMORPHIC {        five shapes at one store
+
+That is the question asked directly rather than inferred: not "how many maps did
+the builder make" but "what state did V8 leave at this site". It reads loads and
+stores, and it discriminates — the monomorphic control is a real control, run
+above.
+
+**What still blocks it, and it is not the probe.** `%DebugPrint` needs the
+kernel FUNCTION object. Workload kernels are module-scope and unexported
+(`sweep` in `bench/shape-sets.ts`), so the `--import` preload trick that lets
+`bench/tiers.ts` read workloads unmodified cannot reach them: `region-marker.ts`
+hooks `process.hrtime.bigint`, which is a global, and a kernel is not. Reaching
+one needs a guarded line in each workload — a change to the files the published
+numbers were measured with, which wants sign-off before it lands rather than
+after. The probe is settled; how it reaches the kernel is the open question.
+
 Raised 2026-08-28, from the owner's aim and the ambiguity in it.
 
 ## TC-58 — nothing here is consumable by a program, and the stated aim is a program (2026-08-28, open, proposal)
