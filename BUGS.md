@@ -31,6 +31,35 @@ reports below reproduce those trials, not the current setup instructions.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
+## TC-143 — the config file must be named and passed on every run (2026-09-09, proposal)
+
+Other linters discover their config; jitmax does not. Ruff "can be configured
+through a `pyproject.toml`, `ruff.toml`, or `.ruff.toml` file" and "supports
+hierarchical configuration, such that the 'closest' config file in the directory
+hierarchy is used for every individual file", with `--config` to point at one
+explicitly (https://docs.astral.sh/ruff/configuration/). ESLint resolves
+`eslint.config.js` the same way, upward from the file being linted
+(https://eslint.org/docs/latest/use/configure/configuration-files).
+
+`bin/jitmax.ts` takes any argument ending in `.toml`, in any position, and has no
+default name and no search. A user who wants rule settings types the path on
+every invocation. The documented name was also three different strings —
+`megamorphic.toml`, `rules.toml`, `config.toml` — now one, `jitmax.toml`.
+
+- **Severity:** low
+- **Scope:** CLI argument handling
+- **Affected:** `bin/jitmax.ts`, `lib/config.ts`
+- **Source:** `bin/jitmax.ts:34` — "One .toml and one .cpuprofile are allowed, in any argument position."
+- **Status:** proposed (redesign, needs sign-off)
+- **Fix:**
+
+Proposed: with no `.toml` argument, search from the working directory upward for
+`jitmax.toml` then `.jitmax.toml`, stop at the first hit, and report the file
+used. An explicit path still wins. Two questions the owner decides: whether
+discovery crossing a repository boundary is acceptable, and whether the found
+path belongs in the report header, since a silently applied config changes which
+rules fire.
+
 ## ✅ FIXED 2026-09-08 — TC-142 — the site and examples guide disagree on survey counts (2026-09-08, fixed)
 
 The site reports five megamorphic-element findings for TypeScript 5.9.3; the
