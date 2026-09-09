@@ -353,13 +353,19 @@ export function render(
       // rules fire on programs their own benchmarks did not measure — they say
       // so in the `known defect: TC-33` line below, and the way to quiet one is
       // the `[rules]` table or a `-rulename` on the annotation (BUGS TC-33).
-      out.push(`    error  ${f.rule}`);
       // The walk follows callees, so a finding is often not in the annotated
       // function at all. Saying where it is is the difference between a report
-      // and a riddle.
+      // and a riddle, so the position leads the line.
+      // Order is `location  severity  rule`, which is what ESLint's stylish
+      // formatter prints and what a reader of any linter already scans for.
+      const at = `${rel(cwd, f.file)}:${f.line}:${f.column}`;
+      // Not through `wrap`: it collapses runs of spaces, and the two-space
+      // gaps are what make the three columns scannable. Nothing else joins
+      // this line — a long path plus a long rule name already approaches the
+      // 78-column budget the rest of the report keeps.
+      out.push(`    ${at}  error  ${f.rule}`);
       const from = reach.get(findingKey(f)) ?? 1;
-      const alsoFrom = from > 1 ? ` — reached by ${from} annotated functions` : '';
-      out.push(...wrap('      ', `${rel(cwd, f.file)}:${f.line}:${f.column}${alsoFrom}`));
+      if (from > 1) out.push(...wrap('      ', `reached by ${from} annotated functions`));
       out.push(...wrap('      ', f.message));
       const related = f.related ?? [];
       const shownSources = verbose ? related : related.slice(0, 5);

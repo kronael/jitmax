@@ -2201,7 +2201,7 @@ test('an unreadable callee still counts what reaches its receiver', () => {
   // silent. The finding can only have come through the escape rule.
   assert.match(
     unwrapped(run.stdout),
-    /megamorphic-dispatch \S+escape\.ts:\d+:\d+ p reaches this call as at least 5 implementations built by this program \(P1, P2, P3, P4, P5\)/
+    /\S+escape\.ts:\d+:\d+\s+error\s+megamorphic-dispatch p reaches this call as at least 5 implementations built by this program \(P1, P2, P3, P4, P5\)/
   );
   assert.strictEqual(run.status, 1);
 });
