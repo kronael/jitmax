@@ -31,6 +31,59 @@ reports below reproduce those trials, not the current setup instructions.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
+## TC-144 — TypeScript 7 crashes the quick start `ts.sys` is undefined (2026-09-30, fixed)
+
+The documented quick start fails end to end, with no project TypeScript
+installed and after installing today's `typescript@latest` (7.0.2):
+
+```
+$ bunx github:kronael/jitmax hot.ts
+jitmax: undefined is not an object (evaluating 'ts.sys.fileExists')
+EXIT=2
+```
+
+`package.json` declares `typescript: >=5.0.0 <6` as a peerDependency, and
+`README.md` states the same range, but nothing enforced it at runtime:
+`lib/ts.ts`'s `load()` returned whatever `require('typescript')` resolved, and
+the crash landed later, deep in `tsconfigOf`/`program`, far from the resolve
+that caused it — never reaching the existing "jitmax needs the \"typescript\"
+package" message, because the bad resolve succeeded.
+
+What resolved, with no project copy anywhere on disk: Bun's own module
+resolver does not stop at a missing `node_modules/typescript` the way Node's
+does — running under `bun`, `createRequire(cwd + '/index.js')('typescript')`
+transparently resolves to today's npm `typescript@latest` (7.0.2 today) even
+in a bare scratch directory with no `node_modules` at all. So the resolve
+order in `load()` (project copy, then jitmax's own) was never the problem —
+Bun hands back a version before either documented source is reached, and the
+fix has to sit in a guard on what came back, not in the order it is asked for.
+
+- **Severity:** high
+- **Scope:** `lib/ts.ts` `load()`; every documented quick-start route
+- **Affected:** `bunx github:kronael/jitmax hot.ts`, the existing-checkout route
+- **Source:** reproduced directly, twice, and independently by a novice
+  evaluator, with no TypeScript installed and with `typescript@7.0.2`
+  installed; `createRequire(cwd+'/index.js')('typescript')` confirmed
+  `version=7.0.2 sys=undefined`
+- **Status:** fixed 2026-09-30
+- **Fix:** `load()` now checks `ts.sys == null` on whatever it resolves, right
+  after the resolve and before returning it — a capability check, not a
+  version-string check, because `sys` is the fact every caller below reads
+  (`tsconfigOf`, `program`) and a version number is only a hypothesis about
+  it. The message names the version found, the range required, and the
+  command to run:
+  `jitmax needs TypeScript >=5.0.0 <6, and the "typescript" package resolved
+  here is 7.0.2, which has no "sys" host. Install a supported version in this
+  project: npm install --save-dev typescript@^5.9`. Verified against three
+  states against the fixed checkout: no TypeScript installed (guard fires,
+  names 7.0.2), TypeScript 7 installed explicitly (guard fires, names 7.0.2),
+  TypeScript 5.9.3 pinned (clean run, exit 0). Test:
+  `test/check.test.ts` "a resolved TypeScript with no sys host fails loudly
+  at load, naming the version found" — a stub `typescript` package with no
+  `sys`, shown failing before the fix.
+- **Proposal (not done here):** whether to support TypeScript 7 at all is the
+  owner's call, not this fix's — the peerDependency range stays `>=5.0.0 <6`.
+
 ## TC-143 — the config file must be named and passed on every run (2026-09-09, proposal)
 
 Other linters discover their config; jitmax does not. Ruff "can be configured
