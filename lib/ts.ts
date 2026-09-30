@@ -10,9 +10,26 @@ export type Ts = typeof import('typescript');
 // parse and the same types the project's own build sees.
 export function load(cwd: string): Ts {
   for (const from of [path.join(cwd, 'index.js'), import.meta.url]) {
+    let ts: Ts;
     try {
-      return createRequire(from)('typescript') as Ts;
-    } catch {}
+      ts = createRequire(from)('typescript') as Ts;
+    } catch {
+      continue;
+    }
+    // A version string is a hypothesis about what a resolved package
+    // provides; `sys` itself is the fact. TypeScript 7 dropped it, and every
+    // call below reads from it (tsconfigOf, program) — so a bad resolve used
+    // to succeed here and crash later, deep in a call the caller never sees
+    // (BUGS TC-144).
+    if (ts.sys == null) {
+      throw new Error(
+        `jitmax needs TypeScript >=5.0.0 <6, and the "typescript" package ` +
+          `resolved here is ${ts.version}, which has no "sys" host. Install a ` +
+          'supported version in this project:\n' +
+          '  npm install --save-dev typescript@^5.9'
+      );
+    }
+    return ts;
   }
   throw new Error(
     'jitmax needs the "typescript" package. Install it in this project:\n' +

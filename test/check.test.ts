@@ -908,6 +908,30 @@ test('a missing path fails loudly instead of reporting a clean run', () => {
   assert.throws(() => program(ts, root, ['no/such/dir']), /no such file or directory/);
 });
 
+// TypeScript 7 dropped `ts.sys`, the host `tsconfigOf` and `program` both
+// read from, so a resolve that found a TypeScript without it used to succeed
+// in load() and crash later, deep in a call whose message named neither the
+// version found nor what to run. The fixture stands in for that package: a
+// `typescript` on disk, resolvable, with no `sys` (BUGS TC-144).
+test('a resolved TypeScript with no sys host fails loudly at load, naming the version found', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jitmax-tsguard-'));
+  try {
+    const pkg = path.join(dir, 'node_modules', 'typescript');
+    fs.mkdirSync(pkg, { recursive: true });
+    fs.writeFileSync(
+      path.join(pkg, 'package.json'),
+      JSON.stringify({ name: 'typescript', version: '7.0.2', main: 'index.js' })
+    );
+    fs.writeFileSync(path.join(pkg, 'index.js'), 'exports.version = "7.0.2";\n');
+    assert.throws(
+      () => load(dir),
+      /TypeScript >=5\.0\.0 <6.*\b7\.0\.2\b.*no "sys" host.*npm install --save-dev typescript@\^5\.9/s
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // Config and annotation overrides both name a rule or a defect code;
 // resolveDisabled() is the one place both forms are expanded and validated.
 
