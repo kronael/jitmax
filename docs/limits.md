@@ -35,16 +35,19 @@ explain the caveats without it.
   `WALK TRUNCATED` and exits `1`, and is not reported as clean in the text or in
   the exit code.
 
-## What three engineers found cold
+## What four engineers found cold
 
-Three engineers were handed a codebase, the tool and its README, and nothing
-else — no issue queue, no notes. They were told to make the code faster and to
-report what happened. The corpora were `date-fns` core, `dinero.js`, and one
-application backend, Immich. **All three finished, and none of them would put
-jitmax in CI as a gate.** Their verdict was to keep it as a manual check per
-release. One wrote that it is "honest about its own limits more than any perf
-tool I've read docs for". The sharpest reason for refusing the gate came from
-the `date-fns` user: two of their three findings needed a human to know the
+Four engineers were handed a codebase, the tool and its README, and nothing
+else — no issue queue, no notes. Three were told to make the code faster and
+to report what happened; their corpora were `date-fns` core, `dinero.js`, and
+one application backend, Immich. The fourth ran it cold across three fresh
+repositories instead, annotating fifteen functions and tallying every
+finding: 75 errors, 4 real V8 mechanisms, 0 actionable, 18 false or
+mislabelled, 52 coverage notices. **All four finished, and none of them would
+put jitmax in CI as a gate.** Their verdict was to keep it as a manual check
+per release. One wrote that it is "honest about its own limits more than any
+perf tool I've read docs for". The sharpest reason for refusing the gate came
+from the `date-fns` user: two of their three findings needed a human to know the
 input size before deciding they mattered, and both ended as permanent
 suppression comments rather than code changes, so a gate forcing that trade on
 every bounded helper "will get spammed with permanent suppressions or silenced
@@ -85,6 +88,45 @@ one and marks the function they care about gets a report about twenty functions
 they did not choose. And exit `1` conflates "found something" with "could not
 check everything", so a repository with unresolved imports can never pass a
 naive gate whatever its code looks like.
+
+The fourth trial ran across three library repos in one sitting.
+`node-lru-cache` 11.5.3 produced 33 errors and no speed rule ever fired.
+Thirty were `interface-dispatch` on `#private` function fields, the report
+noting "no visible write to `.perf`" beside `this.#perf = perf ?? defaultPerf`
+at `:1463`. The tester timed `get()` on one TTL cache alone and again after
+warming three other configs: slower in only 5 of 12 pairs, median 372 vs
+347 ms — no measurable cost. Following the report's `next:` advice and
+annotating the `#isStale` closure left all 33 errors standing; only
+suppression cleared them, after which the report read "33 findings
+suppressed … every annotated function is clean" at exit 0. `BUGS.md` TC-159,
+TC-145.
+
+`marked` 18.0.14 produced 11 errors, three of them real: `Parser.ts:43`,
+where a `%HaveSameMap` probe found 9 V8 maps among the tokens, `Parser.ts:131`
+with 6, and `Lexer.ts:119`. One was false — `Tokenizer.ts:495`, where
+`item.tokens.filter(t => t.type === 'space')` was reported as 17 property
+sets, but the probe found 21 elements and 1 map (`BUGS.md` TC-161). The other
+seven were false `closed-world` findings on `this.rules.other.*`, whose
+bodies sit in `src/rules.ts:96-99` (`BUGS.md` TC-157). The tester tried the
+fix for the three real findings anyway — rebuilding the tokens to share one
+shape, HTML output identical — and `Parser.parse` was slower in 11 of 11
+timed pairs; a constructor-built variant was slower in 3 of 5, median 564 vs
+379 ms. The change would also have altered marked's public token objects,
+which `Object.keys`, `in` checks, deepEqual tests and extensions all see.
+
+`arktype`'s 10-member schema-node union and arrow-function class fields
+produced 31 errors. One was real, and only in jitless mode: `union.ts:345`
+found 8 maps across 45 branches, except `scope.ts:197-205` replaces those
+traversal methods with compiled code in default mode, so the call the
+finding describes does not exist where it matters, and the tool has no way
+to know that. Two more were false `closed-world` findings on `super` through
+casts to an empty class and to `Array`. Fourteen said "`this` outside any
+method" on arrow-function class fields, printing their roots as
+`<anonymous>()`. `BUGS.md` TC-160.
+
+The tester's own line covers all three repos: "the only way I could tell
+real megamorphic findings from false ones was a 10-line `%HaveSameMap`
+probe."
 
 ## What the rules miss
 
