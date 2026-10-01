@@ -1,22 +1,25 @@
 # jitmax
 
-Mark the function you need fast with `/** @jitmax */`. jitmax then pushes
-stricter rules onto it, and onto every callee whose source it can read, and
-keeps reporting what is wrong with it until there is nothing left to report. It
-reads source and never times your program, so whether the code is fast enough
-stays your call.
+jitmax is a command-line checker for TypeScript source. Mark the function you
+need fast with `/** @jitmax */`, and jitmax checks it, and every callee whose
+source it can read, for patterns that can make V8 run it slower. It reads
+source and never times your program, so whether the code is fast enough stays
+your call.
 
 A **JIT** is a just-in-time compiler: the part of a JavaScript engine that
 compiles your code while the program is already running, from what it has seen
-run so far. **V8** is the JIT in Chrome, Node and Deno. Every rule and every
-number here is about V8. Bun runs the checker, but Bun's own engine is
-JavaScriptCore, and nothing measured here says anything about that one.
+run so far. **V8** is the JavaScript engine in Chrome, Node and Deno, and it
+contains several JIT compilers. Every rule and every number here is about V8.
+Bun runs the checker, but Bun's own engine is JavaScriptCore, and nothing
+measured here says anything about that one.
 
-Every rule cites a benchmark and a citation into V8's source, and both live
-in this repository. Six rules report a measured slowdown. The other two,
+Six rules report a pattern whose slowdown a benchmark in this repository
+measured. Five of them also cite the mechanism in V8's source;
+`accumulating-spread` needs no engine to explain it. The other two,
 `closed-world` and `interface-dispatch`, report calls the checker could not
-follow, and they are most of what a first run prints. A rule whose benchmark
-refused it is recorded as refused rather than quietly dropped.
+follow, and they are most of what a first run prints. They do not claim that
+the call is slow. A rule whose benchmark refused it is recorded as refused
+rather than quietly dropped.
 
 ## The idea
 
@@ -34,9 +37,10 @@ function simply costs more than it did last week, and the profiler points at a
 line that looks completely ordinary.
 
 The shape V8 keeps per object is a **hidden class**; V8's own source calls the
-same thing a **map**. Two objects with the same property names, added in the
-same order, share one. These docs use both names, and `docs/rules.md` keeps the
-longer definition.
+same thing a **map**. Objects built the same way — by the same constructor or
+the same literal, with the same property names added in the same order — share
+one. These docs use both names, and `docs/rules.md` keeps the longer
+definition.
 
 A handful of other patterns do the same kind of damage. Delete a key and V8
 moves that object to a slower kind of storage and leaves it there. Rebuild an
@@ -61,16 +65,17 @@ borrowing an engine's.
 
 [Install Bun](https://bun.sh/docs/installation), then check `bun --version`.
 
-**Pin TypeScript 5.x in your project before you scan it.** jitmax parses with
-the compiler your project builds with and needs the 5.x compiler API, and
-`bun add typescript` installs 7.x today, whose API has no `sys` host:
+**jitmax needs TypeScript 5.x.** It parses with the compiler your project
+builds with and needs the 5.x compiler API. If your project does not already
+depend on TypeScript 5.x, add it; `bun add typescript` installs 7.x today, whose
+API has no `sys` host:
 
 ```sh
 bun add --dev typescript@^5.9    # or: npm install --save-dev typescript@^5.9
 ```
 
-Skip that and the scan stops at exit `2` and says what it found and what it
-needs:
+If the compiler jitmax resolves has no `sys` host, the scan stops at exit `2`
+and says what it found and what it needs:
 
 ```text
 jitmax: jitmax needs TypeScript >=5.0.0 <6, and the "typescript" package
@@ -81,8 +86,8 @@ in this project:
 
 
 Install your project's other dependencies with its usual package manager too: an
-unresolved import makes every type read as `any`, and the report says so rather
-than calling the run clean.
+unresolved import makes the types it supplies read as `any`, and the report says
+so rather than calling the run clean.
 
 Save this as `hot.ts` in your TypeScript project's root:
 
@@ -102,12 +107,16 @@ bunx github:kronael/jitmax hot.ts
 
 Help exits `0`. The sample reports `every annotated function is clean.` and
 exits `0`. Mark your own hot function next and pass its file. Add `--verbose` to
-show every retained source location when a finding has more than five.
+show every retained source location when a finding has more than five. The
+GitHub command runs the repository's current `main` branch, not a release tag;
+[the status line](#development-and-licence) says how the two differ.
 
 Paths choose files, not compiler options. jitmax finds `tsconfig.json` from the
 working directory upward and never from the path argument. With no paths it uses
 that config's file list; with neither paths nor a config it scans sources under
-the working directory.
+the working directory. It reads only a file named `tsconfig.json`, follows its
+`extends`, and does not build its project `references`, so run it where a
+`tsconfig.json` holds or extends the options your code compiles with.
 
 ### Use an existing checkout
 
@@ -241,8 +250,11 @@ node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
 bunx github:kronael/jitmax run.cpuprofile src
 ```
 
-The default selects functions with at least 1% sampled self time;
-`[profile] min_self_pct` changes it. [Profile
+If a build step writes that JavaScript from TypeScript, have it emit source
+maps — `sourceMap: true` for `tsc` — so jitmax can map each frame back to your
+source. The default selects functions with at least 1% of your project's
+sampled self time; time in dependencies, Node's internals and the engine is
+left out. `[profile] min_self_pct` changes it. [Profile
 mapping](ARCHITECTURE.md#profile-mode-in-detail) covers source maps and
 unmatched frames. Pass at most one `.toml` and one `.cpuprofile`, in any order.
 
