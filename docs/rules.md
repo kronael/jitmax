@@ -302,9 +302,10 @@ side could not. The exception is withdrawn and the rule is right to fire there
 
 ## closed-world
 
-**What it detects.** Calls that the TypeScript program resolves to a
-declaration (a `.d.ts`) rather than to an implementation it can read. The
-JavaScript may be installed; the checker does not read it.
+**What it detects.** Calls with no body the checker can read: a callee the
+TypeScript program sees only as a declaration (a `.d.ts`, even with its
+JavaScript installed beside it), or a function passed in through a typed
+parameter in your own source, such as a callback.
 
 **It fires on** `usesDependency`, which calls into the `typescript` package.
 The program resolves that import to its `.d.ts`, although the package's
@@ -379,10 +380,10 @@ checked.
 
 ## The two escape rules, and why they are two
 
-These two were one rule until 2026-08-29, and the split matters to anyone who
-ran the tool: a call through an interface has a body in this checkout — the walk
-simply cannot decide which one runs — and telling you to inline it is telling
-you to undo the abstraction. It was 96.7% of every finding in the survey, so
+The split matters to anyone who runs the tool: a call through an interface has
+no single implementation the walk can check — several may be in the checkout,
+or the receiver may come from a caller outside the program — and telling you to
+inline it is telling you to undo the abstraction. It was 96.7% of every finding in the survey, so
 `[rules] closed-world = false`, the obvious way to quiet it, also switched off
 the one cause that is honest about not being able to look. `BUGS.md` TC-93.
 

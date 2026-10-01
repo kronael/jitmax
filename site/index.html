@@ -249,7 +249,9 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
   initializer, because that code runs when its class is defined and not on
   each call, and does not fail the run. Configure rules through a positional
   TOML file or a <code>-rulename</code> on the annotation. The report counts
-  suppressed findings; coverage gaps still fail the run. Exit <code>0</code>
+  suppressed findings. Coverage gaps still fail the run; the two coverage
+  rules can be switched off, and the calls they report then stay unchecked
+  at exit <code>0</code>. Exit <code>0</code>
   means at least one function was checked with no errors and no reported
   coverage gaps. Exit <code>1</code> means an error, incomplete coverage or no
   selected functions. Exit <code>2</code> means the tool failed, including
@@ -349,7 +351,7 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
     </tr>
     <tr>
       <td>a call through an interface</td>
-      <td>the body is in the checkout; the walk just cannot tell which one runs</td>
+      <td>no single implementation to check: several may be here, or the receiver comes from outside the program</td>
       <td>A coverage finding, not a cost estimate. It has its own rule name,
           so you can suppress it without suppressing calls whose bodies are
           absent. The receiver&rsquo;s

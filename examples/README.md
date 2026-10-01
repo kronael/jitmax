@@ -268,11 +268,10 @@ Three things in that table are about the tool rather than the libraries.
 
 **The two escape rules are 790 of the 844 findings** — 94%. Both warned
 rather than erring until 2026-08-31, so none of it failed a run; all of it does
-now, and `[rules]` is where a reader who disagrees says so. They were one rule
-until 2026-08-29
-and the split is what the ratio between them is for: 491 `closed-world`, a
-callee the program sees only as a declaration, against 299 `interface-dispatch`,
-a body that IS here at a site the walk cannot bind to one implementation. The
+now, and `[rules]` is where a reader who disagrees says so. The split between
+them is what this ratio is for: 491 `closed-world`, a callee the program sees
+only as a declaration, against 299 `interface-dispatch`, a call the walk cannot
+bind to one checkable implementation. The
 platform is in neither — Node's own API, V8's builtins and anything reached off
 `globalThis` are counted for the run and never listed, because "inline what you
 need from `path.join`" is advice nobody can take (`BUGS.md` TC-55, TC-69,

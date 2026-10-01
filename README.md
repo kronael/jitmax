@@ -276,7 +276,10 @@ means an error, incomplete coverage, or no selected functions. Coverage gaps
 include truncated walks, unresolved modules, unmatched hot frames, bodyless
 annotations and calls through `any` receivers. Exit `2` means the tool failed,
 including invalid input, config or source syntax. `--help` and `-h` exit `0`
-without loading the project. Suppressing a rule does not clear a coverage gap.
+without loading the project. Suppressing a rule never clears a coverage gap.
+The two coverage rules are different: switch off `closed-world` or
+`interface-dispatch` and the calls they report stay unchecked, but the run can
+exit `0`.
 Semantic TypeScript errors belong to your own compiler check.
 
 ## Development and licence
