@@ -44,6 +44,11 @@ export function load(cwd: string): Ts {
 export const tsconfigOf = (ts: Ts, cwd: string): string | undefined =>
   ts.findConfigFile(cwd, ts.sys.fileExists, 'tsconfig.json');
 
+// Found the way tsconfig.json is, and the way other linters find theirs: from
+// the working directory upward, the nearest one wins.
+export const jitmaxTomlOf = (ts: Ts, cwd: string): string | undefined =>
+  ts.findConfigFile(cwd, ts.sys.fileExists, 'jitmax.toml');
+
 // Does a bare specifier match a `paths` entry? A TypeScript pattern holds at
 // most one `*`, and a specifier matches when the text either side of it does.
 // The answer separates the two causes of an unresolved bare import: a declared

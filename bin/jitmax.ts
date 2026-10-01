@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import path from 'node:path';
 
-import { aliasedBy, load, program, tsconfigOf } from '../lib/ts.ts';
+import { aliasedBy, jitmaxTomlOf, load, program, tsconfigOf } from '../lib/ts.ts';
 import { marksFromProfile, scan } from '../lib/scan.ts';
 import { hotFrames } from '../lib/profile.ts';
 import { check, resolveDisabled } from '../lib/rules.ts';
@@ -71,7 +71,11 @@ Exit codes: 0 checked, no errors; 1 errors or incomplete coverage;
     }
     return hits[0];
   };
-  const configPath = only('.toml');
+  const named = only('.toml');
+  // A config nobody named still changes which rules fire, so the run says
+  // which file it found.
+  const discovered = named === undefined ? jitmaxTomlOf(ts, cwd) : undefined;
+  const configPath = named ?? discovered;
   const profilePath = only('.cpuprofile');
   const inputs = args.filter((a) => !SUFFIXES.some((suffix) => a.endsWith(suffix)));
   const config = configPath ? loadConfig(configPath) : undefined;
@@ -219,6 +223,9 @@ Exit codes: 0 checked, no errors; 1 errors or incomplete coverage;
   );
   process.stdout.write(out + '\n');
   if (fromProfile !== undefined) process.stdout.write(fromProfile + '\n');
+  if (discovered !== undefined) {
+    process.stdout.write(`  rules from ${rel(cwd, discovered)}, found from the working directory\n`);
+  }
   // A truncated walk exits 1 as a finding does. It is not a clean run — part of
   // the call tree was never checked, so silence from it is unproven — and `1`
   // already means "jitmax has something to report". A fourth code would be

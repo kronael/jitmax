@@ -1485,6 +1485,39 @@ test('the suppression line names only the rules that fired', () => {
   assert.strictEqual(run.status, 0);
 });
 
+// Like tsconfig.json, and like the configs other linters read, jitmax.toml is
+// found from the working directory upward; a config named on the command line
+// wins. A found config changes which rules fire, so the run names it.
+test('jitmax.toml is found from the working directory upward, and a named one wins', () => {
+  const dir = path.join(root, 'tmp', `test-discover-${process.pid}`);
+  const sub = path.join(dir, 'sub');
+  fs.mkdirSync(sub, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'jitmax.toml'), '[rules]\n"closed-world" = false\n');
+  const empty = path.join(dir, 'empty.toml');
+  fs.writeFileSync(empty, '[rules]\n');
+  const file = path.join(sub, 'cb.ts');
+  fs.writeFileSync(file, [
+    '/** @jitmax */',
+    'export function each(xs: number[], f: (x: number) => number): number {',
+    '  let s = 0; for (const x of xs) s += f(x); return s;',
+    '}',
+    '',
+  ].join('\n'));
+  const jitmax = (...args: string[]) => spawnSync(process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), ...args], { cwd: sub, encoding: 'utf8' });
+  const found = jitmax('cb.ts');
+  const named = jitmax(empty, 'cb.ts');
+  for (const f of [path.join(dir, 'jitmax.toml'), empty, file]) fs.unlinkSync(f);
+  fs.rmdirSync(sub);
+  fs.rmdirSync(dir);
+  assert.match(found.stdout, /1 finding suppressed \(closed-world\)/);
+  assert.match(found.stdout, /rules from \.\.\/jitmax\.toml, found from the working directory/);
+  assert.strictEqual(found.status, 0);
+  assert.match(named.stdout, /error {2}closed-world/);
+  assert.doesNotMatch(named.stdout, /found from the working directory/);
+  assert.strictEqual(named.status, 1);
+});
+
 // TC-154: a site inside a nested function the walk also follows as its own
 // body is found twice for one mark, and the fan-in counted findings, so one
 // annotated function printed "reached by 2 annotated functions".
