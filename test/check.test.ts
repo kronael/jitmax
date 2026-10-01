@@ -1577,6 +1577,43 @@ test('a ported frame that lands on no function is still a miss, at both position
   assert.strictEqual(run.status, 1);
 });
 
+/**
+ * The threshold reads the project's share of the profile, and time in a
+ * dependency is reported as a share, never as a frame the run missed. A
+ * profile of this tool checking demo/ spent 71.4% in typescript.js and 4.0%
+ * in lib/: at 1% of the whole no lib/ function was hot, and typescript.js was
+ * named as measured time the run could not check (BUGS TC-132). Here `kernel`
+ * holds 0.5% of the samples and all of the project's.
+ */
+test('a profile mostly spent in a dependency marks the project code it holds', () => {
+  const dir = path.join(root, 'test', 'fixtures', 'profile');
+  const prof = path.join(root, 'tmp', `test-partition-${process.pid}.cpuprofile`);
+  const frame = (id: number, url: string, line: number, column: number) => ({
+    id,
+    callFrame: { functionName: 'f', url, lineNumber: line - 1, columnNumber: column - 1 },
+  });
+  fs.mkdirSync(path.dirname(prof), { recursive: true });
+  fs.writeFileSync(prof, JSON.stringify({
+    nodes: [
+      frame(1, `file://${path.join(dir, 'work.ts')}`, 8, 23),
+      frame(2, `file://${path.join(root, 'node_modules', 'typescript', 'lib', 'typescript.js')}`, 9, 1),
+      frame(3, 'node:internal/modules/esm/utils', 1, 1),
+    ],
+    samples: [1, 2, 3],
+    timeDeltas: [5, 950, 45],
+  }));
+  const run = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), prof, dir], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  fs.unlinkSync(prof);
+  assert.match(run.stdout, /1 hot function, 1 error/);
+  assert.match(run.stdout, /kernel\(\) — 0\.5% of samples/);
+  assert.ok(!run.stdout.includes('did not'), `a dependency frame was listed as missed:\n${run.stdout}`);
+  assert.match(run.stdout, /self time: project 0\.5%, dependency 95\.0%, node: 4\.5%, engine 0\.0%/);
+  assert.strictEqual(run.status, 1);
+});
+
 // Positionals are named by suffix, not by slot. With the profile second it was
 // read as a source file: no annotations in a .cpuprofile, so the run reported
 // `every annotated function is clean` and exited 0 over a profile it never

@@ -133,10 +133,16 @@ function ported(frames: HotFrame[]): HotFrame[] {
   });
 }
 
+// Every frame with a file, ported, and where the rest of the sampled self time
+// went: `node` is Node's own JavaScript (`node:` urls) and `engine` the frames
+// with no url at all, both as percentages of the whole. No threshold here: it
+// applies to the program's share, and only scan.ts knows the program (BUGS
+// TC-132).
+//
 // Self time from `samples` and `timeDeltas` rather than `hitCount`: a sample
 // carries the time actually attributed to it, and hitCount weights every sample
 // equally whatever the sampling interval did.
-export function hotFrames(profilePath: string, minSelfPct: number): HotFrame[] {
+export function hotFrames(profilePath: string): { frames: HotFrame[]; node: number; engine: number } {
   let text: string;
   try {
     text = fs.readFileSync(profilePath, 'utf8');
@@ -169,14 +175,16 @@ export function hotFrames(profilePath: string, minSelfPct: number): HotFrame[] {
   if (total === 0) throw new Error(`${profilePath}: the profile has no sampled time in it`);
 
   const out: HotFrame[] = [];
+  let node = 0;
+  let engine = 0;
   for (const [id, time] of self) {
-    const node = byId.get(id);
     // A frame with no URL is the engine's own: (garbage collector), (program),
     // (idle). Real time, no source line, nothing this tool can report on.
-    const frame = node?.callFrame;
-    if (!frame?.url?.startsWith('file://')) continue;
+    const frame = byId.get(id)?.callFrame;
     const pct = (time / total) * 100;
-    if (pct < minSelfPct) continue;
+    if (frame?.url?.startsWith('node:')) node += pct;
+    else if (!frame?.url) engine += pct;
+    if (!frame?.url?.startsWith('file://')) continue;
     out.push({
       file: fileURLToPath(frame.url),
       // cpuprofile positions are 0-based; every Site in this project is 1-based.
@@ -186,5 +194,5 @@ export function hotFrames(profilePath: string, minSelfPct: number): HotFrame[] {
       pct,
     });
   }
-  return ported(out).sort((a, b) => b.pct - a.pct);
+  return { frames: ported(out).sort((a, b) => b.pct - a.pct), node, engine };
 }

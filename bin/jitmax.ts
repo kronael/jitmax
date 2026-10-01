@@ -24,7 +24,8 @@ Examples:
   jitmax                    Use the tsconfig file list
 
 Mark a hot function: /** @jitmax */
-A profile selects functions with at least ${DEFAULT_MIN_SELF_PCT}% sampled self time by default.
+A profile selects functions with at least ${DEFAULT_MIN_SELF_PCT}% of the project's sampled
+self time by default; dependency, node: and engine time is only reported.
 Record one: node --cpu-prof --cpu-prof-name=run.cpuprofile workload.js
 Set [profile] min_self_pct in a TOML file to change the threshold.
 
@@ -120,8 +121,8 @@ Exit codes: 0 checked, no errors; 1 errors or incomplete coverage;
   let given;
   if (profilePath !== undefined) {
     const minSelfPct = config?.minSelfPct ?? DEFAULT_MIN_SELF_PCT;
-    const hot = hotFrames(profilePath, minSelfPct);
-    const found = marksFromProfile(ts, p, hot, path.basename(profilePath));
+    const profile = hotFrames(profilePath);
+    const found = marksFromProfile(ts, p, profile.frames, path.basename(profilePath), minSelfPct);
     // A frame that matched nothing is measured time this run could not look at,
     // which is what `unresolved` already means for modules — so it goes through
     // the same channel: named above the findings, and exit 1. It used to be two
@@ -139,13 +140,19 @@ Exit codes: 0 checked, no errors; 1 errors or incomplete coverage;
       return `${f.name} (${at}${from ? ` <- ${rel(cwd, from.file)}:${from.line}:${from.column}` : ''})`;
     });
     profileCounts = {
-      matched: hot.length - found.unmatched.length,
+      matched: found.hot - found.unmatched.length,
       ported: found.unmatched.filter((f) => f.generated !== undefined).length,
     };
     given = found.marks;
+    // Where the rest went, once: the threshold reads the project's share, and
+    // a run that marked nothing has to say whether the project was in the
+    // profile at all (BUGS TC-132).
+    const share = (pct: number): string => `${pct.toFixed(1)}%`;
     fromProfile =
       `  ${plural(found.marks.length, 'hot function')} from ` +
-      `${path.basename(profilePath)} at or above ${minSelfPct}% self time`;
+      `${path.basename(profilePath)} at or above ${minSelfPct}% of the project's self time\n` +
+      `  self time: project ${share(found.project)}, dependency ${share(found.dependency)}, ` +
+      `node: ${share(profile.node)}, engine ${share(profile.engine)}`;
   }
   const { checker, marks, unresolved, bodyless, untyped } = scan(ts, p, given);
 

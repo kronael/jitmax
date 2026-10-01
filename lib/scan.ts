@@ -1,4 +1,5 @@
 import { builtinModules } from 'node:module';
+import path from 'node:path';
 import type * as TS from 'typescript';
 import type { Ts } from './ts.ts';
 import type { HotFrame } from './profile.ts';
@@ -355,12 +356,31 @@ function findMarks(ts: Ts, program: TS.Program): Mark[] {
 // it usually means the profile is stale against edited source, and a mode that
 // silently checked nothing would be the lie this project throws on everywhere
 // else.
+//
+// The threshold is a share of the PROJECT's self time, and a frame in a
+// dependency this program does not hold is neither hot project code nor a miss.
+// A profile of this tool checking demo/ spends 71.4% in node_modules — nearly
+// all of it TypeScript's typescript.js — and 4.0% in lib/, so at 1% of the
+// whole no function here was hot and the one frame selected was typescript.js,
+// reported as time the run could not check; at 0.05% 350 frames were (BUGS
+// TC-132). A file this program holds is the project's, and so is any other
+// file outside node_modules: a build output with no source map is still the
+// author's code, and stays a miss the report diagnoses.
 export function marksFromProfile(
   ts: Ts,
   program: TS.Program,
-  hot: HotFrame[],
-  source: string
-): { marks: Mark[]; unmatched: HotFrame[] } {
+  frames: HotFrame[],
+  source: string,
+  minSelfPct: number
+): { marks: Mark[]; unmatched: HotFrame[]; hot: number; project: number; dependency: number } {
+  const isDependency = (f: HotFrame): boolean => {
+    const sf = program.getSourceFile(f.file);
+    return !(sf && isOwnSource(program, sf)) && f.file.split(path.sep).includes('node_modules');
+  };
+  const own = frames.filter((f) => !isDependency(f));
+  const project = own.reduce((n, f) => n + f.pct, 0);
+  const dependency = frames.reduce((n, f) => n + f.pct, 0) - project;
+  const hot = own.filter((f) => (f.pct / project) * 100 >= minSelfPct);
   const nodes = new Map<string, { node: TS.SignatureDeclaration; sf: TS.SourceFile }>();
   const put = (k: string, v: { node: TS.SignatureDeclaration; sf: TS.SourceFile }): void => {
     if (!nodes.has(k)) nodes.set(k, v);
@@ -413,7 +433,7 @@ export function marksFromProfile(
         (frame.generated ? ', ported through a source map' : ''),
     });
   }
-  return { marks, unmatched };
+  return { marks, unmatched, hot: hot.length, project, dependency };
 }
 
 // `-key` tokens in the promise's own tag: `@jitmax -boxed-elements -TC-15`
