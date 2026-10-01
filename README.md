@@ -19,10 +19,11 @@ A real run against radash's `assign`, vendored unchanged into `examples/`.
 ## Aim
 
 V8 is the JavaScript engine in Node, Chrome and Deno. It makes a hot function
-fast by compiling each line for the object shapes it has seen there. One line
-keeps up to four shapes; send a fifth through it and V8 falls back to a slow
-generic lookup. Deleting a property an object has moves it to slower storage.
-The code still returns the same values, only slower, and nothing warns you.
+fast by compiling each property read for the object shapes it has seen there.
+Each read keeps up to four shapes; send a fifth through it and V8 falls back
+to a slow generic lookup. Deleting a property an object has moves it to
+slower storage. The code still returns the same values, only slower, and
+nothing warns you.
 
 - **For:** anyone with a TypeScript function on V8 whose speed matters.
 - **Promise:** every rule that claims a slowdown carries a benchmark run in
@@ -34,8 +35,10 @@ The code still returns the same values, only slower, and nothing warns you.
   check is reported, never passed as clean.
 - **Not a profiler, not a cost estimate:** jitmax reads source and never runs
   your program. A finding is a measured candidate, not a cost in your
-  workload; profile and benchmark your caller before you keep a change. Bun
-  runs the checker, but every rule is about V8, not Bun's JavaScriptCore.
+  workload, and a printed fix can be slower: es-toolkit's `omit` rewrite
+  improves reads at n=12 and n=48, but makes the whole call slower. Profile
+  and benchmark your caller before you keep a change. Bun runs the checker,
+  but every rule is about V8, not Bun's JavaScriptCore.
 
 ## Quick start
 
@@ -94,7 +97,7 @@ export function total(rows: Row[]): number {
 }
 ```
 
-`bunx github:kronael/jitmax shapes.ts` prints this and exits `1`:
+`bunx github:kronael/jitmax shapes.ts` exits `1` and prints:
 
 ```text
 jitmax — 1 annotated function, 1 error
@@ -117,33 +120,13 @@ jitmax — 1 annotated function, 1 error
             established here
       measured in bench/shape-sets.jl and bench/shapes-calibrated.jl
       known defects: TC-2, TC-9
-
-  known defects cited above:
-    TC-2  a TypeScript union member is not a V8 map
-    TC-9  rules fire outside the conditions their own evidence establishes
-
-  Static findings are candidates, not measured costs in this workload.
-  Profile and benchmark the caller before keeping a change.
-  Rule evidence and limits: docs/rules.md; measurements: bench/README.md.
-  bench/ and docs/ paths are in the jitmax repository at
-  https://github.com/kronael/jitmax/tree/v0.16.0
 ```
 
-- `shapes.ts:9  total()` is the annotated function the walk started from. The
-  finding under it can sit in any function it calls, in any file.
-- The next line gives the position, the severity and the rule, then what the
-  rule saw.
-- `related:` points to representative builders, implementations or
-  allocations, and `sources:` says where tracing stopped. Neither proves the
-  value reaches the site at run time. `-v` shows every location, not five.
-- `next:` is what to look at or try; `note:` is what that change can break
-  besides speed. jitmax never rewrites your code.
-- `measured in` names the sweep behind the rule. `known defects:` are the
-  rule's recorded limits, explained in
-  [the rule reference](docs/rules.md#known-defects).
-
-A finding prints no cost: a measured ratio depends on how much data passes
-through the code, and the annotation does not say.
+A legend of the defect codes and a footer follow. `shapes.ts:9  total()` is
+the annotated function the walk started from; the finding can sit in any
+function it calls. `next:` is what to look at or try, and `note:` is what that
+change can break besides speed.
+[Reading a finding](docs/rules.md#reading-a-finding) explains every line.
 
 ## Choose rules and functions
 
@@ -158,6 +141,9 @@ To report only megamorphic reads and calls, copy the
 ```sh
 bunx github:kronael/jitmax src
 ```
+
+The preset also switches off `closed-world` and `interface-dispatch`, so the
+unchecked calls those two rules report no longer fail the run.
 
 In its `[rules]` table, `false` switches a rule off. To switch a rule off for
 one function and everything it calls, name it on the annotation:
@@ -189,8 +175,8 @@ claim.
 | `megamorphic-dispatch` | a method call that five or more property sets or implementations reach |
 | `delete-property` | `delete` on an object, which can move it to slower dictionary storage |
 | `allocating-select` | a loop that replaces a stored object through a call that allocates a new one |
-| `chained-allocation` | `.map().filter()` and `Object.entries(o).map()`, which build an array per stage |
-| `accumulating-spread` | `[...acc, v]` and its object and `concat` forms in a loop: quadratic copying on any engine |
+| `chained-allocation` | two chained array stages, such as `.map().filter()` or `Object.entries(o).map()`, which build an array per stage |
+| `accumulating-spread` | `[...acc, v]` and its object and `concat` forms in a loop: a full copy per pass, quadratic when the accumulator grows |
 | `closed-world` | a call into code with no readable body, such as a `.d.ts` or a callback parameter |
 | `interface-dispatch` | a call the walk cannot bind to one implementation |
 
@@ -199,13 +185,13 @@ and fix. The exit code says how the run went:
 
 - `0`: at least one function was checked, with no errors and no coverage
   gaps. A `warn` can still print: a finding reached only through a static
-  field initializer, which runs once, when its class is defined.
+  field initializer, which runs once, when its class is defined. Switching
+  off `closed-world` or `interface-dispatch` leaves the calls they report
+  unchecked, and the run can still exit `0`.
 - `1`: an error, a coverage gap, or no function selected. The gaps are a
   truncated walk, an unresolved module, an unmatched profile frame, an
   annotation on a function with no body, and a call through an `any`
-  receiver. Suppressing a rule never clears a gap. Switching off
-  `closed-world` or `interface-dispatch` leaves the calls they report
-  unchecked, and the run can then exit `0`.
+  receiver. Suppressing a rule never clears a gap.
 - `2`: the tool failed — invalid arguments, configuration or source syntax, or
   an unsupported TypeScript. `--help` exits `0` without loading the project.
 
