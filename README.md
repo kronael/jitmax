@@ -18,29 +18,25 @@ A real run against radash's `assign`, vendored unchanged into `examples/`.
 
 ## Aim
 
-V8 is the JavaScript engine in Node, Chrome and Deno. It makes a hot function
-fast by compiling each property read for the object shapes it has seen there.
-Each read keeps up to four shapes; send a fifth through it and V8 falls back
-to a slow generic lookup. Deleting a property an object has moves it to
-slower storage. The code still returns the same values, only slower, and
-nothing warns you.
-
-- **For:** anyone with a TypeScript function on V8 whose speed matters.
+- **For:** anyone whose speed-sensitive TypeScript runs on V8, the engine in
+  Node, Chrome and Deno. Bun runs the checker, but every rule is about V8, not
+  Bun's JavaScriptCore. [The rule terms](docs/rules.md#terms) explain, in
+  plain words, how V8 makes code fast and what slows it down.
 - **Promise:** every rule that claims a slowdown carries a benchmark run in
   this repository, with its raw timings in `bench/`, and cites the V8 source
   line where one shows the mechanism. A rule stays silent on the specific
   cases its own benchmark refuted that it can recognise in source, and a test
-  fails if it fires there. It cannot see input sizes, so it can still fire
-  where a rewrite would not pay off for your data. A call into your own or a
-  dependency's code that the walk cannot follow is reported and fails the run.
-  Calls into Node and V8 builtins are counted, not checked; "clean" means no
-  enabled rule fired and no tracked gap remains.
-- **Not a profiler, not a cost estimate:** jitmax reads source and never runs
-  your program. A finding is a measured candidate, not a cost in your
-  workload, and a printed fix can be slower: es-toolkit's `omit` rewrite
-  improves reads at n=12 and n=48, but makes the whole call slower. Profile
-  and benchmark your caller before you keep a change. Bun runs the checker,
-  but every rule is about V8, not Bun's JavaScriptCore.
+  fails if it fires there. A call into your own or a dependency's code that
+  the walk cannot follow is reported and fails the run. Calls into Node and V8
+  builtins are counted, not checked; "clean" means no enabled rule fired and
+  no tracked gap remains.
+- **Not a profiler, not a cost estimate:** a finding is a measured candidate,
+  not a cost in your workload. A rule cannot see input sizes, so it can fire
+  where a rewrite does not pay off for your data. A printed fix can make the
+  call slower: es-toolkit's `omit` fix improves reads at n=12 and n=48, but
+  slows the call, and [the examples](examples/README.md#what-each-fix-is-worth)
+  measure four fixes. Profile and benchmark your caller before you keep a
+  change.
 
 ## Quick start
 
