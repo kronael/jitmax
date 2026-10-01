@@ -1,9 +1,8 @@
 # What the fix is worth on somebody else's code
 
-Start with the [README setup](../README.md#quick-start) for Bun, TypeScript and
-the checkout fallback. Public GitHub commands are blocked by TC-133 until a
-repository ref is accessible. Detection trials and measured speedups are
-separate results below.
+Start with the [README setup](../README.md#quick-start) for Bun, the TypeScript
+5.x requirement and the existing-checkout route. Detection trials and measured
+speedups are separate results below.
 
 `BUGS.md` references point to the internal issue history in the full Git clone.
 The installed guides retain each trial's result and limits without that queue.
@@ -138,9 +137,11 @@ Run `node examples/config-check.ts` again after changing either implementation.
 own data properties without invoking inherited setters. This covers the
 recorded inputs, not every possible radash input or prototype.
 
-**Public installation failed.** The README's `bunx github:kronael/jitmax`
-command exited 1 with a GitHub archive 404. The checkout command above works;
-the public route remains blocked by TC-133. The trial ran on Node v22.23.2.
+**Public installation works.** Re-run 2026-10-01 on Bun 1.3.14 in a scratch
+project: `bunx github:kronael/jitmax --help` exits `0`, and the README's sample
+`hot.ts` exits `0` with `every annotated function is clean.` The checkout
+command above works as well. A project resolving `typescript@7.0.2` stops at
+exit `2` instead, which is why the quick start pins 5.x first.
 
 My user assessment: the file, line and explanation of repeated copying help me
 locate the work. The fix text asks me to choose between faster merging and

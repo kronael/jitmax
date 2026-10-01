@@ -1,8 +1,7 @@
 # The test suite
 
 To scan your own code, use the [README quick start](../README.md#quick-start).
-It covers Bun and the checkout fallback for the public GitHub access blocker,
-TC-133. To work on jitmax, complete the
+It covers Bun and the TypeScript 5.x requirement. To work on jitmax, complete the
 [development setup](../README.md#development-and-licence), then run the commands
 below from the jitmax checkout with Node `>=22.18`.
 
@@ -75,8 +74,9 @@ an unbuilt Git install from TypeScript. An installed copy with `dist/` runs
 compiled JavaScript; a checkout runs source. The suite checks the entry point,
 package guide list and an actual Git archive. It requires runtime sources,
 licences and the preset, and rejects internal notes. This test guide belongs
-to the full clone, not the install archive. Public GitHub access needs a
-separate `bunx github:kronael/jitmax --help` check; TC-133 tracks that blocker.
+to the full clone, not the install archive. Public GitHub access is not covered
+by the suite: run `bunx github:kronael/jitmax --help` against the published
+repository to check it.
 
 ## What it does not do
 

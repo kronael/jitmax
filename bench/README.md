@@ -1,8 +1,8 @@
 # The benchmarks
 
 To scan your own code, use the [README quick start](../README.md#quick-start).
-It covers Bun and the checkout fallback for the public GitHub access blocker,
-TC-133. The commands below reproduce evidence in a full Git clone of jitmax.
+It covers Bun and the TypeScript 5.x requirement. The commands below reproduce
+evidence in a full Git clone of jitmax.
 Complete the [development setup](../README.md#development-and-licence) first.
 Benchmarks run on Node/V8, even when you run the checker with Bun.
 

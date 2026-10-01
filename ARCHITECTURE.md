@@ -1,8 +1,7 @@
 # How jitmax is built
 
 For installation and commands, start with the [README quick start](README.md#quick-start).
-It covers Bun, the TypeScript version constraint and the checkout fallback for
-the public GitHub access blocker, TC-133.
+It covers Bun, the TypeScript 5.x requirement and the existing-checkout route.
 
 One pass over a TypeScript program: load the project's own compiler, find the
 marked functions, walk what they call, run eight detectors over every body the
@@ -26,7 +25,13 @@ bin/jitmax.ts        argv, then the pipeline below, then the exit code
 own. The tool therefore parses with the same compiler the project builds with,
 and reads the same types. It needs the 5.x API: `ts.sys` and
 `ts.createProgram`, neither of which exists in TypeScript 7, the native rewrite
-(`BUGS.md` TC-130).
+(`BUGS.md` TC-130). `load()` therefore checks `ts.sys` on whatever it resolved,
+right at the resolve, and fails with exit `2` naming the version it found — a
+capability check and not a version-string check, because `sys` is the fact every
+caller below it reads. Under Bun that guard is what a bare project hits:
+Bun's resolver returns today's `typescript@latest` even where no
+`node_modules/typescript` exists, so the version that arrives is not
+necessarily either documented source (`BUGS.md` TC-144).
 
 **Find the marks.** A mark is `/** @jitmax */` on a function, or a frame from a
 CPU profile at or above `[profile] min_self_pct` of the profile's sampled self
@@ -94,8 +99,7 @@ are counted for the run and never named, because "inline what you need from
 
 From your application's root, record a profile and pass it as a suffix-named
 positional argument. Replace `your-workload.js` with your JavaScript entry
-point and `src` with its source directory. Use the README's checkout command
-prefix while the GitHub download is unavailable:
+point and `src` with its source directory:
 
 ```sh
 node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
@@ -128,7 +132,6 @@ min_self_pct = 2
 ```
 
 Run `bunx github:kronael/jitmax profile.toml run.cpuprofile src` from there.
-Use the README's checkout command prefix while GitHub access is blocked.
 The threshold is a percentage of sampled self time, not elapsed duration.
 
 There is no static hotness estimate. An annotation selects a function by the
@@ -146,7 +149,7 @@ run the TypeScript under `node_modules`, so an unbuilt Git install needs neither
 `dist/` nor permission to run `prepare`. Bun's
 [shebang rules](https://bun.sh/docs/pm/bunx#shebangs) and
 [lifecycle policy](https://bun.sh/docs/pm/lifecycle) explain the runtime and
-script handling. The [quick start](README.md#quick-start) states the public access blocker.
+script handling.
 
 The shim uses `dist/bin/jitmax.js` when an installed copy contains it; otherwise
 it uses `bin/jitmax.ts`. A checkout always runs the source. npm's `prepare`

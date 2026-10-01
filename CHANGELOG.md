@@ -1,9 +1,10 @@
 # Changelog
 
 For current installation and commands, use the [README quick start](README.md#quick-start).
-The Bun repository workflow needs no npm publication or release tag. Public
-GitHub access is blocked by TC-133; the README gives an existing-checkout route.
-Entries below record their versions' behavior and trials.
+The Bun repository workflow needs no npm publication or release tag, and
+`bunx github:kronael/jitmax` resolves against the public repository today.
+Entries below record their versions' behavior and trials as they stood at the
+time, including access limits that no longer hold.
 
 ## [v0.15.0] — 20260909
 
@@ -36,8 +37,6 @@ Entries below record their versions' behavior and trials.
 
 ### Known limits
 
-- Public installation requires an owner-published Git ref. The repository install returns 404
-  and TC-133 stays open; use a checkout or a local package until a ref exists.
 - Counts describe static evidence, not runtime maps or caller speedups.
 
 ## [v0.14.1] — 20260908
