@@ -6,7 +6,7 @@
 <meta name="krons:date" content="2026-08-19">
 <meta name="krons:pin"  content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="V8 runs your JavaScript fast by guessing what your code will do. A few normal-looking patterns make it guess wrong. jitmax finds them, prints what each one cost when it was measured, and prints where the measurement refused.">
+<meta name="description" content="V8 runs your JavaScript fast by guessing what your code will do. A few normal-looking patterns make it guess wrong. jitmax finds them in TypeScript source and names the benchmark behind each rule and where that benchmark refused.">
 <title>jitmax — mark the function you need fast</title>
 <link rel="stylesheet" href="/pub/krons/assets/hub.css">
 <meta property="og:title" content="jitmax — mark the function you need fast">
@@ -37,7 +37,7 @@
 
 <a href="/pub/" class="back-btn">&larr; back</a>
 <h1>jitmax</h1>
-<p class="hub-subtitle">mark the function you need fast, and find out what is wrong with it</p>
+<p class="hub-subtitle">a command-line checker for TypeScript: mark the function you need fast, and find out what is wrong with it</p>
 
 <video id="demo" src="jitmax.mp4" controls muted playsinline
        preload="metadata" poster="jitmax-card.png"
@@ -87,17 +87,15 @@
 </p>
 
 <p>
-  <strong>Pin TypeScript 5.x in your project before you scan it.</strong>
-  jitmax parses with the compiler your project builds with and needs the 5.x
-  compiler API, and <code>bun add typescript</code> installs 7.x today, whose
-  API has no <code>sys</code> host. Run
-  <code>bun add --dev typescript@^5.9</code>, or
-  <code>npm install --save-dev typescript@^5.9</code>. Skip that and the scan
-  stops at exit <code>2</code>: a checkout of the current source names what it
-  found and what it needs, and <code>bunx</code>, which installs the
-  <code>main</code> branch, reports
-  <code>undefined is not an object (evaluating 'ts.sys.fileExists')</code>
-  instead. Same cause, same fix.
+  <strong>jitmax needs TypeScript 5.x.</strong>
+  It parses with the compiler your project builds with and needs the 5.x
+  compiler API. If your project does not already depend on TypeScript 5.x,
+  run <code>bun add --dev typescript@^5.9</code>, or
+  <code>npm install --save-dev typescript@^5.9</code>;
+  <code>bun add typescript</code> installs 7.x today, whose API has no
+  <code>sys</code> host. If the compiler jitmax resolves has no
+  <code>sys</code> host, the scan stops at exit <code>2</code> and asks you to
+  install a supported TypeScript 5.x version.
 </p>
 
 <p>
@@ -186,11 +184,13 @@ interface-dispatch = false</code></pre>
 bunx github:kronael/jitmax run.cpuprofile src</code></pre>
 
 <p>
-  The default selects functions with at least 1% sampled self time.
+  The default selects functions with at least 1% of your project's sampled
+  self time; time in dependencies, Node's internals and the engine is left out.
   To change that threshold, add <code>[profile]</code> and
   <code>min_self_pct = 2</code> on separate lines in your TOML file, then run
   <code>bunx github:kronael/jitmax jitmax.toml run.cpuprofile src</code>.
-  Transformed JavaScript needs source maps beside the generated files.
+  If a build step writes the JavaScript from TypeScript, have it emit source
+  maps &mdash; <code>sourceMap: true</code> for <code>tsc</code>.
   The report names unmatched frames and exits <code>1</code> when coverage is
   incomplete. Pass at most one TOML file and one CPU profile.
 </p>
@@ -317,11 +317,9 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
     <tr>
       <td><code>x = Lib.min(x, y)</code> in a loop</td>
       <td>a fresh object every pass, even when nothing changed</td>
-      <td>2.60&ndash;2.89x. The recorded survey found allocations, but none
-          matched the benchmark's unchanged-value case. Values advanced or
-          were wrapped on every pass, so comparing first saved no allocation.
-          Treat the rewrite as conditional advice, not a demonstrated win
-          on those programs. <code>BUGS.md</code> TC-18.</td>
+      <td>2.60&ndash;2.89x. The recorded survey of 2953 annotated functions
+          found no site. Treat the rewrite as conditional advice, not a
+          demonstrated win. <code>BUGS.md</code> TC-18.</td>
     </tr>
     <tr>
       <td>a method called on five classes</td>
@@ -362,7 +360,7 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
 <p>
   The recorded survey runs the checker on library and application checkouts,
   with functions selected by <code>examples/annotate.js</code>.
-  The <a href="https://github.com/kronael/jitmax/blob/HEAD/examples/README.md#two-applications-and-the-rules-twelve-libraries-could-not-reach">examples survey</a>
+  The <a href="https://github.com/kronael/jitmax/blob/HEAD/examples/README.md#two-applications">examples survey</a>
   holds the counts and run limits. In a checkout, read
   <code>examples/README.md</code>. These are detection examples, not measured
   speedups for those applications.
@@ -400,13 +398,14 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
 
 <ul>
   <li>
-    Every rule had to earn its place with a measurement. A constant in V8's
+    Every rule that reports a slowdown had to earn its place with a
+    measurement. A constant in V8's
     source is a guess about cost until a benchmark prices it.
   </li>
   <li>
-    Every rule records <strong>where the same benchmark refused it</strong>, and
-    a test fails if the rule fires there anyway. Four shapes is fine. Two shapes
-    is fine. Only the fifth is reported.
+    Every rule with a benchmark records <strong>where that benchmark refused
+    it</strong>, and a test fails if the rule fires there anyway. Two to four
+    shapes are not reported; only the fifth is.
   </li>
   <li>
     Two rules also record a <strong>real cost they deliberately do not
@@ -442,9 +441,10 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
     Each row records the machine state and allowed load.
     The corpus also contains measurements taken above a one-minute-load gate.
     Those rows remain in the evidence; that reading cannot establish whether
-    another process competed with the benchmark. Read
-    <code>bench/README.md</code> and <code>docs/limits.md</code> for the protocol
-    and corpus limits.
+    another process competed with the benchmark. Read the
+    <a href="https://github.com/kronael/jitmax/blob/HEAD/bench/README.md">benchmark protocol</a>
+    and the <a href="https://github.com/kronael/jitmax/blob/HEAD/docs/limits.md">known limits</a>
+    before applying a suggested change.
   </li>
   <li>
     Every number here is read out of the raw timing rows, never typed by hand.
@@ -462,16 +462,16 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
 </p>
 
 <p>
-  It will not follow a pattern across a function boundary either. The walk
-  visits every callee whose source it can read, and each rule then matches
-  inside one body — so a loop in one function and the copy that loop re-runs in
-  another are invisible to both. The annotation widens <em>where</em> the rules
-  are applied, not what any one of them can see.
+  It does not always follow a pattern across a function boundary. The walk
+  visits every callee whose source it can read, but the repeated-copy rule
+  matches inside one body — so a loop in one function and the copy that loop
+  re-runs in another go unreported. Other rules do trace values across calls.
 </p>
 
 <p>
-  Open defects are listed in <code>BUGS.md</code>, in the repository, at the
-  same size as everything above.
+  Open defects are listed in
+  <a href="https://github.com/kronael/jitmax/blob/HEAD/BUGS.md">BUGS.md</a>, in
+  the repository, at the same size as everything above.
 </p>
 
 <div class="hub-footer">
