@@ -133,7 +133,10 @@ matched at the positions V8 reported. When a hot frame matches no function,
 nothing is guessed: the run prints how many frames matched, names the ones that
 did not with their file and line, says a transform is the likelier cause than
 a stale profile where no map covered them — and it exits `1`, because unchecked
-measured time is not a clean run. `min_self_pct`
+measured time is not a clean run. A frame named `<anonymous>` at a file's
+`:1:1` is that module's top-level code: no function holds it, so neither a new
+map nor a fresh profile matches it. Move that work into a function to have it
+checked. `min_self_pct`
 defaults to 1 and is a constant nobody has measured, so the TOML owns it and
 every run prints the value it used.
 
