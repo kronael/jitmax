@@ -453,7 +453,7 @@ fix has to sit in a guard on what came back, not in the order it is asked for.
 - **Proposal (not done here):** whether to support TypeScript 7 at all is the
   owner's call, not this fix's — the peerDependency range stays `>=5.0.0 <6`.
 
-## TC-143 — the config file must be named and passed on every run (2026-09-09, proposal)
+## ✅ FIXED 2026-10-01 — TC-143 — the config file must be named and passed on every run (2026-09-09, fixed)
 
 Other linters discover their config; jitmax does not. Ruff "can be configured
 through a `pyproject.toml`, `ruff.toml`, or `.ruff.toml` file" and "supports
@@ -474,8 +474,8 @@ names the preset, the file carries the name a project uses.
 - **Scope:** CLI argument handling
 - **Affected:** `bin/jitmax.ts`, `lib/config.ts`
 - **Source:** `bin/jitmax.ts:34` — "One .toml and one .cpuprofile are allowed, in any argument position."
-- **Status:** proposed (redesign, needs sign-off)
-- **Fix:**
+- **Status:** fixed
+- **Fix:** `d7758ba`. Owner sign-off 2026-09-09: "it should be jitmax.toml every time — like the other lint tools". Walks to the filesystem root like ts.findConfigFile; the found path is printed.
 
 Proposed: with no `.toml` argument, search from the working directory upward for
 `jitmax.toml` then `.jitmax.toml`, stop at the first hit, and report the file
