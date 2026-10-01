@@ -303,6 +303,26 @@ test('an interface call with one visible implementation is followed, not reporte
   assert.deepStrictEqual(rules('viaOneImpl'), ['accumulating-spread']);
 });
 
+/**
+ * A function in a `#private` field resolves exactly as the same field spelled
+ * without `#`, and both count every write to the field, not its initializer
+ * alone. The private class reported interface-dispatch at all three calls
+ * while the public one followed — and `pubBoth` followed into the stub the
+ * constructor replaces and called that one implementation. The accumulating
+ * spread is in the bodies that run, so a finding there proves the walk read
+ * them (BUGS TC-159).
+ */
+test('a #private function field resolves as its public twin, writes included', () => {
+  const byName = rulesByFunction(path.join('test', 'fixtures', 'private'));
+  const of = (name: string): string[] => byName.get(name) ?? assert.fail(`no mark ${name}`);
+  for (const held of ['Init', 'Both', 'Late']) {
+    assert.deepStrictEqual(of(`priv${held}`), of(`pub${held}`), `${held}: #private and public differ`);
+  }
+  assert.deepStrictEqual(of('privInit'), ['accumulating-spread']);
+  assert.deepStrictEqual(of('privLate'), ['accumulating-spread']);
+  assert.deepStrictEqual(of('pubBoth'), ['interface-dispatch']);
+});
+
 // Five classes behind ONE non-union interface: the type-based dispatch rule
 // sees nothing at the call, and the receiver's origins carry the count
 // (TC-81 — zod's thirteen-way `_parse` rendered as the same sentence as a

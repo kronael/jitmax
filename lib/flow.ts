@@ -572,19 +572,25 @@ export function readProperty(
   }
   // Writes anywhere in the program to the SAME declared property — `this.f =
   // v` in a constructor, `{ f: v }` under a contextual type — reach a read
-  // the base origins cannot explain. Matched by declaration, not by name, or
-  // every `.type` field in a program would pour into every other.
-  if (propDecls.length > 0) {
-    for (const wr of (w.index().writes.get(name) ?? []).slice(0, 128)) {
-      if (!sameProperty(w.writeDecls(wr, name), propDecls)) continue;
-      if (wr.kind === 'assign') merge(out, w.valueOf(wr.value, q));
-      else if (wr.kind === 'propassign') merge(out, w.valueOf(wr.prop.initializer, q));
-      else if (wr.kind === 'shorthand') merge(out, symbolFlow(w, wr.prop.name, q));
-      else merge(out, w.valueOf(wr.member.initializer!, q));
-    }
-  }
+  // the base origins cannot explain.
+  if (propDecls.length > 0) merge(out, writesTo(w, name, propDecls, q));
   if (out.origins.size === 0 && out.unknown.size === 0) {
     out.unknown.add(`no visible write to .${name}`);
+  }
+  return out;
+}
+
+// Every value written to one declared property, wherever the write is.
+// Matched by declaration, not by name, or every `.type` field in a program
+// would pour into every other.
+export function writesTo(w: Walk, name: string, decls: TS.Node[], q: Query): Res {
+  const out = emptyRes();
+  for (const wr of (w.index().writes.get(name) ?? []).slice(0, 128)) {
+    if (!sameProperty(w.writeDecls(wr, name), decls)) continue;
+    if (wr.kind === 'assign') merge(out, w.valueOf(wr.value, q));
+    else if (wr.kind === 'propassign') merge(out, w.valueOf(wr.prop.initializer, q));
+    else if (wr.kind === 'shorthand') merge(out, symbolFlow(w, wr.prop.name, q));
+    else merge(out, w.valueOf(wr.member.initializer!, q));
   }
   return out;
 }
@@ -638,15 +644,26 @@ export function memberValueInner(
     // files both under it): neither has class members to walk.
     if (!ts.isClassDeclaration(cur) && !ts.isClassExpression(cur)) break;
     for (const m of cur.members) {
-      if (!m.name || !ts.isIdentifier(m.name) || m.name.text !== name) continue;
+      // `#name` as well as `name`: a private field is a field, and its writes
+      // are sources exactly as a public one's are. lru-cache holds every
+      // policy hook in one, and each call through them read as dispatch
+      // nothing could resolve where the public twin resolved (BUGS TC-159).
+      if (!m.name || !(ts.isIdentifier(m.name) || ts.isPrivateIdentifier(m.name))) continue;
+      if (m.name.text !== name) continue;
       const isStatic = Boolean(
         ts.getCombinedModifierFlags(m as TS.Declaration).valueOf() & ts.ModifierFlags.Static
       );
       if (isStatic !== wantStatic) continue;
       if (ts.isMethodDeclaration(m) && m.body) {
         merge(out, originOf(w, { kind: 'function', node: m, name: `${name}()` }));
-      } else if (ts.isPropertyDeclaration(m) && m.initializer) {
-        merge(out, w.valueOf(m.initializer, q));
+      } else if (ts.isPropertyDeclaration(m)) {
+        // What the field holds is its initializer AND every write to it. Read
+        // as the initializer alone, `stale = () => false` that a constructor
+        // replaces with `(i) => i > ttl` was followed into the stub as "the
+        // one implementation this program builds", and the body that runs
+        // was never checked (BUGS TC-159).
+        if (m.initializer) merge(out, w.valueOf(m.initializer, q));
+        merge(out, writesTo(w, name, [m], q));
       } else if (ts.isGetAccessorDeclaration(m) && m.body) {
         for (const r of w.returnsOf(m)) merge(out, w.valueOf(r, q));
       }
@@ -810,7 +827,11 @@ export function makeIndex(ts: Ts, program: TS.Program): Walk['index'] {
           push(writes, node.name.text, { kind: 'propassign', prop: node });
         } else if (ts.isShorthandPropertyAssignment(node)) {
           push(writes, node.name.text, { kind: 'shorthand', prop: node });
-        } else if (ts.isPropertyDeclaration(node) && node.initializer && ts.isIdentifier(node.name)) {
+        } else if (
+          ts.isPropertyDeclaration(node) &&
+          node.initializer &&
+          (ts.isIdentifier(node.name) || ts.isPrivateIdentifier(node.name))
+        ) {
           push(writes, node.name.text, { kind: 'propdecl', member: node });
         } else if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
           classes.push(node);
