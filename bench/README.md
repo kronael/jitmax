@@ -20,44 +20,68 @@ to a `.jl` file beside its workload, and never overwrites one.
 
 ## Re-run any claim
 
-```sh
-make bench-shape-sets     # property sets per element type — megamorphic-elements
-make bench                # five key orders of one key set — what that rule misses
-make bench-dispatch       # one method call on many object shapes — megamorphic-dispatch
-make bench-spread         # accumulating spread, array form
-make bench-spread-object  # accumulating spread, object form
-make bench-strings        # strings built by appending — why that rule skips them
-make bench-chained        # chained array passes
-make bench-select         # choosing between two boxed values — allocating-select
-make bench-delete         # delete, on many objects and on exactly one
-make bench-inline         # the inlining boundary behind closed-world
-make bench-addprop        # adding a property after construction — no rule
-make bench-arguments      # the arguments object against a rest parameter — no rule
-make bench-sparse         # dictionary and holey arrays — no rule
-make bench-arrays         # elements kinds — no rule
-make example              # four shipped library functions, before and after
-make tiers                # which V8 tier each published cell reached — a diagnostic
-make v8-check             # every V8 citation, against the pinned checkout
-```
-
-A target skips cells its `.jl` already holds, so a second run measures nothing
-new. To measure again without touching the published rows:
+Nothing else may run on the machine during a sweep: these are timings. To
+measure a claim again, name its sweep:
 
 ```sh
 node bench/run.ts shape-sets --force --scratch   # appends to bench/scratch.jl
 ```
 
-That re-measures all 24 cells, three sweeps of 20 process pairs each. `--plan`
-lists the cells without measuring, and `--only=<text>` keeps the cells whose
-label contains the text, such as `--only=5/1`. Nothing else may run on the
-machine during a sweep.
+That re-measures all 24 cells of `shape-sets`, three sweeps of 20 process
+pairs each, and leaves the published rows alone. `--plan` lists the cells
+without measuring, and `--only=<text>` keeps the cells whose label contains
+the text, such as `--only=5/1`. Any name below takes the place of
+`shape-sets`:
+
+```text
+shape-sets     property sets per element type — megamorphic-elements
+shapes         five key orders of one key set — what that rule misses
+dispatch       one method call on many object shapes — megamorphic-dispatch
+spread         accumulating spread, array form
+spread-object  accumulating spread, object form
+strings        strings built by appending — why that rule skips them
+chained        chained array passes
+select         choosing between two boxed values — allocating-select
+delete         delete, on many objects and on exactly one
+inline         the inlining boundary behind closed-world
+addprop        adding a property after construction — no rule
+arguments      the arguments object against a rest parameter — no rule
+sparse         dictionary and holey arrays — no rule
+arrays         elements kinds — no rule
+example        four shipped library functions, before and after
+```
+
+`make bench-<name>`, `make bench` for `shapes`, and `make example` run the
+same sweeps without `--force`. They resume the published `.jl` files: each
+measures only the cells its file lacks, so on a complete checkout it measures
+nothing. `make example` also checks the four examples first. Two targets
+measure no cost:
+
+```sh
+make tiers      # which V8 tier each published cell reached — a diagnostic
+make v8-check   # every V8 citation, against the pinned checkout
+```
 
 ## Derived numbers, and the rows they are
 
 `make numbers` writes this table, and the evidence strings the tool prints,
 from the `.jl` rows, and `make test` fails when a quoted number no longer
-matches its rows. A few withdrawn or refuted figures quoted elsewhere in this
-guide are not derived; the test keeps them as a named list of exceptions.
+matches its rows. A few figures elsewhere in this guide are not derived; the
+test keeps them as a named list of exceptions.
+
+The second column says which rows a number reads, and its form says what was
+computed from them:
+
+- **A ratio or range with an `x`** runs from the lowest sweep ratio among
+  those rows to the highest. It is a spread of measured ratios, not a
+  confidence interval.
+- **A row that says what sweeps agree on** gives rule 13's agreement instead:
+  the range that every one of those sweeps' 95% intervals contains.
+- **A range with no `x`** spans the 95% intervals themselves, from the lowest
+  lower bound to the highest upper bound.
+- **Ratios joined by `and`** are single sweeps, one by one.
+- **A bare integer or an `n=` value** is a count of cells or an input size, as
+  its row says.
 
 <!-- generated: numbers -->
 
@@ -253,13 +277,6 @@ A measurement that refutes a rule is published like one that supports it.
 Strings built with `s = s + x`, `s += x` or `s.concat(x)` are not quadratic in
 V8: they build faster than a push-and-join, which is why `accumulating-spread`
 is silent on them. `bench/strings.jl`.
-
-## Published values later withdrawn
-
-| Was | Now | Why |
-|---|---|---|
-| `closed-world`: 4.42-4.79x, then 3.21-4.95x | 4.64-4.95x | the first range had one sweep per size; the second included the n=100000 cell, whose three sweeps (3.21x, 4.68x, 4.73x) share no value, so it is withdrawn |
-| `delete-property` on one object: 0x | 13.1-15.1x | the old probe's fast side could use a load hoisted out of its loop; a kernel that must load the object on every pass shows the cost |
 
 ## What V8's source says
 
