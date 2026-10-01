@@ -106,7 +106,7 @@ computed from them:
 | `3.5-15.8x` | `bench/dispatch.jl` — every shape carrying its OWN function, reads only, two to six targets, every size |
 | `149-166x` | `bench/spread.jl` — array spread against push at n=1000, construction counted, both sweeps |
 | `1766-1889x` | `bench/spread.jl` — the same at n=10000, the three replications |
-| `1877x and 2348x` | `bench/spread.jl` — the two sweeps of that cell that predate the replication — the older sweep, not re-measured under r2 |
+| `1877x and 2348x` | `bench/spread.jl` — two single sweeps of that cell, kept apart from its replicated result — a sweep not re-measured under runner r2 |
 | `777-807x` | `bench/spread.jl` — acc.concat(v) against push at n=1000, construction counted |
 | `695-928` | `bench/spread.jl` — every interval measured for that cell |
 | `0.96-1.02x` | `bench/spread.jl` — the finished array read back, spread against push, both sizes and both sweeps |
@@ -126,7 +126,7 @@ computed from them:
 | `0.89x and 0.97x and 1.03x` | `bench/select.jl` — the three sweeps of the n=100000 number cell — withdrawn under rule 13, quoted as the refutation it is |
 | `2.02-2.47x` | `bench/select.jl` — the boxed form kept in a local, where escape analysis could see it, both sizes |
 | `1.44-1.52x` | `bench/chained.jl` — xs.map(f).filter(g) against one fused pass, construction counted, both sizes — 1 of 2 cells withdrawn as unreplicable (rule 13): chained\|fused\|incl\|1000\|dispatch-table |
-| `6.48x and 6.58x and 7.51x` | `bench/chained.jl` — the three sweeps of the n=1000 cell this rule used to headline — withdrawn under rule 13, quoted as the refutation it is |
+| `6.48x and 6.58x and 7.51x` | `bench/chained.jl` — the three sweeps of the n=1000 cell — withdrawn under rule 13, quoted as the refutation it is |
 | `1.37-1.63` | `bench/chained.jl` — every interval measured for the cells that replicate — 1 of 2 cells withdrawn as unreplicable (rule 13): chained\|fused\|incl\|1000\|dispatch-table |
 | `3.67-3.76x` | `bench/chained.jl` — Object.entries(o).map(f) against a for-in walk at n=1000, construction counted |
 | `3.50-4.04` | `bench/chained.jl` — every interval measured for that cell |
@@ -162,9 +162,9 @@ computed from them:
 | `20.4-40.1x` | `bench/sparse.jl` — the same with construction counted — 1 of 3 cells withdrawn as unreplicable (rule 13): dict\|packed\|incl\|262144 |
 | `1.32-1.47x` | `bench/sparse.jl` — a holey array against a packed one, reads only — 1 of 3 cells withdrawn as unreplicable (rule 13): holey\|packed\|excl\|262144 |
 | `0.28-0.68x` | `bench/sparse.jl` — the same with construction counted, where the holey array wins |
-| `1.39-1.66x` | `bench/arrays.jl` — a genuinely boxed array against a double one, reads only, every size — the older sweep, not re-measured under r2 |
-| `1.58-1.69x` | `bench/arrays.jl` — the same with construction counted, at RAM size — the older sweep, not re-measured under r2 |
-| `0.96-1.08x` | `bench/arrays.jl` — a union-typed array holding only numbers, both halves, every size — the older sweep, not re-measured under r2 |
+| `1.39-1.66x` | `bench/arrays.jl` — a genuinely boxed array against a double one, reads only, every size — a sweep not re-measured under runner r2 |
+| `1.58-1.69x` | `bench/arrays.jl` — the same with construction counted, at RAM size — a sweep not re-measured under runner r2 |
+| `0.96-1.08x` | `bench/arrays.jl` — a union-typed array holding only numbers, both halves, every size — a sweep not re-measured under runner r2 |
 | `n=12 and n=48` | `bench/example.jl` — the key counts es-toolkit omit was swept at, which delete-property quotes in its fix |
 | `10.8-12.0x` | `bench/example.jl` — es-toolkit omit — the caller's reads of the result at 12 keys |
 | `11.3-11.7x` | `bench/example.jl` — the same at 48 keys — what its three sweeps agree on |

@@ -41,7 +41,7 @@ export const N = {
   'spread.array.n1000': '149-166x',
   // spread.jl: the same at n=10000, the three replications
   'spread.array.n10000': '1766-1889x',
-  // spread.jl: the two sweeps of that cell that predate the replication — the older sweep, not re-measured under r2
+  // spread.jl: two single sweeps of that cell, kept apart from its replicated result — a sweep not re-measured under runner r2
   'spread.array.n10000.earlier': '1877x and 2348x',
   // spread.jl: acc.concat(v) against push at n=1000, construction counted
   'spread.concat': '777-807x',
@@ -81,7 +81,7 @@ export const N = {
   'select.silent.local': '2.02-2.47x',
   // chained.jl: xs.map(f).filter(g) against one fused pass, construction counted, both sizes — 1 of 2 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table
   'chained.mapfilter': '1.44-1.52x',
-  // chained.jl: the three sweeps of the n=1000 cell this rule used to headline — withdrawn under rule 13, quoted as the refutation it is
+  // chained.jl: the three sweeps of the n=1000 cell — withdrawn under rule 13, quoted as the refutation it is
   'chained.mapfilter.withdrawn': '6.48x and 6.58x and 7.51x',
   // chained.jl: every interval measured for the cells that replicate — 1 of 2 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table
   'chained.mapfilter.ci': '1.37-1.63',
@@ -153,11 +153,11 @@ export const N = {
   'sparse.holey.reads': '1.32-1.47x',
   // sparse.jl: the same with construction counted, where the holey array wins
   'sparse.holey.whole': '0.28-0.68x',
-  // arrays.jl: a genuinely boxed array against a double one, reads only, every size — the older sweep, not re-measured under r2
+  // arrays.jl: a genuinely boxed array against a double one, reads only, every size — a sweep not re-measured under runner r2
   'arrays.boxed.reads': '1.39-1.66x',
-  // arrays.jl: the same with construction counted, at RAM size — the older sweep, not re-measured under r2
+  // arrays.jl: the same with construction counted, at RAM size — a sweep not re-measured under runner r2
   'arrays.boxed.build.ram': '1.58-1.69x',
-  // arrays.jl: a union-typed array holding only numbers, both halves, every size — the older sweep, not re-measured under r2
+  // arrays.jl: a union-typed array holding only numbers, both halves, every size — a sweep not re-measured under runner r2
   'arrays.union': '0.96-1.08x',
   // example.jl: the key counts es-toolkit omit was swept at, which delete-property quotes in its fix
   'ex.omit.sizes': 'n=12 and n=48',

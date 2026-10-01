@@ -368,7 +368,7 @@ export const CITATIONS: Record<string, Citation> = {
   'spread.array.n10000.earlier': {
     claims: 'nothing',
     file: 'spread.jl',
-    cells: 'the two sweeps of that cell that predate the replication',
+    cells: 'two single sweeps of that cell, kept apart from its replicated result',
     pick: (r) => r.variant === 'spread' && r.mode === 'incl' && r.n === 10000 && !replicated(r),
     agg: 'points',
     history: true,
@@ -540,7 +540,7 @@ export const CITATIONS: Record<string, Citation> = {
   'chained.mapfilter.withdrawn': {
     claims: 'nothing',
     file: 'chained.jl',
-    cells: 'the three sweeps of the n=1000 cell this rule used to headline',
+    cells: 'the three sweeps of the n=1000 cell',
     pick: (r) =>
       r.variant === 'chained' &&
       r.baseline === 'fused' &&
@@ -1333,7 +1333,7 @@ const provenance = (c: Citation, d: Derived): string =>
         c.claims === 'broad' ? 'the broad-warning bar' : "the rule's bar"
       }), quoted as the refutation it is`
     : '') +
-  (readsHistory(c) ? ` — the older sweep, not re-measured under ${RUNNER}` : '') +
+  (readsHistory(c) ? ` — a sweep not re-measured under runner ${RUNNER}` : '') +
   (d.withdrawn.length > 0
     ? ` — ${d.withdrawn.length} of ${d.cells} cells withdrawn as unreplicable (rule 13): ` +
       d.withdrawn.join(', ')
