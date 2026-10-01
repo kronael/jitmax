@@ -3,9 +3,9 @@
 Review queue. Found during audits, fixed only when the owner asks.
 
 For current installation and commands, use the [README quick start](README.md#quick-start).
-The Bun repository workflow is blocked by public GitHub access, tracked in
-TC-133. The README gives an existing-checkout route. Commands inside dated
-reports below reproduce those trials, not the current setup instructions.
+`bunx github:kronael/jitmax` resolves against the public repository today.
+Commands inside dated reports below reproduce those trials, not the current
+setup instructions.
 
 > **2026-08-17 — adversarial review.** TC-31 through TC-36 come from a hostile
 > review commissioned to argue the tool is useless. Every one was re-run here
@@ -30,6 +30,116 @@ reports below reproduce those trials, not the current setup instructions.
 > two spellings of one fact had already drifted; each was reproduced here before
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
+
+## TC-147 — `jitmax src` is reported to report less than the bare form (2026-10-01, open, unreproduced)
+
+A usage report says the documented default, `jitmax src`, gives worse results
+than the bare `jitmax`. Three attempts to reproduce it here produced byte-identical
+output from both forms:
+
+1. one annotated function in `src/hot.ts`, with a `tsconfig.json` whose
+   `include` is `["src"]`;
+2. the finding in a callee OUTSIDE the path argument, `vendor/merge.ts`, reached
+   from `src/hot.ts` — the program follows the import past the file list and
+   reports the callee's line in both forms;
+3. the same through a `paths` alias, `"src/*": ["./src/*"]`.
+
+So the difference is not the file list as such. TC-76 is the mechanism that
+could produce it and is already recorded: the `tsconfig.json` comes from the
+working directory and never from the path argument, so the two forms differ
+exactly when the reader is standing somewhere the config does not govern — which
+is the case the report does not pin down. Left open rather than closed, because
+the report is a user's and three negatives from one machine do not refute it.
+
+- **Severity:** medium
+- **Scope:** `bin/jitmax.ts` argument handling; the README's path advice
+- **Affected:** `jitmax src` versus `jitmax`
+- **Source:** reported; reproduction attempted three ways on 2026-10-01, all
+  three identical
+- **Status:** open, needs the reporter's working directory and tsconfig
+- **Fix:** none proposed. Get the failing invocation first; a fix written
+  against a mechanism nobody has reproduced is a guess with a test around it.
+
+## TC-146 — the report cites paths that do not resolve from the directory it ran in (2026-10-01, open)
+
+Every finding ends with `measured in bench/spread.jl and bench/spread-object.jl`,
+and a clean run ends with `run with -v for what each one misses, or read
+docs/rules.md`. Both are paths inside a jitmax clone. The tool runs from the
+user's project root, so from where the reader is standing, both resolve to
+nothing:
+
+```
+$ bunx github:kronael/jitmax shapes.ts | grep 'measured in'
+      measured in bench/shape-sets.jl and bench/shapes-calibrated.jl
+$ ls bench/shape-sets.jl
+ls: cannot access 'bench/shape-sets.jl': No such file or directory
+$ bunx github:kronael/jitmax hot.ts | tail -1
+  run with -v for what each one misses, or read docs/rules.md
+$ ls docs/rules.md
+ls: cannot access 'docs/rules.md': No such file or directory
+```
+
+`docs/rules.md` and `bench/README.md` do ship in the install archive, and
+`bunx` writes no `node_modules/jitmax` in the project at all — it runs out of
+its own cache, so there is no in-project path either resolves to. Of the `.jl`
+sweeps only `bench/shape-sets.jl` is in `package.json`'s `files`, so for most
+rules the named file is not on the user's disk in any form.
+
+The citation is the best thing the report does — it is what makes a finding
+checkable rather than an assertion — and it currently sends a first-time reader
+to a path that does not exist. Recorded and not fixed here because the fix is in
+`lib/report.ts`: the strings would become URLs into the published repository, or
+be resolved against the installed package, and either is a code change.
+
+- **Severity:** medium
+- **Scope:** `lib/report.ts` — the `measured in` line and the clean-run footer
+- **Affected:** every finding, and every clean run with an unchecked axis
+- **Source:** `bunx github:kronael/jitmax shapes.ts` in a scratch project,
+  2026-10-01
+- **Status:** open, recorded not fixed
+- **Fix:** print a URL at the pinned revision, or resolve the path against the
+  installed package and print that. A URL is the honest one: the `.jl` row a
+  ratio comes from is in the repository and not in the archive.
+
+## TC-145 — a run whose only findings were suppressed says every annotated function is clean (2026-10-01, open)
+
+The suppression line is printed, and then the verdict contradicts it:
+
+```
+$ bun /path/to/jitmax/bin/cli.js jitmax.toml src/hot.ts
+jitmax — 1 annotated function, 0 errors
+  1 finding suppressed (accumulating-spread)
+  1 call into the platform, not listed: the body is native
+
+  every annotated function is clean.
+EXIT=0
+```
+
+`render()` computes `clean` from `all.length === 0 && partial.length === 0 &&
+!blinded(blind)` and never reads `suppression.count`, so a config that switches
+off the one rule that fired turns a finding into a clean bill of health, in the
+sentence and in the exit code both. The suppression line above it is the whole
+of the disclosure, and it is two lines away from a sentence that denies it.
+
+This is TC-131's shape one step along. That entry fixed "nothing was checked"
+reading as clean; this is "something was checked, something fired, and the
+answer was thrown away" reading as clean. A gate reads the exit code, which is
+`0`.
+
+- **Severity:** medium
+- **Scope:** `lib/report.ts` `render()`'s `clean` predicate, and the exit code
+  `bin/jitmax.ts` derives from it
+- **Affected:** any run with a `[rules]` table or a `-rulename` annotation that
+  suppresses every finding
+- **Source:** reproduced 2026-10-01 against
+  `examples/radash-assign.before.ts` with `"accumulating-spread" = false`
+- **Status:** open, recorded not fixed
+- **Fix:** the verdict and the exit code are the owner's call, because they are
+  the gate's contract. The narrow reading is that suppression is the user asking
+  for silence and `0` is correct; the wider one is that `clean` already refuses
+  to be printed over a truncated walk and an `any` receiver, which are also
+  "the user's own code made me blind here". Either way the sentence should not
+  say *clean* two lines under *1 finding suppressed*.
 
 ## TC-144 — TypeScript 7 crashes the quick start `ts.sys` is undefined (2026-09-30, fixed)
 
@@ -65,7 +175,12 @@ fix has to sit in a guard on what came back, not in the order it is asked for.
   evaluator, with no TypeScript installed and with `typescript@7.0.2`
   installed; `createRequire(cwd+'/index.js')('typescript')` confirmed
   `version=7.0.2 sys=undefined`
-- **Status:** fixed 2026-09-30
+- **Status:** fixed 2026-09-30 in the working line, and NOT on the published
+  ref: `refs/heads/main` is `111a3b3`, two commits behind the guard, so
+  `bunx github:kronael/jitmax hot.ts` against `typescript@7.0.2` still raises
+  the bare `undefined is not an object (evaluating 'ts.sys.fileExists')` at
+  exit `2`, re-checked 2026-10-01. Publishing is the owner's call. The quick
+  start pins TypeScript 5.x before the scan so neither message is reached.
 - **Fix:** `load()` now checks `ts.sys == null` on whatever it resolves, right
   after the resolve and before returning it — a capability check, not a
   version-string check, because `sys` is the fact every caller below reads
@@ -339,7 +454,7 @@ per-row reading.
   rather than declared complete. See TC-136 for the same question on the other
   ten sweeps.
 
-## TC-133 — the documented GitHub install has no remote ref to install (2026-08-31, open)
+## TC-133 — the documented GitHub install has no remote ref to install (2026-08-31, closed)
 
 The package artifact works when packed, installed under `node_modules`, and run
 through npx or bunx. The public command is a different boundary:
@@ -364,12 +479,35 @@ runs with the Bun shebang: help and clean input exit 0, a megamorphic finding
 exits 1, and missing input exits 2. This verifies source installation, not
 public GitHub access.
 
+**Closed 2026-10-01: the refs exist and the install works.**
+`git ls-remote https://github.com/kronael/jitmax` returns `HEAD` and
+`refs/heads/main` at `111a3b3` plus every tag from `v0.1.0` to `v0.15.0`.
+`codeload.github.com/kronael/jitmax/tar.gz/refs/heads/main` returns HTTP 200,
+and in a scratch project with `typescript@^5.9` pinned,
+`bunx github:kronael/jitmax --help` exits `0` and the README's sample `hot.ts`
+exits `0` reporting `every annotated function is clean.` Nothing in this
+repository fixed it — a human published the refs — and the eight doc surfaces
+that stated the 404 as a present fact were wrong from that moment until they
+were corrected. The dated trials above stay as written: they record what those
+runs returned on those days.
+
+One thing the entry's own framing got wrong, worth keeping: "the only working
+path is an existing checkout" was a statement about the remote, and it was
+published in the voice of a statement about the tool. A blocker outside the
+repository still needs re-checking on the schedule of the thing it is blocking
+on, and nothing here re-checked it for a month.
+
 - **Severity:** high
 - **Scope:** distribution and first contact
 - **Affected:** README, site, GitHub install
-- **Source:** `git ls-remote origin HEAD refs/tags/v0.12.1`
-- **Status:** open, blocked on human publication
-- **Fix:**
+- **Source:** `git ls-remote https://github.com/kronael/jitmax`;
+  `curl -o /dev/null -w '%{http_code}' -L
+  https://codeload.github.com/kronael/jitmax/tar.gz/refs/heads/main`
+- **Status:** closed 2026-10-01
+- **Fix:** the owner published the refs. The false claim is removed from
+  `README.md`, `docs/limits.md`, `docs/rules.md`, `ARCHITECTURE.md`,
+  `CHANGELOG.md`, `examples/README.md`, `bench/README.md`, `test/README.md`
+  and `site/index.html`.
 
 ## TC-132 — profile mode treats dependency time as stale project code (2026-08-31, proposed)
 
