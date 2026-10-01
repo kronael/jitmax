@@ -42,11 +42,11 @@ the same literal, with the same property names added in the same order — share
 one. These docs use both names, and `docs/rules.md` keeps the longer
 definition.
 
-A handful of other patterns do the same kind of damage. Delete a key and V8
-moves that object to a slower kind of storage and leaves it there. Rebuild an
-array from a copy of itself inside a loop and every pass copies everything the
-last pass built. None of it looks wrong on screen, which is why it survives
-review.
+A handful of other patterns do the same kind of damage. Delete a property an
+object has — by name, not by array index — and V8 moves that object to a slower
+kind of storage and leaves it there. Rebuild an array from a copy of itself
+inside a loop and every pass copies everything the last pass built. None of it
+looks wrong on screen, which is why it survives review.
 
 jitmax finds the source patterns that can cause that. It cannot tell you whether
 they cost anything in your program; only a profile and a benchmark of your own
@@ -106,10 +106,12 @@ bunx github:kronael/jitmax hot.ts
 ```
 
 Help exits `0`. The sample reports `every annotated function is clean.` and
-exits `0`. Mark your own hot function next and pass its file. Add `--verbose` to
-show every retained source location when a finding has more than five. The
-GitHub command runs the repository's current `main` branch, not a release tag;
-[the status line](#development-and-licence) says how the two differ.
+exits `0`. Mark your own hot function next and pass its source directory, such
+as `src`. A single file brings in the files it imports but not the files that
+import it, so a caller in the next file reads as `no visible caller`. Add
+`--verbose` to show every retained source location when a finding has more than
+five. The GitHub command runs the repository's current `main` branch, not a
+release tag; [the status line](#development-and-licence) says how the two differ.
 
 Paths choose files, not compiler options. jitmax finds `tsconfig.json` from the
 working directory upward and never from the path argument. With no paths it uses
