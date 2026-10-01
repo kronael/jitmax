@@ -34,7 +34,7 @@ Bun's resolver returns today's `typescript@latest` even where no
 necessarily either documented source (`BUGS.md` TC-144).
 
 **Find the marks.** A mark is `/** @jitmax */` on a function, or a frame from a
-CPU profile at or above `[profile] min_self_pct` of the profile's sampled self
+CPU profile at or above `[profile] min_self_pct` of the project's sampled self
 time. Nothing downstream can tell the two apart: the walk, the rules and the
 exit code treat a profiled mark exactly as an annotated one.
 
@@ -78,12 +78,14 @@ flow analysis is built for diagnostic locations.
 **Detect.** Every rule is one file in `lib/rules/`, holding its detector, its
 `EVIDENCE` and its name together. `lib/rules/index.ts` is the ONE register
 every rule is read from — the rule count in the documentation is derived from
-it — and `lib/rules/shared.ts` is what more than one of them needs. Each rule
-matches inside a single body; the walk widens where the rules are applied and
-does not widen what one rule can see (`docs/limits.md`).
+it — and `lib/rules/shared.ts` is what more than one of them needs.
+`accumulating-spread` and `chained-allocation` match inside a single body. The
+megamorphic rules ask `lib/flow.ts` what reaches a value across calls,
+`allocating-select` reads the body of the callee it sees, and `delete-property`
+follows the deleted object through arguments and returns (`docs/limits.md`).
 
 **Report.** `lib/report.ts` prints one finding per site, its next step and the note
-under it, the sweep that priced the rule, and every `known defect` code the
+under it, the sweep behind the rule where it has one, and every `known defect` code the
 rule carries — what each code says is printed once, after the findings. It also
 prints what the run could not check: calls into the platform, calls lowered to
 inline code, and how many findings a config suppressed and by what.
@@ -113,8 +115,9 @@ node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
 bunx github:kronael/jitmax run.cpuprofile src
 ```
 
-Every function at or above `[profile] min_self_pct` of the profile's sampled
-self time is marked, and the report says what marked it:
+Every function at or above `[profile] min_self_pct` of the project's sampled
+self time is marked, and the report says what marked it. The project's share
+leaves out frames in dependencies, Node's internals and the engine:
 
 ```
   src/hash.ts:8  compress() — 58.6% of samples, run.cpuprofile
@@ -123,11 +126,14 @@ self time is marked, and the report says what marked it:
 A frame's position is a position in the file V8 **ran**, which is not the file
 you wrote as soon as anything transforms it — one `enum` is enough, because type
 stripping cannot run one. So a position is ported back through the source map
-beside the profiled file before it is matched, and the finding names the line you
-wrote. When the profiled file has no source map, nothing is guessed: the run
-prints how many frames matched, names the ones that did not with their file and
-line, and says a transform is the likelier cause than a stale profile — and it
-exits `1`, because unchecked measured time is not a clean run. `min_self_pct`
+that the profiled file's `sourceMappingURL` comment names, inline or on disk,
+before it is matched, and the finding names the line you wrote. A build step
+has to emit that map — `sourceMap: true` for `tsc`. A file with no map is
+matched at the positions V8 reported. When a hot frame matches no function,
+nothing is guessed: the run prints how many frames matched, names the ones that
+did not with their file and line, says a transform is the likelier cause than
+a stale profile where no map covered them — and it exits `1`, because unchecked
+measured time is not a clean run. `min_self_pct`
 defaults to 1 and is a constant nobody has measured, so the TOML owns it and
 every run prints the value it used.
 
@@ -174,8 +180,9 @@ not full clones or installers that clone Git dependencies directly.
 
 ## The derived artifacts
 
-Two committed files are generated, and `make build` is the only thing that
-writes them:
+Two committed files are generated. `make build` regenerates both, `make
+numbers` and `make builtins` regenerate one each, and no other target writes
+them:
 
 - `lib/numbers.ts` and the generated block in `bench/README.md`, from the `.jl`
   sweeps, by `lib/derive.ts` (`make numbers`). One query per published number.
