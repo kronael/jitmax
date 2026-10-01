@@ -6,7 +6,7 @@
 <meta name="krons:date" content="2026-08-19">
 <meta name="krons:pin"  content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="V8 runs your JavaScript fast by guessing what your code will do. A few normal-looking patterns make it guess wrong. jitmax finds them in TypeScript source and names the benchmark behind each rule and where that benchmark refused.">
+<meta name="description" content="V8 runs your JavaScript fast by guessing what your code will do. A few normal-looking patterns make it guess wrong. jitmax finds them in TypeScript source and names the benchmark behind each measured rule and where that benchmark refused.">
 <title>jitmax — mark the function you need fast</title>
 <link rel="stylesheet" href="/pub/krons/assets/hub.css">
 <meta property="og:title" content="jitmax — mark the function you need fast">
@@ -117,7 +117,9 @@ bunx github:kronael/jitmax --verbose hot.ts</code></pre>
 <p>
   The sample exits <code>0</code> and reports
   <code>every annotated function is clean.</code> Mark your own hot function
-  with <code>/** @jitmax */</code> and pass its file next.
+  with <code>/** @jitmax */</code> and pass its source directory next. A single
+  file brings in the files it imports but not the files that import it, so a
+  caller in the next file reads as <code>no visible caller</code>.
 </p>
 
 <p>
@@ -221,8 +223,9 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
       known defects: TC-2, TC-9</code></pre>
 
 <p>
-  Each finding names the source, a <code>next:</code> step and the sweep behind
-  the rule. <code>note:</code> states behavior and measurement limits.
+  Each finding names the source and a <code>next:</code> step, and the sweep
+  behind its rule when the rule has one; <code>interface-dispatch</code> has
+  none. <code>note:</code> states behavior and measurement limits.
   <code>related:</code> links representative builders, implementations,
   allocations or key observers; <code>sources:</code> explains partial tracing.
   The default shows five related locations per finding. Add <code>--verbose</code>
@@ -287,7 +290,8 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
     </tr>
     <tr>
       <td><code>delete o.k</code></td>
-      <td>the object moves to a slower kind of storage, and stays there</td>
+      <td>if <code>o</code> has <code>k</code>, it moves to a slower kind of
+          storage, and stays there</td>
       <td>12.3&ndash;13.6x per property load. On es-toolkit's <code>omit</code>
           the own-property rebuild improves reads at both tested sizes, but the
           whole call is <strong>slower: 0.17&ndash;0.51x</strong>. Measure the
@@ -403,9 +407,9 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
     source is a guess about cost until a benchmark prices it.
   </li>
   <li>
-    Every rule with a benchmark records <strong>where that benchmark refused
-    it</strong>, and a test fails if the rule fires there anyway. Two to four
-    shapes are not reported; only the fifth is.
+    Every rule that reports a measured slowdown records <strong>where its
+    benchmark refused it</strong>, and a test fails if the rule fires there
+    anyway. Two to four shapes are not reported; only the fifth is.
   </li>
   <li>
     Two rules also record a <strong>real cost they deliberately do not
@@ -419,7 +423,7 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
     A cast such as <code>(iss as any).path</code> does not hide the underlying
     receiver type from that check. The
     chaining rule stays silent when a <code>.slice(0,&nbsp;10)</code> in the
-    chain bounds it three orders of magnitude below the smallest size its sweep
+    chain bounds it two orders of magnitude below the smallest size its sweep
     covers, with the threshold read off the sweep rather than typed in.
   </li>
   <li>
@@ -427,9 +431,10 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
     The report also names how many annotated functions reach it.
   </li>
   <li>
-    A finding carries <strong>no cost</strong>. It names the rule, the fix and
-    the sweep. The ratio depends on the size of your data, the annotation does
-    not carry that, and the checker does not time your function.
+    A finding carries <strong>no cost</strong>. It names the rule, a next step
+    and, when the rule has one, the sweep. The ratio depends on the size of your
+    data, the annotation does not carry that, and the checker does not time your
+    function.
   </li>
   <li>
     Every cell is measured three whole times. A cell whose three sweeps share no
