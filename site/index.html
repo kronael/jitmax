@@ -6,7 +6,7 @@
 <meta name="krons:date" content="2026-10-01">
 <meta name="krons:pin"  content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="numba's @njit for TypeScript on V8. Mark a hot function and jitmax refuses the patterns that measurably push V8 off its fast path, in that function and every function it calls, each backed by a benchmark in the repository.">
+<meta name="description" content="A static checker for speed-sensitive TypeScript on V8 — numba's @njit, for V8. Mark a hot function and jitmax reports the patterns that measurably push V8 off its fast path, in that function and every function it calls, each backed by a benchmark in the repository.">
 <title>jitmax — @njit for TypeScript on V8</title>
 <link rel="stylesheet" href="/pub/krons/assets/hub.css">
 <meta property="og:title" content="jitmax — @njit for TypeScript on V8">
@@ -37,7 +37,7 @@
 
 <a href="/pub/" class="back-btn">&larr; back</a>
 <h1>jitmax</h1>
-<p class="hub-subtitle">numba's <code>@njit</code> for TypeScript on V8: mark a hot function, and jitmax refuses the patterns that push V8 off its fast path</p>
+<p class="hub-subtitle">A static checker for speed-sensitive TypeScript on V8 — numba's <code>@njit</code>, for V8: mark a hot function, and jitmax reports the patterns that push V8 off its fast path</p>
 
 <div class="tldr-box">
   <div class="tldr-label">TL;DR</div>
@@ -91,8 +91,9 @@
   <li>
     <strong>Promise:</strong> every rule that claims a slowdown carries a
     benchmark run in the repository, with its raw timings, and cites the V8
-    source line where one shows the mechanism. Where a rule's own benchmark
-    found no cost, the rule stays silent, and a test fails if it fires there.
+    source line where one shows the mechanism. A rule stays silent on the
+    specific cases its own benchmark refuted that it can recognise in source,
+    and a test fails if it fires there; it cannot see input sizes.
     Code the walk could not check is reported, never passed as clean.
   </li>
   <li>

@@ -1,10 +1,12 @@
 # jitmax
 
-jitmax does for TypeScript on V8 what numba's `@njit` does for Python. Mark a
-hot function `/** @jitmax */`; jitmax checks it and every function it calls
-whose source it can read, and refuses the patterns that measurably push V8 off
-its fast path. You get one error per pattern, with its file and line, the next
-step and the benchmark behind the rule, and an exit code a CI gate can read:
+jitmax is a static checker for speed-sensitive TypeScript on V8 — numba's
+`@njit`, for V8. Mark a hot function `/** @jitmax */`; jitmax reads it and
+every function it calls whose source it can see, and reports the patterns that
+measurably push V8 off its fast path, plus the calls it could not check. You
+get one error per finding, with its file and line, the next step and the
+benchmark behind the rule, and an exit code a CI gate can read. It never runs,
+compiles or rewrites your code:
 
 ```sh
 bunx github:kronael/jitmax src
@@ -25,9 +27,11 @@ The code still returns the same values, only slower, and nothing warns you.
 - **For:** anyone with a TypeScript function on V8 whose speed matters.
 - **Promise:** every rule that claims a slowdown carries a benchmark run in
   this repository, with its raw timings in `bench/`, and cites the V8 source
-  line where one shows the mechanism. Where a rule's own benchmark found no
-  cost, the rule stays silent, and a test fails if it fires there. Code the
-  walk could not check is reported, never passed as clean.
+  line where one shows the mechanism. A rule stays silent on the specific
+  cases its own benchmark refuted that it can recognise in source, and a test
+  fails if it fires there. It cannot see input sizes, so it can still fire
+  where a rewrite would not pay off for your data. Code the walk could not
+  check is reported, never passed as clean.
 - **Not a profiler, not a cost estimate:** jitmax reads source and never runs
   your program. A finding is a measured candidate, not a cost in your
   workload; profile and benchmark your caller before you keep a change. Bun
