@@ -176,7 +176,7 @@ affect archives, not full clones or installers that clone directly.
 
 ## The derived artifacts
 
-Two committed files are generated. `make build` regenerates both, `make
+Two generators write three committed outputs. `make build` runs both, `make
 numbers` and `make builtins` one each, and no other target writes them:
 
 - `lib/numbers.ts` and the generated block in `bench/README.md`, from the `.jl`
