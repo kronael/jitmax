@@ -1,24 +1,89 @@
 # jitmax
 
-Mark a TypeScript function `/** @jitmax */` to find possible performance problems
-in its body and the callees jitmax can follow. Findings name the source, a next
-step, and the benchmark behind the rule. They do not measure your workload.
+Mark the function you need fast with `/** @jitmax */`. jitmax then pushes
+stricter rules onto it, and onto every callee whose source it can read, and
+keeps reporting what is wrong with it until there is nothing left to report. It
+reads source and never times your program, so whether the code is fast enough
+stays your call.
 
-![jitmax finding one line in a function radash ships](demo/demo.gif)
+A **JIT** is a just-in-time compiler: the part of a JavaScript engine that
+compiles your code while the program is already running, from what it has seen
+run so far. **V8** is the JIT in Chrome, Node and Deno. Every rule and every
+number here is about V8. Bun runs the checker, but Bun's own engine is
+JavaScriptCore, and nothing measured here says anything about that one.
+
+Every rule had to earn its place with a benchmark and a citation into V8's
+source, and both live in this repository. A rule whose benchmark refused it is
+recorded as refused rather than quietly dropped.
+
+## The idea
+
+V8 watches your code run. It notices what shape of data goes through each line,
+then compiles a version of that line which assumes the shape holds. The
+assumption is a bet, and it usually pays: that is most of why JavaScript is fast
+at all.
+
+One line can keep four shapes in its head. Send a fifth through and the bet is
+off — the line goes **megamorphic**, which is the engine's word for a code
+location that has seen more object shapes than it will cache, so V8 stops
+specialising it and looks the property up instead. Your code still returns
+exactly what it returned before. There is no error, no warning, no log line. The
+function simply costs more than it did last week, and the profiler points at a
+line that looks completely ordinary.
+
+The shape V8 keeps per object is a **hidden class**; V8's own source calls the
+same thing a **map**. Two objects with the same property names, added in the
+same order, share one. These docs use both names, and `docs/rules.md` keeps the
+longer definition.
+
+A handful of other patterns do the same kind of damage. Delete a key and V8
+moves that object to a slower kind of storage and leaves it there. Rebuild an
+array from a copy of itself inside a loop and every pass copies everything the
+last pass built. None of it looks wrong on screen, which is why it survives
+review.
+
+jitmax finds the source patterns that can cause that. It cannot tell you whether
+they cost anything in your program; only a profile and a benchmark of your own
+caller can.
+
+![jitmax reporting one line in a function radash ships](demo/demo.gif)
+
+The recording is a real run of the commands it types, against a function radash
+ships, vendored into `examples/` unchanged. `make demo` re-records it. The rule
+in that recording is `accumulating-spread`, which is the one rule here that is
+not a claim about V8 at all: rebuilding an accumulator from a copy of itself is
+more work in any engine, and the finding says so in its own words rather than
+borrowing an engine's.
 
 ## Quick start
 
 [Install Bun](https://bun.sh/docs/installation), then check `bun --version`.
-Use TypeScript `>=5.0.0 <6`; jitmax needs the 5.x compiler API. It loads your
-project's TypeScript first, then its own installed copy. Install your project's
-dependencies with its usual package manager before scanning it.
-The `bunx` repository command needs no npm publication, release tag or build.
-Bun runs the checker; findings concern V8, not Bun's JavaScriptCore engine.
 
-The public repository currently exposes no Git refs and its download returns
-404. Until it has an accessible Git ref, use the
-[existing-checkout route](#use-an-existing-checkout) below.
-Every `bunx github:kronael/jitmax` command in these docs needs that access.
+**Pin TypeScript 5.x in your project before you scan it.** jitmax parses with
+the compiler your project builds with and needs the 5.x compiler API, and
+`bun add typescript` installs 7.x today, whose API has no `sys` host:
+
+```sh
+bun add --dev typescript@^5.9    # or: npm install --save-dev typescript@^5.9
+```
+
+Skip that and the scan stops at exit `2`. A checkout of the current source names
+what it found and what it needs:
+
+```text
+jitmax: jitmax needs TypeScript >=5.0.0 <6, and the "typescript" package
+resolved here is 7.0.2, which has no "sys" host. Install a supported version
+in this project:
+  npm install --save-dev typescript@^5.9
+```
+
+`bunx` installs the `main` branch, which does not carry that message yet and
+reports `undefined is not an object (evaluating 'ts.sys.fileExists')` instead.
+Same cause, same fix.
+
+Install your project's other dependencies with its usual package manager too: an
+unresolved import makes every type read as `any`, and the report says so rather
+than calling the run clean.
 
 Save this as `hot.ts` in your TypeScript project's root:
 
@@ -29,7 +94,7 @@ export function total(rows: { value: number }[]): number {
 }
 ```
 
-Run from your TypeScript project's root:
+Run from that project's root:
 
 ```sh
 bunx github:kronael/jitmax --help
@@ -37,12 +102,13 @@ bunx github:kronael/jitmax hot.ts
 ```
 
 Help exits `0`. The sample reports `every annotated function is clean.` and
-exits `0`. Add `/** @jitmax */` to your own hot function and pass its file next.
-Add `--verbose` to show all retained source locations when it finds a candidate.
+exits `0`. Mark your own hot function next and pass its file. Add `--verbose` to
+show every retained source location when a finding has more than five.
 
 Paths choose files, not compiler options. jitmax finds `tsconfig.json` from the
-working directory upward. With no paths, it uses that config's file list;
-with neither paths nor a config, it scans sources under the working directory.
+working directory upward and never from the path argument. With no paths it uses
+that config's file list; with neither paths nor a config it scans sources under
+the working directory.
 
 ### Use an existing checkout
 
@@ -55,87 +121,158 @@ cd "/path/to/your-project"
 bun "/path/to/jitmax/bin/cli.js" hot.ts
 ```
 
-This runs source without a build. For every command below, you can replace
-`bunx github:kronael/jitmax` with `bun "/path/to/jitmax/bin/cli.js"`.
+This runs source without a build. Anywhere below, `bunx github:kronael/jitmax`
+and `bun "/path/to/jitmax/bin/cli.js"` are interchangeable.
 
 ## Read a finding
 
-Findings name exact positions, including inside callees of the marked function.
-Excerpt from `bun bin/cli.js demo`, run inside the jitmax checkout:
+Add a fifth shape to that array's element type and the first rule fires. Save
+this as `shapes.ts` beside `hot.ts`:
 
-```text
-  demo/lib.ts:46  fiveShapes()
-    error  megamorphic-elements
-      demo/lib.ts:46:28
-      related: demo/lib.ts:48:30 read: r.x
-      next: inspect where these elements are built, not just this parameter.
+```ts
+type Row =
+  | { kind: 'a'; x: number }
+  | { kind: 'b'; x: number; y: number }
+  | { kind: 'c'; x: number; z: number }
+  | { kind: 'd'; x: number; w: number }
+  | { kind: 'e'; x: number; v: number };
+
+/** @jitmax */
+export function total(rows: Row[]): number {
+  let sum = 0;
+  for (const row of rows) sum += row.x;
+  return sum;
+}
 ```
 
-`next:` gives an investigation or conditional rewrite; `note:` states its limits.
-For deletion, the note says the own-property rebuild improves reads at n=12 and n=48,
-but makes the whole call slower. Measure construction and reads together.
+`bunx github:kronael/jitmax shapes.ts` prints this and exits `1`:
 
-`related:` links representative builders, implementations, allocations or key
-observers. The default shows five locations; `-v` or `--verbose` shows all retained
-locations without deepening analysis or changing findings, suppression or exits.
-These locations are not every allocation or proof of runtime reachability.
-Profile the caller, preserve its behavior, and benchmark the full operation
-before keeping a rewrite. A clean result does not prove that a rewrite is safe
-or faster. Read the [rule advice](docs/rules.md) and [known limits](docs/limits.md).
+```text
+jitmax — 1 annotated function, 1 error
+
+  shapes.ts:9  total()
+    shapes.ts:9:23  error  megamorphic-elements
+      rows has 5 distinct property sets in its element type; this is a
+      candidate for megamorphic load feedback, not an observed runtime map
+      count
+      related: shapes.ts:11:34 read: row.x
+      sources: No builder located for this value. Source tracing is partial:
+               no visible caller of total — its arguments come from outside
+               this program.
+      next: inspect where these elements are built, not just this parameter.
+            If semantics allow, use consistent own properties and insertion
+            order; benchmark the full caller including construction
+      note: type assertions do not change runtime shapes. Adding a missing
+            property can change key enumeration and presence checks. Library
+            callers may need an upstream change; no automatic rewrite is
+            established here
+      measured in bench/shape-sets.jl and bench/shapes-calibrated.jl
+      known defects: TC-2, TC-9
+
+  known defects cited above:
+    TC-2  a TypeScript union member is not a V8 map
+    TC-9  rules fire outside the conditions their own evidence establishes
+
+  Static findings are candidates, not measured costs in this workload.
+  Profile and benchmark the caller before keeping a change.
+  Rule evidence and limits: docs/rules.md; measurements: bench/README.md.
+```
+
+A finding is fifteen to twenty lines because every line answers a different
+question:
+
+- The first indented line is the annotated function the walk started from. **The
+  walk** is jitmax following calls out of that function into every callee whose
+  source is in your program, to a cap of 200 bodies per annotation — so the
+  finding under it is often in a different file.
+- The line below it leads with the exact position, then `error`, then the rule.
+- The message says what the rule saw, in the rule's own hedged words.
+- `related:` links representative builders, implementations, allocations or key
+  observers. Five by default, all of them with `--verbose`. They are not every
+  allocation and not proof that the value reaches the site at runtime.
+- `sources:` says where the source query gave up — an unknown input, a cycle or
+  its budget.
+- `next:` is an investigation or a conditional rewrite, never an automatic one.
+- `note:` states the limits of that rewrite: what it changes besides speed, and
+  where the measurement declined to support it.
+- `measured in` names the raw timing files behind the rule, which live in
+  `bench/` in a clone of jitmax and not in your project. `bench/README.md`
+  explains every number in them.
+- `known defects:` are the rule's own recorded defects. The legend after the
+  findings says what each code means.
+
+No finding prints a ratio, because a ratio is a property of the input and the
+annotation does not carry the size of your data. Where the docs do print one:
+
+**`n`** is the size the benchmark ran at — keys, items or inputs, depending on
+the sweep. **Every ratio is before time divided by after time**, so above 1.0
+the change was faster, below 1.0 it was slower, and 1.0 is no change. A pattern
+that costs nothing at `n=8` can cost a great deal at `n=10000`, and a rewrite
+can go the other way: es-toolkit's `omit` improves reads at n=12 and n=48, and
+makes the whole call slower at both, 0.17-0.51x.
+
+A clean result does not prove that a rewrite is safe or faster, and it does not
+prove the function is fast. Read the [rule reference](docs/rules.md) and the
+[known limits](docs/limits.md) before acting on a finding.
 
 ## Select rules or hot functions
 
-To focus on megamorphic reads and calls, save the supplied
+To report only megamorphic reads and calls, save the supplied
 [preset](examples/megamorphic/jitmax.toml) as `jitmax.toml` in your project:
 
 ```sh
 bunx github:kronael/jitmax jitmax.toml hot.ts
 ```
 
-It disables the other six rules. Coverage notices still apply. For custom TOML
-settings, see [configuration](docs/rules.md#turning-a-rule-off).
-A `false` setting disables its named rule or every rule carrying its defect code.
-For one function and its callees, use `/** @jitmax -megamorphic-elements -TC-9 */`.
-The report counts suppressions.
-A CPU profile can select hot functions without annotations. Replace
-`your-workload.js` with your application's JavaScript entry point and `src`
-with its source directory. Recording the profile requires Node:
+It switches the other six rules off. Coverage notices still apply. For your own
+settings, see [turning a rule off](docs/rules.md#turning-a-rule-off): `false`
+disables a rule by name, or every rule carrying a defect code. For one function
+and the callees it reaches, write `/** @jitmax -megamorphic-elements -TC-9 */`.
+The report counts what it suppressed and names the keys that did it.
+
+A CPU profile can select hot functions with no annotations at all. Replace
+`your-workload.js` with your application's JavaScript entry point and `src` with
+its source directory. Recording a profile needs Node:
 
 ```sh
 node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
 bunx github:kronael/jitmax run.cpuprofile src
 ```
 
-The default selects functions with at least 1% sampled self time; `[profile] min_self_pct` changes it.
-[Profile mapping](ARCHITECTURE.md#profile-mode-in-detail) describes source maps
-and unmatched frames. Pass at most one `.toml` and one `.cpuprofile`, in any order.
+The default selects functions with at least 1% sampled self time;
+`[profile] min_self_pct` changes it. [Profile
+mapping](ARCHITECTURE.md#profile-mode-in-detail) covers source maps and
+unmatched frames. Pass at most one `.toml` and one `.cpuprofile`, in any order.
 
 ## Rules and exit codes
 
 Eight rules ship: megamorphic reads and calls, repeated copying, allocation
 chains, selection candidates and property deletion, plus two coverage rules.
-[The rule reference](docs/rules.md) states each trigger, its evidence and its limits.
+[The rule reference](docs/rules.md) states each trigger, its evidence and its
+limits.
 
-Exit `0` means at least one function was checked with no remaining findings or
-reported coverage gaps. Exit `1` means findings, incomplete coverage, or no
+Exit `0` means at least one function was checked with no remaining findings and
+no reported coverage gaps. Exit `1` means findings, incomplete coverage, or no
 selected functions. Coverage gaps include truncated walks, unresolved modules,
 unmatched hot frames, bodyless annotations and calls through `any` receivers.
 Exit `2` means the tool failed, including invalid input, config or source syntax.
-`--help` and `-h` exit `0` without loading the project. Suppression does not
-clear coverage gaps. Semantic TypeScript errors belong to your compiler check.
+`--help` and `-h` exit `0` without loading the project. Suppressing a rule does
+not clear a coverage gap. Semantic TypeScript errors belong to your own compiler
+check.
 
 ## Development and licence
 
-Work inside the jitmax checkout. Development needs Node `>=22.18`, npm and
-Make. Install dependencies with `npm ci --ignore-scripts`, then run:
+Work inside a full Git clone. Development needs Node `>=22.18`, npm and Make.
+Install dependencies with `npm ci --ignore-scripts`, then run:
 
 ```sh
 make          # lint, test, demo checks
 make verify   # also check pinned V8 citations and the Radash checkout
 ```
 
-`make build` regenerates evidence artifacts; it is not required to run jitmax.
-See [development](ARCHITECTURE.md#development) for verification prerequisites; use a full Git clone for development.
+`make build` regenerates the evidence artifacts; running jitmax does not need
+it. See [development](ARCHITECTURE.md#development) for verification
+prerequisites.
 
 GPL-2.0-only; see [LICENSE](LICENSE). The vendored radash, remeda, es-toolkit
 and zod functions in `examples/` retain their MIT licences, copyright lines,
@@ -145,5 +282,13 @@ affiliated with, endorsed by, or sponsored by Google.
 
 Status: v0.15.0, single machine, eight rules.
 
-Read [architecture](ARCHITECTURE.md) for internals and [benchmarks](bench/README.md) for measurements and reruns.
-See [examples](examples/README.md) for real library trials and rewrites, and [limits](docs/limits.md) for known gaps.
+That version is `package.json` and the newest tag. `bunx github:kronael/jitmax`
+installs the repository's `main` branch, which is ahead of it, and the finding
+layout differs between the two: `main` leads a finding with its location, as
+shown above, and the tag leads with `error`. Tagging is the owner's call.
+
+Read [architecture](ARCHITECTURE.md) for internals and
+[benchmarks](bench/README.md) for measurements and reruns. See
+[examples](examples/README.md) for real library trials and rewrites, and
+[limits](docs/limits.md) for known gaps. The project page is at
+[krons.fiu.wtf/pub/jitmax](https://krons.fiu.wtf/pub/jitmax/).
