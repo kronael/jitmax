@@ -20,38 +20,32 @@ notice that travels with them. All four come from the survey below.
 
 ## What each fix is worth
 
-| Rule | End to end |
-|---|---|
-| `accumulating-spread` | radash `assign` improves both measured halves; remeda `mergeAll` is a slower whole call at 8 inputs, a faster one at 64, and gains no reads |
-| `delete-property` | es-toolkit `omit` improves reads at n=12 and n=48, but makes the whole call slower |
-| `chained-allocation` | zod `cleanEnum` gains **1.10-1.12x** at 16 members; at 256 it measured 1.03-1.10x, **rejected under [rule 6](../bench/README.md#how-a-cell-is-measured)** |
-| `megamorphic-elements` | a detection on Zod, below; no measured rewrite |
-| `megamorphic-dispatch` | a detection on date-fns, below; no measured rewrite |
-| `allocating-select` | no finding in the survey, so no instance to rewrite |
-| `closed-world`, `interface-dispatch` | no speed claim; they report what was not checked |
+The four examples cover `accumulating-spread`, `delete-property` and
+`chained-allocation`. The megamorphic rules have real detections, below, and
+no measured rewrite; `allocating-select` fired nowhere in the survey; the two
+coverage rules make no speed claim.
 
-`make example` prints the findings, then runs the sweep. It times the whole
-call the way a caller makes it, because a microbenchmark cannot say what a
-program gets. Each cell follows [the protocol](../bench/README.md#how-a-cell-is-measured):
-three whole sweeps of twenty process pairs, all three printed. **Agreement** is
-the range every sweep's 95% interval contains, so a sweep's own ratio can sit
-outside it. A ratio is before time over after time: above 1.0 the shipped code
-costs that much more, and **below 1.0 the fix made it slower**. `n` counts the
-keys in each radash config object and each es-toolkit record, the objects
-remeda merges, and the zod enum's members.
+Each cell times the function the way a caller uses it, and follows
+[the protocol](../bench/README.md#how-a-cell-is-measured): three whole sweeps
+of twenty process pairs, all three printed. **Agreement** is the range every
+sweep's 95% interval contains, so a sweep's own ratio can sit outside it. A
+ratio is before time over after time: above 1.0 the shipped code costs that
+much more, and **below 1.0 the fix made it slower**. `n` counts the keys in
+each radash config object and each es-toolkit record, the objects remeda
+merges, and the zod enum's members.
 
 **The whole call, which is what a caller gets:**
 
-| Function, and the finding | n | three sweeps | agreement |
-|---|---|---|---|
-| radash `assign` — `accumulating-spread` | 16 | 1.27 / 1.26 / 1.18 | **1.20–1.27** |
-| radash `assign` | 128 | 3.54 / 3.35 / 3.44 | **3.23–3.53** |
-| remeda `mergeAll` — `accumulating-spread` | 8 | 0.13 / 0.13 / 0.13 | **0.12–0.14** |
-| remeda `mergeAll` | 64 | 1.52 / 1.51 / 1.54 | **1.48–1.59** |
-| es-toolkit `omit` — `delete-property` | 12 | 0.17 / 0.17 / 0.18 | **0.17–0.18** |
-| es-toolkit `omit` | 48 | 0.51 / 0.50 / 0.50 | **0.49–0.52** |
-| zod `cleanEnum` — `chained-allocation` | 16 | 1.05 / 1.20 / 1.14 | **1.10–1.12** |
-| zod `cleanEnum` | 256 | 1.03 / 1.06 / 1.08 | **1.03–1.10** |
+| Function, and the finding | n | three sweeps | agreement | verdict |
+|---|---|---|---|---|
+| radash `assign` — `accumulating-spread` | 16 | 1.27 / 1.26 / 1.18 | **1.20–1.27** | faster |
+| radash `assign` | 128 | 3.54 / 3.35 / 3.44 | **3.23–3.53** | faster |
+| remeda `mergeAll` — `accumulating-spread` | 8 | 0.13 / 0.13 / 0.13 | **0.12–0.14** | **slower** |
+| remeda `mergeAll` | 64 | 1.52 / 1.51 / 1.54 | **1.48–1.59** | faster |
+| es-toolkit `omit` — `delete-property` | 12 | 0.17 / 0.17 / 0.18 | **0.17–0.18** | **slower** |
+| es-toolkit `omit` | 48 | 0.51 / 0.50 / 0.50 | **0.49–0.52** | **slower** |
+| zod `cleanEnum` — `chained-allocation` | 16 | 1.05 / 1.20 / 1.14 | **1.10–1.12** | faster |
+| zod `cleanEnum` | 256 | 1.03 / 1.06 / 1.08 | **1.03–1.10** | **rejected**, under [rule 6](../bench/README.md#how-a-cell-is-measured)'s broad-warning bar |
 
 **Reads on the value the function returns**, which is where `delete-property`'s
 cost is paid — by the caller, not inside the function:
@@ -65,14 +59,9 @@ cost is paid — by the caller, not inside the function:
 | zod `cleanEnum` | 16 | 0.98 / 1.11 / 1.01 | **none — DISAGREES** |
 | zod `cleanEnum` | 256 | 1.02 / 1.01 / 1.05 | **0.98–1.07, REJECTED** |
 
-**What to keep.** Radash's rewrite improves both measured halves. Remeda's
-rewrite makes the small whole call slower (0.13x), improves the larger call
-(1.48–1.59x), and establishes no read benefit. `omit` improves reads at n=12 and n=48,
-but makes the whole call slower (0.17–0.51x); keep it only when the caller's
-measured reads repay that cost. Zod's whole call clears the broad-warning bar
-at 16 members and fails it at 256, although its agreement there sits above
-1.0. Zod's small read cell does not replicate; its larger read cell
-establishes no benefit.
+Keep a rewrite only when your caller's construction and reads, added up, get
+faster. `omit` improves reads at n=12 and n=48, but makes the whole call
+slower, so its faster reads must repay that cost.
 
 The object rewrites define own data properties, so they keep own `__proto__`
 keys without calling inherited setters. Remeda copies enumerable symbols and
@@ -90,6 +79,12 @@ a ratio is not proof of an isolated storage-layout effect.
 The microbenchmark is no caller-level forecast. Object spread costs 186–200x
 at n=500 in its kernel; radash's complete call moves 1.18–3.54x, because the
 code around the copy still allocates, recurses and branches.
+
+`make example` checks the four examples, then measures only the cells
+`bench/example.jl` lacks. To measure all sixteen again without touching the
+published rows, run `node bench/run.ts example --force --scratch` on an idle
+machine; [re-run any claim](../bench/README.md#re-run-any-claim) lists the
+options.
 
 ## Reproduce the radash fix
 
@@ -156,17 +151,22 @@ rules off, and the report counts what they would have found.
 
 ## The survey
 
-Eleven libraries were cloned shallow and annotated by `examples/annotate.js`:
-every function, not nested inside another, whose body loops. radash, the
-twelfth, was marked by hand. **850 annotated functions, 844 findings, every one
-an error.** No library produced nothing.
+The checker, at commit `75a1568`, ran on 22 open-source codebases: twelve
+libraries, two applications and eight other codebases, each cloned shallow.
+`examples/annotate.js` marked every function, not nested inside another, whose
+body holds a loop or an array-iteration call; radash was marked by hand. That
+is 2953 annotated functions in all.
 
-Every survey count comes from one run with the checker at commit `75a1568`. A
-count is distinct source lines per rule: a line reached from 28 annotated
+A count is distinct source lines per rule: a line reached from 28 annotated
 functions is one finding, so the counts measure work, not call-graph fan-in.
 The report's own header counts line and column, so it can print more. Calls
 into the platform — Node's API, V8's builtins and anything reached off
 `globalThis` — are counted for the run and never listed.
+
+### Libraries
+
+**850 annotated functions, 844 findings, every one an error.** No library
+produced nothing.
 
 | Library | annotated | findings | what fired |
 |---|---|---|---|
@@ -188,21 +188,13 @@ into the platform — Node's API, V8's builtins and anything reached off
 remaining 54.
 
 **`megamorphic-dispatch` fires three times**, each where five or more
-implementations reach a call the walk could not follow. immutable's
-`Seq.js:65` and `:83` call `this.__iterateUncached()` and
-`this.__iteratorUncached()`, which ten `Seq` subclasses reach; date-fns's
-`parse` calls `this.parse()`, which 31 parser classes reach. Both are dispatch
-tables written on purpose: the rule found where these libraries chose
-polymorphism, not a mistake.
+implementations reach a call the walk could not follow: date-fns's `parse`,
+above, and immutable's `Seq.js:65` and `:83`, which call
+`this.__iterateUncached()` and `this.__iteratorUncached()` and which ten `Seq`
+subclasses reach. Both are dispatch tables written on purpose: the rule found
+where these libraries chose polymorphism, not a mistake.
 
-**`megamorphic-elements` fires at one site in 850 functions**: zod's
-`prefixIssues`, whose `issues` parameter unions twelve issue types and which
-reads `.path` off every element through an `as any`. A cast does not change
-the object, and V8 loads from its map either way.
-
-### Two applications
-
-Two large programs, run the same way:
+### Applications
 
 | Program | annotated | findings | what fired |
 |---|---|---|---|
@@ -211,12 +203,12 @@ Two large programs, run the same way:
 
 Read those `closed-world` totals as a limit of this run before reading them as
 anything about either codebase: neither checkout had `node_modules`
-installed, so every call into a missing package is an unresolvable callee,
-reported at each call site. They are kept out of the library table for that
-reason; mixed in, they would move the coverage rules' share from 94% to 98%.
-In the compiler, `interface-dispatch` is the larger half: TypeScript
-dispatches almost everything through `Node`, `Symbol` and `Type` interfaces
-whose implementations are all in the checkout.
+installed, and a call that resolves to nothing is a `closed-world` finding at
+each call site. They are kept out of the library table for that reason; mixed
+in, they would move the coverage rules' share from 94% to 98%. In the
+compiler, `interface-dispatch` is the larger half: TypeScript dispatches almost
+everything through `Node`, `Symbol` and `Type` interfaces whose
+implementations are all in the checkout.
 
 Both megamorphic rules fire more often here than in all twelve libraries
 together:
@@ -234,10 +226,7 @@ together:
   emit them. Each such node can move to dictionary mode, and every later read
   of it pays.
 
-### Eight more codebases
-
-Eight more codebases were run the same way, to test whether any rule has no
-instance in real code:
+### Other codebases
 
 | Codebase | annotated | findings | what fired besides `closed-world` |
 |---|---|---|---|
@@ -250,24 +239,24 @@ instance in real code:
 | immer | 10 | 37 | 13 `interface-dispatch`, 2 `delete-property` |
 | ts-pattern | 9 | 22 | nothing |
 
-**Vue and the TypeScript compiler each fire seven of the eight rules**; no
-codebase fires `allocating-select`. Eight of vue's ten `megamorphic-dispatch`
-sites come from declared property sets: `vnode.type`, with nine property sets,
-is seven of them, at `.hydrate()`, `.process()`, `.move()`, `.remove()` and
-`.toLowerCase()`, and a `.replace()` in `compiler-core`'s `codegen.ts` is the
-eighth. The other two are `watch.ts:161` and `:163`, which call `.some()` and
-`.map()` on a `source` that seven allocation sites reach.
-
-**`megamorphic-elements` fires at 19 lines in 2953 annotated functions**: 11 in
-the TypeScript compiler, 7 in vue and one in zod. That is the rule's whole
-footprint on 22 codebases.
+**Vue and the TypeScript compiler each fire seven of the eight rules.** Eight
+of vue's ten `megamorphic-dispatch` sites come from declared property sets:
+`vnode.type`, with nine property sets, is seven of them, at `.hydrate()`,
+`.process()`, `.move()`, `.remove()` and `.toLowerCase()`, and a `.replace()`
+in `compiler-core`'s `codegen.ts` is the eighth. The other two are
+`watch.ts:161` and `:163`, which call `.some()` and `.map()` on a `source`
+that seven allocation sites reach.
 
 **TypeBox has 30 distinct `accumulating-spread` sites**, more than the other
 twenty-one codebases together, which have 13. `FromObject` in
 `value/create/from_object.ts` is six lines and is the whole rule:
 `required.reduce((result, key) => ({ ...result, [key]: … }), {})`.
 
-**`allocating-select` fires at no site across 2953 annotated functions.** It
-sees an allocation only in a callee whose body is in the program, so a
-packaged `Decimal.min` declared in a `.d.ts` can never trigger it. Removing the
-rule leaves all 22 outputs byte-identical.
+### Across all 22
+
+**`megamorphic-elements` fires at 19 lines**: 11 in the TypeScript compiler, 7
+in vue and one in zod.
+
+**`allocating-select` found no sites in 2953 annotated functions.** It sees an
+allocation only in a callee whose body is in the program, so a packaged
+`Decimal.min` declared in a `.d.ts` can never trigger it.
