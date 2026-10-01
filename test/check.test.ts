@@ -1378,6 +1378,35 @@ test('a profile marks the function it measured as hot, and not the other one', (
   assert.strictEqual(run.status, 1);
 });
 
+// A profile chooses which functions are roots, not which rules apply to them.
+// A `-rule` on the function's own annotation was dropped in profile mode: the
+// tag lookup walks parent pointers the binder had not set yet, so a function
+// suppressed in an annotated run came back as an error once profiled.
+test('a profiled function keeps the suppressions on its own annotation', () => {
+  const file = path.join(root, 'tmp', `test-profsupp-${process.pid}.ts`);
+  fs.writeFileSync(file, [
+    '/** @jitmax -delete-property */',
+    'export function run(n: number): number {',
+    '  const row: { value: number; temp?: number } = { value: n, temp: 0 };',
+    '  delete row.temp;',
+    '  return row.value;',
+    '}',
+    '',
+  ].join('\n'));
+  // `export function run(` puts the `(` at column 20 of line 2.
+  const prof = writeProfile(path.join(root, 'tmp', `test-profsupp-${process.pid}.cpuprofile`),
+    [{ line: 2, column: 20 }], `file://${file}`);
+  const run = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), prof, file], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  fs.unlinkSync(prof);
+  fs.unlinkSync(file);
+  assert.match(run.stdout, /1 hot function, 0 errors/);
+  assert.match(run.stdout, /1 finding suppressed \(delete-property\)/);
+  assert.strictEqual(run.status, 0);
+});
+
 // A hot frame that matched no function is measured time the run could not
 // look at — the same blindness `unresolved` names for modules, so it takes the
 // same channel: printed above the findings, and exit 1. It used to be two

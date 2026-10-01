@@ -336,7 +336,7 @@ function findMarks(ts: Ts, program: TS.Program): Mark[] {
     if (!isOwnSource(program, sf)) continue;
     const visit = (node: TS.Node): void => {
       if (isFunctionLike(ts, node)) {
-        const tags = ts.getJSDocTags(node).filter((t) => t.tagName.escapedText === 'jitmax');
+        const tags = jitmaxTags(ts, node);
         if (tags.length > 0) marks.push(newMark(ts, sf, node, disabledKeys(ts, tags)));
       }
       ts.forEachChild(node, visit);
@@ -373,6 +373,11 @@ export function marksFromProfile(
   source: string,
   minSelfPct: number
 ): { marks: Mark[]; unmatched: HotFrame[]; hot: number; project: number; dependency: number } {
+  // The binder sets parent pointers, and reading a function's `@jitmax` tag
+  // walks them. findMarks runs after scan() has built the checker; this runs
+  // before, and without the bind every profiled mark read as untagged, so its
+  // `-rule` suppressions were dropped.
+  program.getTypeChecker();
   const isDependency = (f: HotFrame): boolean => {
     const sf = program.getSourceFile(f.file);
     return !(sf && isOwnSource(program, sf)) && f.file.split(path.sep).includes('node_modules');
@@ -425,7 +430,9 @@ export function marksFromProfile(
     if (seen.has(hit.node)) continue;
     seen.add(hit.node);
     marks.push({
-      ...newMark(ts, hit.sf, hit.node, []),
+      // A profile chooses the root, not the rules: a `-rule` on the function's
+      // own annotation applies here exactly as it does to an annotated run.
+      ...newMark(ts, hit.sf, hit.node, disabledKeys(ts, jitmaxTags(ts, hit.node))),
       // A ported mark says so: the position that found it was not the one in
       // the profile, and the line printed beside this is the author's.
       from:
@@ -440,7 +447,11 @@ export function marksFromProfile(
 // disables those rules for this function and everything its walk reaches.
 // Unrecognized text that is not a `-key` token is prose, not a directive, and
 // stays out of the list.
-function disabledKeys(ts: Ts, tags: TS.JSDocTag[]): string[] {
+function jitmaxTags(ts: Ts, node: TS.Node): readonly TS.JSDocTag[] {
+  return ts.getJSDocTags(node).filter((t) => t.tagName.escapedText === 'jitmax');
+}
+
+function disabledKeys(ts: Ts, tags: readonly TS.JSDocTag[]): string[] {
   const keys: string[] = [];
   for (const tag of tags) {
     const text = ts.getTextOfJSDocComment(tag.comment) ?? '';
