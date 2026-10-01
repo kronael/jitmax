@@ -183,7 +183,7 @@ claim.
 |---|---|
 | `megamorphic-elements` | a property read off array elements that five or more property sets reach |
 | `megamorphic-dispatch` | a method call that five or more property sets or implementations reach |
-| `delete-property` | `delete` on an object, which moves it to slower dictionary storage |
+| `delete-property` | `delete` on an object, which can move it to slower dictionary storage |
 | `allocating-select` | a loop that replaces a stored object through a call that allocates a new one |
 | `chained-allocation` | `.map().filter()` and `Object.entries(o).map()`, which build an array per stage |
 | `accumulating-spread` | `[...acc, v]` and its object and `concat` forms in a loop: quadratic copying on any engine |
@@ -191,7 +191,7 @@ claim.
 | `interface-dispatch` | a call the walk cannot bind to one implementation |
 
 [The rule reference](docs/rules.md) gives each rule's trigger, cost, silent case
-and fix.
+and fix. The exit code says how the run went:
 
 - `0`: at least one function was checked, with no errors and no coverage
   gaps. A `warn` can still print: a finding reached only through a static
