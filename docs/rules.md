@@ -323,9 +323,10 @@ prints `TC-33`.
 
 ## interface-dispatch
 
-**What it detects.** A call whose bodies are in the program, where the walk
-cannot pick one to follow: a method called through an interface, or a
-function value that two or more bodies reach. A method whose whole body
+**What it detects.** A call through an interface or a function value whose
+target the walk cannot resolve to one body: several bodies may be visible, or
+the receiver may come from a caller outside the program. `related:` lists the
+bodies it found; `sources:` says where an origin is missing. A method whose whole body
 throws counts as a declaration, and the walk does not follow its error path.
 
 **It fires on** `runTrio`, where three classes implement the interface the
@@ -361,13 +362,14 @@ read it as coverage, never as a price.
 ## How the two coverage rules divide the work
 
 They are two rules so that each can be switched off without the other.
-`closed-world` is a callee with no readable body anywhere. `interface-dispatch`
-is a call whose bodies exist but where the walk cannot tell which one runs.
+`closed-world` is a callee with no readable body. `interface-dispatch` is a
+call the walk cannot resolve to one body — several may be visible, or none.
 
 Both count first. The dataflow walk asks what reaches the receiver at every
-call it cannot follow. Five or more implementations at one site is a
-megamorphic call, reported as `megamorphic-dispatch` with that rule's
-benchmark. Two to four are printed as a count, inside V8's four-map budget.
+call it cannot follow. For a method called on a typed receiver, five or more
+implementations at one site is a megamorphic call, reported as
+`megamorphic-dispatch` with that rule's benchmark; two to four are printed as
+a count. A bare function call keeps its coverage finding, whatever the count.
 
 ## Reading a finding
 

@@ -52,11 +52,12 @@ lists the cells without measuring, and `--only=<text>` keeps the cells whose
 label contains the text, such as `--only=5/1`. Nothing else may run on the
 machine during a sweep.
 
-## Every number, and the rows it is
+## Derived numbers, and the rows they are
 
 `make numbers` writes this table, and the evidence strings the tool prints,
-from the `.jl` rows. No number is typed by hand, and `make test` fails when a
-quoted number no longer matches its rows.
+from the `.jl` rows, and `make test` fails when a quoted number no longer
+matches its rows. A few withdrawn or refuted figures quoted elsewhere in this
+guide are not derived; the test keeps them as a named list of exceptions.
 
 <!-- generated: numbers -->
 

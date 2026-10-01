@@ -94,7 +94,8 @@
     source line where one shows the mechanism. A rule stays silent on the
     specific cases its own benchmark refuted that it can recognise in source,
     and a test fails if it fires there; it cannot see input sizes.
-    Code the walk could not check is reported, never passed as clean.
+    A call into user or dependency code the walk cannot follow is reported
+    and fails the run; calls into Node and V8 builtins are counted, not checked.
   </li>
   <li>
     <strong>Not a profiler, not a cost estimate:</strong> jitmax reads source
@@ -261,9 +262,9 @@ export function total(rows: Row[]): number {
       <td>a call that more than one body can answer</td>
       <td>several implementations or function bodies may run, or the
           receiver comes from outside the program</td>
-      <td>No speed claim: it reports code the walk could not check. Five or
-          more implementations reaching the call are reported as the
-          method-call rule above.</td>
+      <td>No speed claim: it reports code the walk could not check. A method
+          call that five or more implementations reach is reported as the
+          method-call rule above; a bare function call stays here.</td>
     </tr>
   </tbody>
 </table>

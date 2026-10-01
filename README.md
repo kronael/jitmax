@@ -31,8 +31,10 @@ nothing warns you.
   line where one shows the mechanism. A rule stays silent on the specific
   cases its own benchmark refuted that it can recognise in source, and a test
   fails if it fires there. It cannot see input sizes, so it can still fire
-  where a rewrite would not pay off for your data. Code the walk could not
-  check is reported, never passed as clean.
+  where a rewrite would not pay off for your data. A call into your own or a
+  dependency's code that the walk cannot follow is reported and fails the run.
+  Calls into Node and V8 builtins are counted, not checked; "clean" means no
+  enabled rule fired and no tracked gap remains.
 - **Not a profiler, not a cost estimate:** jitmax reads source and never runs
   your program. A finding is a measured candidate, not a cost in your
   workload, and a printed fix can be slower: es-toolkit's `omit` rewrite
