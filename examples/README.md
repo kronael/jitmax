@@ -208,8 +208,10 @@ cost is actually paid — by the caller, not inside the function:
 rewrite makes the small whole call slower (0.13x), improves the larger call
 (1.48–1.59x), and establishes no read benefit. `omit` improves reads at n=12 and n=48,
 but makes the whole call slower (0.17–0.51x). Keep it only when the caller's
-measured reads repay that cost. Zod's small read cell does not replicate;
-its larger read cell establishes no benefit.
+measured reads repay that cost. Zod's whole call clears the broad-warning bar
+of [rule 6](../bench/README.md#how-a-cell-is-measured) at 16 members. At 256
+that bar rejects it, although its agreement sits above 1.0. Zod's small read
+cell does not replicate; its larger read cell establishes no benefit.
 
 The object rewrites define own data properties, preserving own `__proto__`
 keys without invoking inherited setters. Remeda copies enumerable symbols and
@@ -361,10 +363,11 @@ so that the absence would mean something:
 **Vue and the TypeScript compiler each fire seven of the eight rules**; no
 codebase fires `allocating-select`. Vue is a framework, not a pipeline, and
 both megamorphic rules find shapes in it that no utility library has. Eight of
-its ten `megamorphic-dispatch` sites are the rule counting
-declared property sets — `vnode.type` is nine of them, at `.hydrate()`,
-`.process()`, `.move()`, `.remove()` and `.toLowerCase()`. The other two are the
-escape route added in TC-110: `watch.ts:161` and `:163` call `.some()` and
+its ten `megamorphic-dispatch` sites are the rule counting declared property
+sets — `vnode.type`, with nine property sets, is seven of them, at
+`.hydrate()`, `.process()`, `.move()`, `.remove()` and `.toLowerCase()`, and a
+`.replace()` in `compiler-core`'s `codegen.ts` is the eighth. The other two are
+the escape route added in TC-110: `watch.ts:161` and `:163` call `.some()` and
 `.map()` on a `source` that seven allocation sites reach.
 
 **And the survey is what closed TC-8.** Vue reported 46 `megamorphic-elements`
