@@ -232,7 +232,7 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
 
 <p>
   A finding does not measure your workload. A benchmark ratio is a property
-  of the input &mdash; the same rule measured 149&ndash;166x at n=1000 and
+  of the input &mdash; <code>accumulating-spread</code>, a different rule, measured 149&ndash;166x at n=1000 and
   1766&ndash;1889x at n=10000 &mdash; and the annotation says the function is
   hot, not how large its data is. The numbers are on this page and in the
   <code>bench/*.jl</code> the finding names. Profile the caller, preserve its

@@ -292,8 +292,9 @@ side could not. The exception is withdrawn and the rule is right to fire there
 
 ## closed-world
 
-**What it detects.** Calls to somebody's code with no readable body anywhere in
-the checkout.
+**What it detects.** Calls that the TypeScript program resolves to a
+declaration (a `.d.ts`) rather than to an implementation it can read. The
+JavaScript may be installed; the checker does not read it.
 
 **It fires on** `usesDependency`, which calls into a typed dependency that
 ships a `.d.ts` and no body:

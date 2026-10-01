@@ -38,6 +38,13 @@ make example              # four shipped library functions, before and after
 make v8-check             # every V8 citation, against the pinned checkout
 ```
 
+Each target skips cells the sweep's `.jl` already holds, so a second run
+measures nothing new. To measure again without touching the published file:
+
+```sh
+node bench/run.ts shape-sets --force --scratch   # appends to bench/scratch.jl
+```
+
 Nothing else may run on the machine during a sweep. These are timings, and the
 load gate refuses to start a cell on a busy machine.
 

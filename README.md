@@ -12,9 +12,11 @@ run so far. **V8** is the JIT in Chrome, Node and Deno. Every rule and every
 number here is about V8. Bun runs the checker, but Bun's own engine is
 JavaScriptCore, and nothing measured here says anything about that one.
 
-Every rule had to earn its place with a benchmark and a citation into V8's
-source, and both live in this repository. A rule whose benchmark refused it is
-recorded as refused rather than quietly dropped.
+Every rule cites a benchmark and a citation into V8's source, and both live
+in this repository. Six rules report a measured slowdown. The other two,
+`closed-world` and `interface-dispatch`, report calls the checker could not
+follow, and they are most of what a first run prints. A rule whose benchmark
+refused it is recorded as refused rather than quietly dropped.
 
 ## The idea
 
@@ -67,8 +69,8 @@ the compiler your project builds with and needs the 5.x compiler API, and
 bun add --dev typescript@^5.9    # or: npm install --save-dev typescript@^5.9
 ```
 
-Skip that and the scan stops at exit `2`. A checkout of the current source names
-what it found and what it needs:
+Skip that and the scan stops at exit `2` and says what it found and what it
+needs:
 
 ```text
 jitmax: jitmax needs TypeScript >=5.0.0 <6, and the "typescript" package
@@ -77,9 +79,6 @@ in this project:
   npm install --save-dev typescript@^5.9
 ```
 
-`bunx` installs the `main` branch, which does not carry that message yet and
-reports `undefined is not an object (evaluating 'ts.sys.fileExists')` instead.
-Same cause, same fix.
 
 Install your project's other dependencies with its usual package manager too: an
 unresolved import makes every type read as `any`, and the report says so rather
