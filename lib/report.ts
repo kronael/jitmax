@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { BUILTINS } from './builtins.ts';
-import type { Mark } from './scan.ts';
+import { siteKey, type Mark } from './scan.ts';
 import { DEFECT, EVIDENCE, type Finding } from './rules.ts';
 
 // One spelling of the count-and-noun, because a hand-written plural beside a
@@ -164,16 +164,35 @@ export function render(
   verbose = false
 ): string {
   const out: string[] = [];
+  // One call is one error. A call megamorphic-dispatch reports is also one the
+  // walk could not bind, and interface-dispatch printed that as a second error
+  // at the same column: arktype's union.ts:345:4 and pixi's render loop counted
+  // twice. The coverage half is a note under the claim instead (BUGS TC-162).
+  const megamorphic = new Set(
+    results
+      .flatMap((r) => r.findings)
+      .filter((f) => f.rule === 'megamorphic-dispatch')
+      .map(siteKey)
+  );
+  const folded = new Map<string, Finding>();
+  const kept = results.map(({ mark, findings }) => ({
+    mark,
+    findings: findings.filter((f) => {
+      if (f.rule !== 'interface-dispatch' || !megamorphic.has(siteKey(f))) return true;
+      if (!folded.has(siteKey(f))) folded.set(siteKey(f), f);
+      return false;
+    }),
+  }));
   // Counted first, then rendered, because the fan-in is printed ON the finding
   // and the last caller is not known until every mark has been walked. The
   // fan-in is kept rather than discarded: a line reached by 28 annotated
   // functions is a better fix than one reached by one.
   const reach = new Map<string, number>();
-  for (const f of results.flatMap((r) => r.findings)) {
+  for (const f of kept.flatMap((r) => r.findings)) {
     reach.set(findingKey(f), (reach.get(findingKey(f)) ?? 0) + 1);
   }
   const shown = new Set<string>();
-  const perSite = results.map(({ mark, findings }) => ({
+  const perSite = kept.map(({ mark, findings }) => ({
     mark,
     findings: findings.filter((f) => {
       if (shown.has(findingKey(f))) return false;
@@ -416,6 +435,10 @@ export function render(
       if (f.relatedNote) out.push(...wrap('      sources: ', f.relatedNote));
       out.push(...wrap('      next: ', f.fix));
       if (f.note !== undefined) out.push(...wrap('      note: ', f.note));
+      const unbound = f.rule === 'megamorphic-dispatch' ? folded.get(siteKey(f)) : undefined;
+      if (unbound) {
+        out.push(...wrap('      note: ', `interface-dispatch at this call: ${unbound.message}`));
+      }
       // The sweep that priced the RULE, named — and no ratio. A ratio is a
       // property of the input: chained allocation is one number at n=1000 and
       // another at n=100000, and the annotation says this function is hot, not

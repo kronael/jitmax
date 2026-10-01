@@ -368,6 +368,22 @@ test('five implementations reaching a receiver are a megamorphic-dispatch findin
   assert.match(f?.note ?? '', /lower bound/);
 });
 
+/**
+ * One call is one error. `x.area()` on five declared shapes is megamorphic-
+ * dispatch's claim, and the same call has no body to bind, which
+ * interface-dispatch printed as a second error at the same column — arktype's
+ * union.ts:345:4 and pixi's render loop counted twice. The coverage half
+ * prints as a note under the claim, and is not counted (BUGS TC-162).
+ */
+test('a call megamorphic-dispatch reports is one error, interface-dispatch a note', () => {
+  const findings = rawFindings('areaOfFive');
+  assert.deepStrictEqual(findings.map((f) => f.rule).sort(), ['interface-dispatch', 'megamorphic-dispatch']);
+  const out = render(root, [{ mark: markFor('areaOfFive'), findings }]);
+  assert.match(out, /1 annotated function, 1 error/);
+  assert.doesNotMatch(out, /error {2}interface-dispatch/);
+  assert.match(unwrapped(out), /note: interface-dispatch at this call: calls x\.area through an interface/);
+});
+
 // Inside V8's four-map budget: a note at most, never an error — and it names
 // the implementations rather than saying "cannot tell which".
 test('two to four implementations are a note, not the megamorphic claim', () => {
