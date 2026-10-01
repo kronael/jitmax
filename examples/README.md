@@ -156,10 +156,10 @@ rules off, and the report counts what they would have found.
 
 ## The survey
 
-Twelve libraries were cloned shallow and annotated by `examples/annotate.js`:
-every function, not nested inside another, whose body loops. radash's eight
-were marked by hand. **850 annotated functions, 844 findings, every one an
-error.** No library produced nothing.
+Eleven libraries were cloned shallow and annotated by `examples/annotate.js`:
+every function, not nested inside another, whose body loops. radash, the
+twelfth, was marked by hand. **850 annotated functions, 844 findings, every one
+an error.** No library produced nothing.
 
 Every survey count comes from one run with the checker at commit `75a1568`. A
 count is distinct source lines per rule: a line reached from 28 annotated
