@@ -3124,15 +3124,11 @@ test('every vendored example is covered by the MIT notice, and the notice covers
 // published prose is either derived or listed here with the reason it is not,
 // so a NEW typed ratio fails the build while history stays sayable (TC-73).
 const HISTORICAL: Record<string, string> = {
-  // Superseded ranges, quoted as superseded.
-  '4.42-4.79x': 'closed-world before three replications, quoted as what it used to read',
-  '3.21-4.95x': 'closed-world before rule 13 withdrew its n=100000 cell',
   // Rules this project withdrew. Their costs are real and ship nothing — and
   // where the rows are still in the repo the cost is DERIVED like every other,
   // withdrawn rule or not: `boxed-elements`' three figures read out of
   // bench/arrays.jl and left this register on 2026-09-01 (BUGS TC-14).
   '1.21-1.34x': 'the post-construction property add, refuted and shipping no rule',
-  '0x': 'the delete-on-a-singleton refutation this project published and then overturned',
   '6.17-6.34x': 'the 16-keyed-store dictionary effect: measured, no rule, BUGS TC-12',
   // The three sweeps of a cell rule 13 refuses, printed as the refutation.
   '1.64x': 'one of three disagreeing sweeps, quoted to show they disagree',
@@ -3144,7 +3140,6 @@ const HISTORICAL: Record<string, string> = {
   // Ordinary prose, not a measurement of anything.
   '1.10x': "rule 6's broad-warning point-estimate bar, a protocol constant",
   '2x': "the calibration tolerance: a cell missing 120ms by more than this throws",
-  '5x': 'an anecdote about what %GetOptimizationStatus reported during a slowdown',
 };
 
 test('every ratio in the published prose is derived, or registered as history', () => {
