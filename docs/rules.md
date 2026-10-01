@@ -28,9 +28,10 @@ function the walk reaches from a marked function.
   misses the protocol's bar is **rejected**, and one whose three sweeps
   disagree is **withdrawn**; [how a cell is
   measured](../bench/README.md#how-a-cell-is-measured) gives both tests.
-- **Silent**: a case the rule's own benchmark measured and found no cost worth
-  reporting. The rule stays quiet there, and a test fails if it fires. For the
-  two coverage rules, the silent case says what the walk can see instead.
+- **Silent**: a neighbouring case the rule must not report, mostly one its own
+  benchmark measured and found no cost worth reporting. A test fails if the
+  rule fires there. For the two coverage rules, the silent case says what the
+  walk can see instead.
 - **Misses**: a cost the rule knowingly does not report, or prices with the
   wrong figure, because nothing in the source separates that case. On a clean
   run, `-v` prints each rule's misses.
@@ -126,8 +127,8 @@ property set, so it prices the mechanism, not this rule's trigger (`TC-33`).
 
 **What it detects.** `[...acc, v]`, `{ ...acc, k: v }`, `acc.concat(v)` or
 `Object.assign({}, acc, …)` in a loop. Each pass copies everything the last
-one built, so the work is quadratic. This is not a V8 mechanism: it costs the
-same on any engine.
+one built, so the work is quadratic. This is not a V8 mechanism: the copying
+is quadratic on any engine.
 
 **It fires on** `collect`:
 
@@ -142,8 +143,8 @@ export function collect(rows: number[]): number[] {
 
 **It is silent on** `appendOnce`, where no loop re-runs the copy; on
 `mergeInto`, which is `Object.assign(acc, …)` and mutates in place; and on
-`joinByPlus` and `joinByConcat`, which build strings, which V8 appends to
-without copying.
+`joinByPlus` and `joinByConcat`, which build strings: V8 appends to a string
+without copying it.
 
 **How to act.** Push into the array only when the code owns it and no caller
 needs an earlier copy. Keep order and holes, and do not pass an unbounded
@@ -218,9 +219,9 @@ export function lowest(rows: Money[], bucket: { lo: Money }): void {
 
 **It is silent on** `lowestNumber`, the same loop on numbers, where `Math.min`
 allocates nothing. At n=10000 that loop measured 1.10-1.19x, with intervals
-reaching under the broad-warning bar. At n=100000 its three sweeps read 0.89x, 0.97x
-and 1.03x and disagree, so the cell is withdrawn and there is nothing to warn
-from.
+reaching under the broad-warning bar. At n=100000 its three sweeps read 0.89x,
+0.97x and 1.03x and disagree, so the cell is withdrawn and there is nothing to
+warn from.
 
 **It misses** the difference between a value that outlives the loop and one
 kept in a local: the local form costs 2.02-2.47x, and the rule's evidence
