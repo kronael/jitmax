@@ -60,7 +60,7 @@ export interface Blind {
   // back through a source map before they were looked up. "N frames matched
   // nothing" reads the same for a stale profile and for a transformed one, and
   // the user of TC-77 was told the wrong one of the two; these say which.
-  profile: { matched: number; ported: number };
+  profile: { matched: number; ported: number; toplevel: number };
   // Annotated declarations with no body anywhere in this program — an ambient
   // `declare function`, or an overload signature whose implementation is not
   // here. The walk had nothing to walk and reported nothing, which read as
@@ -152,7 +152,7 @@ export function render(
   blind: Blind = {
     unresolved: [],
     unmatched: [],
-    profile: { matched: 0, ported: 0 },
+    profile: { matched: 0, ported: 0, toplevel: 0 },
     bodyless: [],
     untyped: [],
     tsconfig: undefined,
@@ -287,7 +287,13 @@ export function render(
     // said "stale" to somebody whose profile was minutes old: a frame with no
     // map behind it was never ported at all, and a transform between the source
     // and the profile explains that better than an edit to the source does.
-    const unported = missed - blind.profile.ported;
+    if (blind.profile.toplevel > 0) {
+      out.push(
+        `  ${plural(blind.profile.toplevel, 'frame')} at 1:1 ${blind.profile.toplevel === 1 ? 'is' : 'are'} a module's top-level code, which no function`,
+        '  holds: move hot top-level code into a function to have it checked.'
+      );
+    }
+    const unported = missed - blind.profile.ported - blind.profile.toplevel;
     if (unported > 0) {
       const which = unported === missed ? 'any of those positions' : `${unported} of those positions`;
       out.push(

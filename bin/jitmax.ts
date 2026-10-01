@@ -117,7 +117,7 @@ Exit codes: 0 checked, no errors; 1 errors or incomplete coverage;
   // sentence printed under every run of this tool.
   let fromProfile: string | undefined;
   let unmatched: string[] = [];
-  let profileCounts = { matched: 0, ported: 0 };
+  let profileCounts = { matched: 0, ported: 0, toplevel: 0 };
   let given;
   if (profilePath !== undefined) {
     const minSelfPct = config?.minSelfPct ?? DEFAULT_MIN_SELF_PCT;
@@ -142,6 +142,9 @@ Exit codes: 0 checked, no errors; 1 errors or incomplete coverage;
     profileCounts = {
       matched: found.hot - found.unmatched.length,
       ported: found.unmatched.filter((f) => f.generated !== undefined).length,
+      // V8 names a module's top-level code `<anonymous>` at 1:1. No function
+      // holds it, so no map and no fresh profile can ever match it.
+      toplevel: found.unmatched.filter((f) => f.generated === undefined && f.line === 1 && f.column === 1).length,
     };
     given = found.marks;
     // Where the rest went, once: the threshold reads the project's share, and

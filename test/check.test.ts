@@ -1378,6 +1378,27 @@ test('a profile marks the function it measured as hot, and not the other one', (
   assert.strictEqual(run.status, 1);
 });
 
+// V8 names a module's top-level code `<anonymous>` at 1:1. No function holds
+// it, so neither a source map nor a fresher profile can ever match it, and
+// blaming a build transform sent the reader after a cause that was not there.
+test('an unmatched module frame is named as top-level code, not a transform', () => {
+  const dir = path.join(root, 'test', 'fixtures', 'profile');
+  // writeProfile gives the first frame 99.5% of the samples; the module frame
+  // has to be hot to be reported at all.
+  const prof = writeProfile(path.join(root, 'tmp', `test-toplevel-${process.pid}.cpuprofile`), [
+    { line: 1, column: 1 },
+    { line: 8, column: 23 },
+  ]);
+  const run = spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), prof, dir], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  fs.unlinkSync(prof);
+  assert.match(unwrapped(run.stdout), /1 frame at 1:1 is a module's top-level code/);
+  assert.doesNotMatch(run.stdout, /no source map covers/);
+  assert.strictEqual(run.status, 1);
+});
+
 // A profile chooses which functions are roots, not which rules apply to them.
 // A `-rule` on the function's own annotation was dropped in profile mode: the
 // tag lookup walks parent pointers the binder had not set yet, so a function
