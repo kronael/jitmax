@@ -189,7 +189,8 @@ The tables cite these rules by number.
    observation is pinned to one core, and one more runnable thread would have
    to share it. It is checked before every cell and between the sweeps of a
    cell; a busy machine stops the sweep, which is resumed later. `--max-load`
-   overrides the gate, and the row records the override.
+   overrides the gate, and the row records the override. Older rows, such as
+   those in `bench/arrays.jl`, lack these fields.
 10. **Failures print in the same format as results**: `REJ`, and a void cell
     with its error.
 11. **Both halves, always**: reads only, and with construction counted.
