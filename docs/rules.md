@@ -1,8 +1,8 @@
 # The rules
 
 For installation and your first scan, use the [README quick start](../README.md#quick-start).
-It covers Bun, TypeScript and the checkout fallback while public GitHub access
-is blocked by TC-133. Bun runs the checker; these rules concern V8 performance.
+It covers Bun and the TypeScript 5.x requirement. Bun runs the checker; these
+rules concern V8 performance, not Bun's JavaScriptCore engine.
 
 What each of the eight rules detects, what makes it fire, where it stays quiet,
 and what the fix is.
@@ -12,13 +12,19 @@ full Git clone's `BUGS.md` contains the internal issue history, not an installed
 
 Eight rules ship. The first six check every function in the call tree. The
 last two report where the walk stops — one for a callee with no body anywhere,
-one for a call the walk cannot bind to a single implementation. A *hidden class*
-is the internal shape V8 gives an object; two objects with the same property
-names, added in the same order, share one. An *inline cache* is the small table
-V8 keeps at each line that reads or calls, holding the shapes it has already
-seen there. Megamorphic means one code location has
-seen many object shapes. Quadratic means the work grows with the square of the
-input size.
+one for a call the walk cannot bind to a single implementation.
+
+A *hidden class* is the internal shape V8 gives an object; two objects with the
+same property names, added in the same order, share one. V8's own source calls
+the same thing a *map*, and both names appear below wherever the engine's own
+wording is being quoted. An *inline cache* is the small table V8 keeps at each
+line that reads or calls, holding the shapes it has already seen there.
+*Megamorphic* means one code location has seen more object shapes than that
+table will hold. *Quadratic* means the work grows with the square of the input
+size. *n* in a ratio below is the input size the benchmark ran at — keys, items
+or inputs, depending on the sweep. Every ratio is before time divided by after
+time, so above 1.0 the change was faster, below 1.0 it was slower, and 1.0 is no
+change.
 
 Each rule carries two clauses, and they are not the same clause. `silent` is
 where the same benchmark **refused** the rule — it measured the case and found
@@ -136,8 +142,9 @@ the same in the benchmark,
 0.96-1.02x. For the object
 form, benchmark a privately owned mutable accumulator including the caller's
 reads. The own-property radash rewrite improves both measured halves; remeda's
-whole call costs 0.13x at n=8 and 1.48–1.59x at n=64 (before/after time),
-with no established read benefit. Define own data properties when preserving
+whole call costs 0.13x at n=8 and 1.48–1.59x at n=64, before time over after
+time, so the rewrite is slower at 8 inputs and faster at 64. It establishes no
+read benefit at either size. Define own data properties when preserving
 object spread's copy semantics. Preserve aliases, own keys, symbols,
 getters and property order. Assignment can invoke target setters, including
 `__proto__`; it does not have object spread's data-property semantics. See
@@ -252,8 +259,8 @@ refused the rewrite as a defect: assigning `undefined` instead costs
 build the object without the key", with the note that assigning undefined is
 equivalent only while nothing downstream tells an absent key from one holding
 undefined. The own-property rebuild improves reads at n=12 and n=48,
-but makes the whole call slower (0.17–0.51x, before/after time). Benchmark
-construction and reads together. Where the walk
+but makes the whole call slower: 0.17–0.51x of before time over after time,
+and below 1.0 is slower. Benchmark construction and reads together. Where the walk
 sees the object reach `Object.keys`, a spread or another observer that tells an
 absent key from one holding `undefined`, the first branch is dropped and the
 observer is named with its file, line and column, even when it is in a caller.
@@ -453,9 +460,8 @@ Save the following as `jitmax.toml` in your project's root:
 "TC-9" = false
 ```
 
-While GitHub access is blocked, use the
-[checkout command prefix](../README.md#use-an-existing-checkout).
-The repository command is `bunx github:kronael/jitmax jitmax.toml src`.
+Then run `bunx github:kronael/jitmax jitmax.toml src`, or the same arguments
+after the [checkout command prefix](../README.md#use-an-existing-checkout).
 Run from your project's root and replace `src` with your source directory.
 For a megamorphic-only scan, use the [supplied preset](../examples/megamorphic/jitmax.toml).
 
