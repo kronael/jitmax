@@ -370,28 +370,24 @@ returned `any`, so the one true instance of this rule in twelve libraries went
 silent with the false ones. A cast is a claim about the type checker, not about
 the object; V8 loads from the object's map either way.
 
-**What the rule is worth, counted per site: 29 lines in 2953 annotated
-functions** — 20 in the TypeScript compiler, 8 in vue, one in zod. It was eight
-until the rule was taught to count an intersection as an object type, which is
-what a branded type is, and five branded types behind one receiver had counted
-as zero shapes (`BUGS.md` TC-95). That is
+**What the rule is worth, counted per site: 19 lines in 2953 annotated
+functions** — 11 in the TypeScript compiler, 7 in vue, one in zod. It counts an
+intersection as an object type, which is what a branded type is, so five
+branded types behind one receiver are five shapes (`BUGS.md` TC-95). That is
 the flagship rule's whole footprint on 22 real codebases. `BUGS.md` TC-64
 reaches the same place from 30 other corpora and a different annotation rule.
 
 **TypeBox has 30 distinct accumulating-spread sites, more than every other
-codebase here put together** — 13 across the other twenty-one. It used to print as 119, which was those sites
-counted once per annotated function reaching them. `FromObject` in
+codebase here put together** — 13 across the other twenty-one. Each site counts
+once, however many annotated functions reach it. `FromObject` in
 `value/create/from_object.ts` is six lines and is the whole rule:
 `required.reduce((result, key) => ({ ...result, [key]: … }), {})`.
 
-**`allocating-select` fires at 29 distinct sites across 2953 annotated
-functions, and not once on the shape it measures.** Every finding is a value being
-*advanced* or *wrapped* — `date = addMinutes(date, step)`, `initial =
-b.call('$.proxy', initial)`, `spread = getSpreadType(…)` — where the value
-changes on every pass and "compare first" saves nothing. The benchmark measured
-a *choice* between two values where the incumbent almost always wins. Twenty-two
-codebases is a large enough net that this stops reading as a gap in the search
-and starts reading as a verdict on the rule. `BUGS.md` TC-18.
+**`allocating-select` fires at no site across 2953 annotated functions.** It
+sees an allocation only in a callee whose body is in the program, so a packaged
+`Decimal.min` declared in a `.d.ts` can never trigger it, and removing the rule
+leaves all 22 outputs byte-identical. Whether a rule that never fires on real
+code should ship is an open owner decision, `BUGS.md` TC-148.
 
 ## Which rules have measured end-to-end rewrites
 
