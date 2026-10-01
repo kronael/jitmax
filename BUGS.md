@@ -69,7 +69,7 @@ was TypeScript 7's missing `ts.sys`, which 6 has.
 - **Fix:** test against TS 6 and widen the peer range, or state that TS 6
   works without a guarantee.
 
-## TC-162 — one call is counted as two errors (2026-10-01, open)
+## ✅ FIXED 2026-10-01 — TC-162 — one call is counted as two errors (2026-10-01, fixed)
 
 arktype `union.ts:345:4` and `structure.ts:652:11` each print both
 megamorphic-dispatch and interface-dispatch.
@@ -77,11 +77,11 @@ megamorphic-dispatch and interface-dispatch.
 - **Severity:** low
 - **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
   arktype ca8ec6c)
-- **Status:** open
-- **Fix:** when a site already has megamorphic-dispatch, show
+- **Status:** fixed
+- **Fix:** `1fb77d0`. when a site already has megamorphic-dispatch, show
   interface-dispatch only as a note.
 
-## TC-161 — megamorphic-elements ignores discriminant narrowing through `.filter()` (2026-10-01, open)
+## ✅ FIXED 2026-10-01 — TC-161 — megamorphic-elements ignores discriminant narrowing through `.filter()` (2026-10-01, fixed)
 
 marked `src/Tokenizer.ts:495` `const spacers = item.tokens.filter(t => t.type
 === 'space')`, then `:496` reads `t.raw`; the rule reports 17 property sets.
@@ -91,11 +91,11 @@ the CommonMark spec found 21 elements and 1 map.
 - **Severity:** medium
 - **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
   arktype ca8ec6c)
-- **Status:** open
-- **Fix:** narrow the element type by a `filter` predicate that tests the
+- **Status:** fixed
+- **Fix:** `361ccda`. narrow the element type by a `filter` predicate that tests the
   discriminant.
 
-## TC-160 — arrow-function class members print as `<anonymous>()` and say "`this` outside any method" (2026-10-01, open)
+## ✅ FIXED 2026-10-01 — TC-160 — arrow-function class members print as `<anonymous>()` and say "`this` outside any method" (2026-10-01, fixed)
 
 arktype `traverseApply: TraverseApply = (data, ctx) => {…}` with
 `/** @jitmax */` gives root `union.ts:341 <anonymous>()`; 14 findings say "the
@@ -105,11 +105,11 @@ field's `this` is the instance.
 - **Severity:** medium
 - **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
   arktype ca8ec6c)
-- **Status:** open
-- **Fix:** name the root `Class.member`; bind `this` in a property initializer
+- **Status:** fixed
+- **Fix:** `746c6cf`. name the root `Class.member`; bind `this` in a property initializer
   to the class.
 
-## TC-159 — a `#private` function field is an error where the same public field is followed silently (2026-10-01, open)
+## ✅ FIXED 2026-10-01 — TC-159 — a `#private` function field is an error where the same public field is followed silently (2026-10-01, fixed)
 
 Repro: `class Priv { #stale: (i: number) => boolean = () => false;
 constructor(ttl: number) { if (ttl) this.#stale = (i) => i > ttl; } /**
@@ -122,11 +122,11 @@ including "no visible write to .perf" beside `this.#perf = …` at `:1463`.
 - **Severity:** high
 - **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
   arktype ca8ec6c)
-- **Status:** open
-- **Fix:** treat `#name` writes as sources the same way as public writes, and
+- **Status:** fixed
+- **Fix:** `88be889`. treat `#name` writes as sources the same way as public writes, and
   count writes made outside the initializer.
 
-## TC-158 — closed-world is printed for bodies the walk located and calls readable (2026-10-01, open)
+## ✅ FIXED 2026-10-01 — TC-158 — closed-world is printed for bodies the walk located and calls readable (2026-10-01, fixed)
 
 The message "N implementations reach this receiver … those bodies are
 readable and are not walked" is interface-dispatch's case under rules.md's
@@ -139,11 +139,11 @@ legend prints TC-13.
 - **Severity:** medium
 - **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
   arktype ca8ec6c)
-- **Status:** open
-- **Fix:** label located bodies as interface-dispatch, walk a single
+- **Status:** fixed
+- **Fix:** `97a2929`. label located bodies as interface-dispatch, walk a single
   implementation, drop the four-map wording for call targets.
 
-## TC-157 — closed-world says "we have no body for" code whose body is in the program (2026-10-01, open)
+## ✅ FIXED 2026-10-01 — TC-157 — closed-world says "we have no body for" code whose body is in the program (2026-10-01, fixed)
 
 marked `src/Tokenizer.ts:325` `this.rules.other.listItemRegex(bull)` and six
 siblings at `:371–376` are arrow functions in `src/rules.ts:96–99` (`export
@@ -157,8 +157,8 @@ model". arktype: `super()` at `ark/schema/shared/errors.ts:42` goes to
 - **Severity:** high
 - **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
   arktype ca8ec6c)
-- **Status:** open
-- **Fix:** when the flow stops at a shorthand property, use the checker's
+- **Status:** fixed
+- **Fix:** `4b7edde`. when the flow stops at a shorthand property, use the checker's
   declaration; follow `super` through an `as` cast; classify a cast global
   constructor as platform.
 
@@ -759,7 +759,7 @@ on, and nothing here re-checked it for a month.
   `CHANGELOG.md`, `examples/README.md`, `bench/README.md`, `test/README.md`
   and `site/index.html`.
 
-## TC-132 — profile mode treats dependency time as stale project code (2026-08-31, proposed)
+## ✅ FIXED 2026-10-01 — TC-132 — profile mode treats dependency time as stale project code (2026-08-31, fixed)
 
 Profiling jitmax while it checked Valibot, then giving that profile back to
 jitmax, produced 375 unmatched frames at a 0.05% threshold. Most are the
@@ -783,8 +783,8 @@ An unrelated profile with zero program time must still fail as unchecked.
 - **Scope:** profile selection and report
 - **Affected:** `lib/profile.ts`, `bin/jitmax.ts`, `lib/report.ts`
 - **Source:** `tmp/eval/profile-005-v012.log`
-- **Status:** proposed (redesign, needs sign-off)
-- **Fix:**
+- **Status:** fixed
+- **Fix:** `192e433`.
 
 Reproduced at `17b64dc` on 2026-10-01: `node --cpu-prof bin/jitmax.ts demo;
 node bin/jitmax.ts self.cpuprofile lib bin` → "0 hot functions, 0 errors …
