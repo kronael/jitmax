@@ -8,10 +8,12 @@ Benchmarks run on Node/V8, even when you run the checker with Bun.
 
 How every number this project publishes was measured, and how to re-check it.
 
-Every rule carries two evidences: **a benchmark**, which says what the pattern
+A rule can carry two evidences: **a benchmark**, which says what the pattern
 cost on this machine, and **a V8 citation**, which says what mechanism in the
 engine exists. Neither substitutes for the other. A benchmark cannot say why; a
 citation cannot say what it costs. Both are below, and both are re-runnable.
+`accumulating-spread` has no V8 citation, and `interface-dispatch`, which
+reports unchecked calls, has neither.
 
 The full Git clone's `CLAUDE.md` documents the measurement protocol.
 `BUGS.md` references also name internal notes in that clone; neither note ships
@@ -44,6 +46,10 @@ measures nothing new. To measure again without touching the published file:
 ```sh
 node bench/run.ts shape-sets --force --scratch   # appends to bench/scratch.jl
 ```
+
+That command re-measures all 24 cells, three sweeps of 20 process pairs each.
+Add `--plan` to list the cells without measuring, and `--only=<text>` to keep
+the cells whose label contains the text, such as `--only=5/1`.
 
 Nothing else may run on the machine during a sweep. These are timings, and the
 load gate refuses to start a cell on a busy machine.
@@ -169,6 +175,15 @@ cell behind a published number is run three times over, and the three answers ar
 published next to each other. Where they disagree, the cell is dropped and the
 three numbers are printed anyway — `make bench-tc11`, `BUGS.md` TC-11.
 
+A cell's **agreement** is the range every one of its three 95% intervals
+contains. The tables call the acceptance tests by their protocol numbers. Rule
+13: a cell whose intervals share no value is withdrawn as unreplicable. Rule 6:
+a number quoted as a rule's evidence needs an agreement whose lower end is above
+1.00; a broad warning, which `chained-allocation` is held to, also needs that
+lower end above 1.05 and the mean of the three sweep ratios at 1.10 or more. A
+cell that fails rule 6 is never evidence; where the docs quote one, they call it
+rejected.
+
 Which tier V8 actually compiled the measured code to is a separate diagnostic,
 never an evidence run: `make tiers` re-runs every published cell's shape under
 `--trace-opt --trace-deopt` in its own processes and appends what it finds to
@@ -176,7 +191,10 @@ never an evidence run: `make tiers` re-runs every published cell's shape under
 is partly a measurement of tiering, and `tierMismatch` says so in that file's
 row. It is recorded, never gated on.
 
-Results apply only to the engine and hardware tested.
+Results apply only to the engine and hardware tested. Every row that records
+its environment ran on Node 22.23.2 with V8 12.4, on an AMD Ryzen 9 5950X,
+pinned to one core. The V8 15.3 pin further down names the source the
+citations quote, not the engine the benchmarks ran on.
 
 ## Two sweeps that produced no rule
 
@@ -192,11 +210,11 @@ all and are withdrawn, which is what a sweep does when the effect it is looking
 for is not there. No rule reports `arguments`, and `bench/arguments.jl` is why.
 `BUGS.md` TC-53.
 
-**Dictionary-mode ELEMENTS, which no rule reports, is the largest ratio here.**
-An array V8 has moved to dictionary elements reads 24.3-65.5x slower
-than a packed one, and 20.4-40.1x slower with construction counted —
-an order of magnitude past anything else in this file. It has no rule because
-nothing static separates an array that went sparse from one that did not.
+**Dictionary-mode ELEMENTS is the largest effect measured here that no rule
+reports.** An array V8 has moved to dictionary elements reads 24.3-65.5x slower
+than a packed one, and 20.4-40.1x slower with construction counted. It has no
+rule because nothing static separates an array that went sparse from one that
+did not.
 
 **And the folklore beside it is refuted.** A holey array — the transition people
 actually warn about — reads only 1.32-1.47x slower, and is FASTER than
@@ -206,7 +224,7 @@ detected. `BUGS.md` TC-52.
 
 ## What V8's source says
 
-Each rule carries a second, independent evidence: the mechanism, in the engine's
+Six rules carry a second, independent evidence: the mechanism, in the engine's
 own source. A benchmark says what it cost here and cannot say why. A citation
 says what mechanism exists and cannot say what it costs — **the source is silent
 on all seven magnitudes**, and a constant in it is a hypothesis, never a
