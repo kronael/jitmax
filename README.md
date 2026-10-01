@@ -19,8 +19,8 @@ A real run against radash's `assign`, vendored unchanged into `examples/`.
 V8 is the JavaScript engine in Node, Chrome and Deno. It makes a hot function
 fast by compiling each line for the object shapes it has seen there. One line
 keeps up to four shapes; send a fifth through it and V8 falls back to a slow
-generic lookup. A `delete` moves an object to slow storage for good. The code
-still returns the same values, only slower, and nothing warns you.
+generic lookup. Deleting a property an object has moves it to slower storage.
+The code still returns the same values, only slower, and nothing warns you.
 
 - **For:** anyone with a TypeScript function on V8 whose speed matters.
 - **Promise:** every rule that claims a slowdown carries a benchmark run in
