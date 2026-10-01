@@ -306,7 +306,7 @@ Byte-identical on lru-cache and marked; on the arktype monorepo it took
 78.5 s against 11.1 s and pulled test-harness code into the evidence. The
 dinero claim stands unreproduced.
 
-## TC-146 — the report cites paths that do not resolve from the directory it ran in (2026-10-01, open)
+## ✅ FIXED 2026-10-01 — TC-146 — the report cites paths that do not resolve from the directory it ran in (2026-10-01, fixed)
 
 Every finding ends with `measured in bench/spread.jl and bench/spread-object.jl`,
 and a clean run ends with `run with -v for what each one misses, or read
@@ -342,8 +342,8 @@ be resolved against the installed package, and either is a code change.
 - **Affected:** every finding, and every clean run with an unchecked axis
 - **Source:** `bunx github:kronael/jitmax shapes.ts` in a scratch project,
   2026-10-01
-- **Status:** open, recorded not fixed
-- **Fix:** print a URL at the pinned revision, or resolve the path against the
+- **Status:** fixed
+- **Fix:** `1a2251b`. print a URL at the pinned revision, or resolve the path against the
   installed package and print that. A URL is the honest one: the `.jl` row a
   ratio comes from is in the repository and not in the archive.
 
