@@ -843,14 +843,34 @@ test('a method whose whole body throws is a declaration, not an implementation',
 // The walk located both bodies — it prints their positions — and followed
 // neither. Stopping is defensible; "which we have no body for" in the same
 // sentence as the file and line of two bodies is not, and neither is a fix line
-// offering to inline a callee the tool has just pointed at (BUGS TC-109).
+// offering to inline a callee the tool has just pointed at (BUGS TC-109). Two
+// located bodies the walk cannot pick between are interface-dispatch's case,
+// and a function-valued call target has no four-map budget to be inside
+// (BUGS TC-158).
 test('a call the walk located two bodies for is not reported as bodiless', () => {
-  assert.deepStrictEqual(rules('syncUniforms'), ['closed-world']);
-  const f = rawFindings('syncUniforms').find((x) => x.rule === 'closed-world');
+  assert.deepStrictEqual(rules('syncUniforms'), ['interface-dispatch']);
+  const f = rawFindings('syncUniforms').find((x) => x.rule === 'interface-dispatch');
   assert.doesNotMatch(f?.message ?? '', /we have no body for/);
-  assert.match(f?.message ?? '', /uploadFloat\(\), uploadInt\(\)/);
+  assert.match(f?.message ?? '', /2 implementations reach this call \(uploadFloat\(\), uploadInt\(\)\)/);
+  assert.doesNotMatch(f?.message ?? '', /four-map budget|through an interface/);
   assert.doesNotMatch(f?.fix ?? '', /^inline what you need/);
-  assert.match(f?.note ?? '', /located, not missing/);
+});
+
+/**
+ * One body located beside an origin nobody can see: arktype's
+ * `opts?.stringifySymbol ?? printable`. `closed-world` called `printable`
+ * readable and not walked, which is interface-dispatch's definition, and left
+ * it unread. The site stays reported for the unknown origin, and the located
+ * body is walked: the accumulating spread inside it is found (BUGS TC-158).
+ */
+test('one located body is walked, and the call is interface-dispatch', () => {
+  const byName = findingsByFunction(path.join('test', 'fixtures', 'located'));
+  const found = byName.get('copyAll') ?? assert.fail('no mark copyAll');
+  assert.deepStrictEqual(found.map((f) => f.rule).sort(), ['accumulating-spread', 'interface-dispatch']);
+  const f = found.find((x) => x.rule === 'interface-dispatch');
+  assert.match(f?.message ?? '', /the callee has an unknown origin \(no visible caller of copyAll/);
+  assert.match(f?.message ?? '', /1 implementation reaches this call \(spread\(\)\)/);
+  assert.match(f?.message ?? '', /only the one body located is walked/);
 });
 
 test('the object form of the accumulator fires', () => {
@@ -2368,10 +2388,11 @@ test('an unreadable callee still counts what reaches its receiver', () => {
   );
   // The sentence carrying that count is no longer "which we have no body for":
   // the walk located both bodies and printed their names in the same breath, so
-  // it says that it did not pick between them (BUGS TC-109).
+  // it says that it did not follow them, as interface-dispatch (BUGS TC-109,
+  // TC-158).
   assert.match(
     unwrapped(run.stdout),
-    /calls pickOne, and the walk does not pick between the bodies that reach it; 2 implementations reach this receiver \(left\(\), right\(\)\)/
+    /interface-dispatch calls pickOne; 2 implementations reach this call \(left\(\), right\(\)\), and their bodies are not followed/
   );
   // Not megamorphic-dispatch's own body detector: P1 through P5 carry ONE
   // property set between them, so `objectShapes` counts 1 and that detector is

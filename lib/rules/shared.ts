@@ -204,6 +204,15 @@ export const megamorphicCandidate = (site: 'load' | 'call'): string =>
 export function reached(d: Dispatch): string {
   if (d.count === 0) return '';
   const names = d.names.join(', ');
+  // A bare call's origins are functions, and a function-valued call target has
+  // no four-map budget — the legend's TC-13 says so under the same report — nor
+  // a receiver to have a declared type (BUGS TC-158).
+  if (d.method === '') {
+    return (
+      `; ${d.count} implementation${d.count === 1 ? '' : 's'} ` +
+      `reach${d.count === 1 ? 'es' : ''} this call (${names})`
+    );
+  }
   if (d.count <= MAX_CACHED_MAPS) {
     return (
       `; ${d.count} implementation${d.count === 1 ? '' : 's'} reach${d.count === 1 ? 'es' : ''} ` +

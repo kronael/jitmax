@@ -20,9 +20,9 @@ const evidence: Evidence = {
   silent:
     'a call with one known receiver implementation and a checkable body stays silent: ' +
     'the walk follows that body. A throw-only method is a declaration, not an implementation. ' +
-    "Two to four are inside V8's four-map budget: the finding says so in those words and " +
-    "never carries megamorphic-dispatch's claim. Five or more is a real megamorphic call " +
-    'site and belongs to megamorphic-dispatch, which carries the sweep',
+    "Two to four receivers are inside V8's four-map budget: the finding says so in those " +
+    "words and never carries megamorphic-dispatch's claim. Five or more is a real " +
+    'megamorphic call site and belongs to megamorphic-dispatch, which carries the sweep',
   unreported:
     'the count is a lower bound twice over: classes are counted by identity and literals ' +
     'by shape, which undercounts maps (BUGS TC-60), and the enumeration sees only this ' +
@@ -45,6 +45,15 @@ const detect: EscapeRule = (mark, add) => {
     if (!c.viaInterface) continue;
     if (megamorphicCall(c, add)) continue;
     const d = c.dispatch;
+    // A bare call reaches a function, not a receiver's method: `setPurgeTimer`
+    // is a const holding one of two arrows, and "through an interface" named a
+    // thing that is not there (BUGS TC-158).
+    const via = d.method === '' ? '' : ' through an interface';
+    const origin = d.method === '' ? 'callee' : 'receiver';
+    // One located body is walked (scan.ts), and the finding says so: what it
+    // still reports is whatever else may reach the call.
+    const walked =
+      d.located === 1 ? 'only the one body located is walked' : 'their bodies are not followed';
     add({
       file: c.file,
       line: c.line,
@@ -53,13 +62,12 @@ const detect: EscapeRule = (mark, add) => {
       rule: NAME,
       message:
         d.unknown.length > 0
-          ? `calls ${c.text} through an interface, and the receiver has an unknown ` +
-            `origin (${d.unknown[0]})${reached(d)}${d.count > 0 ? ', a lower bound' : ''}; ` +
-            'the promise stops here'
+          ? `calls ${c.text}${via}, and the ${origin} has an unknown ` +
+            `origin (${d.unknown[0]})${reached(d)}${d.count > 0 ? ', a lower bound' : ''}` +
+            `${d.located === 1 ? `; ${walked}` : ''}; the promise stops here`
           : d.count >= 2
-          ? `calls ${c.text} through an interface${reached(d)}, and their bodies are not ` +
-            'followed; the promise stops here'
-          : `calls ${c.text} through an interface, but no single checkable ` +
+          ? `calls ${c.text}${via}${reached(d)}, and ${walked}; the promise stops here`
+          : `calls ${c.text}${via}, but no single checkable ` +
             'implementation was resolved; the promise stops here',
       fix:
         `inspect the implementations of ${c.text}; annotate a concrete implementation to ` +

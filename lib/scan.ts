@@ -68,6 +68,8 @@ export interface Call extends Site {
   // or a native builtin (TC-55). It is the worst of the three, because the
   // pattern it punishes is good design: @noble/curves abstracts its field
   // arithmetic behind an interface and gets 2,113 notes for it (BUGS TC-69).
+  // Set too where the dataflow walk located a body for the callee, whatever it
+  // resolved to: the body is in the checkout either way (BUGS TC-158).
   viaInterface: boolean;
   // What the receiver-origin walk counted, at EVERY escape. It used to be set
   // only where `viaInterface` was, so the rule for the other half — a callee
@@ -863,13 +865,26 @@ function reach(
                 if (prop !== undefined && !typed && decls.length === 0) {
                   untyped.push({ ...site, name: text });
                 } else {
+                  // A body the dataflow walk located is in this checkout, so the
+                  // site is dispatch the walk cannot bind, whatever the callee
+                  // resolved to — `closed-world` said "those bodies are readable
+                  // and are not walked", which is interface-dispatch's case in
+                  // its own words. And one located body is walked: the site
+                  // stays reported for what else may reach it, but the body the
+                  // walk found is checked rather than pointed at — arktype's
+                  // `printable` was located at `path.ts:50` and left unread
+                  // (BUGS TC-158).
+                  const located = r.origins.flatMap((o) => (o.follow ? [o.follow] : []));
+                  if (located.length === 1 && followable(ts, located[0]!)) {
+                    admit(body.node, located[0]!, undefined, closure);
+                  }
                   const call: Call = {
                     ...site,
                     text,
-                    viaInterface: decls.some(isDispatchDecl),
+                    viaInterface: decls.some(isDispatchDecl) || located.length > 0,
                     dispatch: {
                       count: r.origins.length,
-                      located: r.origins.filter((o) => o.follow !== undefined).length,
+                      located: located.length,
                       names: r.origins.map((o) => o.name).slice(0, 6),
                       sources: r.origins.map((origin) => ({
                         ...at(origin.node.getSourceFile(), origin.node),

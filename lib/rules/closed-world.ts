@@ -66,37 +66,21 @@ const detect: EscapeRule = (mark, add) => {
       column: c.column,
       ...dispatchHints(d),
       rule: NAME,
-      // What reaches the receiver, when anything does. `const f = pick ? a : b`
-      // has no body the callee walk can follow and two the dataflow walk can
-      // see, and printing "we have no body for f" over both of them is a
-      // coverage claim this rule exists to keep honest.
-      //
-      // So the sentence turns on `located` and not on the count: "we have no
-      // body for" is reserved for a receiver whose implementations the walk
-      // could not find. pixi's `arrayUploadFunction` got that sentence with the
-      // file and line of two located bodies printed inside it, and a fix line
-      // offering to inline a callee the tool had just pointed at (BUGS TC-109).
-      // Stopping at two is defensible — following them is the walk change the
-      // entry proposes and this rule does not make — but it has to say that it
-      // stopped, not that it could not look.
+      // What reaches the receiver, when anything does, and never a body: one
+      // the walk located is interface-dispatch's case, and scan.ts files it
+      // there. This rule printed "those bodies are readable and are not
+      // walked" beside the file and line of each, which is that rule's
+      // definition in this rule's name (BUGS TC-109, TC-158).
       message:
-        d.located > 0
-          ? `calls ${c.text}, and the walk does not pick between the bodies that reach ` +
-            `it${reached(d)}; those bodies are readable and are not walked, so the promise ` +
-            'stops here'
-          : d.count >= 2
+        d.count >= 2
           ? `calls ${c.text}, which we have no body for${reached(d)}; the promise stops here`
           : `calls ${c.text}, which we have no body for; the promise stops here`,
       fix:
-        d.located > 0
-          ? 'inspect the related implementations; their bodies are not checked through this call'
-          : `resolve ${c.text} to its TypeScript implementation, or review the dependency ` +
-            'separately and add -closed-world to this root\'s @jitmax annotation',
+        `resolve ${c.text} to its TypeScript implementation, or review the dependency ` +
+        'separately and add -closed-world to this root\'s @jitmax annotation',
       note:
-        d.located > 0
-          ? 'they are located, not missing, and what is inside them is unchecked'
-          : 'missing source does not prove V8 failed to inline. A .d.ts declares an API, ' +
-            'not its implementation; copying declarations alone does not make a body readable',
+        'missing source does not prove V8 failed to inline. A .d.ts declares an API, ' +
+        'not its implementation; copying declarations alone does not make a body readable',
     });
   }
 };

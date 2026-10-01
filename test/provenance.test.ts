@@ -115,7 +115,9 @@ test('receiver origins expose their source node and retain the followed body', (
   const mark = result.marks.find((mark) => mark.name === 'readPartial');
   assert.ok(mark);
   assert.equal(mark.followed, 0);
-  assert.deepEqual(mark.reached.map((body) => body.name), ['readPartial']);
+  // Not followed, and still reported below for the JSON origin; the one body
+  // located is walked all the same (BUGS TC-158).
+  assert.deepEqual(mark.reached.map((body) => body.name), ['readPartial', 'run']);
   assert.equal(mark.escapes.length, 1);
   assert.match(mark.escapes[0]!.dispatch.unknown.join(' '), /JSON/);
   assert.deepEqual(check(ts, result.checker, mark).map((finding) => finding.rule), [
