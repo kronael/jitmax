@@ -143,7 +143,7 @@ bunx github:kronael/jitmax src
 ```
 
 The preset also switches off `closed-world` and `interface-dispatch`, so the
-unchecked calls those two rules report no longer fail the run.
+unchecked calls those two rules report do not fail the run.
 
 In its `[rules]` table, `false` switches a rule off. To switch a rule off for
 one function and everything it calls, name it on the annotation:

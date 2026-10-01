@@ -10,7 +10,7 @@
 <title>jitmax — @njit for TypeScript on V8</title>
 <link rel="stylesheet" href="/pub/krons/assets/hub.css">
 <meta property="og:title" content="jitmax — @njit for TypeScript on V8">
-<meta property="og:description" content="Mark a hot TypeScript function. jitmax refuses the patterns that push V8 off its fast path, and names the benchmark behind each rule, including where the benchmark found nothing.">
+<meta property="og:description" content="Mark a hot TypeScript function. jitmax reports the patterns that push V8 off its fast path, and names the benchmark behind each rule, including where the benchmark found nothing.">
 <meta property="og:image" content="https://krons.fiu.wtf/pub/jitmax/jitmax-card.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -44,7 +44,7 @@
   <div class="tldr-text">
     Mark a hot TypeScript function with <code>/** @jitmax */</code>. jitmax
     checks it and every function it calls whose source it can read, and
-    refuses the patterns that measurably push V8 off its fast path: a fifth
+    reports the patterns that measurably push V8 off its fast path: a fifth
     object shape at one property read or method call, a <code>delete</code>,
     an array built per pipeline stage. You get one error per pattern, with its
     file and line, the next step and the benchmark behind the rule, and an
