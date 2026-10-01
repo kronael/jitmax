@@ -102,8 +102,8 @@ A call TurboFan lowers to inline machine code has no call boundary, so reaching
 one is not a gap in coverage. That list is derived from the pinned V8's
 `js-call-reducer.cc` by `make builtins` into `lib/builtins.ts`, never written
 by hand. Node's own modules and anything reached off `globalThis` are the
-platform: they are counted for the run and never named, because "inline what
-you need from `path.join`" is advice nobody can take.
+platform: no install gives the walk a body to read, so they are counted for
+the run and never named.
 
 ## Profile mode
 
@@ -131,14 +131,21 @@ covered them, and exits
 holds it, so move that work into a function to have it checked.
 
 There is no static hotness estimate: an annotation selects a function by your
-judgement, a profile by sampled self time. `min_self_pct` defaults to 1, a
-constant nobody has measured, so the TOML owns it and every run prints the
-value it used. To change it, add this to `jitmax.toml`:
+judgement, a profile by sampled self time. `min_self_pct` defaults to 1. It
+is a selection threshold, not a measured boundary between hot and cold code,
+and every run prints the value it used. To change it, save this as
+`profile.toml`:
 
 ```toml
 [profile]
 min_self_pct = 2
 ```
+
+Then name it beside the profile:
+`bunx github:kronael/jitmax profile.toml run.cpuprofile src`. A config with
+`[profile]` exits `2` on a run given no `.cpuprofile`, so keep it out of the
+`jitmax.toml` that annotation runs find. A named `.toml` replaces the found
+one, so copy any `[rules]` you need into it.
 
 ## How it runs
 
@@ -194,7 +201,7 @@ make verify   # all, v8-check, reality
 make lint     # tsc --noEmit
 make test     # the unit tests — test/README.md
 make check    # the checker against demo/, where findings are the expected outcome
-make example  # the checker against examples/, then the end-to-end sweep
+make example  # the checker on examples/, then unmeasured end-to-end cells
 make numbers  # re-derive every published number from the .jl sweeps
 make build    # numbers + builtins
 make reality  # the checker against a radash checkout, composition and total
