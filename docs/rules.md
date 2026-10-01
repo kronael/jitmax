@@ -14,8 +14,9 @@ function the walk reaches from a marked function.
 - A **hidden class** is the shape V8 gives an object. Objects built the same
   way — by the same constructor or literal, with the same property names added
   in the same order — share one. V8's source calls it a **map**.
-- An **inline cache** is the small table V8 keeps at each property read or
-  call, holding the shapes it has seen there. It holds four.
+- An **inline cache** is the small table V8 keeps at each property read,
+  holding the shapes it has seen there. It holds four. A call keeps a separate
+  record of the function it called, and that record holds one.
 - **Megamorphic** means one site has seen more shapes than its inline cache
   holds, so V8 stops specialising it and looks the property up instead.
 - **Dictionary mode** is the slower storage an object moves to when it stops
@@ -32,9 +33,9 @@ function the walk reaches from a marked function.
   benchmark measured and found no cost worth reporting. A test fails if the
   rule fires there. For the two coverage rules, the silent case says what the
   walk can see instead.
-- **Misses**: a cost the rule knowingly does not report, or prices with the
-  wrong figure, because nothing in the source separates that case. On a clean
-  run, `-v` prints each rule's misses.
+- **Misses**: a cost the rule knowingly does not report, or a case its cited
+  benchmark does not match, because nothing in the source separates that case.
+  On a clean run, `-v` prints each rule's misses.
 
 Every snippet below comes from [`demo/lib.ts`](../demo/lib.ts), the fixture
 file `make check` runs: each rule has a fixture that fires and one for each
@@ -126,9 +127,10 @@ property set, so it prices the mechanism, not this rule's trigger (`TC-33`).
 ## accumulating-spread
 
 **What it detects.** `[...acc, v]`, `{ ...acc, k: v }`, `acc.concat(v)` or
-`Object.assign({}, acc, …)` in a loop. Each pass copies everything the last
-one built, so the work is quadratic. This is not a V8 mechanism: the copying
-is quadratic on any engine.
+`Object.assign({}, acc, …)` in a loop. Each pass copies everything the
+accumulator holds. When the accumulator grows every pass, the total work is
+quadratic on any engine; the rule does not check that it grows, so a loop that
+only overwrites a fixed set of keys fires too.
 
 **It fires on** `collect`:
 
@@ -164,8 +166,11 @@ and remeda `mergeAll` in the [examples](../examples/README.md).
 
 ## chained-allocation
 
-**What it detects.** `.map().filter()` or `Object.entries(o).map()`: each stage
-allocates an array the next stage throws away.
+**What it detects.** Two chained stages on an array, each one of `map`,
+`filter`, `flatMap`, `concat`, `slice` or `flat`, or `Object.entries(o)`
+followed by one of them: each stage allocates an array the next stage throws
+away. A longer chain is one finding, at its end. Its sweep measured
+map-then-filter and `Object.entries(o).map()`, not every pair.
 
 **It fires on** `twoStages`:
 
@@ -183,8 +188,8 @@ export function twoStages(rows: number[]): number[] {
 needs; and on `topTen`, whose `.slice(0, 10)` bounds the result below the
 smallest n the sweep covers. Reading the finished array costs nothing,
 0.95-1.10x across all six forms. Map-then-filter has no measured silent size,
-and the rule cannot see an array's length unless a literal `.slice()` bounds
-it (`TC-9`).
+and the rule cannot see an array's length unless an array literal with no
+spread, or a literal `.slice()` before the allocation, bounds it (`TC-9`).
 
 **How to act.** Fuse stages only when the observable behaviour stays the same:
 callback order, side effects, indices, array arguments and holes, and for
@@ -224,8 +229,8 @@ reaching under the broad-warning bar. At n=100000 its three sweeps read 0.89x,
 warn from.
 
 **It misses** the difference between a value that outlives the loop and one
-kept in a local: the local form costs 2.02-2.47x, and the rule's evidence
-quotes the escaped figure for both (`TC-44`).
+kept in a local: the local form costs 2.02-2.47x, and the rule cites the
+escaped figure for both (`TC-44`).
 
 **How to act.** Open the related allocation. If the call only selects a
 candidate, compare first and assign only when the chosen value changes. Keep
@@ -254,9 +259,13 @@ It fires on a single delete too: one object with one delete costs 13.1-15.1x
 per read.
 
 **It is silent on** `dropElement`, a `delete` on an array element, which makes
-the array holey but not a dictionary; and on `clearToken`, a `delete` on
-`process.env`, which Node implements without a hidden class. Assigning
-`undefined` instead is the fix, not the defect: 1.00-1.06x on reads.
+the array holey but not a dictionary; on `clearToken`, a `delete` on
+`process.env`, which Node implements without a hidden class; and on
+`evictSlot`, a `delete` on an object a `const`, `let` or class field
+initialises with `Object.create(null)`, which starts in dictionary mode. The
+rule reads only that initializer: a null-prototype object a factory returns
+still fires. Assigning `undefined` instead is the fix, not the defect:
+1.00-1.06x on reads.
 
 **How to act.** The finding prints "assign undefined where the key may stay
 present, or build the object without the key". Assigning `undefined` is
@@ -305,16 +314,19 @@ Otherwise point the program at the dependency's TypeScript source, or review
 the dependency separately and add `-closed-world` to the annotation. A missing
 body does not prove V8 failed to inline the code.
 
-**The cost.** 4.64-4.95x for a callee past V8's inlining budget against the
-same callee under it, at n=1000, in `bench/inline.jl`. That bounds what one
-unchecked call can cost. The sweep's callee is readable and padded; the
-rule's is unreadable and unsized, so every finding prints `TC-33`.
+**The cost.** None claimed. One helper padded past V8's inlining budget
+measured 4.64-4.95x against the same helper under it, at n=1000, in
+`bench/inline.jl`. That is one possible cost of a call V8 does not inline; it
+does not bound or predict what an unchecked call costs. The sweep's callee is
+readable and padded; the rule's is unreadable and unsized, so every finding
+prints `TC-33`.
 
 ## interface-dispatch
 
-**What it detects.** A call through an interface without one resolved,
-checkable implementation. A method whose whole body throws counts as a
-declaration, and the walk does not follow its error path.
+**What it detects.** A call whose bodies are in the program, where the walk
+cannot pick one to follow: a method called through an interface, or a
+function value that two or more bodies reach. A method whose whole body
+throws counts as a declaration, and the walk does not follow its error path.
 
 **It fires on** `runTrio`, where three classes implement the interface the
 receiver is typed as:
@@ -357,6 +369,28 @@ call it cannot follow. Five or more implementations at one site is a
 megamorphic call, reported as `megamorphic-dispatch` with that rule's
 benchmark. Two to four are printed as a count, inside V8's four-map budget.
 
+## Reading a finding
+
+The [README](../README.md#read-a-finding) shows one finding in full. Its
+lines, in order:
+
+- The first line names the annotated function the walk started from. The
+  finding under it can sit in any function it calls, in any file.
+- The second gives the position, the severity and the rule, then what the
+  rule saw.
+- `related:` points to representative builders, implementations or
+  allocations, and `sources:` says where tracing stopped. Neither proves the
+  value reaches the site at run time. `-v` shows every location, not five.
+- `next:` is what to look at or try; `note:` is what that change can break
+  besides speed.
+- `measured in` names the sweep behind the rule. `known defects:` are the
+  rule's recorded limits, explained [below](#known-defects).
+
+After the findings, the report says what each cited defect code means and
+where the rule evidence and measurements are. A finding prints no cost: a
+measured ratio depends on how much data passes through the code, and the
+annotation does not say.
+
 ## Severity
 
 Every finding on a per-call path is an error, and every error fails the run.
@@ -376,7 +410,7 @@ findings names each one. These are open limits, not bugs in your code.
 | Code | What it means |
 |---|---|
 | `TC-2` | A TypeScript union member is not a V8 map. `megamorphic-elements` counts the property-name sets it can see; V8's maps also depend on the order properties were added and on which objects arrive at run time. |
-| `TC-9` | A rule can fire outside the conditions its own benchmark measured, because it cannot see your data size. `chained-allocation` was measured at n=1000 and above and fires at any length unless a literal `.slice()` bounds it; `delete-property`'s cost is paid per read and it fires without knowing whether anything reads the object again. |
+| `TC-9` | A rule can fire outside the conditions its own benchmark measured, because it cannot see your data size. `chained-allocation` was measured at n=1000 and above and fires at any length unless an array literal or a literal `.slice()` before the allocation bounds it; `delete-property`'s cost is paid per read and it fires without knowing whether anything reads the object again. |
 | `TC-13` | A method stored in a field has no four-map budget: a call slot caches one target, so the cost starts at the second. `megamorphic-dispatch` waits for the fifth. |
 | `TC-33` | The rule's trigger is not the program its benchmark measured. `closed-world`'s sweep times a readable callee padded past the inlining budget; `megamorphic-dispatch`'s sweep varies call targets over one property set; `interface-dispatch` has no sweep. |
 | `TC-44` | `allocating-select` fires on a value that never leaves the loop, and its evidence quotes the figure measured for one that does. |
