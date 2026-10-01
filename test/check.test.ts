@@ -278,6 +278,25 @@ test('a call the walk cannot follow is reported, not silently dropped', () => {
   );
 });
 
+/**
+ * Three calls into code this program or the platform holds read as code
+ * nobody can read. `this.rules.other.listItemRegex(bull)` reaches an arrow
+ * function through a shorthand property; `super()` in `ArkError` runs a
+ * `class {}` behind a cast; `super()` in `ReadonlyPath` runs `Array` behind
+ * one. The first is followed, the second is an empty constructor, and the
+ * third is the platform (BUGS TC-157).
+ */
+test('a shorthand property and a cast base resolve, and are not closed-world', () => {
+  const dir = path.join(root, 'test', 'fixtures', 'inprogram');
+  const { checker, marks } = scan(ts, program(ts, root, [dir]));
+  const mark = (name: string): Mark =>
+    marks.find((m) => m.name === name) ?? assert.fail(`no mark ${name}`);
+  assert.deepStrictEqual(check(ts, checker, mark('list')).map((f) => f.rule), []);
+  assert.strictEqual(mark('list').followed, 1);
+  assert.deepStrictEqual(check(ts, checker, mark('raise')).map((f) => f.rule), []);
+  assert.strictEqual(mark('raise').platform, 1);
+});
+
 // The other half of the same hole, and TC-31's own program: a call through a
 // bare function-typed PARAMETER. Only the interface twin above had a fixture,
 // so the half the entry is written about was asserted nowhere.

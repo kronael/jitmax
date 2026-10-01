@@ -219,12 +219,24 @@ export const isOwnSource = (program: TS.Program, sf: TS.SourceFile): boolean =>
 // the value walk in lib/flow.ts both start here and both had their own copy;
 // the try/catch is load-bearing, because getAliasedSymbol throws on a symbol
 // that is not an alias after all, and the unaliased symbol is the answer then.
+//
+// The name in a shorthand property `{ other }` binds to the variable `other`,
+// and the checker's declaration for that is its value symbol. Asked for the
+// symbol at the location, it answers with the property the shorthand declares,
+// so marked's `this.rules.other.listItemRegex(bull)` stopped at "a
+// ShorthandPropertyAssignment the walk does not model" one hop short of the
+// arrow function it calls (BUGS TC-157).
 export function symbolOf(
   ts: Ts,
   checker: TS.TypeChecker,
   node: TS.Node
 ): TS.Symbol | undefined {
-  const sym = checker.getSymbolAtLocation(node);
+  const sym =
+    node.parent !== undefined &&
+    ts.isShorthandPropertyAssignment(node.parent) &&
+    node.parent.name === node
+      ? checker.getShorthandAssignmentValueSymbol(node.parent)
+      : checker.getSymbolAtLocation(node);
   if (!sym || !(sym.flags & ts.SymbolFlags.Alias)) return sym;
   try {
     return checker.getAliasedSymbol(sym);
@@ -430,6 +442,26 @@ export function targetsOf(
   const sym = symbolOf(ts, checker, callee);
   const decls: TS.Node[] = [...(sym?.getDeclarations() ?? [])];
 
+  // `super(…)` resolves to the base's TYPE, and a base cast to a bare construct
+  // signature has no declaration but that signature: arktype's `ReadonlyArray =
+  // Array as unknown as new <T>(…) => ReadonlyArray<T>` read as somebody's code
+  // nobody can read. The class's `extends` clause names the value, which
+  // resolves like any other callee — here through the cast to `Array`, the
+  // platform (BUGS TC-157). A type declared in a declaration file keeps the
+  // checker's answer: es-toolkit extends a const typed `typeof
+  // globalThis.DOMException`, and that type is the platform's own.
+  if (
+    callee.kind === ts.SyntaxKind.SuperKeyword &&
+    decls.length > 0 &&
+    decls.every((d) => ts.isTypeNode(d) && !d.getSourceFile().isDeclarationFile)
+  ) {
+    let cls: TS.Node | undefined = callee.parent;
+    while (cls && !ts.isClassLike(cls)) cls = cls.parent;
+    const heritage = cls && ts.isClassLike(cls) ? (cls.heritageClauses ?? []) : [];
+    const base = heritage.find((h) => h.token === ts.SyntaxKind.ExtendsKeyword)?.types[0];
+    if (base) return targetsOf(ts, checker, base.expression, seen);
+  }
+
   // `o[k]()` where k's type is a literal IS `o.k()` — the same property, the
   // same declaration, in the same file. `getSymbolAtLocation` answers nothing
   // for an element access, so the callee resolved to no declaration at all and
@@ -458,13 +490,17 @@ export function targetsOf(
 
   // `const f = () => …` and `const g = f` both resolve to a VariableDeclaration,
   // not to the function the annotation sits on. Follow the initializer, or the
-  // call is reported as leaving the annotated world when it never left.
+  // call is reported as leaving the annotated world when it never left — through
+  // a cast, and into a class expression too: arktype's `NoopBase = class {} as
+  // new <t>() => t` is the base of its error classes, and the `super()` that
+  // runs it read as code nobody can read (BUGS TC-157).
   for (let i = 0; i < decls.length && i < 8; i++) {
     const d = decls[i];
     if (!d || !ts.isVariableDeclaration(d) || !d.initializer) continue;
-    const init = d.initializer;
-    if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) decls.push(init);
-    else if (ts.isIdentifier(init)) decls.push(...targetsOf(ts, checker, init, seen));
+    const init = unwrap(ts, d.initializer);
+    if (ts.isArrowFunction(init) || ts.isFunctionExpression(init) || ts.isClassExpression(init)) {
+      decls.push(init);
+    } else if (ts.isIdentifier(init)) decls.push(...targetsOf(ts, checker, init, seen));
   }
   return decls;
 }
