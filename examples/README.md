@@ -241,9 +241,8 @@ error.** No library produced nothing.
 Every survey count in this file comes from one run on 2026-10-01, with the
 checker at commit `75a1568`, and counts distinct source lines per rule; the
 report's own header counts line and column, so it can print more. A finding is
-one per SITE: a line reached from 28 annotated functions used to be 28 findings, so
-every count in this section used to be the call-graph fan-in rather than the
-work (`BUGS.md` TC-62). Calls into the platform — Node's own API, V8's builtins
+one per SITE: a line reached from 28 annotated functions is one finding, so the
+counts measure the work rather than the call-graph fan-in (`BUGS.md` TC-62). Calls into the platform — Node's own API, V8's builtins
 and anything reached off `globalThis` — are counted for the run and never
 listed (TC-55, TC-110), and every call the walk cannot follow is reported rather
 than falling through both branches and vanishing (TC-45).

@@ -478,9 +478,9 @@ under every finding they make. It is also 97.9% of every finding across the
 22-codebase survey in `examples/README.md`, so a build can now fail on a
 mechanism this project
 has not priced for that program. Switch a rule off in the `[rules]` table, or
-per function with `-closed-world` / `-TC-33` on the annotation — and since
-v0.11.0 `interface-dispatch` is separately silenceable, so quieting the loud
-cause no longer switches off the honest declaration-only one.
+per function with `-closed-world` / `-TC-33` on the annotation.
+`interface-dispatch` is switched off separately, so quieting one escape rule
+leaves the other reporting.
 
 ## Turning a rule off
 
