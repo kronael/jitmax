@@ -1365,7 +1365,7 @@ export function markdown(root: string): string {
   const lines = Object.entries(CITATIONS).map(
     ([key, c]) =>
       `| \`${values[key]!.value}\` | ${files(c).map((f) => `\`bench/${f}\``).join(' + ')} — ` +
-      `${provenance(c, values[key]!)} |`
+      `${provenance(c, values[key]!).replaceAll('|', '\\|')} |`
   );
   return [
     BEGIN,

@@ -65,9 +65,9 @@ prints, straight from the `.jl` files. Nothing here is typed twice, and
 | Number | The rows it is |
 |---|---|
 | `3.4-11.3x` | `bench/shape-sets.jl` — five distinct property sets, reads only, L1 through RAM |
-| `3.61-3.71x` | `bench/shape-sets.jl` — construction counted, five property sets, L1 and L2 — 1 of 2 cells withdrawn as unreplicable (rule 13): 5|1|incl|16384|L2 |
+| `3.61-3.71x` | `bench/shape-sets.jl` — construction counted, five property sets, L1 and L2 — 1 of 2 cells withdrawn as unreplicable (rule 13): 5\|1\|incl\|16384\|L2 |
 | `1.08-1.20x` | `bench/shape-sets.jl` — construction counted at RAM size, five property sets |
-| `20` | `bench/shape-sets.jl` — the whole sweep — 4 of 24 cells withdrawn as unreplicable (rule 13): 2|1|incl|16384|L2, 2|1|incl|262144|L3, 4|1|incl|16384|L2, 5|1|incl|16384|L2 |
+| `20` | `bench/shape-sets.jl` — the whole sweep — 4 of 24 cells withdrawn as unreplicable (rule 13): 2\|1\|incl\|16384\|L2, 2\|1\|incl\|262144\|L3, 4\|1\|incl\|16384\|L2, 5\|1\|incl\|16384\|L2 |
 | `0.95-1.47x` | `bench/shape-sets.jl` — two to four property sets, reads only, every size — where the rule stays quiet |
 | `4.4-11.5x` | `bench/shapes-calibrated.jl` — five key orders of ONE key set, reads only, L1 through RAM |
 | `12.9-22.7x` | `bench/dispatch.jl` — a method on a prototype, five and six shapes, reads only |
@@ -75,9 +75,9 @@ prints, straight from the `.jl` files. Nothing here is typed twice, and
 | `19.22-22.71x` | `bench/dispatch.jl` — a method on a prototype, five shapes, reads only at L1 |
 | `7.1-9.0x` | `bench/dispatch.jl` — one shared function held as an own property, five and six shapes, reads only |
 | `1.9-5.8x` | `bench/dispatch.jl` — five shapes with construction counted, prototype and own-property, L1 and L2 |
-| `1.58-1.72x` | `bench/dispatch.jl` — a method on a prototype at RAM size, five and six shapes — 1 of 2 cells withdrawn as unreplicable (rule 13): cls5|cls1|incl|262144|L3|cls|5|dispatch-table |
+| `1.58-1.72x` | `bench/dispatch.jl` — a method on a prototype at RAM size, five and six shapes — 1 of 2 cells withdrawn as unreplicable (rule 13): cls5\|cls1\|incl\|262144\|L3\|cls\|5\|dispatch-table |
 | `1.00-1.14x` | `bench/dispatch.jl` — the same cells at two to four shapes |
-| `73` | `bench/dispatch.jl` — the whole sweep — 7 of 80 cells withdrawn as unreplicable (rule 13): cls2|cls1|excl|262144|L3|cls|2|dispatch-table, cls5|cls1|incl|262144|L3|cls|5|dispatch-table, lit6|lit1|incl|16384|L2|lit|6|dispatch-table, lit6|lit1|incl|262144|L3|lit|6|dispatch-table, tgt2|lit1|excl|256|L1|tgt|2|dispatch-table, tgt3|lit1|excl|256|L1|tgt|3|dispatch-table, tgt5|lit1|excl|16384|L2|tgt|5|dispatch-table |
+| `73` | `bench/dispatch.jl` — the whole sweep — 7 of 80 cells withdrawn as unreplicable (rule 13): cls2\|cls1\|excl\|262144\|L3\|cls\|2\|dispatch-table, cls5\|cls1\|incl\|262144\|L3\|cls\|5\|dispatch-table, lit6\|lit1\|incl\|16384\|L2\|lit\|6\|dispatch-table, lit6\|lit1\|incl\|262144\|L3\|lit\|6\|dispatch-table, tgt2\|lit1\|excl\|256\|L1\|tgt\|2\|dispatch-table, tgt3\|lit1\|excl\|256\|L1\|tgt\|3\|dispatch-table, tgt5\|lit1\|excl\|16384\|L2\|tgt\|5\|dispatch-table |
 | `1.41-1.65x` | `bench/dispatch.jl` — four shapes on a prototype method, reads only, every size — where the rule is quiet |
 | `2.10-2.28x` | `bench/dispatch.jl` — four shapes on one shared own-property function, reads only, every size |
 | `3.5-15.8x` | `bench/dispatch.jl` — every shape carrying its OWN function, reads only, two to six targets, every size |
@@ -91,53 +91,53 @@ prints, straight from the `.jl` files. Nothing here is typed twice, and
 | `186-200x` | `bench/spread-object.jl` — object spread against keyed assignment at n=500, the three replications |
 | `814-887x` | `bench/spread-object.jl` — Object.assign({}, acc, …) at n=500, the three replications |
 | `0.03-1.87x` | `bench/spread.jl` + `bench/spread-object.jl` — all four accumulating forms with construction excluded, every size |
-| `0.26-0.52x` | `bench/strings.jl` — s = s + x, s += x and s = s.concat(x) against a push-and-join, building only — 1 of 9 cells withdrawn as unreplicable (rule 13): pluseq|joined|build|1000|dispatch-table |
+| `0.26-0.52x` | `bench/strings.jl` — s = s + x, s += x and s = s.concat(x) against a push-and-join, building only — 1 of 9 cells withdrawn as unreplicable (rule 13): pluseq\|joined\|build\|1000\|dispatch-table |
 | `0.78-1.13x` | `bench/strings.jl` — the same three with the read back counted |
 | `0.71-1.48` | `bench/strings.jl` — every interval measured for those nine cells |
 | `2.60-2.89x` | `bench/select.jl` — the chosen value stored where it outlives the loop, both sizes |
 | `2.58-3.08` | `bench/select.jl` — the intervals at n=10000, across the three replications of the re-measurement |
 | `2.48-2.86` | `bench/select.jl` — the intervals at n=100000, across the three replications of the re-measurement |
-| `5` | `bench/select.jl` — the whole re-measurement — 1 of 6 cells withdrawn as unreplicable (rule 13): select|compare|number|100000 |
+| `5` | `bench/select.jl` — the whole re-measurement — 1 of 6 cells withdrawn as unreplicable (rule 13): select\|compare\|number\|100000 |
 | `1.10-1.19x` | `bench/select.jl` — the same loop on numbers at n=10000 — where the rule stays quiet |
 | `1.03-1.29` | `bench/select.jl` — every interval measured on numbers at n=10000 |
 | `0.89x and 0.97x and 1.03x` | `bench/select.jl` — the three sweeps of the n=100000 number cell — withdrawn under rule 13, quoted as the refutation it is |
 | `2.02-2.47x` | `bench/select.jl` — the boxed form kept in a local, where escape analysis could see it, both sizes |
-| `1.44-1.52x` | `bench/chained.jl` — xs.map(f).filter(g) against one fused pass, construction counted, both sizes — 1 of 2 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table |
+| `1.44-1.52x` | `bench/chained.jl` — xs.map(f).filter(g) against one fused pass, construction counted, both sizes — 1 of 2 cells withdrawn as unreplicable (rule 13): chained\|fused\|incl\|1000\|dispatch-table |
 | `6.48x and 6.58x and 7.51x` | `bench/chained.jl` — the three sweeps of the n=1000 cell this rule used to headline — withdrawn under rule 13, quoted as the refutation it is |
-| `1.37-1.63` | `bench/chained.jl` — every interval measured for the cells that replicate — 1 of 2 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table |
+| `1.37-1.63` | `bench/chained.jl` — every interval measured for the cells that replicate — 1 of 2 cells withdrawn as unreplicable (rule 13): chained\|fused\|incl\|1000\|dispatch-table |
 | `3.67-3.76x` | `bench/chained.jl` — Object.entries(o).map(f) against a for-in walk at n=1000, construction counted |
 | `3.50-4.04` | `bench/chained.jl` — every interval measured for that cell |
 | `2.55-2.61x` | `bench/chained.jl` — the same at n=10000 |
 | `2.23-2.97` | `bench/chained.jl` — every interval measured for that cell |
-| `22` | `bench/chained.jl` — the 0.3 sweep, which is every row the dispatch-table kernel wrote — 2 of 24 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table, splitjoin|packed|excl|1000|dispatch-table |
-| `1000` | `bench/chained.jl` — the smallest n any construction-counted cell in this sweep was measured at — 1 of 12 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table |
-| `0.95-1.10x` | `bench/chained.jl` — reading the finished array back, all six chained forms, both sizes — 1 of 12 cells withdrawn as unreplicable (rule 13): splitjoin|packed|excl|1000|dispatch-table |
+| `22` | `bench/chained.jl` — the 0.3 sweep, which is every row the dispatch-table kernel wrote — 2 of 24 cells withdrawn as unreplicable (rule 13): chained\|fused\|incl\|1000\|dispatch-table, splitjoin\|packed\|excl\|1000\|dispatch-table |
+| `1000` | `bench/chained.jl` — the smallest n any construction-counted cell in this sweep was measured at — 1 of 12 cells withdrawn as unreplicable (rule 13): chained\|fused\|incl\|1000\|dispatch-table |
+| `0.95-1.10x` | `bench/chained.jl` — reading the finished array back, all six chained forms, both sizes — 1 of 12 cells withdrawn as unreplicable (rule 13): splitjoin\|packed\|excl\|1000\|dispatch-table |
 | `0.84-1.00x` | `bench/chained.jl` — Object.keys(o).map(f) against the for-in walk that fuses it, construction counted |
 | `0.99-1.09x` | `bench/chained.jl` — xs.map(f).sort() against the same map, construction counted — .sort() is in place |
 | `0.91-1.22` | `bench/chained.jl` — every interval measured for those cells |
 | `0.99-1.10x` | `bench/chained.jl` — s.split(sep).map(f).join(sep) against two different fusions, construction counted |
-| `4.64-4.95x` | `bench/inline.jl` — a callee past the inlining budget against the same callee under it — 1 of 2 cells withdrawn as unreplicable (rule 13): large|small|excl|100000 |
+| `4.64-4.95x` | `bench/inline.jl` — a callee past the inlining budget against the same callee under it — 1 of 2 cells withdrawn as unreplicable (rule 13): large\|small\|excl\|100000 |
 | `3.21x and 4.68x and 4.73x` | `bench/inline.jl` — the three sweeps at n=100000 — withdrawn under rule 13, quoted as the refutation it is |
 | `4.34-5.22` | `bench/inline.jl` — the interval at n=1000 |
-| `1` | `bench/inline.jl` — the whole sweep — 1 of 2 cells withdrawn as unreplicable (rule 13): large|small|excl|100000 |
-| `12.3-13.6x` | `bench/delete.jl` — one delete per object, reads only, at n=16384 and n=262144 — 1 of 2 cells withdrawn as unreplicable (rule 13): rowdel|rowbase|excl|262144|dispatch-table |
-| `n=16384` | `bench/delete.jl` — the sizes the cells behind delete.rows still replicate at — 1 of 2 cells withdrawn as unreplicable (rule 13): rowdel|rowbase|excl|262144|dispatch-table |
+| `1` | `bench/inline.jl` — the whole sweep — 1 of 2 cells withdrawn as unreplicable (rule 13): large\|small\|excl\|100000 |
+| `12.3-13.6x` | `bench/delete.jl` — one delete per object, reads only, at n=16384 and n=262144 — 1 of 2 cells withdrawn as unreplicable (rule 13): rowdel\|rowbase\|excl\|262144\|dispatch-table |
+| `n=16384` | `bench/delete.jl` — the sizes the cells behind delete.rows still replicate at — 1 of 2 cells withdrawn as unreplicable (rule 13): rowdel\|rowbase\|excl\|262144\|dispatch-table |
 | `11.5-13.2x` | `bench/delete.jl` — the same delete against assigning undefined instead, n=16384 |
 | `13.1-15.1x` | `bench/delete.jl` — one object with one delete, reads only, every size and every sweep |
 | `23.7-24.8x` | `bench/delete.jl` — one delete per object with construction counted, n=256 |
 | `3.3-8.7x` | `bench/delete.jl` — the single object with construction counted, every size |
-| `12` | `bench/delete.jl` — the whole sweep — 4 of 16 cells withdrawn as unreplicable (rule 13): rowdel|rowbase|excl|262144|dispatch-table, rowdel|rowbase|incl|16384|dispatch-table, rowdel|rowbase|incl|262144|dispatch-table, rowundef|rowbase|incl|16384|dispatch-table |
+| `12` | `bench/delete.jl` — the whole sweep — 4 of 16 cells withdrawn as unreplicable (rule 13): rowdel\|rowbase\|excl\|262144\|dispatch-table, rowdel\|rowbase\|incl\|16384\|dispatch-table, rowdel\|rowbase\|incl\|262144\|dispatch-table, rowundef\|rowbase\|incl\|16384\|dispatch-table |
 | `1.00-1.06x` | `bench/delete.jl` — assigning undefined instead of deleting, reads only — the fix, not the defect |
 | `0.96-1.12` | `bench/delete.jl` — every interval measured for that cell |
 | `0.98x and 1.05x and 1.18x` | `bench/delete.jl` — the three construction-counted sweeps at n=16384 — withdrawn under rule 13, quoted as the refutation it is |
 | `1.18-3.54x` | `bench/example.jl` — radash assign — the whole call, both sizes, three sweeps each |
 | `1.66-2.01x` | `bench/example.jl` — radash assign — the caller's reads of the result, both sizes, what each cell's three sweeps agree on |
 | `0.17-0.51x` | `bench/example.jl` — es-toolkit omit — the whole call, 12 and 48 keys |
-| `0.78-1.31` | `bench/arguments.jl` — the `arguments` object against a rest parameter, escaping, indexed and length-only — 2 of 9 cells withdrawn as unreplicable (rule 13): argesc|restesc|excl|16384, arglen|restlen|excl|262144 |
-| `7` | `bench/arguments.jl` — the cells behind args.null — 2 of 9 cells withdrawn as unreplicable (rule 13): argesc|restesc|excl|16384, arglen|restlen|excl|262144 |
+| `0.78-1.31` | `bench/arguments.jl` — the `arguments` object against a rest parameter, escaping, indexed and length-only — 2 of 9 cells withdrawn as unreplicable (rule 13): argesc\|restesc\|excl\|16384, arglen\|restlen\|excl\|262144 |
+| `7` | `bench/arguments.jl` — the cells behind args.null — 2 of 9 cells withdrawn as unreplicable (rule 13): argesc\|restesc\|excl\|16384, arglen\|restlen\|excl\|262144 |
 | `24.3-65.5x` | `bench/sparse.jl` — dictionary elements against a packed array, reads only |
-| `20.4-40.1x` | `bench/sparse.jl` — the same with construction counted — 1 of 3 cells withdrawn as unreplicable (rule 13): dict|packed|incl|262144 |
-| `1.32-1.47x` | `bench/sparse.jl` — a holey array against a packed one, reads only — 1 of 3 cells withdrawn as unreplicable (rule 13): holey|packed|excl|262144 |
+| `20.4-40.1x` | `bench/sparse.jl` — the same with construction counted — 1 of 3 cells withdrawn as unreplicable (rule 13): dict\|packed\|incl\|262144 |
+| `1.32-1.47x` | `bench/sparse.jl` — a holey array against a packed one, reads only — 1 of 3 cells withdrawn as unreplicable (rule 13): holey\|packed\|excl\|262144 |
 | `0.28-0.68x` | `bench/sparse.jl` — the same with construction counted, where the holey array wins |
 | `1.39-1.66x` | `bench/arrays.jl` — a genuinely boxed array against a double one, reads only, every size — the older sweep, not re-measured under r2 |
 | `1.58-1.69x` | `bench/arrays.jl` — the same with construction counted, at RAM size — the older sweep, not re-measured under r2 |

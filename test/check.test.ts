@@ -3532,9 +3532,9 @@ test('a single-sweep cell and a rejected interval cannot publish as live', () =>
   // The verdicts are output, not bookkeeping: the generated numbers block names
   // every planted cell with the rule that refused it.
   const block = markdown(tmp);
-  assert.match(block, /withdrawn as unreplicable \(rule 13\): select\|compare\|heap\|555 \(1 sweep\)/);
-  assert.match(block, /rejected under rule 6 \(the rule's bar\): select\|compare\|heap\|777/);
-  assert.match(block, /rejected under rule 6 \(the broad-warning bar\): chained\|fused\|incl\|555\|dispatch-table/);
+  assert.match(block, /withdrawn as unreplicable \(rule 13\): select\\\|compare\\\|heap\\\|555 \(1 sweep\)/);
+  assert.match(block, /rejected under rule 6 \(the rule's bar\): select\\\|compare\\\|heap\\\|777/);
+  assert.match(block, /rejected under rule 6 \(the broad-warning bar\): chained\\\|fused\\\|incl\\\|555\\\|dispatch-table/);
 });
 
 // Protocol rule 9's load gate, in the same shape as rule 13's register above:
