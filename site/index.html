@@ -63,39 +63,18 @@
 <div class="tldr-box">
   <div class="tldr-label">TL;DR</div>
   <div class="tldr-text">
-    V8 speeds up your JavaScript by predicting what each line will do. While
-    the prediction holds, that line stays on a fast path. A few
-    ordinary-looking patterns break the prediction, and V8 moves to a slower
-    path without saying so. Mark a TypeScript function with
-    <code>/** @jitmax */</code> and this checker reports those patterns in
-    it, and in every function it calls whose source it can read.
+    V8 speeds up your JavaScript by predicting what each line will do. One line
+    can keep four object shapes in its head; send a fifth through and the bet is
+    off, and V8 moves that line to a slower lookup without saying so. Your code
+    still returns what it returned before, so a functional test reveals nothing.
+    Mark a TypeScript function with <code>/** @jitmax */</code> and this checker
+    reports those patterns in it, and in every function it calls whose source it
+    can read. Only a profile and a benchmark of your own caller can say whether
+    they cost anything. The
+    <a href="https://github.com/kronael/jitmax/blob/HEAD/README.md">README</a>
+    explains the mechanism in full.
   </div>
 </div>
-
-<h2>The idea</h2>
-
-<p>
-  V8 watches your code run. It notices what shape of data goes through each
-  line, then compiles a version of that line which assumes the shape holds. The
-  assumption is a bet, and it usually pays: that is most of why JavaScript is
-  fast at all.
-</p>
-
-<p>
-  At the measured sites, V8 caches up to four object shapes. A fifth can move
-  the site to a megamorphic lookup path. The JavaScript still returns the same
-  result, so a functional test does not reveal that cost. jitmax looks for
-  source patterns that can cause it; only a profile and benchmark can show
-  whether it matters in your workload.
-</p>
-
-<p>
-  A handful of other patterns do the same kind of damage. Delete a key and V8
-  moves that object to a slower kind of storage and leaves it there. Rebuild an
-  array from a copy of itself inside a loop and every pass copies everything the
-  last pass built. None of it looks wrong on screen, which is why it survives
-  review.
-</p>
 
 <h2 id="use">Use it</h2>
 
@@ -108,16 +87,22 @@
 </p>
 
 <p>
-  The public repository currently exposes no Git refs and its download returns
-  404. <a href="https://github.com/kronael/jitmax/blob/HEAD/BUGS.md">TC-133</a>
-  tracks that access blocker. Every repository command below needs an
-  accessible Git ref. GitHub documentation links share that access blocker.
-  If you have a checkout, use the local route below and read its <code>README.md</code>.
+  <strong>Pin TypeScript 5.x in your project before you scan it.</strong>
+  jitmax parses with the compiler your project builds with and needs the 5.x
+  compiler API, and <code>bun add typescript</code> installs 7.x today, whose
+  API has no <code>sys</code> host. Run
+  <code>bun add --dev typescript@^5.9</code>, or
+  <code>npm install --save-dev typescript@^5.9</code>. Skip that and the scan
+  stops at exit <code>2</code>: a checkout of the current source names what it
+  found and what it needs, and <code>bunx</code>, which installs the
+  <code>main</code> branch, reports
+  <code>undefined is not an object (evaluating 'ts.sys.fileExists')</code>
+  instead. Same cause, same fix.
 </p>
 
 <p>
-  Install your TypeScript project's dependencies with its usual package manager.
-  Save this as <code>hot.ts</code> in that project's root:
+  Install your TypeScript project's other dependencies with its usual package
+  manager too. Save this as <code>hot.ts</code> in that project's root:
 </p>
 
 <pre><code>/** @jitmax */
@@ -125,7 +110,7 @@ export function total(rows: { value: number }[]): number {
   return rows.reduce((sum, row) =&gt; sum + row.value, 0);
 }</code></pre>
 
-<p>Run from your project's root once the GitHub repository is accessible:</p>
+<p>Run from your project's root:</p>
 
 <pre><code>bunx github:kronael/jitmax --help
 bunx github:kronael/jitmax hot.ts
@@ -212,12 +197,28 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
 
 <h3>Read a finding</h3>
 
-<p>Excerpt from <code>bun bin/cli.js demo</code> in the jitmax checkout:</p>
-<pre><code>demo/lib.ts:46  fiveShapes()
-  error  megamorphic-elements
-    demo/lib.ts:46:28
-    related: demo/lib.ts:48:30 read: r.x
-    next: inspect where these elements are built, not just this parameter.</code></pre>
+<p>
+  A real finding, from a five-member union saved as <code>shapes.ts</code> and
+  scanned with <code>bunx github:kronael/jitmax shapes.ts</code>:
+</p>
+<pre><code>  shapes.ts:9  total()
+    shapes.ts:9:23  error  megamorphic-elements
+      rows has 5 distinct property sets in its element type; this is a
+      candidate for megamorphic load feedback, not an observed runtime map
+      count
+      related: shapes.ts:11:34 read: row.x
+      sources: No builder located for this value. Source tracing is partial:
+               no visible caller of total &mdash; its arguments come from outside
+               this program.
+      next: inspect where these elements are built, not just this parameter.
+            If semantics allow, use consistent own properties and insertion
+            order; benchmark the full caller including construction
+      note: type assertions do not change runtime shapes. Adding a missing
+            property can change key enumeration and presence checks. Library
+            callers may need an upstream change; no automatic rewrite is
+            established here
+      measured in bench/shape-sets.jl and bench/shapes-calibrated.jl
+      known defects: TC-2, TC-9</code></pre>
 
 <p>
   Each finding names the source, a <code>next:</code> step and the sweep behind
@@ -474,8 +475,9 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
   <p>
     v0.15.0, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
     those terms; a derivative work carries the same licence. The repository
-    command uses Bun; TC-133 tracks public access. Development with Node
-    needs version 22.18 or newer and has no build step.
+    command uses Bun and installs the <code>main</code> branch, which is ahead
+    of that tag. Development with Node needs version 22.18 or newer and has no
+    build step.
   </p>
 </div>
 
