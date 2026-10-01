@@ -185,8 +185,11 @@ question:
   walk** is jitmax following calls out of that function into every callee whose
   source is in your program, to a cap of 200 bodies per annotation — so the
   finding under it is often in a different file.
-- The line below it leads with the exact position, then `error`, then the rule.
+- The line below it leads with the exact position, then `error` or `warn`,
+  then the rule.
 - The message says what the rule saw, in the rule's own hedged words.
+- A `warn` finding adds a `once:` line naming the static field initializer
+  that is the only path to it; it does not fail the run.
 - `related:` links representative builders, implementations, allocations or key
   observers. Five by default, all of them with `--verbose`. They are not every
   allocation and not proof that the value reaches the site at runtime.
@@ -251,14 +254,17 @@ chains, selection candidates and property deletion, plus two coverage rules.
 [The rule reference](docs/rules.md) states each trigger, its evidence and its
 limits.
 
-Exit `0` means at least one function was checked with no remaining findings and
-no reported coverage gaps. Exit `1` means findings, incomplete coverage, or no
-selected functions. Coverage gaps include truncated walks, unresolved modules,
-unmatched hot frames, bodyless annotations and calls through `any` receivers.
-Exit `2` means the tool failed, including invalid input, config or source syntax.
-`--help` and `-h` exit `0` without loading the project. Suppressing a rule does
-not clear a coverage gap. Semantic TypeScript errors belong to your own compiler
-check.
+Exit `0` means at least one function was checked with no errors and no reported
+coverage gaps — a `warn` finding can still print. A finding reached only
+through a static field initializer prints `warn` with a `once:` line naming
+the initializer, because that code runs when its class is defined and not on
+each call, and does not fail the run; every other finding is an error. Exit `1`
+means an error, incomplete coverage, or no selected functions. Coverage gaps
+include truncated walks, unresolved modules, unmatched hot frames, bodyless
+annotations and calls through `any` receivers. Exit `2` means the tool failed,
+including invalid input, config or source syntax. `--help` and `-h` exit `0`
+without loading the project. Suppressing a rule does not clear a coverage gap.
+Semantic TypeScript errors belong to your own compiler check.
 
 ## Development and licence
 
