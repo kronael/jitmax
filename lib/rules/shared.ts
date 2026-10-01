@@ -1,6 +1,15 @@
 import type * as TS from 'typescript';
 import type { Ts } from '../ts.ts';
-import { at, isFunctionLike, type Body, type Dispatch, type Mark, type Once, type Site } from '../scan.ts';
+import {
+  at,
+  isFunctionLike,
+  unwrap,
+  type Body,
+  type Dispatch,
+  type Mark,
+  type Once,
+  type Site,
+} from '../scan.ts';
 
 export interface Evidence {
   cost: string;
@@ -251,9 +260,14 @@ const shapeKey = (checker: TS.TypeChecker, t: TS.Type): string =>
 export const objectShapes = (ts: Ts, checker: TS.TypeChecker, t: TS.Type): number =>
   new Set(unionKeys(ts, checker, t)).size;
 
-const unionKeys = (ts: Ts, checker: TS.TypeChecker, t: TS.Type): string[] =>
+const unionKeys = (
+  ts: Ts,
+  checker: TS.TypeChecker,
+  t: TS.Type,
+  admitted: readonly TS.Type[] = members(t)
+): string[] =>
   t.isUnion()
-    ? t.types
+    ? admitted
         // Intersection as well as Object: a branded type `T & {__tag?: K}` is
         // an Intersection, so five branded object types behind one receiver —
         // the 3.4-11.3x program bench/shape-sets.jl measures — counted zero
@@ -334,9 +348,10 @@ export interface Shapes {
 }
 
 export function elementShapes(ts: Ts, checker: TS.TypeChecker, mark: Mark, value: ArrayValue): Shapes {
-  const keys = new Set(unionKeys(ts, checker, value.element));
+  const admitted = filterAdmits(ts, checker, value);
+  const keys = new Set(unionKeys(ts, checker, value.element, admitted));
   const declared = keys.size;
-  const objects = members(value.element).filter(
+  const objects = admitted.filter(
     (m) => m.flags & (ts.TypeFlags.Object | ts.TypeFlags.Intersection)
   );
   if (objects.length === 0) return { count: declared, declared, classes: [] };
@@ -360,6 +375,53 @@ export function elementShapes(ts: Ts, checker: TS.TypeChecker, mark: Mark, value
   }
   for (const c of classes) keys.add(shapeKey(checker, instanceOf(ts, checker, c)));
   return { count: keys.size, declared, classes: [...classes] };
+}
+
+// The element type's members a `.filter()` lets into the array: all of them,
+// unless the predicate tests a discriminant against a literal. marked's
+// `item.tokens.filter(t => t.type === 'space')` keeps one token kind, and its
+// declared element type is still every kind — 17 property sets counted where
+// `%HaveSameMap` over the CommonMark spec finds one map (BUGS TC-161). A member
+// whose discriminant could hold the literal stays, as does one whose property
+// is not a literal type at all; only the `x => x.k === literal` form is read.
+function filterAdmits(ts: Ts, checker: TS.TypeChecker, value: ArrayValue): readonly TS.Type[] {
+  const all = members(value.element);
+  const init = ts.isVariableDeclaration(value.p) ? value.p.initializer : undefined;
+  const call = init && unwrap(ts, init);
+  if (!call || !ts.isCallExpression(call)) return all;
+  const callee = unwrap(ts, call.expression);
+  const cb = call.arguments[0];
+  if (!ts.isPropertyAccessExpression(callee) || callee.name.text !== 'filter') return all;
+  if (!cb || !(ts.isArrowFunction(cb) || ts.isFunctionExpression(cb))) return all;
+  const param = cb.parameters[0]?.name;
+  let body: TS.Expression | undefined;
+  if (!ts.isBlock(cb.body)) body = cb.body;
+  else if (cb.body.statements.length === 1) {
+    const only = cb.body.statements[0]!;
+    if (ts.isReturnStatement(only)) body = only.expression;
+  }
+  const test = body && unwrap(ts, body);
+  if (!param || !ts.isIdentifier(param) || !test || !ts.isBinaryExpression(test)) return all;
+  const op = test.operatorToken.kind;
+  if (op !== ts.SyntaxKind.EqualsEqualsEqualsToken && op !== ts.SyntaxKind.EqualsEqualsToken) {
+    return all;
+  }
+  const left = unwrap(ts, test.left);
+  const [read, literal] = ts.isPropertyAccessExpression(left)
+    ? [left, test.right]
+    : [unwrap(ts, test.right), test.left];
+  if (!ts.isPropertyAccessExpression(read)) return all;
+  const on = unwrap(ts, read.expression);
+  if (!ts.isIdentifier(on) || on.text !== param.text) return all;
+  const want = checker.getTypeAtLocation(literal);
+  if (!want.isStringLiteral() && !want.isNumberLiteral()) return all;
+  return all.filter((m) => {
+    const prop = checker.getPropertyOfType(m, read.name.text);
+    if (!prop) return true;
+    return members(checker.getTypeOfSymbolAtLocation(prop, read)).some(
+      (k) => !(k.isStringLiteral() || k.isNumberLiteral()) || k.value === want.value
+    );
+  });
 }
 
 // `boxed-elements` was here, and `bench/arrays.jl` withdrew it. A genuinely

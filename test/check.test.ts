@@ -1857,6 +1857,19 @@ test('class hierarchies and builders count as element shapes, beside the union',
   assert.deepStrictEqual(elements('sumSame'), []);
 });
 
+/**
+ * A `.filter()` whose predicate tests a discriminant keeps one kind, and the
+ * array it builds is counted by the kinds that pass. marked's spacers were
+ * billed for all 17 property sets of `Token` where one map reaches the read;
+ * `spaced` is that shape and stays silent. `longOnes` filters on something
+ * every kind can pass, and still fires (BUGS TC-161).
+ */
+test('a filter on a discriminant narrows the element shapes it builds', () => {
+  const byName = rulesByFunction(path.join('test', 'fixtures', 'filtered'));
+  assert.deepStrictEqual(byName.get('spaced'), []);
+  assert.deepStrictEqual(byName.get('longOnes'), ['megamorphic-elements']);
+});
+
 // Type identity is not value provenance. `probe` is annotated with the whole
 // element union, so `(probe as A).a` — the one load in `collect` — satisfied a
 // `t === element` test for both arrays in scope, neither of which is ever read.
