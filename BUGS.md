@@ -210,23 +210,25 @@ it. Same at 17b64dc.
 
 Fixed 2026-10-01 in `0e72bb8`.
 
-## TC-153 — the flagship rule's sweep has no make target (2026-10-01, open)
+## ✅ FIXED 2026-10-01 — TC-153 — the flagship rule's sweep has no make target (2026-10-01, fixed)
 
 `make bench` (Makefile:84-85, bench/README.md:25) re-runs the key-order sweep
 the rule disclaims; shape-sets has no target.
 
 - **Severity:** low
 - **Scope:** Makefile, bench
-- **Status:** open
+- **Status:** fixed
+- **Fix:** `93806ce`.
 
-## TC-152 — survey figures are stale against HEAD (2026-10-01, open)
+## ✅ FIXED 2026-10-01 — TC-152 — survey figures are stale against HEAD (2026-10-01, fixed)
 
 examples/README.md:373,387 and docs/rules.md:233 say 29 sites; HEAD gives
 megamorphic-elements 19 and allocating-select 0.
 
 - **Severity:** low
 - **Scope:** docs
-- **Status:** open
+- **Status:** fixed
+- **Fix:** `b27037b`.
 
 ## TC-151 — EVIDENCE.cost and .silent are never printed (2026-10-01, proposal)
 
