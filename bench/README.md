@@ -1,65 +1,62 @@
 # The benchmarks
 
-To scan your own code, use the [README quick start](../README.md#quick-start).
-It covers Bun and the TypeScript 5.x requirement. The commands below reproduce
-evidence in a full Git clone of jitmax.
-Complete the [development setup](../README.md#development-and-licence) first.
-Benchmarks run on Node/V8, even when you run the checker with Bun. They also
-need Linux: the runner's load gate reads `/proc/loadavg`. The checker does not.
+How every number jitmax publishes was measured, and how to re-run it. The
+benchmarks need a full Git clone after the
+[development setup](../README.md#development-and-licence), Node, and Linux:
+the runner's load gate reads `/proc/loadavg`. They measure V8 under Node, even
+when you run the checker with Bun.
 
-How every number this project publishes was measured, and how to re-check it.
+A rule can carry two kinds of evidence. **A benchmark** says what a pattern
+cost on this machine, and cannot say why. **A V8 citation** says what mechanism
+exists in the engine, and cannot say what it costs. Both are below, and both
+can be re-run. `accumulating-spread` has a benchmark and no citation, because
+quadratic copying is quadratic on any engine; `interface-dispatch` reports
+unchecked calls and has neither.
 
-A rule can carry two evidences: **a benchmark**, which says what the pattern
-cost on this machine, and **a V8 citation**, which says what mechanism in the
-engine exists. Neither substitutes for the other. A benchmark cannot say why; a
-citation cannot say what it costs. Both are below, and both are re-runnable.
-`accumulating-spread` has no V8 citation, and `interface-dispatch`, which
-reports unchecked calls, has neither.
-
-The full Git clone's `CLAUDE.md` documents the measurement protocol.
-`BUGS.md` references also name internal notes in that clone; neither note ships
-in install archives. `bench/driver.ts` implements the protocol,
-`bench/sweeps.ts` holds the cells, `bench/run.ts` is the runner, and
-`bench/kernel.ts` is the contract a workload meets.
+`bench/driver.ts` implements the measurement protocol, `bench/sweeps.ts` holds
+every sweep's cells, `bench/run.ts` runs them, and `bench/kernel.ts` is the
+contract a workload meets. A sweep appends its rows, one JSON object per line,
+to a `.jl` file beside its workload, and never overwrites one.
 
 ## Re-run any claim
 
 ```sh
 make bench-shape-sets     # property sets per element type — megamorphic-elements
-make bench                # the 24-cell key-order sweep, what that rule misses
+make bench                # five key orders of one key set — what that rule misses
+make bench-dispatch       # one method call on many object shapes — megamorphic-dispatch
 make bench-spread         # accumulating spread, array form
 make bench-spread-object  # accumulating spread, object form
-make bench-strings        # string building — the refutation, not a rule
-make bench-select         # choosing between two boxed values
+make bench-strings        # strings built by appending — why that rule skips them
 make bench-chained        # chained array passes
-make bench-inline         # the inlining boundary behind closed-world
-make bench-addprop        # adding a property after construction — a refutation
-make bench-dispatch       # calling a method on five object types
+make bench-select         # choosing between two boxed values — allocating-select
 make bench-delete         # delete, on many objects and on exactly one
-make bench-arrays         # elements kinds — the sweep that withdrew a rule
+make bench-inline         # the inlining boundary behind closed-world
+make bench-addprop        # adding a property after construction — no rule
+make bench-arguments      # the arguments object against a rest parameter — no rule
+make bench-sparse         # dictionary and holey arrays — no rule
+make bench-arrays         # elements kinds — no rule
 make example              # four shipped library functions, before and after
+make tiers                # which V8 tier each published cell reached — a diagnostic
 make v8-check             # every V8 citation, against the pinned checkout
 ```
 
-Each target skips cells the sweep's `.jl` already holds, so a second run
-measures nothing new. To measure again without touching the published file:
+A target skips cells its `.jl` already holds, so a second run measures nothing
+new. To measure again without touching the published rows:
 
 ```sh
 node bench/run.ts shape-sets --force --scratch   # appends to bench/scratch.jl
 ```
 
-That command re-measures all 24 cells, three sweeps of 20 process pairs each.
-Add `--plan` to list the cells without measuring, and `--only=<text>` to keep
-the cells whose label contains the text, such as `--only=5/1`.
+That re-measures all 24 cells, three sweeps of 20 process pairs each. `--plan`
+lists the cells without measuring, and `--only=<text>` keeps the cells whose
+label contains the text, such as `--only=5/1`. Nothing else may run on the
+machine during a sweep.
 
-Nothing else may run on the machine during a sweep. These are timings, and the
-load gate refuses to start a cell on a busy machine.
+## Every number, and the rows it is
 
-## Every number this project publishes, and the rows it is
-
-`make numbers` writes the table below, and the `EVIDENCE` strings the tool
-prints, straight from the `.jl` files. Nothing here is typed twice, and
-`make test` fails when a published number is no longer what its rows say.
+`make numbers` writes this table, and the evidence strings the tool prints,
+from the `.jl` rows. No number is typed by hand, and `make test` fails when a
+quoted number no longer matches its rows.
 
 <!-- generated: numbers -->
 
@@ -156,80 +153,117 @@ prints, straight from the `.jl` files. Nothing here is typed twice, and
 
 ## How a cell is measured
 
-Every observation runs in a fresh OS process. An in-process A/B test shares
-inline caches. That polluted the results and made an earlier round invalid.
-Each cell uses 20 paired runs. AB/BA randomisation swaps which version runs
-first. A 95% bootstrap interval is a range calculated by repeatedly resampling
-the measured runs. The harness compares checksums, short values that show
-whether outputs match, inside every pair. It publishes raw per-pair timings
-beside every summary.
+A **cell** is one configuration of one benchmark: a pattern against its
+rewrite, at one input size, in one mode. A **sweep** is one full run of a cell.
+The tables cite these rules by number.
 
-If the timed work in a cell misses its 120 ms target by more than 2x, the
-benchmark **throws** instead of publishing. This guard exists because an older
-harness inflated a result by more than double. Worse, the error made a rule
-look worth shipping. See `BUGS.md` TC-5.
+1. **One fresh OS process per observation**, one variant per process. Two
+   variants in one process share inline caches, and that contaminates the
+   comparison.
+2. **AB/BA order is randomised** across paired processes, with the same seeded
+   input to both. Order is a large confound.
+3. **The timed region is calibrated to about 120 ms** on warm cost. A single
+   cold probe under-sizes the slowest variant, the one a rule wants to indict,
+   and inflates its ratio. A cell whose region lands outside 60-240 ms, more
+   than 2x off target, is **void**: recorded and printed with its error, never
+   published.
+4. **Twenty measured pairs per sweep**, 40 processes, declared before the run.
+   No extra samples when a result is close.
+5. **The ratio of mean process times, with a paired bootstrap 95% interval.**
+   Every raw per-pair timing is published beside it, so the interval can be
+   recomputed. Never a best run.
+6. **An interval that spans 1.0 is rejected.** A number quoted as a rule's
+   evidence needs an agreement (rule 13) whose lower end is above 1.00. A broad
+   warning, which `chained-allocation` is held to, also needs that lower end
+   above 1.05 and a mean of the three sweep ratios of 1.10 or more. A cell that
+   fails is never evidence; where the docs quote one, they call it rejected.
+7. **Dead-code elimination is defeated**: input from a runtime seed, results
+   folded into a checksum printed after timing, no I/O in the timed region. The
+   driver compares the checksums inside every pair.
+8. **No tracing, profiling, forced GC or V8 natives syntax in an evidence
+   run.** Tiering is a separate diagnostic, below.
+9. **Every row records its environment**: Node and V8 versions, flags, seeds,
+   warmup counts, core affinity, the machine load as the row was written, and
+   the load gate it ran under. The gate counts runnable threads outside the
+   harness, the median of five samples, and refuses above `nproc - 1`: each
+   observation is pinned to one core, and one more runnable thread would have
+   to share it. It is checked before every cell and between the sweeps of a
+   cell; a busy machine stops the sweep, which is resumed later. `--max-load`
+   overrides the gate, and the row records the override.
+10. **Failures print in the same format as results**: `REJ`, and a void cell
+    with its error.
+11. **Both halves, always**: reads only, and with construction counted.
+    Measuring one half can reverse a verdict.
+12. **The working set is swept from L1 cache to RAM.** One size hides the point
+    where memory bandwidth flattens an effect.
+13. **Every cell runs as three whole sweeps.** The interval in rule 5 resamples
+    the pairs of one sweep and cannot see what varies between sweeps:
+    near-identical constructions measured 1.64x, 0.91x and 0.89x with mutually
+    exclusive intervals. A cell's **agreement** is the range every one of its
+    three intervals contains. A cell with no agreement is **withdrawn as
+    unreplicable**, and its three numbers are printed anyway.
 
-That interval is calculated from the 20 pairs of one sweep, so it cannot see
-anything that changes between two sweeps. Six cells proved it: near-identical
-work measured 1.64x, 0.91x and 0.89x, and no two of those can both be true. So a
-cell behind a published number is run three times over, and the three answers are
-published next to each other. Where they disagree, the cell is dropped and the
-three numbers are printed anyway — `make bench-tc11`, `BUGS.md` TC-11.
-
-A cell's **agreement** is the range every one of its three 95% intervals
-contains. The tables call the acceptance tests by their protocol numbers. Rule
-13: a cell whose intervals share no value is withdrawn as unreplicable. Rule 6:
-a number quoted as a rule's evidence needs an agreement whose lower end is above
-1.00; a broad warning, which `chained-allocation` is held to, also needs that
-lower end above 1.05 and the mean of the three sweep ratios at 1.10 or more. A
-cell that fails rule 6 is never evidence; where the docs quote one, they call it
-rejected.
-
-Which tier V8 actually compiled the measured code to is a separate diagnostic,
-never an evidence run: `make tiers` re-runs every published cell's shape under
-`--trace-opt --trace-deopt` in its own processes and appends what it finds to
-`bench/tiers.jl`. A pair whose two sides reach different tiers has a ratio that
-is partly a measurement of tiering, and `tierMismatch` says so in that file's
-row. It is recorded, never gated on.
+`make tiers` re-runs every published cell's shape under
+`--trace-opt --trace-deopt`, in its own processes, at the rep counts the cell
+was published at, and appends to `bench/tiers.jl`. A pair whose two sides reach
+different tiers has a ratio that partly measures tiering, and `tierMismatch`
+marks it. It is recorded and never gated on.
 
 Results apply only to the engine and hardware tested. Every row that records
 its environment ran on Node 22.23.2 with V8 12.4, on an AMD Ryzen 9 5950X,
-pinned to one core. The V8 15.3 pin further down names the source the
-citations quote, not the engine the benchmarks ran on.
+pinned to one core. The V8 15.3 pin below names the source the citations quote,
+not the engine the benchmarks ran on.
 
-## Two sweeps that produced no rule
+## Measured effects that ship no rule
 
-Not every measurement earns a rule, and these two are in the file because they
-did not.
+A measurement that refutes a rule is published like one that supports it.
 
-**`arguments` against a rest parameter: nothing.** The advice to avoid the
-`arguments` object is old, widely repeated, and this project could not price it.
-Nine cells — escaping, indexed, and length-only, at 256, 16384 and 262144 — three
-sweeps each. Seven replicate and every one of those intervals contains 1.00
-(`args.null`, spanning 0.78-1.31 across them); the other two agree on nothing at
-all and are withdrawn, which is what a sweep does when the effect it is looking
-for is not there. No rule reports `arguments`, and `bench/arguments.jl` is why.
-`BUGS.md` TC-53.
+- **The `arguments` object against a rest parameter: nothing.** Nine cells —
+  escaping, indexed and length-only, at 256, 16384 and 262144 — three sweeps
+  each. The seven that replicate all contain 1.00, spanning 0.78-1.31; the
+  other two agree on nothing and are withdrawn. `bench/arguments.jl`.
+- **Dictionary-mode elements: large, and invisible to a static check.** An
+  array V8 has moved to dictionary elements reads 24.3-65.5x slower than a
+  packed one, and 20.4-40.1x slower with construction counted. Nothing in the
+  source separates an array that went sparse from one that did not.
+  `bench/sparse.jl`.
+- **Holey arrays: small.** A holey array reads only 1.32-1.47x slower than a
+  packed one, and is faster once you count building it, 0.28-0.68x.
+  `bench/sparse.jl`.
+- **Boxed arrays: real, and decided by values.** A boxed array costs
+  1.39-1.66x to read, and 1.58-1.69x to build at RAM size. But V8 picks the
+  elements kind from the values stored, not the declared type: a
+  `(number | string)[]` holding only numbers measures 0.96-1.08x against
+  `number[]`. A rule on the declared type would fire on the wrong arrays.
+  `bench/arrays.jl`.
+- **Adding a property after construction: no rule.**
+  `const o = { a: 1 }; o.b = 2;` ends at the same hidden class for every object
+  built that way, so the code that reads them sees one shape. Against writing
+  both properties at once it costs 1.21-1.34x, an effect size this harness has
+  failed to reproduce. An optional property is no worse, and cheaper to build.
+  `bench/addprop.jl`.
+- **Many keyed stores: large, with a threshold no rule can see.** Sixteen keyed
+  adds to a one-field object push it into dictionary mode, and reading its
+  fields then costs 6.17-6.34x; twelve do not. A rule cannot count how many
+  keys a loop adds, and the rewrite for dynamic keys, a `Map`, is unmeasured.
+  `bench/addprop.jl`.
 
-**Dictionary-mode ELEMENTS is the largest effect measured here that no rule
-reports.** An array V8 has moved to dictionary elements reads 24.3-65.5x slower
-than a packed one, and 20.4-40.1x slower with construction counted. It has no
-rule because nothing static separates an array that went sparse from one that
-did not.
+Strings built with `s = s + x`, `s += x` or `s.concat(x)` are not quadratic in
+V8: they build faster than a push-and-join, which is why `accumulating-spread`
+is silent on them. `bench/strings.jl`.
 
-**And the folklore beside it is refuted.** A holey array — the transition people
-actually warn about — reads only 1.32-1.47x slower, and is FASTER than
-packed once you count building it: 0.28-0.68x. So "holey arrays are
-slow" is not the sparse transition worth a rule, and the one that is cannot be
-detected. `BUGS.md` TC-52.
+## Published values later withdrawn
+
+| Was | Now | Why |
+|---|---|---|
+| `closed-world`: 4.42-4.79x, then 3.21-4.95x | 4.64-4.95x | the first range had one sweep per size; the second included the n=100000 cell, whose three sweeps (3.21x, 4.68x, 4.73x) share no value, so it is withdrawn |
+| `delete-property` on one object: 0x | 13.1-15.1x | the old probe's fast side could use a load hoisted out of its loop; a kernel that must load the object on every pass shows the cost |
 
 ## What V8's source says
 
-Six rules carry a second, independent evidence: the mechanism, in the engine's
-own source. A benchmark says what it cost here and cannot say why. A citation
-says what mechanism exists and cannot say what it costs — **the source is silent
-on all seven magnitudes**, and a constant in it is a hypothesis, never a
-measurement.
+Six rules cite the mechanism in V8's own source. A citation says what exists,
+never what it costs: a constant in the source is a hypothesis until a benchmark
+prices it.
 
 ```pin
 revision = c635f0d160b6e988b5ea5a907511a2929beb5d5e
@@ -245,23 +279,21 @@ version = 15.3.0.0
 | `allocating-select` | escape analysis removes an allocation only where it can see it, inside a 1300-byte budget | `src/compiler/escape-analysis.cc:302` → `kTrackingBudget`, `src/compiler/escape-analysis.cc:670` → `HasEscaped` |
 | `closed-world` | bytecode length and a statically known target gate inlining | `src/objects/shared-function-info-inl.h:437` → `bytecode`, `src/flags/flag-definitions.h:1606` → `max_inlined_bytecode_size` |
 | `accumulating-spread` | **none** — quadratic work is quadratic on any engine | — |
-| *no rule* — the elements kind is decided by the values stored, one value at a time, which is why `boxed-elements` was withdrawn | | `src/objects/elements-kind.h:105` → `enum ElementsKind`, `src/objects/objects-inl.h:700` → `OptimalElementsKind` |
+| *no rule* — the elements kind is decided by the values stored, one value at a time, which is why there is no boxed-array rule | | `src/objects/elements-kind.h:105` → `enum ElementsKind`, `src/objects/objects-inl.h:700` → `OptimalElementsKind` |
 
-Three of these say something the benchmark alone could not:
+Three citations say something the benchmarks alone could not:
 
-- **It contradicts one shipped threshold.** A call slot has no polymorphic tier
-  at all, so the four-map budget governs the method *load* and the *call* has a
-  budget of one. A method kept in a field is off the cliff at two, not five.
-  `BUGS.md` TC-13.
-- **It refused one trigger, and the benchmark then agreed.** V8 picks the
-  elements kind from the values actually stored; `boxed-elements` fired on the
-  *declared* type. `make bench-arrays` measured that case at 0.96-1.08x, so the
-  rule is gone — the last row above is a mechanism with no rule attached, kept
-  because it is the reason there is no rule. `BUGS.md` TC-14.
-- **It gives `accumulating-spread` nothing, correctly.** The largest effect
-  measured here is the one that would survive an engine rewrite.
+- **A call slot caches one target.** It has no polymorphic tier, so the
+  four-map budget governs the method *load*, and the *call* has a budget of
+  one. A method kept in a field is past its cliff at the second target, not
+  the fifth (`TC-13`).
+- **The elements kind follows the values.** V8 picks it from the values
+  actually stored, one at a time. The last row above is that mechanism, kept as
+  the reason there is no boxed-array rule.
+- **Quadratic work needs no engine.** `accumulating-spread` has no citation,
+  and its effect, the largest measured here, would survive any engine rewrite.
 
-`make v8-check` verifies every citation above against a pinned checkout and
-fails with the drifted line. It exits non-zero when the checkout is missing
-rather than reporting success. The full clone's `.github/workflows/ci.yml`
-contains the checkout commands and reads the V8 revision from the pin above.
+`make v8-check` compares every citation above with a pinned V8 checkout and
+fails with the line that drifted. Without the checkout it exits non-zero and
+says so. The full clone's `.github/workflows/ci.yml` has the checkout commands
+and reads the revision from the pin above.
