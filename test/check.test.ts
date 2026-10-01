@@ -297,6 +297,19 @@ test('a shorthand property and a cast base resolve, and are not closed-world', (
   assert.strictEqual(mark('raise').platform, 1);
 });
 
+/**
+ * An annotated arrow function in a class field is named for its class and
+ * field, and its `this` is the instance. It printed as `<anonymous>()`, and
+ * `this.op.run(xs)` reported an unknown origin, "`this` outside any method",
+ * where the one implementation is followed and its accumulating spread found
+ * (BUGS TC-160).
+ */
+test('an arrow function in a class field is named and its this is the instance', () => {
+  const byName = rulesByFunction(path.join('test', 'fixtures', 'arrowfield'));
+  assert.deepStrictEqual([...byName.keys()], ['Union.apply']);
+  assert.deepStrictEqual(byName.get('Union.apply'), ['accumulating-spread']);
+});
+
 // The other half of the same hole, and TC-31's own program: a call through a
 // bare function-typed PARAMETER. Only the interface twin above had a fixture,
 // so the half the entry is written about was asserted nowhere.

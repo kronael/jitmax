@@ -523,8 +523,18 @@ export function argAt(
 // walk — an instance built anywhere may call any method.
 export function thisFlow(w: Walk, node: TS.Node, q: Query): Res {
   const ts = w.ts;
+  // An arrow's `this` is the one around it, and around a class field's
+  // initializer that is the instance, or the class for a static field. The walk
+  // climbed past the field to the file and said "`this` outside any method"
+  // about arktype's `traverseApply = (data, ctx) => {…}` (BUGS TC-160).
   let fn: TS.Node | undefined = node;
-  while (fn && !(isFunctionLike(ts, fn) && !ts.isArrowFunction(fn))) fn = fn.parent;
+  while (
+    fn &&
+    !(isFunctionLike(ts, fn) && !ts.isArrowFunction(fn)) &&
+    !ts.isPropertyDeclaration(fn)
+  ) {
+    fn = fn.parent;
+  }
   if (!fn) return unknown('`this` outside any method');
   const holder = fn.parent;
   if (holder && ts.isObjectLiteralExpression(holder)) return w.valueOf(holder, q);

@@ -197,13 +197,18 @@ export function isFunctionLike(ts: Ts, n: TS.Node): n is TS.SignatureDeclaration
 }
 
 // Arrow functions and function expressions carry no name of their own; the
-// name a reader recognises sits on the declaration that holds them.
+// name a reader recognises sits on the declaration that holds them. A class
+// field holding one is named with its class: arktype's `traverseApply:
+// TraverseApply = (data, ctx) => {…}` printed as `<anonymous>()` (BUGS TC-160).
 function nameOf(ts: Ts, node: TS.Node): string {
   const name = (node as TS.NamedDeclaration).name;
   if (name && ts.isIdentifier(name)) return name.text;
   const p = node.parent;
   if (p && (ts.isVariableDeclaration(p) || ts.isPropertyAssignment(p)) && ts.isIdentifier(p.name)) {
     return p.name.text;
+  }
+  if (p && ts.isPropertyDeclaration(p) && !ts.isComputedPropertyName(p.name)) {
+    return `${className(p.parent)}.${p.name.text}`;
   }
   return '<anonymous>';
 }
