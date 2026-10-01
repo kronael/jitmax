@@ -302,7 +302,7 @@ versions and commits. [examples/LICENSE-MIT](examples/LICENSE-MIT) carries their
 permission notices. V8 is a trademark of Google LLC; this project is not
 affiliated with, endorsed by, or sponsored by Google.
 
-Status: v0.15.0, single machine, eight rules.
+Status: v0.16.0, single machine, eight rules.
 
 That version is `package.json` and the newest tag. `bunx github:kronael/jitmax`
 installs the repository's `main` branch, which is ahead of it, and the finding

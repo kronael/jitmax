@@ -6,6 +6,61 @@ The Bun repository workflow needs no npm publication or release tag, and
 Entries below record their versions' behavior and trials as they stood at the
 time, including access limits that no longer hold.
 
+## [v0.16.0] — 20261001
+
+> jitmax v0.16.0 — fewer false errors, findings a newcomer can follow
+>
+> Code that runs once no longer fails the run, and every report now points at evidence you can open.
+>
+> • warn tier — a body only a static initializer reaches prints a warning and exits 0
+> • shapes — class hierarchies and builders count as element shapes, not only unions
+> • precision — `#private` fields, arrow members, casts and `.filter()` narrowing resolve
+> • reports — one call is one error; suppressed runs no longer read as clean
+> • evidence — every report names the repository at its tag, so cited files resolve
+> • docs — rewritten for a first-time reader and checked by cold reviews against the code
+>
+> Full notes: https://github.com/kronael/jitmax/blob/main/CHANGELOG.md
+
+### Changed
+
+- A finding reached only through a static field initializer prints as a warning with a
+  `once:` line and does not fail the run. Exit 0 can now print warnings.
+- `megamorphic-elements` counts the classes and literals that reach the elements, and the
+  constructed subclasses an element type admits, not only a union's members.
+- The finding line leads with its location: `file:line:col  error  rule`.
+- The config file is `jitmax.toml`; the megamorphic preset ships as
+  `examples/megamorphic/jitmax.toml`.
+- The guides are rewritten for a first-time reader: what each rule claims, which two rules
+  report unchecked calls rather than slowdowns, and what a profile or a single-file scan covers.
+- Profile mode applies `min_self_pct` to the project's own share of self time and reports
+  dependency, runtime and engine shares once.
+
+### Fixed
+
+- TypeScript 7, which has no `ts.sys`, exits 2 with the supported range and the install
+  command instead of crashing.
+- `#private` function fields, arrow-function class members, shorthand properties, `super`
+  through a cast and discriminant `.filter()` narrowing resolve correctly.
+- A call `megamorphic-dispatch` reports is one error; interface-dispatch prints as a note.
+- A run whose findings were all suppressed says so instead of "clean".
+- "reached by N annotated functions" counts functions, not findings.
+- A clean run names the axes no rule can check; `-v` prints each.
+- The report names the repository at this release's tag, so `bench/` and `docs/` paths
+  resolve from the user's project.
+- `make bench-shape-sets` runs the sweep `megamorphic-elements` is measured by.
+- A profiled function keeps the `-rule` suppressions on its own annotation.
+- An unmatched module-level frame is named as top-level code, not blamed on a build step.
+- The generated numbers table escapes cell names, so withdrawn and rejected cells render.
+- The suppression line names the rules whose findings it hid, not every rule the config
+  switches off.
+
+### Known limits
+
+- Counts are static evidence, not observed runtime maps or caller speedups.
+- `allocating-select` fires at no site across 22 corpora (TC-148, owner decision).
+- Test-file classes can join a hierarchy count (TC-150, TC-156); a narrowing cast still
+  reads as megamorphic at some vue sites (TC-149).
+
 ## [v0.15.0] — 20260909
 
 > jitmax v0.15.0 — Bun runs the repository install
