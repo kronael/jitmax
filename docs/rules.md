@@ -40,7 +40,13 @@ written as an illustration: a fixture is tested, and an illustration is not.
 
 ## megamorphic-elements
 
-**What it detects.** The fifth distinct property set at a load site.
+**What it detects.** The fifth distinct property set at a load site, counted
+from three sources: the element type's union members, the classes and object
+literals the dataflow walk finds reaching the array, and — only where that
+trace cannot see every origin — every class the program constructs that the
+element type admits through `extends`. Each source counts distinct
+property-name sets, so five classes that agree on their property names are one
+set, not five.
 
 **It fires on** `fiveShapes`, which reads a property off an element of an array
 whose type has five members with five different property names:
@@ -61,19 +67,23 @@ four-map budget, and the measurement agrees — two to four sets cost
 element, so no site exists for a fifth map to reach.
 
 **How to act.** The report names the collection declaration and the first
-property read found through it, both with line and column. Inspect where those
-elements are built: related locations include representative class and literal
-sources when the bounded flow query can find them. Missing, cyclic and
-budget-limited source paths are stated, not inferred from type names.
-If semantics allow, use consistent own properties and
-insertion order, then benchmark the full caller including construction.
-Adding a property can change enumeration and presence checks; a type assertion
-changes neither the object nor its runtime shape. Library callers may need an
-upstream change. This is an investigation path, not a verified rewrite.
+property read found through it, both with line and column. Where the union
+alone accounts for the count, the message says the element type has N property
+sets; where a class or builder the flow walk found makes up the difference, it
+says the elements RECEIVE that many, counted from the classes and builders that
+can reach them, and related locations name those classes beside the builders.
+Inspect where those elements are built: missing, cyclic and budget-limited
+source paths are stated, not inferred from type names. If semantics allow, use
+consistent own properties and insertion order, then benchmark the full caller
+including construction. Adding a property can change enumeration and presence
+checks; a type assertion changes neither the object nor its runtime shape.
+Library callers may need an upstream change. This is an investigation path, not
+a verified rewrite.
 
-The count describes declared property sets, not observed V8 maps. V8 tracks
-runtime property layout and insertion order; a TypeScript type does not record
-that history. See [V8's fast-properties explanation](https://v8.dev/blog/fast-properties).
+The count describes property sets the rule can see — declared in the union,
+traced by dataflow, or admitted through `extends` — not observed V8 maps. V8
+tracks runtime property layout and insertion order; a TypeScript type does not
+record that history. See [V8's fast-properties explanation](https://v8.dev/blog/fast-properties).
 
 **The cost.** 3.4-11.3x on reads, in `bench/shape-sets.jl` and
 `bench/shapes-calibrated.jl`. `examples/README.md` records a successful Zod
@@ -433,12 +443,20 @@ finding. The `delete` rule fires without knowing whether anything reads the
 object afterwards, and its cost is *per read*. The gap is written up as TC-9 in
 `BUGS.md`.
 
-## Every finding is an error
+## Every finding on a per-call path is an error
 
-Every finding is an error, and every error fails the run. **The annotation is
-the filter**: you write `/** @jitmax */` on a function you need fast, so
-a finding on one is actionable by definition and a second severity tier gates
-nobody. Three rules — `closed-world`, `interface-dispatch` and
+Every finding on a per-call path is an error, and every error fails the run.
+**The annotation is the filter**: you write `/** @jitmax */` on a function you
+need fast, so a finding on one is actionable by definition and a second
+severity tier gates nobody. A finding reached only through a static field
+initializer is not on a per-call path — it runs once, when its class is
+defined, however often the mark runs — so it prints as `warn` with a `once:`
+line naming the initializer, and does not fail the run. A constructor and an
+instance field stay per call, same as a closure a once body builds, since it
+runs whenever it is called, and a body a per-call path also reaches keeps its
+error (`BUGS.md` TC-107).
+
+Three rules — `closed-world`, `interface-dispatch` and
 `megamorphic-dispatch` — warned and exited 0 until 2026-08-31, on the argument
 that no benchmark measures the program they fire on. That gap is real and is
 still stated: they carry `TC-33`, and the report prints `known defect: TC-33`

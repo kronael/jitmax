@@ -98,12 +98,15 @@ naive gate whatever its code looks like.
 
 - **A TypeScript union member is not a V8 map**, the engine's internal record of
   an object's property names and the order they were added.
-  `megamorphic-elements` estimates the map count from the declared type, so it
-  can report a problem even if no load site ever sees five maps. What it does not
-  do is count NAMES: five aliases of one type, and five discriminated-union
-  variants over one key set, are one map each — V8's own `%HaveSameMap` says so
-  — so the rule counts distinct property-name sets, which no rename can change.
-  `BUGS.md` TC-2 and TC-42.
+  `megamorphic-elements` estimates the map count from the union's declared
+  members, the classes and literals dataflow finds reaching the elements, and
+  — where that trace cannot see every origin — the classes the element type
+  admits through `extends`, so it can report a problem even if no load site
+  ever sees five maps. What it does not do is count NAMES: five aliases of one
+  type, and five discriminated-union variants over one key set, are one map
+  each — V8's own `%HaveSameMap` says so — so the rule counts distinct
+  property-name sets, which no rename can change. `BUGS.md` TC-2, TC-42 and
+  TC-104.
 
 - `megamorphic-elements` requires a READ off an element, and is narrowed to a
   read on purpose: V8 charges the same four-map budget at a store and at `in`,
