@@ -5,7 +5,9 @@ Bun runs the checker, but the findings and measurements below concern V8, not
 Bun's JavaScriptCore engine.
 
 Where jitmax does not work, where its numbers do not apply, and what its own
-measurements could not answer. Nothing here is a roadmap item. Every entry is a
+measurements could not answer. Nothing here is a roadmap item. A trial report
+records what the tool did when that trial ran; [the rule
+reference](rules.md) states what each rule does now. Every other entry is a
 statement about the tool as it ships today.
 
 References to `BUGS.md` name the internal issue history in a full Git clone.
@@ -14,12 +16,16 @@ explain the caveats without it.
 
 ## The three that bite first
 
-- **Every rule matches inside one body.** The walk widens *where* the rules are
-  applied — it visits every callee whose source the program has — and it does
-  not widen what any single rule can see. So `acc = append(acc, x)` in a loop,
-  with `append = (a, x) => [...a, x]` next to it, is a loop in one body and a
-  copy in another, and no rule here joins them, even though the walk reads both
-  files. Hoisting the measured pattern into a helper silences the tool.
+- **Some patterns go unreported when they are split across functions.** The
+  walk visits every callee whose source the program has, but
+  `accumulating-spread` needs the loop and the copy in one body. So
+  `acc = append(acc, x)` in a loop, with `append = (a, x) => [...a, x]` next to
+  it, is a loop in one body and a copy in another, and the rule does not join
+  them, even though the walk reads both files. Moving the copy into a helper
+  silences it. Other rules do follow values across calls: the megamorphic rules
+  trace what reaches a receiver, `allocating-select` reads the callee's
+  returned allocation, and `delete-property` follows the deleted object through
+  arguments and returns to name the code that reads its keys.
   `chained-allocation` also misses stages split across local bindings, such as
   `const doubled = xs.map(f); const kept = doubled.filter(g)`. Both gaps are
   `BUGS.md` TC-43.
@@ -63,7 +69,7 @@ elements go through it, and the annotation cannot say.
 
 The Immich trial is a safety limit, not a coverage one. Immich's
 `removeUndefinedKeys` in `utils/database.ts:127` exists to OMIT keys from a
-Kysely `SET` clause, and `delete-property`'s printed fix is to assign
+Kysely `SET` clause, and one of `delete-property`'s printed fixes is to assign
 `undefined` instead. The user's judgement: applying the generic fix here "risks
 writing NULL to columns that should be left untouched." A second site in the
 same trial deletes `mediaTags` entries deliberately so later lookups do not find
@@ -156,7 +162,8 @@ probe."
   `r.x = v` would quote a read's number for a write. `in` is the remaining gap.
   `BUGS.md` TC-8.
 
-- `megamorphic-dispatch` fires on the fifth object type. That is right for a
+- `megamorphic-dispatch` fires at the fifth distinct property set, or the
+  fifth implementation traced to a receiver. That is right for a
   method on a class: four types cost 1.41-1.65x and the fifth costs 12.9-22.7x,
   the sharpest step measured here. It is late for an object that carries its own
   function in a field. There the cost starts at the *second* one — 3.5-15.8x,
@@ -178,10 +185,10 @@ probe."
   annotation does not decide. `make bench-arrays`, `BUGS.md` TC-14. The same
   shape as the 6.17-6.34x dictionary effect in TC-12.
 
-- **A call through a parameter or an interface method is NOT listed in the
-  coverage line.** It resolves to a declaration that is neither followable nor a
-  declaration file, and falls through both branches (`BUGS.md` TC-31). Read the
-  coverage line as "the calls it could name", not "everything it could not see".
+- **The walk does not check the body behind a call through a parameter or an
+  interface it cannot bind to one implementation.** It reports the call as
+  `closed-world` or `interface-dispatch` instead. Read those findings as
+  unchecked code, not as a measured slowdown.
 
 - **Rules fire outside the conditions their own evidence establishes.** That is
   `BUGS.md` TC-9, it is printed under every finding of the rules that carry it,
@@ -190,7 +197,8 @@ probe."
 - **Never trust V8 optimization state as a speed signal.**
   `%GetOptimizationStatus` reported `optimized=true` throughout a 5x megamorphic
   slowdown. That signal once gated an automated check here, which was wrong, so
-  the gate was deleted. Nothing in this project reads it now.
+  the gate was deleted. No check or evidence run reads it now; only the
+  diagnostic probe `bench/optsize.ts` does, to ask which tier a function reached.
 
 ## What the measurements cannot support
 
