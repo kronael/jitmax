@@ -240,18 +240,26 @@ const shapeKey = (checker: TS.TypeChecker, t: TS.Type): string =>
 // count is over distinct property-name sets, so a rename cannot make a shape
 // and the printed fix cannot be satisfied by one.
 export const objectShapes = (ts: Ts, checker: TS.TypeChecker, t: TS.Type): number =>
+  new Set(unionKeys(ts, checker, t)).size;
+
+const unionKeys = (ts: Ts, checker: TS.TypeChecker, t: TS.Type): string[] =>
   t.isUnion()
-    ? new Set(
-        t.types
-          // Intersection as well as Object: a branded type `T & {__tag?: K}` is
-          // an Intersection, so five branded object types behind one receiver —
-          // the 3.4-11.3x program bench/shape-sets.jl measures — counted zero
-          // shapes and reported clean. `getPropertiesOfType` resolves an
-          // intersection already, so shapeKey needs nothing (TC-95).
-          .filter((x) => x.flags & (ts.TypeFlags.Object | ts.TypeFlags.Intersection))
-          .map((x) => shapeKey(checker, x))
-      ).size
-    : 0;
+    ? t.types
+        // Intersection as well as Object: a branded type `T & {__tag?: K}` is
+        // an Intersection, so five branded object types behind one receiver —
+        // the 3.4-11.3x program bench/shape-sets.jl measures — counted zero
+        // shapes and reported clean. `getPropertiesOfType` resolves an
+        // intersection already, so shapeKey needs nothing (TC-95).
+        .filter((x) => x.flags & (ts.TypeFlags.Object | ts.TypeFlags.Intersection))
+        .map((x) => shapeKey(checker, x))
+    : [];
+
+// The instance type a class builds. A class expression's own type is its
+// constructor's, so the instance is read off the construct signature.
+const instanceOf = (ts: Ts, checker: TS.TypeChecker, c: TS.ClassLikeDeclaration): TS.Type => {
+  const t = checker.getTypeAtLocation(c);
+  return ts.isClassDeclaration(c) ? t : (t.getConstructSignatures()[0]?.getReturnType() ?? t);
+};
 
 export const elementType = (ts: Ts, checker: TS.TypeChecker, t: TS.Type): TS.Type | undefined =>
   checker.getIndexTypeOfType(t, ts.IndexKind.Number);
@@ -293,6 +301,56 @@ export function arrayValues(ts: Ts, checker: TS.TypeChecker, body: Body): ArrayV
     if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name)) take(n);
   });
   return out;
+}
+
+// The property sets that can reach an array's elements (BUGS TC-104).
+// `objectShapes` reads a union element type and nothing else, so an abstract
+// class with six constructed subclasses counted zero, and the rule saw
+// polymorphism only when it was written out as `A | B | C | D | E`. The union
+// keeps its answer, and two sources join it: the builders lib/flow.ts finds
+// reaching the elements, classes and literals alike; and, only where that walk
+// cannot see every origin, every class the program constructs that the element
+// type admits through `extends`. A walk that does see every origin knows better
+// than the hierarchy does. Every source counts distinct property-name sets, as
+// the union always has, so five classes that agree on their names stay one
+// shape — nothing static separates them from one class built five times. An
+// element typed `any` keeps the union's answer of none: a count over an erased
+// type is one no declared type checks (BUGS TC-111).
+export interface Shapes {
+  count: number;
+  // The union's own count, so a finding can say where its number came from.
+  declared: number;
+  // The classes the hierarchy contributed, for the finding to name.
+  classes: TS.ClassLikeDeclaration[];
+}
+
+export function elementShapes(ts: Ts, checker: TS.TypeChecker, mark: Mark, value: ArrayValue): Shapes {
+  const keys = new Set(unionKeys(ts, checker, value.element));
+  const declared = keys.size;
+  const objects = members(value.element).filter(
+    (m) => m.flags & (ts.TypeFlags.Object | ts.TypeFlags.Intersection)
+  );
+  if (objects.length === 0) return { count: declared, declared, classes: [] };
+  if (!mark.flow) throw new Error('source tracing requires a scanned function');
+  const reaching = mark.flow.sources(value.p.name, true);
+  for (const o of reaching.origins.values()) {
+    if (o.kind === 'class') {
+      keys.add(shapeKey(checker, instanceOf(ts, checker, o.node as TS.ClassLikeDeclaration)));
+    } else if (o.kind === 'literal') {
+      keys.add(shapeKey(checker, checker.getTypeAtLocation(o.node)));
+    }
+  }
+  const classes = new Set<TS.ClassLikeDeclaration>();
+  if (reaching.unknown.size > 0 || reaching.tainted || reaching.starved) {
+    for (const m of objects) {
+      for (const d of m.getSymbol()?.getDeclarations() ?? []) {
+        if (!ts.isClassDeclaration(d) && !ts.isClassExpression(d)) continue;
+        for (const c of mark.flow.constructedClasses(d)) classes.add(c);
+      }
+    }
+  }
+  for (const c of classes) keys.add(shapeKey(checker, instanceOf(ts, checker, c)));
+  return { count: keys.size, declared, classes: [...classes] };
 }
 
 // `boxed-elements` was here, and `bench/arrays.jl` withdrew it. A genuinely

@@ -1760,6 +1760,31 @@ test('a local union array counts, a branded one counts, an unrelated read does n
   assert.strictEqual(run.status, 1);
 });
 
+/**
+ * Polymorphism written as classes reaches one load site as surely as a union
+ * does. Six constructed subclasses of an abstract class counted zero shapes,
+ * because only a union type was read, so `sumClasses` passed while `sumUnion`,
+ * the same six shapes as type aliases, failed. Both report now, and so do five
+ * literal builders reaching an interface-typed array. A walk that sees every
+ * origin outranks the hierarchy (`sumOne`), and classes that agree on their
+ * property names are one set (`sumSame`) (BUGS TC-104).
+ */
+test('class hierarchies and builders count as element shapes, beside the union', () => {
+  const byName = findingsByFunction(path.join('test', 'fixtures', 'hierarchy'));
+  const elements = (name: string) =>
+    (byName.get(name) ?? assert.fail(`no mark ${name}`)).filter((f) => f.rule === 'megamorphic-elements');
+  const [classes] = elements('sumClasses');
+  assert.match(classes?.message ?? '', /rows receives elements with 6 distinct property sets/);
+  assert.deepStrictEqual(
+    (classes?.related ?? []).filter((r) => r.name.startsWith('class: ')).map((r) => r.name),
+    ['class: K1', 'class: K2', 'class: K3', 'class: K4', 'class: K5', 'class: K6']
+  );
+  assert.match(elements('sumUnion')[0]?.message ?? '', /rows has 6 distinct property sets in its element type/);
+  assert.match(elements('sumRows')[0]?.message ?? '', /rows receives elements with 5 distinct property sets/);
+  assert.deepStrictEqual(elements('sumOne'), []);
+  assert.deepStrictEqual(elements('sumSame'), []);
+});
+
 // Type identity is not value provenance. `probe` is annotated with the whole
 // element union, so `(probe as A).a` — the one load in `collect` — satisfied a
 // `t === element` test for both arrays in scope, neither of which is ever read.

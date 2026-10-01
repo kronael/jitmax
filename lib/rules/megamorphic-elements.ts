@@ -1,14 +1,14 @@
 import type * as TS from 'typescript';
 import type { Ts } from '../ts.ts';
-import { at, isFunctionLike, unwrap, type Body } from '../scan.ts';
-import { elementFlow } from '../flow.ts';
+import { at, isFunctionLike, siteKey, unwrap, type Body } from '../scan.ts';
+import { className, elementFlow } from '../flow.ts';
 import { N } from '../numbers.ts';
 import {
   arrayValues,
   cells,
+  elementShapes,
   megamorphicCandidate,
   MAX_CACHED_MAPS,
-  objectShapes,
   sourceHints,
   walk,
   type Evidence,
@@ -165,10 +165,35 @@ function scopeOf(ts: Ts, decl: TS.Node, body: Body): TS.Node {
   return n ?? body.node;
 }
 
+// Every type a scope reads a property off: the type half of readsFromElement,
+// without its provenance walk. A collection whose element type is not among
+// them has no load for that walk to find.
+function typesRead(ts: Ts, checker: TS.TypeChecker, scope: TS.Node): Set<TS.Type> {
+  const out = new Set<TS.Type>();
+  walk(ts, scope, (node) => {
+    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+      out.add(checker.getTypeAtLocation(unwrap(ts, node.expression)));
+    } else if (ts.isObjectBindingPattern(node)) {
+      out.add(checker.getTypeAtLocation(node));
+    }
+  });
+  return out;
+}
+
 const detect: Rule = (ts, checker, body, add, mark) => {
-  for (const { p, element } of arrayValues(ts, checker, body)) {
-    const shapes = objectShapes(ts, checker, element);
-    if (shapes <= MAX_CACHED_MAPS) continue;
+  // Asked first, once per scope, because counting shapes now asks the flow walk
+  // about every collection, and that nearly doubled the run on TypeScript's
+  // checker: a collection nothing reads an element of is not worth the query
+  // (BUGS TC-104).
+  const scopes = new Map<TS.Node, Set<TS.Type>>();
+  for (const value of arrayValues(ts, checker, body)) {
+    const { p, element } = value;
+    const scope = scopeOf(ts, p, body);
+    const types = scopes.get(scope) ?? typesRead(ts, checker, scope);
+    scopes.set(scope, types);
+    if (!types.has(element)) continue;
+    const shapes = elementShapes(ts, checker, mark, value);
+    if (shapes.count <= MAX_CACHED_MAPS) continue;
     // The load has to be there. This rule read the parameter's type and
     // inferred a megamorphic load site from it, so a function whose whole body
     // is `return rows.length` was billed the fifth map's cost — and
@@ -177,18 +202,30 @@ const detect: Rule = (ts, checker, body, add, mark) => {
     // off an element there is no site to go megamorphic, and the annotation
     // cannot rescue it, because hot code that never reads a property still
     // never reads a property (BUGS TC-8).
-    const read = readsFromElement(ts, checker, scopeOf(ts, p, body), p, element);
+    const read = readsFromElement(ts, checker, scope, p, element);
     if (!read) continue;
     const sources = sourceHints(mark, p.name, true);
+    // The classes the count took from the hierarchy, named beside the builders
+    // the trace found, once each: they are what to inspect (BUGS TC-104).
+    const traced = new Set((sources.related ?? []).map(siteKey));
+    const hierarchy = shapes.classes
+      .map((c) => ({ ...at(c.getSourceFile(), c), name: `class: ${className(c)}` }))
+      .filter((c) => !traced.has(siteKey(c)));
     add({
       ...at(body.sf, p),
       rule: NAME,
       // What the count is, said in the words of the thing counted. It read
       // "unions N object types" while counting union members, and a reader who
       // took that literally could satisfy the fix by renaming a member (TC-42).
-      // Distinct property sets cannot be merged by a rename.
+      // Distinct property sets cannot be merged by a rename. Where the element
+      // type alone does not account for the count, the classes and builders
+      // that reach the array do, and the message says so (BUGS TC-104).
       message:
-        `${p.name.getText(body.sf)} has ${shapes} distinct property sets in its element type; ` +
+        (shapes.count === shapes.declared
+          ? `${p.name.getText(body.sf)} has ${shapes.count} distinct property sets in its ` +
+            'element type; '
+          : `${p.name.getText(body.sf)} receives elements with ${shapes.count} distinct ` +
+            'property sets, counted from the classes and builders that can reach it; ') +
         megamorphicCandidate('load'),
       fix:
         'inspect where these elements are built, not just this parameter. If semantics ' +
@@ -200,9 +237,15 @@ const detect: Rule = (ts, checker, body, add, mark) => {
         'an upstream change; no automatic rewrite is established here',
       related: [
         { ...at(body.sf, read), name: `read: ${read.getText(body.sf)}` },
+        ...hierarchy,
         ...(sources.related ?? []),
       ],
-      relatedNote: sources.relatedNote,
+      relatedNote:
+        sources.relatedNote +
+        (hierarchy.length > 0
+          ? ' The classes are every one this program constructs that the element type ' +
+            'admits, counted because tracing could not see every origin.'
+          : ''),
     });
   }
 };

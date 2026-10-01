@@ -59,6 +59,7 @@ export interface Traced {
 export interface Flow {
   receiver(call: TS.CallExpression | TS.NewExpression): Traced;
   sources(node: TS.Node, elements?: boolean): Res;
+  constructedClasses(cls: TS.ClassLikeDeclaration): TS.ClassLikeDeclaration[];
 }
 
 export interface Query {
@@ -254,6 +255,15 @@ export const subclassesOf = (w: Walk, cls: TS.ClassLikeDeclaration): TS.ClassLik
   }
   return out;
 };
+
+// `cls` and every subclass of it the program visibly constructs: what an
+// instance typed as `cls` can have been built as. `this` in a method reads it,
+// and so does megamorphic-elements for an element typed as a class, where the
+// `extends` edges are shapes rather than call targets (BUGS TC-104).
+export const constructedClasses = (
+  w: Walk,
+  cls: TS.ClassLikeDeclaration
+): TS.ClassLikeDeclaration[] => [cls, ...subclassesOf(w, cls)].filter((c) => w.constructed(c));
 
 export function compute(w: Walk, node: TS.Node, q: Query): Res {
   const ts = w.ts;
@@ -526,8 +536,8 @@ export function thisFlow(w: Walk, node: TS.Node, q: Query): Res {
     .valueOf() & ts.ModifierFlags.Static;
   if (isStatic) return originOf(w, { kind: 'classobj', node: holder, name: className(holder) });
   const out = emptyRes();
-  for (const c of [holder, ...subclassesOf(w, holder)]) {
-    if (w.constructed(c)) merge(out, originOf(w, { kind: 'class', node: c, name: className(c) }));
+  for (const c of constructedClasses(w, holder)) {
+    merge(out, originOf(w, { kind: 'class', node: c, name: className(c) }));
   }
   if (out.origins.size === 0) {
     out.unknown.add(`no visible construction of ${className(holder)} or a subclass`);
@@ -1099,7 +1109,7 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     return elements ? elementsOf(w, res, q) : res;
   }
 
-  return { receiver, sources };
+  return { receiver, sources, constructedClasses: (cls) => constructedClasses(w, cls) };
 }
 
 // Which parameter of an array callback holds an ELEMENT. Not shared.ts's
