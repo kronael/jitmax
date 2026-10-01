@@ -3,7 +3,7 @@ import type * as TS from 'typescript';
 import type { Ts } from './ts.ts';
 import type { HotFrame } from './profile.ts';
 import { BUILTINS } from './builtins.ts';
-import { createFlow, type Flow } from './flow.ts';
+import { className, createFlow, type Flow } from './flow.ts';
 
 // Calls that TurboFan lowers to inline machine code: there is no call boundary
 // at these sites at all, so reaching one is not a hole in the promise. The set
@@ -77,7 +77,14 @@ export interface Call extends Site {
   // the walk could read the callee's body, so the question is asked at both
   // (BUGS TC-110).
   dispatch: Dispatch;
+  // The `once` of the body this call sits in, or undefined when the call sits
+  // in a closure nested in that body (see isClosure).
+  once: Once | undefined;
 }
+
+// A static field initializer: it runs when its class is defined, and not on
+// each `new` the walk entered the class through.
+export type Once = Site & { name: string };
 
 export interface Body {
   // Any node the walk can descend into, not only a signature: a class field
@@ -86,6 +93,12 @@ export interface Body {
   node: TS.Node;
   sf: TS.SourceFile;
   name: string;
+  // A static initializer every path from the mark to this body runs through,
+  // or undefined when some path is per call. Such a body runs when a class is
+  // defined however often the mark runs, so a finding in it cannot fail the run
+  // and the report names this initializer as the reason — except in a closure
+  // nested in the body, which runs whenever it is called (BUGS TC-107).
+  once: Once | undefined;
 }
 
 export interface Mark extends Site {
@@ -134,6 +147,34 @@ export interface Mark extends Site {
 // Termination. The visited set already handles cycles; this bounds a call
 // graph that fans out faster than it repeats.
 const MAX_BODIES = 200;
+
+// A function nested in a body runs whenever it is called, not when the body's
+// own code does — unless it is invoked where it is written, as an IIFE is.
+// pixi's `CanvasTextMetrics.graphemeSegmenter` is a static field holding the
+// closure an IIFE returns: the IIFE runs once, the closure on every measured
+// string. So code inside a closure is never counted as running once
+// (BUGS TC-107).
+function isClosure(ts: Ts, n: TS.Node): boolean {
+  if (!isFunctionLike(ts, n)) return false;
+  let p = n.parent;
+  while (ts.isParenthesizedExpression(p)) p = p.parent;
+  return !(ts.isCallExpression(p) && unwrap(ts, p.expression) === n);
+}
+
+// Whether a site in a body sits inside a closure nested in it. The walk keeps
+// this as it descends; a rule's finding has only its position, so check() asks
+// here, and only for a body that runs once.
+export function inClosure(ts: Ts, body: Body, site: Site): boolean {
+  const pos = body.sf.getPositionOfLineAndCharacter(site.line - 1, site.column - 1);
+  let found = false;
+  const visit = (n: TS.Node): void => {
+    if (found || pos < n.getStart(body.sf) || pos >= n.getEnd()) return;
+    if (isClosure(ts, n)) found = true;
+    else ts.forEachChild(n, visit);
+  };
+  ts.forEachChild(body.node, visit);
+  return found;
+}
 
 // A function boundary: what the walk follows into, and what the rules must not
 // walk across. One definition, because rules.ts kept a second copy that differed
@@ -572,9 +613,25 @@ function reach(
       isAbstractStub(ts, d)) &&
     d.getSourceFile()?.isDeclarationFile === false;
 
-  const reached: Body[] = [{ node: root.node, sf: root.sf, name: root.name }];
+  const reached: Body[] = [{ node: root.node, sf: root.sf, name: root.name, once: undefined }];
   const seen = new Set<TS.Node>([root.node]);
+  // Every edge the walk takes, to a new body or to one already reached: which
+  // bodies run once is decided from all of them after the walk, and never from
+  // the order the walk took them in. `once` is set on the edge from a `new` to
+  // a static initializer; `closure` on an edge whose call sits in a closure.
+  const edges: Array<{ from: TS.Node; to: TS.Node; once: Once | undefined; closure: boolean }> = [];
+  const admit = (from: TS.Node, to: TS.Node, once: Once | undefined, closure: boolean): void => {
+    edges.push({ from, to, once, closure });
+    if (seen.has(to)) return;
+    if (reached.length >= MAX_BODIES) {
+      truncated = true;
+      return;
+    }
+    seen.add(to);
+    reached.push({ node: to, sf: to.getSourceFile(), name: nameOf(ts, to), once: undefined });
+  };
   const escapes: Call[] = [];
+  const escapedFrom: Array<{ call: Call; body: TS.Node; closure: boolean }> = [];
   const untyped: (Site & { name: string })[] = [];
   let platform = 0;
   let lowered = 0;
@@ -592,7 +649,7 @@ function reach(
   for (let i = 0; i < reached.length; i++) {
     const body = reached[i];
     if (!body) continue;
-    const visit = (node: TS.Node): void => {
+    const visit = (node: TS.Node, closure: boolean): void => {
       // `new Foo()` is a NewExpression, not a CallExpression. The walk visited
       // only the second, so a constructor in your own source was never checked
       // and a constructor from a typed dependency was never reported as an
@@ -634,13 +691,31 @@ function reach(
           // and they are not callees, so they are walked as bodies directly
           // rather than going through `followable`, which wants a signature.
           const inits: TS.Node[] = [];
+          // A STATIC field initializer does not run on this `new` at all: it
+          // ran when the class was defined. Walked, as the once-per-class edge
+          // it is. arrow's `Vector` builds a table in one at module load, and it
+          // was charged as an error to every annotated function that constructs
+          // a vector (BUGS TC-107).
+          const statics: Array<{ node: TS.Node; once: Once }> = [];
           const classBodies = (d: TS.Node, depth: number): void => {
             if (!ts.isClassDeclaration(d) && !ts.isClassExpression(d)) {
               decls.push(d);
               return;
             }
             for (const m of d.members) {
-              if (ts.isPropertyDeclaration(m) && m.initializer) inits.push(m);
+              if (!ts.isPropertyDeclaration(m) || !m.initializer) continue;
+              if (!(ts.getCombinedModifierFlags(m) & ts.ModifierFlags.Static)) {
+                inits.push(m);
+                continue;
+              }
+              const member = m.name.getText();
+              statics.push({
+                node: m,
+                once: {
+                  ...at(m.getSourceFile(), m),
+                  name: className(d) + (ts.isComputedPropertyName(m.name) ? member : `.${member}`),
+                },
+              });
             }
             const ctor = d.members.find((m) => ts.isConstructorDeclaration(m) && m.body);
             if (ctor) {
@@ -676,15 +751,8 @@ function reach(
           };
           for (const d of raw) classBodies(d, 0);
           const next = [...decls.filter((d) => followable(ts, d)), ...inits];
-          for (const d of next) {
-            if (seen.has(d)) continue;
-            if (reached.length >= MAX_BODIES) {
-              truncated = true;
-              continue;
-            }
-            seen.add(d);
-            reached.push({ node: d, sf: d.getSourceFile(), name: nameOf(ts, d) });
-          }
+          for (const d of next) admit(body.node, d, undefined, closure);
+          for (const s of statics) admit(body.node, s.node, s.once, closure);
           // The promise ends wherever we cannot look, and the test is simply
           // that nothing was followable. It used to also require the callee to
           // be types-only or unresolvable, so a call that resolved to an
@@ -735,18 +803,7 @@ function reach(
                 r.origins.length === 1 && r.unknown.length === 0 ? r.origins[0] : undefined;
               if (one?.follow !== undefined && followable(ts, one.follow)) {
                 followed++;
-                if (!seen.has(one.follow)) {
-                  if (reached.length >= MAX_BODIES) {
-                    truncated = true;
-                  } else {
-                    seen.add(one.follow);
-                    reached.push({
-                      node: one.follow,
-                      sf: one.follow.getSourceFile(),
-                      name: nameOf(ts, one.follow),
-                    });
-                  }
-                }
+                admit(body.node, one.follow, undefined, closure);
               } else {
                 const prop = ts.isPropertyAccessExpression(callee) ? callee : undefined;
                 const rt = checker.getTypeAtLocation(prop ? prop.expression : callee);
@@ -770,7 +827,7 @@ function reach(
                 if (prop !== undefined && !typed && decls.length === 0) {
                   untyped.push({ ...site, name: text });
                 } else {
-                  escapes.push({
+                  const call: Call = {
                     ...site,
                     text,
                     viaInterface: decls.some(isDispatchDecl),
@@ -787,17 +844,54 @@ function reach(
                       method: prop ? prop.name.text : '',
                       typed,
                     },
-                  });
+                    once: undefined,
+                  };
+                  escapes.push(call);
+                  escapedFrom.push({ call, body: body.node, closure });
                 }
               }
             }
           }
         }
       }
-      ts.forEachChild(node, visit);
+      ts.forEachChild(node, (c) => visit(c, closure || isClosure(ts, c)));
     };
-    ts.forEachChild(body.node, visit);
+    ts.forEachChild(body.node, (c) => visit(c, isClosure(ts, c)));
   }
+
+  // A body runs once when no per-call path reaches it. Per call: the root, and
+  // whatever a call inside a closure reaches, since a closure runs whenever it
+  // is called; then everything those reach along an edge that is not a static
+  // initializer. A body reached by both keeps its error — the per-call edge is
+  // real whatever else reaches the body (BUGS TC-107).
+  const perCall = new Set<TS.Node>([root.node]);
+  const callees = new Map<TS.Node, TS.Node[]>();
+  for (const e of edges) {
+    if (e.once !== undefined) continue;
+    if (e.closure) perCall.add(e.to);
+    const tos = callees.get(e.from);
+    if (tos) tos.push(e.to);
+    else callees.set(e.from, [e.to]);
+  }
+  const queue = [...perCall];
+  for (let i = 0; i < queue.length; i++) {
+    for (const to of callees.get(queue[i]!) ?? []) {
+      if (perCall.has(to)) continue;
+      perCall.add(to);
+      queue.push(to);
+    }
+  }
+  // The initializer a once body is named by: the one on the edge that first
+  // reached it, or its first reacher's. Edges are in walk order, so that
+  // reacher is decided before the body it reached.
+  const once = new Map<TS.Node, Once>();
+  for (const e of edges) {
+    if (perCall.has(e.to) || once.has(e.to)) continue;
+    const via = e.once ?? once.get(e.from);
+    if (via !== undefined) once.set(e.to, via);
+  }
+  for (const body of reached) body.once = once.get(body.node);
+  for (const e of escapedFrom) e.call.once = e.closure ? undefined : once.get(e.body);
   return { reached, escapes, platform, lowered, followed, untyped, truncated };
 }
 

@@ -28,6 +28,21 @@ export const rel = (cwd: string, file: string): string => path.relative(cwd, fil
 export const findingKey = (f: Finding): string =>
   `${f.rule}|${f.file}|${f.line}|${f.column}`;
 
+// The sites that fail a run: those at least one mark reaches on a per-call
+// path. A site every mark reaches only through a static initializer runs when
+// its class is defined, however often the marks run, and is a warning. The
+// header, the severity on each finding and bin/jitmax.ts's exit code all read
+// this one answer, because one site can be both — once per process from one
+// mark and per call from another — and the per-call edge is the real one
+// (BUGS TC-107).
+export const failing = (results: Array<{ findings: Finding[] }>): Set<string> =>
+  new Set(
+    results
+      .flatMap((r) => r.findings)
+      .filter((f) => f.once === undefined)
+      .map(findingKey)
+  );
+
 export interface Blind {
   // Modules the program could not resolve. Every type from one reads as `any`,
   // so every type-based rule is quiet on the files that import it — and quiet
@@ -168,7 +183,12 @@ export function render(
   }));
   const alsoReached = [...reach.values()].reduce((n, c) => n + (c - 1), 0);
   const all = perSite.flatMap((r) => r.findings);
-  out.push(`jitmax — ${plural(results.length, subject)}, ${plural(all.length, 'error')}`);
+  const errors = failing(results);
+  const warnings = all.filter((f) => !errors.has(findingKey(f))).length;
+  out.push(
+    `jitmax — ${plural(results.length, subject)}, ${plural(all.length - warnings, 'error')}` +
+      (warnings > 0 ? `, ${plural(warnings, 'warning')}` : '')
+  );
   // Suppression is never silent: a run that looks clean because rules were
   // switched off says so here, every time, not only when it would otherwise
   // read as clean. BUGS TC-7 is the same class of lie in a different place.
@@ -347,9 +367,11 @@ export function render(
       // token was the only boundary, and after wrapping it is not at a
       // predictable line.
       if (i > 0) out.push('');
-      // Every finding is an error. The annotation is the filter: a function
-      // marked `/** @jitmax */` is one somebody needs fast, so a finding
-      // on it is actionable by definition and a second tier gates nobody. Three
+      // Every finding on a per-call path is an error. The annotation is the
+      // filter: a function marked `/** @jitmax */` is one somebody needs fast,
+      // so a finding on it is actionable by definition and a second tier gates
+      // nobody. A site reached only through a static initializer is not on it:
+      // it runs when its class is defined, and is a warning (BUGS TC-107). Three
       // rules fire on programs their own benchmarks did not measure — they say
       // so in the `known defect: TC-33` line below, and the way to quiet one is
       // the `[rules]` table or a `-rulename` on the annotation (BUGS TC-33).
@@ -363,10 +385,21 @@ export function render(
       // gaps are what make the three columns scannable. Nothing else joins
       // this line — a long path plus a long rule name already approaches the
       // 78-column budget the rest of the report keeps.
-      out.push(`    ${at}  error  ${f.rule}`);
+      const once = errors.has(findingKey(f)) ? undefined : f.once;
+      out.push(`    ${at}  ${once ? 'warn' : 'error'}  ${f.rule}`);
       const from = reach.get(findingKey(f)) ?? 1;
       if (from > 1) out.push(...wrap('      ', `reached by ${from} annotated functions`));
       out.push(...wrap('      ', f.message));
+      if (once) {
+        out.push(
+          ...wrap(
+            '      once: ',
+            `reached only through the static initializer ${once.name} at ` +
+              `${rel(cwd, once.file)}:${once.line}:${once.column}, which runs when its class ` +
+              'is defined and not on each call, so this does not fail the run'
+          )
+        );
+      }
       const related = f.related ?? [];
       const shownSources = verbose ? related : related.slice(0, 5);
       for (const source of shownSources) {

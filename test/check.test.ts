@@ -1190,7 +1190,7 @@ test('CLI help works without a valid project and ignores other arguments', () =>
         assert.match(run.stdout, /\/\*\* @jitmax \*\//);
         assert.match(run.stdout, /\/\*\* @jitmax -megamorphic-elements \*\//);
         assert.match(run.stdout, /working directory upward/);
-        assert.match(run.stdout, /Exit codes: 0 checked and clean; 1 findings/);
+        assert.match(run.stdout, /Exit codes: 0 checked, no errors; 1 errors/);
         assert.match(run.stdout, /2 the tool failed/);
       }
     }
@@ -1555,6 +1555,59 @@ test('a base constructor and a field initializer are walked, not assumed empty',
   assert.match(run.stdout, /fromField\(\)/);
   assert.match(run.stdout, /error {2}chained-allocation/);
   assert.strictEqual(run.status, 1);
+});
+
+/**
+ * A static field initializer runs when its class is defined, not on each `new`
+ * the walk entered through, so a finding reached only through one is a warning
+ * that names the initializer, and a run whose only finding it is exits 0.
+ * arrow's `Vector` table was an error charged to 30 annotated functions
+ * (BUGS TC-107).
+ */
+test('a finding reached only through a static initializer is a warning', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'once')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /1 annotated function, 0 errors, 1 warning\n/);
+  assert.match(run.stdout, /once\.ts:8:25 {2}warn {2}chained-allocation/);
+  assert.match(
+    unwrapped(run.stdout),
+    /once: reached only through the static initializer Table\.names at test\/fixtures\/once\/once\.ts:8:3/
+  );
+  assert.strictEqual(run.status, 0);
+});
+
+/**
+ * A per-call path keeps the error whatever else reaches the body: `both` calls
+ * `kindNames` directly as well as through `Kinds.names`, and `viaStatic`
+ * reaches it only through the initializer, so the site stays an error in the
+ * run and in `both`'s own findings. An instance field runs on every `new`, as a
+ * constructor does, and a closure `Kinds.scale` holds runs on every call to it;
+ * neither is demoted. Only `Kinds.table` is a warning (BUGS TC-107).
+ */
+test('a body a per-call path also reaches keeps its error', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'oncemix')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /2 annotated functions, 3 errors, 1 warning\n/);
+  assert.match(run.stdout, /oncemix\.ts:11:10 {2}error {2}chained-allocation/);
+  assert.match(run.stdout, /oncemix\.ts:16:25 {2}warn {2}chained-allocation/);
+  assert.match(run.stdout, /oncemix\.ts:17:43 {2}error {2}chained-allocation/);
+  assert.match(run.stdout, /oncemix\.ts:18:13 {2}error {2}chained-allocation/);
+  assert.strictEqual(run.status, 1);
+
+  const byName = findingsByFunction(path.join('test', 'fixtures', 'oncemix'));
+  const site = (name: string, line: number) =>
+    (byName.get(name) ?? assert.fail(`no mark ${name}`)).filter((f) => f.line === line);
+  assert.deepStrictEqual(site('both', 11).map((f) => f.once), [undefined]);
+  assert.deepStrictEqual(site('viaStatic', 11).map((f) => f.once?.name), ['Kinds.names']);
+  assert.ok(site('viaStatic', 17).every((f) => f.once === undefined));
+  assert.ok(site('viaStatic', 18).every((f) => f.once === undefined));
+  assert.ok(rawFindings('viaConstructor').every((f) => f.once === undefined));
 });
 
 // A concise arrow body IS the returned expression, so there is no

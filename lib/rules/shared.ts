@@ -1,6 +1,6 @@
 import type * as TS from 'typescript';
 import type { Ts } from '../ts.ts';
-import { at, isFunctionLike, type Body, type Dispatch, type Mark, type Site } from '../scan.ts';
+import { at, isFunctionLike, type Body, type Dispatch, type Mark, type Once, type Site } from '../scan.ts';
 
 export interface Evidence {
   cost: string;
@@ -17,12 +17,14 @@ export interface Evidence {
   // leaves it out.
   unreported?: string;
   // There is no `severity` here, and that is a decision rather than an
-  // omission: every finding is an error. `closed-world`, `interface-dispatch`
-  // and `megamorphic-dispatch` carried `severity: 'warn'` until 2026-08-31 on
-  // the argument that no benchmark measures the program they fire on, which
-  // kept them out of the exit code. The annotation is the filter — a user
-  // writes `/** @jitmax */` only on a function they need fast, so a
-  // finding on one is actionable by definition and a second tier gates nobody.
+  // omission: every finding is an error, unless only a static initializer
+  // reaches it (`Finding.once`) — a fact about the path, not about the rule.
+  // `closed-world`, `interface-dispatch` and `megamorphic-dispatch` carried
+  // `severity: 'warn'` until 2026-08-31 on the argument that no benchmark
+  // measures the program they fire on, which kept them out of the exit code.
+  // The annotation is the filter — a user writes `/** @jitmax */` only on a
+  // function they need fast, so a finding on one is actionable by definition
+  // and a second tier gates nobody.
   // Tuning is the `[rules]` TOML table and the per-function `-rulename` /
   // `-TC-NN` annotations, which already existed. The gap the tier was named for
   // is still stated, in `defects`: those three carry TC-33, and the report
@@ -47,6 +49,9 @@ export interface Finding extends Site {
   note?: string;
   related?: Array<Site & { name: string }>;
   relatedNote?: string;
+  // The static initializer every path from the mark to this site runs
+  // through. check() sets it from the walk, never a rule (BUGS TC-107).
+  once?: Once;
   evidence: Evidence | null;
 }
 

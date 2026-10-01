@@ -5,7 +5,7 @@ import { aliasedBy, load, program, tsconfigOf } from '../lib/ts.ts';
 import { marksFromProfile, scan } from '../lib/scan.ts';
 import { hotFrames } from '../lib/profile.ts';
 import { check, resolveDisabled } from '../lib/rules.ts';
-import { blinded, findingKey, plural, rel, render, type Blind } from '../lib/report.ts';
+import { blinded, failing, findingKey, plural, rel, render, type Blind } from '../lib/report.ts';
 import { DEFAULT_MIN_SELF_PCT, loadConfig } from '../lib/config.ts';
 
 function main() {
@@ -41,7 +41,7 @@ Or pass a TOML file:
 
 Options: -h, --help  Show this help and exit; other arguments are ignored.
          -v, --verbose  Show all available related source locations.
-Exit codes: 0 checked and clean; 1 findings or incomplete coverage;
+Exit codes: 0 checked, no errors; 1 errors or incomplete coverage;
             2 the tool failed (input, configuration, or syntax error).
 `);
     return;
@@ -211,7 +211,9 @@ Exit codes: 0 checked and clean; 1 findings or incomplete coverage;
   // already means "jitmax has something to report". A fourth code would be
   // a new contract for every gate that reads this one (BUGS TC-17).
   //
-  // So does every finding, whichever rule made it. Three rules warned and
+  // So does every finding on a per-call path, whichever rule made it; one
+  // reached only through a static initializer runs when its class is defined
+  // and is a warning (BUGS TC-107). Three rules warned and
   // exited 0 until 2026-08-31, because no benchmark measures the program they
   // fire on — 98.6% of the 22-codebase survey, decided out of the exit code on
   // that argument. The annotation is the filter: a finding on a function
@@ -230,7 +232,8 @@ Exit codes: 0 checked and clean; 1 findings or incomplete coverage;
   process.exitCode =
     results.length === 0 ||
     blinded(blind) ||
-    results.some((r) => r.findings.length > 0 || r.mark.truncated)
+    failing(results).size > 0 ||
+    results.some((r) => r.mark.truncated)
       ? 1
       : 0;
 }

@@ -1,6 +1,6 @@
 import type * as TS from 'typescript';
 import type { Ts } from '../ts.ts';
-import type { Mark } from '../scan.ts';
+import { inClosure, siteKey, type Mark, type Once } from '../scan.ts';
 import type { Add, Evidence, Finding, RuleModule } from './shared.ts';
 import { megamorphicElements } from './megamorphic-elements.ts';
 import { megamorphicDispatch } from './megamorphic-dispatch.ts';
@@ -61,15 +61,24 @@ export const EVIDENCE: Record<string, Evidence> = Object.fromEntries(
 
 export function check(ts: Ts, checker: TS.TypeChecker, mark: Mark): Finding[] {
   const findings: Finding[] = [];
-  const add: Add = (f) => findings.push({ ...f, evidence: EVIDENCE[f.rule] ?? null });
+  // Every finding carries the `once` of the body it sits in, so the report can
+  // tell a site that runs per call from one that runs when a class is defined
+  // — unless it sits in a closure nested in that body (BUGS TC-107).
+  const push = (f: Omit<Finding, 'evidence'>, once: Once | undefined): void => {
+    findings.push({ ...f, once, evidence: EVIDENCE[f.rule] ?? null });
+  };
   // Every per-body rule over every body the annotation reaches. njit compiles
   // the call tree; we check the call tree.
   for (const body of mark.reached) {
+    const add: Add = (f) =>
+      push(f, body.once !== undefined && !inClosure(ts, body, f) ? body.once : undefined);
     for (const rule of ALL) if (rule.scope === 'body') rule.detect(ts, checker, body, add, mark);
   }
   // The escape rules read the whole mark once: `mark.escapes` is a property of
   // the walk, and running them per body would report every unfollowable call
-  // once per body in the tree.
+  // once per body in the tree. Their findings sit at the escape's own site.
+  const onceAt = new Map(mark.escapes.map((c) => [siteKey(c), c.once]));
+  const add: Add = (f) => push(f, onceAt.get(siteKey(f)));
   for (const rule of ALL) if (rule.scope === 'escapes') rule.detect(mark, add);
   return findings;
 }
