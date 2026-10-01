@@ -2,6 +2,7 @@ import path from 'node:path';
 import { BUILTINS } from './builtins.ts';
 import { siteKey, type Mark } from './scan.ts';
 import { DEFECT, EVIDENCE, type Finding } from './rules.ts';
+import { SOURCE } from './version.ts';
 
 // One spelling of the count-and-noun, because a hand-written plural beside a
 // derived numeral is how `1 cells` reached a published sentence (BUGS TC-70).
@@ -501,7 +502,9 @@ export function render(
       ? `  no findings, but ${plural(partial.length, 'walk')} truncated: this is not a clean run.`
       : '  Static findings are candidates, not measured costs in this workload.\n' +
         '  Profile and benchmark the caller before keeping a change.\n' +
-        '  Rule evidence and limits: docs/rules.md; measurements: bench/README.md.'
+        '  Rule evidence and limits: docs/rules.md; measurements: bench/README.md.\n' +
+        '  bench/ and docs/ paths are in the jitmax repository at\n' +
+        `  ${SOURCE}`
   );
 
   // `clean` means no rule fired, which is not the same as nothing here being
@@ -520,7 +523,7 @@ export function render(
       // The full text is long and a clean run is short; -v is where this tool
       // already puts detail a reader asks for rather than trips over.
       if (verbose) for (const [rule, text] of unchecked) out.push(...wrap('    ', `${rule} — ${text}`));
-      else out.push('  run with -v for what each one misses, or read docs/rules.md');
+      else out.push('  run with -v for what each one misses, or read docs/rules.md at', `  ${SOURCE}`);
     }
   }
   if (nothingChecked) {

@@ -3255,6 +3255,7 @@ test('every published surface states this version and this many rules', () => {
   const stated: [string, string, RegExp][] = [
     ['README.md', readme, /^Status: v(\d+\.\d+\.\d+),/m],
     ['site/index.html', page, /v(\d+\.\d+\.\d+), <strong>GPL/],
+    ['lib/version.ts', doc('lib/version.ts'), /VERSION = '(\d+\.\d+\.\d+)'/],
   ];
   for (const [name, text, re] of stated) {
     const m = text.match(re);
