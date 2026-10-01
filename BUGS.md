@@ -31,7 +31,7 @@ setup instructions.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
-## TC-165 — the `any` notice says "a Map builtin" for string and array calls (2026-10-01, open)
+## ✅ FIXED 2026-10-01 — TC-165 — the `any` notice says "a Map builtin" for string and array calls (2026-10-01, fixed)
 
 Printed "cannot tell a Map builtin from somebody's code" for
 `itemToken.text.replace` in marked and `(this as any).push` in arktype.
@@ -39,10 +39,10 @@ Printed "cannot tell a Map builtin from somebody's code" for
 - **Severity:** low
 - **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
   arktype ca8ec6c)
-- **Status:** open
-- **Fix:** say "a builtin".
+- **Status:** fixed
+- **Fix:** `0e72bb8`. say "a builtin".
 
-## TC-164 — the "annotate a concrete implementation" advice cannot clear the error (2026-10-01, open)
+## ✅ FIXED 2026-10-01 — TC-164 — the "annotate a concrete implementation" advice cannot clear the error (2026-10-01, fixed)
 
 On lru-cache, annotating the `#isStale` closure as advised gave 6 annotated
 functions and still 33 errors; only suppression clears them.
@@ -50,8 +50,8 @@ functions and still 33 errors; only suppression clears them.
 - **Severity:** low
 - **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
   arktype ca8ec6c)
-- **Status:** open
-- **Fix:** say that annotating checks the body but does not clear the
+- **Status:** fixed
+- **Fix:** `9d35bea`. say that annotating checks the body but does not clear the
   call-site error, or clear the error when every located implementation is
   annotated.
 
@@ -194,7 +194,7 @@ root has callers outside the program.
 - **Scope:** survey method, severity model
 - **Status:** open, proposal
 
-## TC-154 — "reached by N annotated functions" counts occurrences, not functions (2026-10-01, open)
+## ✅ FIXED 2026-10-01 — TC-154 — "reached by N annotated functions" counts occurrences, not functions (2026-10-01, fixed)
 
 A site inside a nested function the walk also follows as its own body — an
 IIFE, a followed callback — is found twice per mark, and `render()` counts
@@ -206,7 +206,9 @@ it. Same at 17b64dc.
 - **Severity:** low
 - **Scope:** report
 - **Source:** `lib/report.ts` `reach` map
-- **Status:** open
+- **Status:** fixed
+
+Fixed 2026-10-01 in `0e72bb8`.
 
 ## TC-153 — the flagship rule's sweep has no make target (2026-10-01, open)
 
@@ -348,7 +350,7 @@ be resolved against the installed package, and either is a code change.
 Reproduced 2026-10-01 in all three trial repos (lru-cache, marked, arktype);
 marked has its own docs/ folder, so the cited path looks like a project file.
 
-## TC-145 — a run whose only findings were suppressed says every annotated function is clean (2026-10-01, open)
+## ✅ FIXED 2026-10-01 — TC-145 — a run whose only findings were suppressed says every annotated function is clean (2026-10-01, fixed)
 
 The suppression line is printed, and then the verdict contradicts it:
 
@@ -380,8 +382,8 @@ answer was thrown away" reading as clean. A gate reads the exit code, which is
   suppresses every finding
 - **Source:** reproduced 2026-10-01 against
   `examples/radash-assign.before.ts` with `"accumulating-spread" = false`
-- **Status:** open, recorded not fixed
-- **Fix:** the verdict and the exit code are the owner's call, because they are
+- **Status:** fixed
+- **Fix:** `0e72bb8`. the verdict and the exit code are the owner's call, because they are
   the gate's contract. The narrow reading is that suppression is the user asking
   for silence and `0` is correct; the wider one is that `clean` already refuses
   to be printed over a truncated walk and an `any` receiver, which are also
