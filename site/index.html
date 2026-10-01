@@ -37,7 +37,7 @@
 
 <a href="/pub/" class="back-btn">&larr; back</a>
 <h1>jitmax</h1>
-<p class="hub-subtitle">A static checker for speed-sensitive TypeScript on V8 — numba's <code>@njit</code>, for V8: mark a hot function, and jitmax reports the patterns that push V8 off its fast path</p>
+<p class="hub-subtitle">A static checker for speed-sensitive TypeScript on V8 — numba's <code>@njit</code>, for V8</p>
 
 <div class="tldr-box">
   <div class="tldr-label">TL;DR</div>
@@ -46,9 +46,10 @@
     checks it and every function it calls whose source it can read, and
     reports the patterns that measurably push V8 off its fast path: a fifth
     object shape at one property read or method call, a <code>delete</code>,
-    an array built per pipeline stage. You get one error per pattern, with its
+    an array built per pipeline stage. You get one error per finding, with its
     file and line, the next step and the benchmark behind the rule, and an
-    exit code a CI gate can read. Run it from your project root:
+    exit code a CI gate can read. It never runs or rewrites your code. Run it
+    from your project root:
     <code>bunx github:kronael/jitmax src</code>
   </div>
 </div>
@@ -72,55 +73,15 @@
   or <a href="#use">follow the text guide</a>.
 </p>
 
-<h2>Aim</h2>
-
-<p>
-  V8 is the JavaScript engine in Node, Chrome and Deno. It makes a hot function
-  fast by compiling each property read for the object shapes it has seen
-  there. Each read keeps up to four shapes; send a fifth through it and V8
-  falls back to a slow generic lookup. Deleting a property an object has can
-  move it to slower storage. The code still returns the same values, only
-  slower, and nothing warns you.
-</p>
-
-<ul>
-  <li>
-    <strong>For:</strong> anyone with a TypeScript function on V8 whose speed
-    matters.
-  </li>
-  <li>
-    <strong>Promise:</strong> every rule that claims a slowdown carries a
-    benchmark run in the repository, with its raw timings, and cites the V8
-    source line where one shows the mechanism. A rule stays silent on the
-    specific cases its own benchmark refuted that it can recognise in source,
-    and a test fails if it fires there; it cannot see input sizes.
-    A call into user or dependency code the walk cannot follow is reported
-    and fails the run; calls into Node and V8 builtins are counted, not checked.
-  </li>
-  <li>
-    <strong>Not a profiler, not a cost estimate:</strong> jitmax reads source
-    and never runs your program. A finding is a measured candidate, not a cost
-    in your workload; profile and benchmark your caller before you keep a
-    change. Bun runs the checker, but every rule is about V8, not Bun's
-    JavaScriptCore.
-  </li>
-</ul>
-
-<h2 id="use">Use it</h2>
+<h2 id="use">Try it</h2>
 
 <p>
   You need <a href="https://bun.sh/docs/installation">Bun</a> and TypeScript
-  5.x in the project you check. jitmax parses with your project's own
-  compiler, and <code>bun add typescript</code> installs 7.x, which lacks the
-  5.x compiler API, so pin 5.x with
-  <code>bun add --dev typescript@^5.9</code>. Install the project's other
-  dependencies too: an import that does not resolve reads as
-  <code>any</code>, and the run reports it as a coverage gap.
-</p>
-
-<p>
-  Save this as <code>shapes.ts</code> in the project root. The array's
-  elements have five shapes:
+  5.x in the project you check. <code>bun add typescript</code> installs 7.x,
+  which lacks the compiler API jitmax uses, so pin 5.x with
+  <code>bun add --dev typescript@^5.9</code>. Save this as
+  <code>shapes.ts</code> in the project root. The array's elements have five
+  shapes:
 </p>
 
 <pre><code>type Row =
@@ -163,128 +124,19 @@ export function total(rows: Row[]): number {
 <p>
   The first line is the annotated function the walk started from; the finding
   can sit in any function it calls. <code>next:</code> is what to try, and
-  <code>note:</code> what that change can break besides speed. A finding
-  prints no cost: a measured ratio depends on how much data passes through the
-  code, and the annotation does not say.
+  <code>note:</code> what that change can break besides speed. On the
+  benchmark behind this rule, reads through five property sets ran
+  3.4&ndash;11.3x slower than through one. A finding is a measured candidate,
+  not a cost in your program: a rule cannot see how much data passes through
+  the code, and a printed fix can make the call slower. Benchmark your caller
+  before you keep a change. Bun runs the checker; every rule is about V8, not
+  Bun's engine.
 </p>
 
 <p>
-  Now mark your own hot function and run
-  <code>bunx github:kronael/jitmax src</code>. Compiler options come from the
-  <code>tsconfig.json</code> found from the working directory upward; paths
-  only choose files. <code>--help</code> lists every argument. The
-  <a href="https://github.com/kronael/jitmax/blob/HEAD/README.md#choose-rules-and-functions">README</a>
-  shows how a <code>jitmax.toml</code> switches rules off, and how a CPU
-  profile selects functions instead of annotations.
-</p>
-
-<h3>Exit codes</h3>
-
-<p>
-  <code>0</code>: at least one function was checked, with no errors and no
-  coverage gaps; a <code>warn</code> for code that runs once, in a static
-  field initializer, can still print. Switching off <code>closed-world</code>
-  or <code>interface-dispatch</code> leaves the calls they report unchecked,
-  and the run can still exit <code>0</code>. <code>1</code>: an error, a
-  coverage gap such as a truncated walk or an unresolved module, or no
-  function selected. <code>2</code>: the tool failed, on invalid arguments,
-  configuration or source syntax, or an unsupported TypeScript.
-</p>
-
-<h2>What it looks for</h2>
-
-<p>
-  Eight rules ship. The first six report a pattern a benchmark measured as
-  slower; the last two report calls the walk could not check. Each ratio is
-  <strong>before time divided by after time</strong>: above 1 the rewrite was
-  faster, below 1 it was slower. The ranges apply to the measured inputs,
-  engine and hardware, not to your function.
-</p>
-
-<table>
-  <thead>
-    <tr><th>The pattern</th><th>Why V8 slows down</th><th>Measured, and what the number does not cover</th></tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>a fifth shape of object reaching one property read</td>
-      <td>V8 caches four shapes per read. A fifth makes it look up every time.</td>
-      <td>3.4&ndash;11.3x on reads, highest in L1 and lowest at RAM size, where
-          memory bandwidth dominates. Two to four shapes cost
-          0.95&ndash;1.47x. The rule counts the property sets it can see, not
-          runtime V8 maps.</td>
-    </tr>
-    <tr>
-      <td>a method called on five classes</td>
-      <td>the call site sees five shapes, and V8 stops caching the lookup</td>
-      <td>12.9&ndash;22.7x, the sharpest step measured here; four shapes cost
-          1.52&ndash;1.65x. An object carrying its own function costs
-          3.5&ndash;15.8x from the second shape, which the rule misses.</td>
-    </tr>
-    <tr>
-      <td><code>delete o.k</code></td>
-      <td>deleting a key the object has can move it to slower dictionary
-          storage</td>
-      <td>12.3&ndash;13.6x per property read. A finding does not prove that
-          the move happened in your workload.</td>
-    </tr>
-    <tr>
-      <td><code>x = Lib.min(x, y)</code> in a loop</td>
-      <td>the callee returns a fresh object on some path; the rule does not
-          prove that every call allocates</td>
-      <td>2.60&ndash;2.89x. A survey of 2953 annotated functions found no
-          site, so the rewrite is conditional advice, not a demonstrated
-          win.</td>
-    </tr>
-    <tr>
-      <td><code>.map(f).filter(g)</code> and other two-stage array chains</td>
-      <td>the first array is built, then thrown away</td>
-      <td>1.44&ndash;1.52x for map-then-filter with construction counted. Of
-          the other pairs, only <code>Object.entries(o).map()</code> was
-          measured.</td>
-    </tr>
-    <tr>
-      <td><code>acc = [...acc, v]</code> in a loop</td>
-      <td>none: every pass copies everything the last pass built, on any
-          engine</td>
-      <td>149&ndash;166x at 1000 items and 1766&ndash;1889x at 10000.</td>
-    </tr>
-    <tr>
-      <td>a call into code it cannot read</td>
-      <td>the checker cannot see the callee, so it cannot tell whether V8
-          inlines it</td>
-      <td>No speed claim: it reports code the walk could not check. One
-          helper padded past V8's inlining budget measured
-          4.64&ndash;4.95x; that is one example, not a bound. Calls into Node
-          and V8 builtins are counted, never listed.</td>
-    </tr>
-    <tr>
-      <td>a call that more than one body can answer</td>
-      <td>several implementations or function bodies may run, or the
-          receiver comes from outside the program</td>
-      <td>No speed claim: it reports code the walk could not check. A method
-          call that five or more implementations reach is reported as the
-          method-call rule above; a bare function call stays here.</td>
-    </tr>
-  </tbody>
-</table>
-
-<p>
-  On four real library functions, two printed fixes made the whole call
-  slower at some size. Across 22 open-source codebases, the widest
-  megamorphic site is in TypeScript 5.9.3's <code>checker.ts:44260</code>: a
-  union of 20 distinct property sets at one property read. The
-  <a href="https://github.com/kronael/jitmax/blob/HEAD/examples/README.md">examples guide</a>
-  has every number and count.
-</p>
-
-<h2>What it will not tell you</h2>
-
-<p>
-  Whether your program is slow. It reports patterns that cost time when they
-  are measured in a loop, on one machine, with one version of Node. A rule
-  sees the shape of the code, never how much data passes through it or how
-  often it runs. Profile representative inputs before you change code.
+  Now install your project's dependencies, mark your own hot function and run
+  <code>bunx github:kronael/jitmax src</code>. <code>--help</code> lists every
+  argument.
 </p>
 
 <h2>Read next</h2>
@@ -296,8 +148,8 @@ export function total(rows: Row[]): number {
   </li>
   <li>
     <a href="https://github.com/kronael/jitmax/blob/HEAD/docs/rules.md">Rules</a>:
-    what each rule detects, where it stays silent, and what to do about a
-    finding.
+    what each rule detects and what it cost when measured, where it stays
+    silent, and what to do about a finding.
   </li>
   <li>
     <a href="https://github.com/kronael/jitmax/blob/HEAD/docs/limits.md">Limits</a>:
