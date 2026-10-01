@@ -70,9 +70,9 @@ const detect: EscapeRule = (mark, add) => {
           : `calls ${c.text}${via}, but no single checkable ` +
             'implementation was resolved; the promise stops here',
       fix:
-        `inspect the implementations of ${c.text}; annotate a concrete implementation to ` +
-        'check its body, or review it separately and add -interface-dispatch to this ' +
-        'root\'s @jitmax annotation',
+        `inspect the implementations of ${c.text}. Annotating one checks its body but does ` +
+        'not clear this call-site error; to clear it, review the implementations and add ' +
+        '-interface-dispatch to this root\'s @jitmax annotation',
       note:
         'do not inline the abstraction away on this rule\'s account. A type assertion ' +
         'does not select a runtime implementation; this finding describes unchecked code',
