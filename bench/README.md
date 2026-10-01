@@ -4,7 +4,8 @@ To scan your own code, use the [README quick start](../README.md#quick-start).
 It covers Bun and the TypeScript 5.x requirement. The commands below reproduce
 evidence in a full Git clone of jitmax.
 Complete the [development setup](../README.md#development-and-licence) first.
-Benchmarks run on Node/V8, even when you run the checker with Bun.
+Benchmarks run on Node/V8, even when you run the checker with Bun. They also
+need Linux: the runner's load gate reads `/proc/loadavg`. The checker does not.
 
 How every number this project publishes was measured, and how to re-check it.
 
