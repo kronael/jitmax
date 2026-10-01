@@ -68,10 +68,11 @@ tool as a whole.
   presence. An observer the walk does not reach, such as a dependency without
   source or a database `SET` clause built from the object's keys, is
   invisible to it.
-- **Optimization state is not a speed signal.** `%GetOptimizationStatus`
-  reported `optimized=true` throughout a 5x megamorphic slowdown. No check or
-  evidence run reads it; only the diagnostic `bench/optsize.ts` does, to ask
-  which tier a function reached.
+- **Optimization state is not a speed signal.** V8 can report a function as
+  optimized while a megamorphic site inside it runs slowly. Only timed
+  workloads measure speed. No check or evidence run reads optimization status;
+  only the diagnostic `bench/optsize.ts` does, to ask which tier a function
+  reached.
 
 ## What the measurements cannot support
 
