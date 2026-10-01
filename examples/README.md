@@ -9,7 +9,9 @@ The installed guides retain each trial's result and limits without that queue.
 
 Four functions, vendored verbatim from published libraries, with the fix
 jitmax printed on each and nothing else. `diff` a `.before.ts` against its
-`.after.ts` and the fix is the entire change.
+`.after.ts` — [radash-assign.before.ts](radash-assign.before.ts) against
+[radash-assign.after.ts](radash-assign.after.ts), for one — and the fix is the
+entire change.
 
 | function | library | rules it triggers |
 |---|---|---|
@@ -51,8 +53,8 @@ counted in the report; unresolved calls can still make coverage incomplete.
 To reproduce the detections, check out the revisions above and install each
 library's dependencies with its package manager. Put `/** @jitmax */` on Zod's
 `prefixIssues` and date-fns's `parse`. Save the preset in the Zod repository
-root and run there. Replace the command prefix with the README's checkout
-route while the GitHub download is unavailable:
+root and run there. If the GitHub command fails in your environment, replace
+its prefix with the README's checkout route:
 
 ```sh
 bunx github:kronael/jitmax jitmax.toml packages/zod/src/v4/core/util.ts
@@ -159,8 +161,8 @@ observations and opinions from using the commands, not a claim about speed.
 `allocating-select`, `closed-world` and `interface-dispatch` do not, and the
 last section of this file distinguishes those gaps from detection successes.
 
-Every rule's cost in `docs/rules.md` is a microbenchmark, and a microbenchmark
-cannot say what a program gets. So: take a function a library ships, apply the
+Every measured cost in `docs/rules.md` comes from a microbenchmark, and a
+microbenchmark cannot say what a program gets. So: take a function a library ships, apply the
 fix jitmax printed on it and nothing else, and time the whole call the way a
 caller makes it. `make example` prints the findings, then runs the sweep.
 
@@ -171,7 +173,11 @@ twelfth, marked by hand a round earlier, and it took fixing three classes of
 false positive to get that run from eight findings to one. The
 ratio is before/after, so above 1.0 the shipped code costs that much more and
 **below 1.0 the fix made it slower**. Three whole sweeps per cell, per the
-measurement protocol's rule 13 in the full clone's `CLAUDE.md`, all three printed.
+[acceptance rules](../bench/README.md#how-a-cell-is-measured), all three printed.
+**Agreement** is the range every sweep's 95% interval contains — the overlap of
+the three, not a new interval from pooled runs — so a sweep's own ratio can sit
+outside it. `n` counts the keys in each radash config object and each
+es-toolkit record, the objects remeda merges, and the zod enum's members.
 
 **The whole call, which is what a caller gets:**
 
@@ -213,7 +219,8 @@ does not establish any of these behaviors.
 
 Measured on 2026-09-08: the three object examples, two sizes and both halves,
 three accepted sweeps per cell. Each sweep has twenty process pairs. The
-`kernel: "own-properties"` rows in `bench/example.jl` identify this code.
+`kernel: "own-properties"` rows in [`bench/example.jl`](../bench/example.jl)
+identify this code.
 Four rows exceeded the load limit; they remain in the file, are excluded from
 these results, and have replacement sweeps. All twelve accepted cells replicate.
 Zod's code and measurements are unchanged. Node, V8, flags, seeds, affinity and
@@ -403,7 +410,7 @@ that a rewrite preserves behavior or improves performance.
 |---|---|
 | `accumulating-spread` | radash `assign` improves both measured halves; remeda `mergeAll` has a slower small build, a faster large build, and no established read benefit |
 | `delete-property` | es-toolkit `omit` improves reads at n=12 and n=48, but makes the whole call slower |
-| `chained-allocation` | zod `cleanEnum` — **1.10-1.12x** at 16 members clears the broad-warning bar; **rejected under rule 6 at 256** (1.03-1.10x — lower bound under 1.05x, point estimate under 1.10x), published above |
+| `chained-allocation` | zod `cleanEnum` — **1.10-1.12x** at 16 members clears the broad-warning bar; **rejected under [rule 6](../bench/README.md#how-a-cell-is-measured) at 256** (1.03-1.10x — lower bound under 1.05x, point estimate under 1.10x), published above |
 | `allocating-select` | **no finding in 2953 annotated functions**, so no instance of the measured shape. The benchmark measured a *choice* between two values where the incumbent almost always wins, and the fix, "compare first and assign only when x really changes", saves an allocation exactly on the passes that change nothing. `BUGS.md` TC-18 |
 | `megamorphic-elements` | **Detection success on Zod validation; no measured rewrite.** The reported function receives issues built elsewhere, and the advice does not identify their creators. `BUGS.md` TC-19 |
 | `megamorphic-dispatch` | **Detection success on date-fns timestamp parsing; no measured rewrite.** The report locates the parser dispatch, but gives the caller no direct replacement. `BUGS.md` TC-33 |
