@@ -31,8 +31,10 @@ tool as a whole.
   `delete-property` follows the deleted object through arguments and returns.
 - **A call the walk cannot bind is reported, not checked.** `closed-world` and
   `interface-dispatch` mark code nobody checked; read them as unchecked, not as
-  slow. Without `node_modules`, every call into a missing package is a
-  `closed-world` finding.
+  slow. Without `node_modules`, each missing package is an unresolved module,
+  a coverage gap. A call to a function imported from it is a `closed-world`
+  finding; a method called on a value from it is a call through an `any`
+  receiver, another gap. Switching a rule off clears neither gap.
 - **Related locations are representative, not complete.** Source tracing shares
   the bounded receiver-flow analysis: it merges literals with the same keys,
   can stop on unknown inputs, cycles or its budget, and says when it does. A
@@ -44,9 +46,10 @@ tool as a whole.
 - **The shape, never the n.** A rule sees a pattern, not how much data passes
   through it, and the annotation cannot say. A helper that only ever sees eight
   items fires like one that sees a million (`TC-9`).
-- **Called often is not CPU-bound.** If a marked function spends its time
-  waiting on I/O, its findings cost nothing. A CPU profile selects functions by
-  sampled self time instead.
+- **Called often is not CPU-bound.** A finding in a function that mostly waits
+  on I/O may matter little, and a call count alone does not show what a call
+  costs. A CPU profile selects functions by sampled self time instead; profile
+  representative inputs before you change code.
 - **A TypeScript type is not a V8 map** (`TC-2`). The megamorphic rules count
   the property-name sets they can see: union members, the classes and literals
   the walk traces, and, where tracing is incomplete, the classes a type admits
