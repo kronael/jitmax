@@ -151,10 +151,11 @@ probe."
   — where that trace cannot see every origin — the classes the element type
   admits through `extends`, so it can report a problem even if no load site
   ever sees five maps. What it does not do is count NAMES: five aliases of one
-  type, and five discriminated-union variants over one key set, are one map
-  each — V8's own `%HaveSameMap` says so — so the rule counts distinct
-  property-name sets, which no rename can change. `BUGS.md` TC-2, TC-42 and
-  TC-104.
+  type, and five discriminated-union variants over one key set, share one map
+  when their objects add those keys in the same order — V8's own `%HaveSameMap`
+  says so — so the rule counts distinct property-name sets, which no rename can
+  change. The same keys added in another order give another map, and the rule
+  cannot see that. `BUGS.md` TC-2, TC-42 and TC-104.
 
 - `megamorphic-elements` requires a READ off an element, and is narrowed to a
   read on purpose: V8 charges the same four-map budget at a store and at `in`,
@@ -209,17 +210,18 @@ one configuration of one benchmark: one pattern, at one input size, in one mode.
 A **sweep** is one whole run of a cell, and reports a range of times rather than
 a single number.
 
-- **Two cells failed replication, and neither is inside a range this project
-  quotes.** The measurement protocol runs every published cell three separate
-  times and only calls the three in agreement when one value sits inside all
-  three of their ranges. `closed-world`'s n=100000 cell read 3.21x and 4.68x and
-  4.73x with no such value, and `delete-property`'s n=262144 read cell
-  disagreed the same way. Both are withdrawn inside `lib/derive.ts`, where the
-  number is made, so 4.64-4.95x and 12.3-13.6x rest on the cells that replicate
-  and on nothing else. The withdrawn triples are still printed, because a range
-  that quietly excluded its worst-behaved cell would read tighter than the
-  measurement was — but they are printed as refutations, not folded into a
-  range. `BUGS.md` TC-21, TC-37.
+- **No cell that failed replication is inside a range this project quotes.**
+  The measurement protocol runs every published cell three separate times and
+  only calls the three in agreement when one value sits inside all three of
+  their ranges. `lib/derive.ts` withdraws every cell without one, where the
+  number is made, and the generated table in `bench/README.md` names, beside
+  each number, the cells withdrawn from it. Two examples: `closed-world`'s n=100000 cell read 3.21x and
+  4.68x and 4.73x with no such value, and `delete-property`'s n=262144 read cell
+  disagreed the same way, so 4.64-4.95x and 12.3-13.6x rest on the cells that
+  replicate and on nothing else. A withdrawn triple such as `closed-world`'s is
+  still printed, because a range that quietly excluded its worst-behaved cell
+  would read tighter than the measurement was — but it is printed as a
+  refutation, not folded into a range. `BUGS.md` TC-21, TC-37.
 
 - **605 published rows were measured under a load gate they exceeded.** The load
   gate is the runner's refusal to measure while too many other threads are
