@@ -55,8 +55,8 @@ tool as a whole.
   megamorphic finding against real maps, compare objects with
   `%HaveSameMap(a, b)` under `node --allow-natives-syntax`.
 - **A rewrite can be slower.** Rebuilding without a key, merging into an owned
-  object and giving objects one shape all change construction cost, and on real
-  library code several measured rewrites made the whole call slower
+  object and giving objects one shape all change construction cost. Two of the
+  four measured library rewrites made the whole call slower at some size
   ([examples](../examples/README.md)). Changing the shape of objects a library
   returns also changes what its users see through `Object.keys`, `in` and
   equality checks.
