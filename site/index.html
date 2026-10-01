@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="krons:type" content="products">
-<meta name="krons:date" content="2026-08-19">
+<meta name="krons:date" content="2026-10-01">
 <meta name="krons:pin"  content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="V8 runs your JavaScript fast by guessing what your code will do. A few normal-looking patterns make it guess wrong. jitmax finds them in TypeScript source and names the benchmark behind each measured rule and where that benchmark refused.">
-<title>jitmax — mark the function you need fast</title>
+<meta name="description" content="numba's @njit for TypeScript on V8. Mark a hot function and jitmax refuses the patterns that measurably push V8 off its fast path, in that function and every function it calls, each backed by a benchmark in the repository.">
+<title>jitmax — @njit for TypeScript on V8</title>
 <link rel="stylesheet" href="/pub/krons/assets/hub.css">
-<meta property="og:title" content="jitmax — mark the function you need fast">
-<meta property="og:description" content="V8 gets fast by guessing what your code will do. A few normal-looking patterns make it guess wrong, and nothing warns you. This is that list, measured — including the measurements that refused.">
+<meta property="og:title" content="jitmax — @njit for TypeScript on V8">
+<meta property="og:description" content="Mark a hot TypeScript function. jitmax refuses the patterns that push V8 off its fast path, and names the benchmark behind each rule, including where the benchmark found nothing.">
 <meta property="og:image" content="https://krons.fiu.wtf/pub/jitmax/jitmax-card.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -37,7 +37,21 @@
 
 <a href="/pub/" class="back-btn">&larr; back</a>
 <h1>jitmax</h1>
-<p class="hub-subtitle">a command-line checker for TypeScript: mark the function you need fast, and find out what is wrong with it</p>
+<p class="hub-subtitle">numba's <code>@njit</code> for TypeScript on V8: mark a hot function, and jitmax refuses the patterns that push V8 off its fast path</p>
+
+<div class="tldr-box">
+  <div class="tldr-label">TL;DR</div>
+  <div class="tldr-text">
+    Mark a hot TypeScript function with <code>/** @jitmax */</code>. jitmax
+    checks it and every function it calls whose source it can read, and
+    refuses the patterns that measurably push V8 off its fast path: a fifth
+    object shape at one property read or method call, a <code>delete</code>,
+    an array built per pipeline stage. You get one error per pattern, with its
+    file and line, the next step and the benchmark behind the rule, and an
+    exit code a CI gate can read. Run it from your project root:
+    <code>bunx github:kronael/jitmax src</code>
+  </div>
+</div>
 
 <video id="demo" src="jitmax.mp4" controls muted playsinline
        preload="metadata" poster="jitmax-card.png"
@@ -48,10 +62,8 @@
 </video>
 
 <p class="cap">
-  The middle of that is a real recording, not a mock-up — the checker running
-  against a function radash ships, vendored into <code>examples/</code>
-  unchanged. <code>make meme</code> rebuilds the whole film from a clean
-  checkout.
+  The middle is a real recording: the checker running against a function
+  radash ships, vendored unchanged into <code>examples/</code>.
 </p>
 
 <p id="media-error" role="alert" hidden>
@@ -60,98 +72,75 @@
   or <a href="#use">follow the text guide</a>.
 </p>
 
-<div class="tldr-box">
-  <div class="tldr-label">TL;DR</div>
-  <div class="tldr-text">
-    V8 speeds up your JavaScript by predicting what each line will do. One line
-    can keep four object shapes in its head; send a fifth through and the bet is
-    off, and V8 moves that line to a slower lookup without saying so. Your code
-    still returns what it returned before, so a functional test reveals nothing.
-    Mark a TypeScript function with <code>/** @jitmax */</code> and this checker
-    reports those patterns in it, and in every function it calls whose source it
-    can read. Only a profile and a benchmark of your own caller can say whether
-    they cost anything. The
-    <a href="https://github.com/kronael/jitmax/blob/HEAD/README.md">README</a>
-    explains the mechanism in full.
-  </div>
-</div>
+<h2>Aim</h2>
+
+<p>
+  V8 is the JavaScript engine in Node, Chrome and Deno. It makes a hot function
+  fast by compiling each line for the object shapes it has seen there. One line
+  keeps up to four shapes; send a fifth through it and V8 falls back to a slow
+  generic lookup. A <code>delete</code> moves an object to slow storage for
+  good. The code still returns the same values, only slower, and nothing warns
+  you.
+</p>
+
+<ul>
+  <li>
+    <strong>For:</strong> anyone with a TypeScript function on V8 whose speed
+    matters.
+  </li>
+  <li>
+    <strong>Promise:</strong> every rule that claims a slowdown carries a
+    benchmark run in the repository, with its raw timings, and cites the V8
+    source line where one shows the mechanism. Where a rule's own benchmark
+    found no cost, the rule stays silent, and a test fails if it fires there.
+    Code the walk could not check is reported, never passed as clean.
+  </li>
+  <li>
+    <strong>Not a profiler, not a cost estimate:</strong> jitmax reads source
+    and never runs your program. A finding is a measured candidate, not a cost
+    in your workload; profile and benchmark your caller before you keep a
+    change. Bun runs the checker, but every rule is about V8, not Bun's
+    JavaScriptCore.
+  </li>
+</ul>
 
 <h2 id="use">Use it</h2>
 
 <p>
-  Run jitmax from the GitHub repository with <code>bunx</code>.
-  <a href="https://bun.sh/docs/installation">Install Bun</a>, then check
-  <code>bun --version</code>. jitmax needs TypeScript <code>&gt;=5.0.0 &lt;6</code>, but no npm
-  publication, release tag or build step. Bun runs the checker; its findings
-  concern V8, not Bun's JavaScriptCore engine.
+  You need <a href="https://bun.sh/docs/installation">Bun</a> and TypeScript
+  5.x in the project you check. jitmax parses with your project's own
+  compiler, and <code>bun add typescript</code> installs 7.x, which lacks the
+  5.x compiler API, so pin 5.x with
+  <code>bun add --dev typescript@^5.9</code>. Install the project's other
+  dependencies too: an import that does not resolve reads as
+  <code>any</code>, and the run reports it as a coverage gap.
 </p>
 
-<p>
-  <strong>jitmax needs TypeScript 5.x.</strong>
-  It parses with the compiler your project builds with and needs the 5.x
-  compiler API. If your project does not already depend on TypeScript 5.x,
-  run <code>bun add --dev typescript@^5.9</code>, or
-  <code>npm install --save-dev typescript@^5.9</code>;
-  <code>bun add typescript</code> installs 7.x today, whose API has no
-  <code>sys</code> host. If the compiler jitmax resolves has no
-  <code>sys</code> host, the scan stops at exit <code>2</code> and asks you to
-  install a supported TypeScript 5.x version.
-</p>
-
-<p>
-  Install your TypeScript project's other dependencies with its usual package
-  manager too. Save this as <code>hot.ts</code> in that project's root:
-</p>
+<p>Save this as <code>hot.ts</code> in the project root, and run from there:</p>
 
 <pre><code>/** @jitmax */
 export function total(rows: { value: number }[]): number {
   return rows.reduce((sum, row) =&gt; sum + row.value, 0);
 }</code></pre>
 
-<p>Run from your project's root:</p>
-
-<pre><code>bunx github:kronael/jitmax --help
-bunx github:kronael/jitmax hot.ts
-bunx github:kronael/jitmax --verbose hot.ts</code></pre>
+<pre><code>bunx github:kronael/jitmax hot.ts</code></pre>
 
 <p>
-  The sample exits <code>0</code> and reports
-  <code>every annotated function is clean.</code> Mark your own hot function
-  with <code>/** @jitmax */</code> and pass its source directory next. A single
-  file brings in the files it imports but not the files that import it, so a
-  caller in the next file reads as <code>no visible caller</code>.
+  It reports <code>every annotated function is clean.</code> and exits
+  <code>0</code>. Now mark your own hot function and pass its source
+  directory, such as <code>src</code>. Compiler options come from the
+  <code>tsconfig.json</code> found from the working directory upward; paths
+  only choose files. <code>--help</code> lists every argument.
 </p>
 
-<p>
-  With an existing jitmax checkout, replace the quoted paths with your real
-  paths; Windows paths can use <code>C:/...</code>. Install its dependencies
-  once, then run from your project's root:
-</p>
-
-<pre><code>cd "/path/to/jitmax"
-bun install --ignore-scripts
-cd "/path/to/your-project"
-bun "/path/to/jitmax/bin/cli.js" hot.ts</code></pre>
+<h3>Choose rules</h3>
 
 <p>
-  For the commands below, replace <code>bunx github:kronael/jitmax</code> with
-  <code>bun "/path/to/jitmax/bin/cli.js"</code> to use that checkout.
-  The <a href="https://github.com/kronael/jitmax/blob/HEAD/README.md#quick-start">README</a>
-  holds the full setup and usage guide.
-</p>
-
-<p>
-  Paths choose files, not compiler options. The working directory determines
-  which <code>tsconfig.json</code> jitmax reads. With no path argument it uses
-  that config's file list; with neither paths nor a config it scans sources
-  under the working directory.
-</p>
-
-<h3>Focus on megamorphic reads and calls</h3>
-
-<p>
-  Save this as <code>jitmax.toml</code> in your project's root.
-  It disables the other six rules; coverage notices still apply.
+  jitmax reads <code>jitmax.toml</code> from the working directory upward, as
+  it does <code>tsconfig.json</code>, and prints which file it used; a
+  <code>.toml</code> named on the command line wins. To report only
+  megamorphic reads and calls, save this as <code>jitmax.toml</code> in your
+  project root, then run <code>bunx github:kronael/jitmax src</code> as before:
 </p>
 
 <pre><code>[rules]
@@ -164,44 +153,33 @@ delete-property = false
 closed-world = false
 interface-dispatch = false</code></pre>
 
-<p>Run the checker with that config:</p>
-
-<pre><code>bunx github:kronael/jitmax jitmax.toml hot.ts</code></pre>
-
 <p>
-  To select different rules, edit the same table: <code>false</code> disables
-  a rule and <code>true</code> leaves it enabled. Omitted rules stay enabled.
-  The report states what you suppressed. An unknown rule name exits <code>2</code>.
+  <code>false</code> switches a rule off; an omitted rule stays on. To switch a
+  rule off for one function and everything it calls, name it on the
+  annotation: <code>/** @jitmax -megamorphic-elements */</code>. The report
+  counts every suppressed finding, and an unknown rule name exits
+  <code>2</code>.
 </p>
 
 <h3>Select functions from a CPU profile</h3>
-
-<p>
-  Record a V8 CPU profile with Node from your application's root.
-  Replace <code>your-workload.js</code> with its JavaScript entry point and
-  <code>src</code> with its source directory. This route needs no annotations.
-</p>
 
 <pre><code>node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
 bunx github:kronael/jitmax run.cpuprofile src</code></pre>
 
 <p>
-  The default selects functions with at least 1% of your project's sampled
-  self time; time in dependencies, Node's internals and the engine is left out.
-  To change that threshold, add <code>[profile]</code> and
-  <code>min_self_pct = 2</code> on separate lines in your TOML file, then run
-  <code>bunx github:kronael/jitmax jitmax.toml run.cpuprofile src</code>.
-  If a build step writes the JavaScript from TypeScript, have it emit source
-  maps &mdash; <code>sourceMap: true</code> for <code>tsc</code>.
-  The report names unmatched frames and exits <code>1</code> when coverage is
-  incomplete. Pass at most one TOML file and one CPU profile.
+  Every function with at least 1% of your project's sampled self time is
+  checked, with no annotations. <code>min_self_pct</code> under
+  <code>[profile]</code> in <code>jitmax.toml</code> changes the threshold. If
+  a build step compiles your TypeScript, it must emit source maps
+  (<code>sourceMap: true</code> for <code>tsc</code>). Unmatched hot frames
+  are named, and the run exits <code>1</code>.
 </p>
 
 <h3>Read a finding</h3>
 
 <p>
-  A real finding, from a five-member union saved as <code>shapes.ts</code> and
-  scanned with <code>bunx github:kronael/jitmax shapes.ts</code>:
+  Five element shapes, saved as <code>shapes.ts</code> and checked with
+  <code>bunx github:kronael/jitmax shapes.ts</code>:
 </p>
 <pre><code>  shapes.ts:9  total()
     shapes.ts:9:23  error  megamorphic-elements
@@ -223,57 +201,36 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
       known defects: TC-2, TC-9</code></pre>
 
 <p>
-  Each finding names the source and a <code>next:</code> step, and the sweep
-  behind its rule when the rule has one; <code>interface-dispatch</code> has
-  none. <code>note:</code> states behavior and measurement limits.
-  <code>related:</code> links representative builders, implementations,
-  allocations or key observers; <code>sources:</code> explains partial tracing.
-  The default shows five related locations per finding. Add <code>--verbose</code>
-  or <code>-v</code> to see all retained locations without changing the analysis.
-  These locations do not prove runtime reachability or list every allocation.
+  The first line is the annotated function the walk started from; the finding
+  can sit in any function it calls. <code>related:</code> and
+  <code>sources:</code> point to builders and say where tracing stopped;
+  <code>-v</code> shows every location. <code>next:</code> is what to try, and
+  <code>note:</code> what that change can break besides speed.
+  <code>known defects:</code> are the rule's recorded limits. A finding prints
+  no cost: a measured ratio depends on how much data passes through the code,
+  and the annotation does not say.
 </p>
 
-<p>
-  A finding does not measure your workload. A benchmark ratio is a property
-  of the input &mdash; <code>accumulating-spread</code>, a different rule, measured 149&ndash;166x at n=1000 and
-  1766&ndash;1889x at n=10000 &mdash; and the annotation says the function is
-  hot, not how large its data is. The numbers are on this page and in the
-  <code>bench/*.jl</code> the finding names. Profile the caller, preserve its
-  behavior, and benchmark the full operation before keeping a rewrite.
-</p>
+<h3>Exit codes</h3>
 
 <p>
-  Every unsuppressed finding on a per-call path is an <code>error</code> and
-  fails the run. A finding reached only through a static field initializer
-  prints <code>warn</code> with a <code>once:</code> line naming the
-  initializer, because that code runs when its class is defined and not on
-  each call, and does not fail the run. Configure rules through a positional
-  TOML file or a <code>-rulename</code> on the annotation. The report counts
-  suppressed findings. Coverage gaps still fail the run; the two coverage
-  rules can be switched off, and the calls they report then stay unchecked
-  at exit <code>0</code>. Exit <code>0</code>
-  means at least one function was checked with no errors and no reported
-  coverage gaps. Exit <code>1</code> means an error, incomplete coverage or no
-  selected functions. Exit <code>2</code> means the tool failed, including
-  invalid input, configuration or source syntax. <code>--help</code> exits
-  <code>0</code> without loading the project. A clean result does not prove
-  that a rewrite is safe or faster.
+  <code>0</code>: at least one function was checked, with no errors and no
+  coverage gaps; a <code>warn</code> for code that runs once, in a static
+  field initializer, can still print. <code>1</code>: an error, a coverage gap
+  such as a truncated walk or an unresolved module, or no function selected.
+  <code>2</code>: the tool failed, on invalid arguments, configuration or
+  source syntax, or an unsupported TypeScript.
 </p>
 
 <h2>What it looks for</h2>
 
 <p>
-  Eight rules ship. The third column separates microbenchmarks from rewrites
-  of real library functions. A faster isolated operation can still make its
-  caller slower.
-</p>
-
-<p>
-  Each ratio is <strong>before time divided by after time</strong>.
-  Above 1 means the rewrite took less time; below 1 means it took more time.
-  A ratio of 1 means equal time. Build time, later reads and the full operation
-  are different measurements. The ranges below apply only to the measured
-  inputs, engine and hardware, not to your function.
+  Eight rules ship. The first six report a pattern a benchmark measured as
+  slower; the last two report calls the walk could not check. Each ratio is
+  <strong>before time divided by after time</strong>: above 1 the rewrite was
+  faster, below 1 it was slower. The ranges apply to the measured inputs,
+  engine and hardware, not to your function, and the last column says where a
+  real library rewrite went the other way.
 </p>
 
 <table>
@@ -282,81 +239,67 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
   </thead>
   <tbody>
     <tr>
-      <td>a fifth shape of object reaching one line</td>
-      <td>V8 remembers four. A fifth makes it look up every time.</td>
-      <td>3.4&ndash;11.3x on reads &mdash; highest in L1, lowest at RAM size,
-          where memory bandwidth dominates instead. Two to four shapes cost
+      <td>a fifth shape of object reaching one property read</td>
+      <td>V8 caches four shapes per site. A fifth makes it look up every time.</td>
+      <td>3.4&ndash;11.3x on reads, highest in L1 and lowest at RAM size, where
+          memory bandwidth dominates. Two to four shapes cost
           0.95&ndash;1.47x. The rule counts the property sets it can see, not
-          runtime V8 maps. Objects with the same keys in different insertion
-          orders can have different maps while this rule stays silent.</td>
+          runtime V8 maps.</td>
+    </tr>
+    <tr>
+      <td>a method called on five classes</td>
+      <td>the call site sees five shapes, and V8 stops caching the lookup</td>
+      <td>12.9&ndash;22.7x, the sharpest step measured here; four shapes cost
+          1.52&ndash;1.65x. An object carrying its own function costs
+          3.5&ndash;15.8x from the second shape, which the rule misses.</td>
     </tr>
     <tr>
       <td><code>delete o.k</code></td>
-      <td>if <code>o</code> has <code>k</code>, it moves to a slower kind of
-          storage, and stays there</td>
-      <td>12.3&ndash;13.6x per property load. On es-toolkit's <code>omit</code>
-          the own-property rebuild improves reads at both tested sizes, but the
-          whole call is <strong>slower: 0.17&ndash;0.51x</strong>. Measure the
-          caller's construction and reads together.</td>
-    </tr>
-    <tr>
-      <td><code>acc = [...acc, v]</code> in a loop</td>
-      <td>every pass copies everything the last pass built</td>
-      <td>149&ndash;166x at 1000 items. On radash's <code>assign</code> the
-          whole call moves 1.18&ndash;3.54x. On remeda's <code>mergeAll</code>
-          the own-property rewrite is <strong>slower at 8 inputs: 0.13x</strong>
-          and faster at 64: 1.48&ndash;1.59x. Its read intervals span 1.0:
-          no established read benefit. A clean result does not mean faster.</td>
-    </tr>
-    <tr>
-      <td><code>.map(f).filter(g)</code></td>
-      <td>the first array is built, then thrown away</td>
-      <td>1.44&ndash;1.52x. A separate cell measured 6.48x, 6.58x and
-          7.51x across three sweeps. Their intervals share no value, so that
-          cell is withdrawn. On zod's
-          <code>cleanEnum</code> the same fix is worth
-          <strong>1.10&ndash;1.12x at a 16-member enum, and nothing this
-          project will claim at 256</strong>: that cell measured 1.03&ndash;1.10x,
-          which clears neither half of the protocol's broad-warning bar, so it
-          is <strong>rejected</strong> and published as the rejection it is.</td>
+      <td>the object moves to slower dictionary storage, and stays there</td>
+      <td>12.3&ndash;13.6x per property read. On es-toolkit's
+          <code>omit</code> the own-property rebuild improves reads, but the
+          whole call is <strong>slower: 0.17&ndash;0.51x</strong>.</td>
     </tr>
     <tr>
       <td><code>x = Lib.min(x, y)</code> in a loop</td>
       <td>a fresh object every pass, even when nothing changed</td>
-      <td>2.60&ndash;2.89x. The recorded survey of 2953 annotated functions
-          found no site. Treat the rewrite as conditional advice, not a
-          demonstrated win. <code>BUGS.md</code> TC-18.</td>
+      <td>2.60&ndash;2.89x. A survey of 2953 annotated functions found no
+          site, so the rewrite is conditional advice, not a demonstrated
+          win.</td>
     </tr>
     <tr>
-      <td>a method called on five classes</td>
-      <td>the call site sees five prototypes, and V8 stops caching the lookup</td>
-      <td>12.9&ndash;22.7x, the sharpest cliff this project measured. Four
-          shapes cost 1.52&ndash;1.65x, so the step is at the fifth here too. It
-          requires the CALL, not just the shapes, so it does not repeat the row
-          at the top of this table.</td>
+      <td><code>.map(f).filter(g)</code></td>
+      <td>the first array is built, then thrown away</td>
+      <td>1.44&ndash;1.52x. On zod's <code>cleanEnum</code> the fix is worth
+          1.10&ndash;1.12x at a 16-member enum; at 256 it measured
+          1.03&ndash;1.10x, which fails the protocol's broad-warning bar, so it
+          is published as <strong>rejected</strong>.</td>
+    </tr>
+    <tr>
+      <td><code>acc = [...acc, v]</code> in a loop</td>
+      <td>none: every pass copies everything the last pass built, on any
+          engine</td>
+      <td>149&ndash;166x at 1000 items and 1766&ndash;1889x at 10000. On
+          radash's <code>assign</code> the whole call moves 1.18&ndash;3.54x.
+          On remeda's <code>mergeAll</code> the rewrite is
+          <strong>slower at 8 inputs: 0.13x</strong>, and faster at 64:
+          1.48&ndash;1.59x.</td>
     </tr>
     <tr>
       <td>a call into code it cannot read</td>
-      <td>a callee too big to inline costs this much &mdash; and the checker
-          cannot tell whether yours is</td>
-      <td>4.64&ndash;4.95x for a callee past V8's inlining budget. The rule makes
-          no claim about your callee, and says so under every finding as
-          <code>known defect: TC-33</code>. Node&rsquo;s own API is not among its
-          findings at all &mdash; calls into the platform are counted for
-          the run and never listed. The checker cannot follow
-          <code>path.join</code>. Nor is a method read off a value typed
-          <code>any</code>: nothing resolves there, so the run reports what it
-          could not see instead of naming a body it never found. Read it as
-          coverage, not as cost.</td>
+      <td>a callee too big to inline costs this much, and the checker cannot
+          tell whether yours is</td>
+      <td>4.64&ndash;4.95x for a callee past V8's inlining budget, a bound,
+          not a claim about your callee. Calls into Node and V8 builtins are
+          counted, never listed. Read it as coverage, not cost.</td>
     </tr>
     <tr>
       <td>a call through an interface</td>
-      <td>no single implementation to check: several may be here, or the receiver comes from outside the program</td>
-      <td>A coverage finding, not a cost estimate. It has its own rule name,
-          so you can suppress it without suppressing calls whose bodies are
-          absent. The receiver&rsquo;s
-          origins are traced by dataflow, so a finding names the implementations
-          that reach it instead of guessing from the type.</td>
+      <td>several implementations may run, or the receiver comes from outside
+          the program</td>
+      <td>No speed claim: it reports code the walk could not check. Five or
+          more implementations reaching the call are reported as the
+          method-call rule above.</td>
     </tr>
   </tbody>
 </table>
@@ -364,130 +307,77 @@ bunx github:kronael/jitmax run.cpuprofile src</code></pre>
 <h2>Findings in real TypeScript programs</h2>
 
 <p>
-  The recorded survey runs the checker on library and application checkouts,
-  with functions selected by <code>examples/annotate.js</code>.
-  The <a href="https://github.com/kronael/jitmax/blob/HEAD/examples/README.md#two-applications">examples survey</a>
-  holds the counts and run limits. In a checkout, read
-  <code>examples/README.md</code>. These are detection examples, not measured
-  speedups for those applications.
+  The survey annotates library and application checkouts with
+  <code>examples/annotate.js</code>, not by hand. These are detections, not
+  measured speedups; the
+  <a href="https://github.com/kronael/jitmax/blob/HEAD/examples/README.md#the-survey">examples guide</a>
+  has every count.
 </p>
 
-<p>
-  <strong>TypeScript 5.9.3:</strong>
-  <code>checker.ts:44260</code>, <code>checkUnusedIdentifiers</code>,
-  reads <code>node.kind</code> off every element of a
-  <code>PotentiallyUnusedIdentifier[]</code>, and that union is
-  <strong>20 distinct property sets at one load site</strong>.
-  A union member is not a runtime V8 map. Profile the actual read before
-  deciding whether to change the representation.
-</p>
-
-<p>
-  <strong>typescript-eslint 8.67.0:</strong>
-  <code>no-misused-promises.ts:543</code> calls
-  <code>tsNode.name.getText()</code> on a name that reaches it as six distinct
-  property sets. This is a method call, not just a property read.
-  <code>typescript-estree/src/ast-converter.ts:48</code> deletes
-  <code>range</code> and <code>loc</code> from converted AST nodes when the
-  parser is asked not to emit them. Any rewrite must preserve that absence,
-  not merely assign <code>undefined</code>.
-</p>
-
-<p>
-  Those application checkouts had no dependencies installed. Their unresolved
-  imports produce coverage findings, not evidence that the imports are slow.
-  Install your project's dependencies before scanning. The recorded run
-  counts describe those checkouts and checker revisions, not a fresh audit.
-</p>
+<ul>
+  <li>
+    <strong>TypeScript 5.9.3:</strong> <code>checker.ts:44260</code>,
+    <code>checkUnusedIdentifiers</code>, reads <code>node.kind</code> off
+    every element of a <code>PotentiallyUnusedIdentifier[]</code>, a union of
+    <strong>20 distinct property sets at one load site</strong>. A union
+    member is not a V8 map, so profile the read before changing the
+    representation.
+  </li>
+  <li>
+    <strong>typescript-eslint 8.67.0:</strong>
+    <code>no-misused-promises.ts:543</code> calls
+    <code>tsNode.name.getText()</code> on a name that reaches it as six
+    distinct property sets. <code>ast-converter.ts:48</code> deletes
+    <code>range</code> and <code>loc</code> from converted AST nodes; a
+    rewrite must keep those keys absent, not merely <code>undefined</code>.
+  </li>
+</ul>
 
 <h2>Why the numbers are worth anything</h2>
 
 <ul>
   <li>
-    Every rule that reports a slowdown had to earn its place with a
-    measurement. A constant in V8's
-    source is a guess about cost until a benchmark prices it.
+    Every number is read out of the raw timing rows, never typed by hand. If a
+    number and its data disagree, the test suite fails.
   </li>
   <li>
-    Every rule that reports a measured slowdown records <strong>where its
-    benchmark refused it</strong>, and a test fails if the rule fires there
-    anyway. Two to four shapes are not reported; only the fifth is.
+    Every observation runs in a fresh process, in randomised order, and every
+    cell is measured three whole times. A cell whose three sweeps share no
+    common value is withdrawn and its numbers printed anyway.
   </li>
   <li>
-    Two rules also record a <strong>real cost they deliberately do not
-    report</strong>. An object carrying its own function costs 3.5&ndash;15.8x from the
-    <em>second</em> shape, and no declared type separates that from the case
-    where four are free. The rule states that detection limit.
+    A rule records where its own benchmark found nothing, and a test fails if
+    it fires there: two to four shapes are not reported, only the fifth.
   </li>
   <li>
-    The element rule <strong>requires a property read off an element</strong>.
-    Reading only <code>rows.length</code> does not trigger it.
-    A cast such as <code>(iss as any).path</code> does not hide the underlying
-    receiver type from that check. The
-    chaining rule stays silent when a <code>.slice(0,&nbsp;10)</code> in the
-    chain bounds it two orders of magnitude below the smallest size its sweep
-    covers, with the threshold read off the sweep rather than typed in.
-  </li>
-  <li>
-    A finding is counted <strong>once per source site, not once per caller</strong>.
-    The report also names how many annotated functions reach it.
-  </li>
-  <li>
-    A finding carries <strong>no cost</strong>. It names the rule, a next step
-    and, when the rule has one, the sweep. The ratio depends on the size of your
-    data, the annotation does not carry that, and the checker does not time your
-    function.
-  </li>
-  <li>
-    Every cell is measured three whole times. A cell whose three sweeps share no
-    common value is withdrawn from published aggregates. Its raw observations
-    remain available in <code>bench/*.jl</code>.
-  </li>
-  <li>
-    A sweep refuses to start when too many other threads are runnable.
-    Each row records the machine state and allowed load.
-    The corpus also contains measurements taken above a one-minute-load gate.
-    Those rows remain in the evidence; that reading cannot establish whether
-    another process competed with the benchmark. Read the
-    <a href="https://github.com/kronael/jitmax/blob/HEAD/bench/README.md">benchmark protocol</a>
-    and the <a href="https://github.com/kronael/jitmax/blob/HEAD/docs/limits.md">known limits</a>
-    before applying a suggested change.
-  </li>
-  <li>
-    Every number here is read out of the raw timing rows, never typed by hand.
-    If a number and its data disagree, the test suite fails.
+    A rule also records the real costs it knowingly misses; a clean run names
+    those rules, and <code>-v</code> prints what each one misses.
   </li>
 </ul>
+
+<p>
+  The <a href="https://github.com/kronael/jitmax/blob/HEAD/bench/README.md">benchmark protocol</a>
+  says how each number was measured.
+</p>
 
 <h2>What it will not tell you</h2>
 
 <p>
   Whether your program is slow. It reports patterns that cost time when they
   are measured in a loop, on one machine, with one version of Node. If the line
-  it flags runs twice, none of it matters. Profile first, then bring this to the
-  function the profiler pointed at.
-</p>
-
-<p>
-  It does not always follow a pattern across a function boundary. The walk
-  visits every callee whose source it can read, but the repeated-copy rule
-  matches inside one body — so a loop in one function and the copy that loop
-  re-runs in another go unreported. Other rules do trace values across calls.
-</p>
-
-<p>
-  Open defects are listed in
-  <a href="https://github.com/kronael/jitmax/blob/HEAD/BUGS.md">BUGS.md</a>, in
-  the repository, at the same size as everything above.
+  it flags runs twice, none of it matters. A rule sees the shape of the code,
+  never how much data passes through it. The
+  <a href="https://github.com/kronael/jitmax/blob/HEAD/docs/limits.md">limits</a>
+  list where it is blind or wrong.
 </p>
 
 <div class="hub-footer">
   <p>
     v0.16.0, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
-    those terms; a derivative work carries the same licence. The repository
-    command uses Bun and installs the <code>main</code> branch, which is ahead
-    of that tag. Development with Node needs version 22.18 or newer and has no
-    build step.
+    those terms; a derivative work carries the same licence.
+    <a href="https://github.com/kronael/jitmax">Source on GitHub</a>; the
+    <code>bunx</code> command runs its <code>main</code> branch, which can be
+    ahead of the newest tag.
   </p>
 </div>
 
