@@ -11,11 +11,12 @@ and what the fix is.
 full Git clone's `BUGS.md` contains the internal issue history, not an installed guide.
 
 Eight rules ship. The first six check every function in the call tree. The
-last two report where the walk stops — one for a callee with no body anywhere,
-one for a call the walk cannot bind to a single implementation.
+last two report where the walk stops — one for a callee the program sees only
+as a declaration, one for a call the walk cannot bind to a single implementation.
 
-A *hidden class* is the internal shape V8 gives an object; two objects with the
-same property names, added in the same order, share one. V8's own source calls
+A *hidden class* is the internal shape V8 gives an object; objects built the
+same way — by the same constructor or the same literal, with the same property
+names added in the same order — share one. V8's own source calls
 the same thing a *map*, and both names appear below wherever the engine's own
 wording is being quoted. An *inline cache* is the small table V8 keeps at each
 line that reads or calls, holding the shapes it has already seen there.
@@ -26,17 +27,22 @@ or inputs, depending on the sweep. Every ratio is before time divided by after
 time, so above 1.0 the change was faster, below 1.0 it was slower, and 1.0 is no
 change.
 
-Each rule carries two clauses, and they are not the same clause. `silent` is
-where the same benchmark **refused** the rule — it measured the case and found
-nothing worth reporting, and a test fails if the rule fires there. `unreported`
-is where the benchmark found a **real cost the rule does not report**, because
-no declared type separates that case from one it would be wrong to warn about.
-Two rules have one. Summarising both as "where the benchmark found nothing" was
+Each rule carries a `silent` clause, and four also carry an `unreported` one;
+they are not the same clause. For the six rules that report a measured
+slowdown, `silent` is where the same benchmark **refused** the rule — it
+measured the case and found nothing worth reporting, and a test fails if the
+rule fires there. `unreported` is a gap the rule admits: for
+`megamorphic-elements`, `megamorphic-dispatch` and `allocating-select`, a **real
+measured cost the rule misses or quotes the wrong figure for**, because nothing
+static separates that case; for `interface-dispatch`, the limits of its count.
+The two coverage rules' clauses describe what the walk can see, not a
+measurement. Summarising both as "where the benchmark found nothing" was
 false for both (`BUGS.md` TC-39).
 
-Every snippet below is quoted from `demo/lib.ts`, which holds one fixture per
-rule and per silent case and is the file `make check` runs. Nothing here was
-written as an illustration: a fixture is tested, and an illustration is not.
+Every snippet below is an excerpt from [`demo/lib.ts`](../demo/lib.ts), which
+holds the types, imports and helpers the snippets use, one fixture per rule and
+per silent case, and is the file `make check` runs. Nothing here was written as
+an illustration: a fixture is tested, and an illustration is not.
 
 ## megamorphic-elements
 
@@ -91,7 +97,10 @@ detection, not a verified caller speedup.
 
 ## megamorphic-dispatch
 
-**What it detects.** `x.step()` where `x` is one of five object types.
+**What it detects.** A method call whose receiver has five or more distinct
+property sets in its declared type, or that five or more traced implementations
+reach. Five type names alone are not enough: in a declared type, five classes
+with the same property names count as one set.
 
 **It fires on** `areaOfFive`:
 
@@ -102,8 +111,9 @@ export function areaOfFive(x: Circle | Square | Rect | Tri | Hex): number {
 }
 ```
 
-**It is silent on** `areaOfFour`, the same call at four types: two to four
-types, for a method on a class, is where the measurement found no effect.
+**It is silent on** `areaOfFour`, the same call at four types. Four types on
+a class method still cost 1.41-1.65x, an order of magnitude below the fifth,
+which is why the rule starts there.
 `interface-dispatch` still reports that call, because the walk cannot pick
 which body runs — a different question from how many shapes reach it.
 
@@ -296,8 +306,9 @@ side could not. The exception is withdrawn and the rule is right to fire there
 declaration (a `.d.ts`) rather than to an implementation it can read. The
 JavaScript may be installed; the checker does not read it.
 
-**It fires on** `usesDependency`, which calls into a typed dependency that
-ships a `.d.ts` and no body:
+**It fires on** `usesDependency`, which calls into the `typescript` package.
+The program resolves that import to its `.d.ts`, although the package's
+JavaScript is installed beside it:
 
 ```ts
 /** @jitmax */
@@ -356,9 +367,10 @@ export function runTrio(vs: number[]): number {
 receiver: the walk follows it instead of reporting, and finds the
 `accumulating-spread` inside it.
 
-**How to act.** Inspect the related implementations. Annotate a concrete
-implementation to check its body, or review it separately and add
-`-interface-dispatch` to the root's `@jitmax` annotation. Do not remove an
+**How to act.** Inspect the related implementations. Annotating a concrete
+implementation checks its body but does not clear this call-site error; to
+clear it, review the implementations and add `-interface-dispatch` to the
+root's `@jitmax` annotation. Do not remove an
 abstraction or add a type assertion to clear this finding: a type assertion
 does not select a runtime implementation.
 
@@ -448,8 +460,9 @@ object afterwards, and its cost is *per read*. The gap is written up as TC-9 in
 
 Every finding on a per-call path is an error, and every error fails the run.
 **The annotation is the filter**: you write `/** @jitmax */` on a function you
-need fast, so a finding on one is actionable by definition and a second
-severity tier gates nobody. A finding reached only through a static field
+need fast, so a second severity tier gates nobody. Review each error before you
+change code: the coverage rules report unchecked calls, not slowdowns, and a
+performance finding is a candidate until a profile says it matters. A finding reached only through a static field
 initializer is not on a per-call path — it runs once, when its class is
 defined, however often the mark runs — so it prints as `warn` with a `once:`
 line naming the initializer, and does not fail the run. A constructor and an
@@ -461,13 +474,13 @@ Three rules — `closed-world`, `interface-dispatch` and
 `megamorphic-dispatch` — warned and exited 0 until 2026-08-31, on the argument
 that no benchmark measures the program they fire on. That gap is real and is
 still stated: they carry `TC-33`, and the report prints `known defect: TC-33`
-under every finding they make. It is also 98.6% of every finding across the
+under every finding they make. It is also 97.9% of every finding across the
 22-codebase survey in `examples/README.md`, so a build can now fail on a
 mechanism this project
 has not priced for that program. Switch a rule off in the `[rules]` table, or
 per function with `-closed-world` / `-TC-33` on the annotation — and since
 v0.11.0 `interface-dispatch` is separately silenceable, so quieting the loud
-cause no longer switches off the honest "no body anywhere" one.
+cause no longer switches off the honest declaration-only one.
 
 ## Turning a rule off
 
