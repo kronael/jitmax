@@ -11,6 +11,11 @@ function the walk reaches from a marked function.
 
 ## Terms
 
+V8 is the JavaScript engine in Node, Chrome and Deno. It makes a hot function
+fast by compiling each property read for the object shapes it has seen there.
+A pattern that defeats this still returns the same values, only slower, and
+nothing warns you.
+
 - A **hidden class** is the shape V8 gives an object. Objects built the same
   way — by the same constructor or literal, with the same property names added
   in the same order — share one. V8's source calls it a **map**.
@@ -186,10 +191,11 @@ export function twoStages(rows: number[]): number[] {
 `sortedStages`, because `.sort()` returns the array it was given; on
 `splitJoin`, whose split-map-join chain measured under the bar a broad warning
 needs; and on `topTen`, whose `.slice(0, 10)` bounds the result below the
-smallest n the sweep covers. Reading the finished array costs nothing,
-0.95-1.10x across all six forms. Map-then-filter has no measured silent size,
-and the rule cannot see an array's length unless an array literal with no
-spread, or a literal `.slice()` before the allocation, bounds it (`TC-9`).
+smallest n the sweep covers. Reads of the finished arrays measured
+0.95-1.10x across all six forms, so the cost is in building them.
+Map-then-filter has no measured silent size, and the rule cannot see an
+array's length unless an array literal with no spread, or a literal `.slice()`
+before the allocation, bounds it (`TC-9`).
 
 **How to act.** Fuse stages only when the observable behaviour stays the same:
 callback order, side effects, indices, array arguments and holes, and for
@@ -310,9 +316,12 @@ carries no size, so the rule cannot tell whether V8 would inline the code
 behind it; `test/fixtures/tiny` holds that case.
 
 **How to act.** If `related:` names bodies the walk located, look at them.
-Otherwise point the program at the dependency's TypeScript source, or review
-the dependency separately and add `-closed-world` to the annotation. A missing
-body does not prove V8 failed to inline the code.
+Otherwise make the import resolve to the dependency's TypeScript source, not
+its `.d.ts`: map the package name to its source entry with
+`compilerOptions.paths` in `tsconfig.json`. Passing the source directory as a
+path does not redirect the import. Or review the dependency separately and add
+`-closed-world` to the annotation. A missing body does not prove V8 failed to
+inline the code.
 
 **The cost.** None claimed. One helper padded past V8's inlining budget
 measured 4.64-4.95x against the same helper under it, at n=1000, in
