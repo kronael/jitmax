@@ -39,13 +39,20 @@ time. Nothing downstream can tell the two apart: the walk, the rules and the
 exit code treat a profiled mark exactly as an annotated one.
 
 **Walk.** From each mark, `lib/scan.ts` follows every call whose callee has a
-body in the program, to a fixpoint. A visited set stops cycles. Each annotation
-has a hard cap of 200 function bodies; hitting it prints `WALK TRUNCATED` and
-makes the run exit 1. A `new` is a call: the constructor is a body like any
-other. A callee that resolves to a declaration with no body is a `closed-world`
-finding, and a call the walk cannot bind to one implementation is an
-`interface-dispatch` finding — the walk reports where it stopped rather than
-letting the site fall through both branches and vanish.
+body in the program, to a fixpoint, recording every edge it takes. A visited
+set stops cycles. Each annotation has a hard cap of 200 function bodies;
+hitting it prints `WALK TRUNCATED` and makes the run exit 1. A `new` is a call:
+the constructor is a body like any other and runs per call, same as an
+instance field. A `new` also admits the class's static field initializers,
+each as an edge that runs once, when the class is defined, not on the `new`
+that found it. A body no per-call path reaches, only such once edges, is
+marked `once`: its findings print `warn` and name the initializer instead of
+failing the run, while a closure a once body builds runs whenever it is
+called, and a body a per-call path also reaches keeps its error. A callee that
+resolves to a declaration with no body is a `closed-world` finding, and a call
+the walk cannot bind to one implementation is an `interface-dispatch`
+finding — the walk reports where it stopped rather than letting the site fall
+through both branches and vanish.
 
 **Count what reaches a receiver.** `lib/flow.ts` answers "what actually reaches
 this value", not "what could structurally fit its interface" — TypeScript is
