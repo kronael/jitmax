@@ -22,7 +22,8 @@ in install archives. `bench/driver.ts` implements the protocol,
 ## Re-run any claim
 
 ```sh
-make bench                # the 24-cell object-shape sweep
+make bench-shape-sets     # property sets per element type — megamorphic-elements
+make bench                # the 24-cell key-order sweep, what that rule misses
 make bench-spread         # accumulating spread, array form
 make bench-spread-object  # accumulating spread, object form
 make bench-strings        # string building — the refutation, not a rule
