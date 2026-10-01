@@ -1465,6 +1465,26 @@ test('a run whose findings were all suppressed does not call itself clean', () =
   assert.strictEqual(run.status, 0);
 });
 
+// The suppression line names the rules whose findings it hid. It listed every
+// key the config switched off, so the shipped preset — six rules off — made one
+// suppressed closed-world finding read as six rules firing.
+test('the suppression line names only the rules that fired', () => {
+  const file = path.join(root, 'tmp', `test-presetsupp-${process.pid}.ts`);
+  fs.writeFileSync(file, [
+    '/** @jitmax */',
+    'export function each(xs: number[], f: (x: number) => number): number {',
+    '  let s = 0; for (const x of xs) s += f(x); return s;',
+    '}',
+    '',
+  ].join('\n'));
+  const run = spawnSync(process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'examples', 'megamorphic', 'jitmax.toml'), file],
+    { cwd: root, encoding: 'utf8' });
+  fs.unlinkSync(file);
+  assert.match(run.stdout, /1 finding suppressed \(closed-world\)\n/);
+  assert.strictEqual(run.status, 0);
+});
+
 // TC-154: a site inside a nested function the walk also follows as its own
 // body is found twice for one mark, and the fan-in counted findings, so one
 // annotated function printed "reached by 2 annotated functions".

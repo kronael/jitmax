@@ -159,20 +159,23 @@ Exit codes: 0 checked, no errors; 1 errors or incomplete coverage;
   }
   const { checker, marks, unresolved, bodyless, untyped } = scan(ts, p, given);
 
-  const allKeys = new Set(configDisabled);
-  for (const mark of marks) for (const key of mark.disabled) allKeys.add(key);
 
   // Counted per SITE, like the findings it sits beside. Counting per mark made
   // one disabled line reached from three annotated functions read as "3
   // findings suppressed" — the call-graph fan-in that BUGS TC-62 removed from
   // the error and warning counts, left behind in the line under them.
   const suppressedSites = new Set<string>();
+  // Named by the rules that actually fired, not every key the config lists: a
+  // preset that switches off six rules made one suppressed finding read as six.
+  const suppressedRules = new Set<string>();
   const results = marks.map((mark) => {
     const disabled = resolveDisabled([...configDisabled, ...mark.disabled]);
     const raw = check(ts, checker, mark);
     const findings = raw.filter((f) => !disabled.has(f.rule));
     for (const f of raw) {
-      if (disabled.has(f.rule)) suppressedSites.add(findingKey(f));
+      if (!disabled.has(f.rule)) continue;
+      suppressedSites.add(findingKey(f));
+      suppressedRules.add(f.rule);
     }
     return { mark, findings };
   });
@@ -209,7 +212,7 @@ Exit codes: 0 checked, no errors; 1 errors or incomplete coverage;
   const out = render(
     cwd,
     results,
-    { count: suppressedSites.size, keys: [...allKeys].sort() },
+    { count: suppressedSites.size, keys: [...suppressedRules].sort() },
     blind,
     fromProfile === undefined ? 'annotated function' : 'hot function',
     verbose
