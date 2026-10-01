@@ -31,6 +31,245 @@ setup instructions.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
+## TC-165 — the `any` notice says "a Map builtin" for string and array calls (2026-10-01, open)
+
+Printed "cannot tell a Map builtin from somebody's code" for
+`itemToken.text.replace` in marked and `(this as any).push` in arktype.
+
+- **Severity:** low
+- **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
+  arktype ca8ec6c)
+- **Status:** open
+- **Fix:** say "a builtin".
+
+## TC-164 — the "annotate a concrete implementation" advice cannot clear the error (2026-10-01, open)
+
+On lru-cache, annotating the `#isStale` closure as advised gave 6 annotated
+functions and still 33 errors; only suppression clears them.
+
+- **Severity:** low
+- **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
+  arktype ca8ec6c)
+- **Status:** open
+- **Fix:** say that annotating checks the body but does not clear the
+  call-site error, or clear the error when every located implementation is
+  annotated.
+
+## TC-163 — the docs require TypeScript <6, but TypeScript 6 gives identical results (2026-10-01, open, owner decision)
+
+lru-cache on TS 6.0.2 and marked on TS 6.0.3 produced reports byte-identical to
+the 5.9.3 runs; the README says "skip that and the scan stops at exit 2", and
+its pin step downgraded the compiler of 2 of the 3 trial repos. TC-144's crash
+was TypeScript 7's missing `ts.sys`, which 6 has.
+
+- **Severity:** medium
+- **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
+  arktype ca8ec6c)
+- **Status:** open, owner decision
+- **Fix:** test against TS 6 and widen the peer range, or state that TS 6
+  works without a guarantee.
+
+## TC-162 — one call is counted as two errors (2026-10-01, open)
+
+arktype `union.ts:345:4` and `structure.ts:652:11` each print both
+megamorphic-dispatch and interface-dispatch.
+
+- **Severity:** low
+- **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
+  arktype ca8ec6c)
+- **Status:** open
+- **Fix:** when a site already has megamorphic-dispatch, show
+  interface-dispatch only as a note.
+
+## TC-161 — megamorphic-elements ignores discriminant narrowing through `.filter()` (2026-10-01, open)
+
+marked `src/Tokenizer.ts:495` `const spacers = item.tokens.filter(t => t.type
+=== 'space')`, then `:496` reads `t.raw`; the rule reports 17 property sets.
+Only `Tokenizer.ts:133` builds space tokens, and a `%HaveSameMap` probe over
+the CommonMark spec found 21 elements and 1 map.
+
+- **Severity:** medium
+- **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
+  arktype ca8ec6c)
+- **Status:** open
+- **Fix:** narrow the element type by a `filter` predicate that tests the
+  discriminant.
+
+## TC-160 — arrow-function class members print as `<anonymous>()` and say "`this` outside any method" (2026-10-01, open)
+
+arktype `traverseApply: TraverseApply = (data, ctx) => {…}` with
+`/** @jitmax */` gives root `union.ts:341 <anonymous>()`; 14 findings say "the
+receiver has an unknown origin (`this` outside any method)", but an arrow
+field's `this` is the instance.
+
+- **Severity:** medium
+- **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
+  arktype ca8ec6c)
+- **Status:** open
+- **Fix:** name the root `Class.member`; bind `this` in a property initializer
+  to the class.
+
+## TC-159 — a `#private` function field is an error where the same public field is followed silently (2026-10-01, open)
+
+Repro: `class Priv { #stale: (i: number) => boolean = () => false;
+constructor(ttl: number) { if (ttl) this.#stale = (i) => i > ttl; } /**
+@jitmax */ check(i: number) { return this.#stale(i); } }` reports
+`interface-dispatch` "no single checkable implementation was resolved", while
+the identical class with a public `stale` field resolves to one
+implementation. All 30 of lru-cache's interface-dispatch errors are this,
+including "no visible write to .perf" beside `this.#perf = …` at `:1463`.
+
+- **Severity:** high
+- **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
+  arktype ca8ec6c)
+- **Status:** open
+- **Fix:** treat `#name` writes as sources the same way as public writes, and
+  count writes made outside the initializer.
+
+## TC-158 — closed-world is printed for bodies the walk located and calls readable (2026-10-01, open)
+
+The message "N implementations reach this receiver … those bodies are
+readable and are not walked" is interface-dispatch's case under rules.md's
+own definitions. lru-cache `src/index.ts:1615`, `:1620`, `:1641`; arktype
+`errors.ts:78`, `traversal.ts:296`, `:299`; at arktype `util/path.ts:50`
+exactly one implementation (`printable`) is located and still not walked. The
+same text says "inside V8's four-map budget" for function targets while the
+legend prints TC-13.
+
+- **Severity:** medium
+- **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
+  arktype ca8ec6c)
+- **Status:** open
+- **Fix:** label located bodies as interface-dispatch, walk a single
+  implementation, drop the four-map wording for call targets.
+
+## TC-157 — closed-world says "we have no body for" code whose body is in the program (2026-10-01, open)
+
+marked `src/Tokenizer.ts:325` `this.rules.other.listItemRegex(bull)` and six
+siblings at `:371–376` are arrow functions in `src/rules.ts:96–99` (`export
+const other = {…}`), reached through `this.rules = { other, … }`; the report
+says "other is declared as a ShorthandPropertyAssignment the walk does not
+model". arktype: `super()` at `ark/schema/shared/errors.ts:42` goes to
+`NoopBase = class {} as new <t>() => t`, and at `ark/util/path.ts:79` to
+`ReadonlyArray = Array as unknown as …` — an empty class and the platform
+`Array`. 9 false errors in two repos.
+
+- **Severity:** high
+- **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
+  arktype ca8ec6c)
+- **Status:** open
+- **Fix:** when the flow stops at a shorthand property, use the checker's
+  declaration; follow `super` through an `as` cast; classify a cast global
+  constructor as platform.
+
+## TC-156 — classes and builders from test files count as element shapes (2026-10-01, open)
+
+When the scanned path holds tests, their classes join the hierarchy and their
+literals join the flow origins: pixi's `src/**/__tests__/DummyView.ts` is in
+`Container`'s count. In the five new pixi findings, at most 2 of 8–19 sources
+are test files, and each has 8 or more non-test classes, so none of them
+depends on the test classes; a smaller hierarchy could.
+
+- **Severity:** low
+- **Scope:** rules, flow
+- **Status:** open
+
+## TC-155 — most of TC-107's cold errors are annotated roots, which no walk edge separates (2026-10-01, open, proposal)
+
+21 of the 22 cold errors TC-107 tabled sit in or under roots that are
+themselves startup, CLI or test code: arrow `parseCliArgs`; pixi
+`autoDetectRenderer` (3), `compileHighShader` (2), `compileHighShaderGpuProgram`,
+`generateShaderSyncCode`, `resetUids`; mathjs `importFactory` (5) and
+`createSnapshotFromFactories`; chevrotain's six, all roots called under
+`TRACE_INIT`. `examples/annotate.js` marks every outermost function with a
+loop, so the survey asserts these are hot.
+
+Proposal, needs sign-off: either change the survey method (profile mode,
+TC-57, or a narrower annotate.js), or add a root-frequency check — a root
+whose every visible caller is module-level or static-initializer code runs
+once. The second overrides "the annotation is the filter", and an exported
+root has callers outside the program.
+
+- **Severity:** high
+- **Scope:** survey method, severity model
+- **Status:** open, proposal
+
+## TC-154 — "reached by N annotated functions" counts occurrences, not functions (2026-10-01, open)
+
+A site inside a nested function the walk also follows as its own body — an
+IIFE, a followed callback — is found twice per mark, and `render()` counts
+findings. `test/fixtures/once` has one annotated function and prints "reached
+by 2 annotated functions". arrow's `vector.ts:375` "reached by 30" is 15
+functions (counted with `check()` per mark); TC-107's "charged to 30" inherits
+it. Same at 17b64dc.
+
+- **Severity:** low
+- **Scope:** report
+- **Source:** `lib/report.ts` `reach` map
+- **Status:** open
+
+## TC-153 — the flagship rule's sweep has no make target (2026-10-01, open)
+
+`make bench` (Makefile:84-85, bench/README.md:25) re-runs the key-order sweep
+the rule disclaims; shape-sets has no target.
+
+- **Severity:** low
+- **Scope:** Makefile, bench
+- **Status:** open
+
+## TC-152 — survey figures are stale against HEAD (2026-10-01, open)
+
+examples/README.md:373,387 and docs/rules.md:233 say 29 sites; HEAD gives
+megamorphic-elements 19 and allocating-select 0.
+
+- **Severity:** low
+- **Scope:** docs
+- **Status:** open
+
+## TC-151 — EVIDENCE.cost and .silent are never printed (2026-10-01, proposal)
+
+235 lines of prose; the only reader is check.test.ts:2397; 7 hand-typed "20
+pairs". A declared `sweeps[]` field would also close TC-120.
+
+- **Severity:** low
+- **Scope:** lib/rules
+- **Status:** proposal
+
+## TC-150 — receiver flow counts allocations in test files (2026-10-01, open)
+
+vue watch.ts:161 `.some()` on an array reports 7 "implementations", all from
+*.spec.ts.
+
+- **Severity:** medium
+- **Scope:** `lib/flow.ts`
+- **Status:** open
+
+## TC-149 — megamorphic-dispatch reads the receiver type through a narrowing cast (2026-10-01, open)
+
+`unwrap()` at megamorphic-dispatch.ts:87 strips `as typeof TeleportImpl`; 7
+vue sites (renderer.ts:460,473,2067,2206; hydration.ts:262,333,345) are
+single-implementation calls reported as megamorphic. 8 of the union receiver
+check's 9 survey findings are this. Note: the union receiver check also
+carries the pixi render-loop error at executeInstructions.ts:20, so it cannot
+simply be removed.
+
+- **Severity:** high
+- **Scope:** rules
+- **Source:** tmp/lib-core run
+- **Status:** open
+
+## TC-148 — allocating-select fires at no site in 22 codebases (2026-10-01, open, owner decision)
+
+0 sites in 2,953 annotated functions at 17b64dc; builds() needs a callee body,
+so a packaged Decimal.min (.d.ts) can never fire it. A scratch build without
+the rule is byte-identical on 22/22 corpora; demo/ loses only `lowest`.
+
+- **Severity:** medium
+- **Scope:** rules
+- **Affected:** `lib/rules/allocating-select.ts`
+- **Source:** scratch variant, 22/22 corpus outputs byte-identical
+- **Status:** open, owner decision
+
 ## TC-147 — `jitmax src` is reported to report less than the bare form (2026-10-01, open, unreproduced)
 
 A usage report says the documented default, `jitmax src`, gives worse results
@@ -59,6 +298,11 @@ the report is a user's and three negatives from one machine do not refute it.
 - **Status:** open, needs the reporter's working directory and tsconfig
 - **Fix:** none proposed. Get the failing invocation first; a fix written
   against a mechanism nobody has reproduced is a guess with a test around it.
+
+Three-repo comparison 2026-10-01: the bare form was never better.
+Byte-identical on lru-cache and marked; on the arktype monorepo it took
+78.5 s against 11.1 s and pulled test-harness code into the evidence. The
+dinero claim stands unreproduced.
 
 ## TC-146 — the report cites paths that do not resolve from the directory it ran in (2026-10-01, open)
 
@@ -101,6 +345,9 @@ be resolved against the installed package, and either is a code change.
   installed package and print that. A URL is the honest one: the `.jl` row a
   ratio comes from is in the repository and not in the archive.
 
+Reproduced 2026-10-01 in all three trial repos (lru-cache, marked, arktype);
+marked has its own docs/ folder, so the cited path looks like a project file.
+
 ## TC-145 — a run whose only findings were suppressed says every annotated function is clean (2026-10-01, open)
 
 The suppression line is printed, and then the verdict contradicts it:
@@ -140,6 +387,9 @@ answer was thrown away" reading as clean. A gate reads the exit code, which is
   to be printed over a truncated walk and an `any` receiver, which are also
   "the user's own code made me blind here". Either way the sentence should not
   say *clean* two lines under *1 finding suppressed*.
+
+Reproduced 2026-10-01 on lru-cache: 33 findings suppressed, "every annotated
+function is clean", exit 0.
 
 ## TC-144 — TypeScript 7 crashes the quick start `ts.sys` is undefined (2026-09-30, fixed)
 
@@ -536,6 +786,13 @@ An unrelated profile with zero program time must still fail as unchecked.
 - **Status:** proposed (redesign, needs sign-off)
 - **Fix:**
 
+Reproduced at `17b64dc` on 2026-10-01: `node --cpu-prof bin/jitmax.ts demo;
+node bin/jitmax.ts self.cpuprofile lib bin` → "0 hot functions, 0 errors …
+(self time: dependency 69.1%, engine 16.1%, node: 11.4%, project 3.4%)", exit
+1. With `[profile] min_self_pct = 0.05`: "27 hot frames matched a function
+here; 457 did not" — all 457 are `node_modules/typescript/lib/typescript.js`
+frames.
+
 ## ✅ FIXED 2026-09-09 — TC-128 — the key-order false negative is invisible at the CLI (2026-08-31, fixed)
 
 Found by an adversarial audit today. `megamorphic-elements` records this gap
@@ -672,7 +929,7 @@ their code or lower `min_self_pct`; its runtime-only profile test holds both the
 message and exit code. TC-132 records the separate redesign needed to partition
 project, dependency, and runtime time.
 
-## TC-104 — megamorphism is modelled as a TypeScript union, and nobody writes polymorphism that way (2026-08-30, open)
+## TC-104 — megamorphism is modelled as a TypeScript union, and nobody writes polymorphism that way (2026-08-30, fixed)
 
 `objectShapes` is the shape counter both megamorphic rules read
 (`lib/rules/shared.ts:200`):
@@ -744,17 +1001,32 @@ supposed to catch them.
 - **Scope:** rules
 - **Affected:** `megamorphic-elements`, `megamorphic-dispatch`
 - **Source:** `lib/rules/shared.ts:200`; repro above
-- **Status:** open
-- **Fix:**
+- **Status:** fixed 2026-10-01 in `bfc67ad` for `megamorphic-elements`;
+  `megamorphic-dispatch` unchanged
+- **Fix:** `elementShapes()` in `lib/rules/shared.ts` counts the property sets
+  that can reach an array's elements from three sources: the union's members
+  (`objectShapes`, unchanged), the classes and literals `lib/flow.ts` finds
+  reaching the elements, and — only when that trace is partial — every class
+  the program constructs that the element type admits through `extends`
+  (`Flow.constructedClasses`). Every source counts distinct property-name
+  sets. The repro flips: `sumClasses` reports 6 sets and names K1..K6;
+  `sumUnion` still reports 6. A count the union alone does not explain reads
+  "receives elements with N distinct property sets, counted from the classes
+  and builders that can reach it". Test: `test/fixtures/hierarchy`.
 
-Proposal, needs sign-off because it changes what the flagship rules trigger on:
-count shapes from the same place `lib/flow.ts` already counts implementations —
-the allocation sites that reach the value — rather than from the declared type's
-union members. A union type keeps its current answer as one source among
-several. `subclassesOf` already walks `extends` edges; the missing half is
-counting them as element shapes rather than only as call targets.
+  Measured: pixi gains five class-hierarchy findings (`Container` children at
+  `checkChildrenDidChange.ts:28`, `updateRenderGroupTransforms.ts:31`,
+  `getRenderableBounds.ts:19`; `TextureSource`; `Filter`). arrow, mathjs,
+  chevrotain, the 22-corpus survey, marked, arktype, lru-cache and the README
+  `shapes.ts` example are byte-identical; nothing went silent. tsc: 17.0 s to
+  24.6 s.
 
-## TC-107 — code that runs once per process is priced as if it ran per call, and that is most of the error tier (2026-08-30, open)
+  The three-repo trial of 2026-10-01 supplied counter-evidence to this
+  entry's title: marked and arktype both write polymorphism as a union, and
+  `%HaveSameMap` confirmed 9 and 8 maps respectively. The union source was
+  validated, not wrong — it was incomplete.
+
+## TC-107 — code that runs once per process is priced as if it ran per call, and that is most of the error tier (2026-08-30, partial)
 
 The walk follows a call edge and never asks how often the edge is taken. A body
 reached only from a module-load initializer, a constructor's one-time setup, or
@@ -807,17 +1079,33 @@ render loop.
 - **Scope:** walk, severity model
 - **Affected:** all rules
 - **Source:** `n_arrow-js/src/vector.ts:370`; `r_arrow.log`; `r_pixijs.log`
-- **Status:** open
-- **Fix:**
+- **Status:** partial 2026-10-01 — the static-initializer edge is fixed in
+  `f410eb9`; the rest is TC-155
+- **Fix:** `lib/scan.ts` records every edge the walk takes and, after the
+  walk, marks a body `once` when no per-call path reaches it. The one once
+  edge is a static field initializer: it runs when its class is defined, not
+  on the `new` the walk entered through. Such a finding prints `warn` with a
+  `once:` line naming the initializer and does not fail the run; `failing()`
+  in `lib/report.ts` is the one answer the header, the severity and the exit
+  code read. A body any per-call path reaches keeps its error, within one
+  mark and across marks, and so does code in a closure a once body builds —
+  pixi's `CanvasTextMetrics.graphemeSegmenter` is a static IIFE whose closure
+  runs on every measured string. Tests: `test/fixtures/once`,
+  `test/fixtures/oncemix`.
 
-Proposal, needs sign-off: the walk already knows the edge it took. A body
-reachable from the annotated root ONLY through a static/field initializer, a
-constructor, or a module-level statement has no per-call frequency and cannot
-carry an `error` — report it as a `warn` naming the once-per-process path, or
-not at all. This is the static half of what TC-57's profile mode does by
-measurement, and unlike static hotness inference it is a soundness question the
-walk can answer: not "is this hot" but "can this run more than once per
-process".
+  Measured against 17b64dc: arrow `src/vector.ts:375` and pixi
+  `CanvasTextMetrics.ts:222` became warnings; no other line moved on arrow,
+  pixi, mathjs, chevrotain, effect or the 22-corpus survey. The render loop
+  `executeInstructions.ts:20` is still an error.
+
+  Two parts of the proposal were not built, because the code proves them
+  wrong. A constructor is not a once edge: the walk reaches one only through
+  a `new` in code it walked per call, so it runs as often as that `new` —
+  `demo/lib.ts` `viaConstructor` and TC-10's base-constructor `delete` are
+  per-call findings it would have silenced. No module-level statement is an
+  edge: `reach()` never enters a module's top-level code from a mark. Of the
+  22 cold errors in the table above, one — arrow's IIFE — is behind a static
+  initializer.
 
 ## TC-122 — three deletes on one object are three build-failing errors for one demotion (2026-08-30, open)
 
@@ -2545,7 +2833,7 @@ achieved region is within 2x of 120 ms and **fail the cell loudly** when it is
 not, so a mis-sized cell can never again be published as a result. Then re-run
 spread and chained and re-derive both.
 
-## TC-4 — two copies of the measurement protocol (2026-08-11, proposal)
+## TC-4 — two copies of the measurement protocol (2026-08-11, closed)
 
 `bench/driver.js` was extracted so the accumulating-spread sweep could reuse the
 protocol instead of copying it, but `bench/run.js` still carries its own copy of
@@ -2562,6 +2850,12 @@ that produced the published `shapes.jl`. That needs the 24-cell sweep re-run
 under the new calibration and the published figures re-derived — a redesign,
 so it wants sign-off first. Proposal: port `run.js` to the driver, re-run all
 24 cells, and keep the old file's output as a third sweep to compare against.
+
+**Closed 2026-10-01: the code this entry is about is gone.** `bench/run.js`
+no longer carries its own copy of the protocol; the repository is TypeScript
+now, and `git grep` for `calibrate`/`bootstrap` finds them only at
+`bench/driver.ts:127,167`. One implementation, not two — the entry's premise
+does not hold at `bfc67ad`.
 
 ## TC-9 — rules fire outside the conditions their own evidence establishes (2026-08-11, open)
 
