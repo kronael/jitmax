@@ -241,7 +241,7 @@ It switches the other six rules off. Coverage notices still apply. For your own
 settings, see [turning a rule off](docs/rules.md#turning-a-rule-off): `false`
 disables a rule by name, or every rule carrying a defect code. For one function
 and the callees it reaches, write `/** @jitmax -megamorphic-elements -TC-9 */`.
-The report counts what it suppressed and names the keys that did it.
+The report counts what it suppressed and names the rules those findings came from.
 
 A CPU profile can select hot functions with no annotations at all. Replace
 `your-workload.js` with your application's JavaScript entry point and `src` with

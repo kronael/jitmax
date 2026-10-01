@@ -219,7 +219,7 @@ point estimate at or above 1.10x and a lower bound above 1.05x — and
 `cleanEnum` clears it at a 16-member enum, 1.10-1.12x, and does not at 256:
 1.03-1.10x, whose lower bound is under 1.05x and whose point estimate is under
 1.10x. `lib/derive.ts` publishes that cell as the rejection it is rather than as
-evidence. So the mechanism replicates in the microbenchmark and the transfer to
+evidence. So the measured slowdown replicates in the microbenchmark and the transfer to
 the one real function this rule was tried on is worth three to twelve percent,
 with one of the two sizes rejected. `BUGS.md` TC-83.
 
@@ -240,8 +240,8 @@ export function lowest(rows: Money[], bucket: { lo: Money }): void {
 
 **It is silent on** `lowestNumber`, the same loop on numbers, where `Math.min`
 allocates nothing. That silence is measured, not assumed: at n=10000 the number
-loop still costs 1.10-1.19x, an interval whose lower bound sits under the
-broad-warning bar, and at n=100000 three sweeps read 0.89x, 0.97x and 1.03x, so
+loop's estimates range 1.10-1.19x and its measured intervals span 1.03-1.29,
+reaching under the broad-warning bar, and at n=100000 three sweeps read 0.89x, 0.97x and 1.03x, so
 rule 13 withdraws the cell and there is no measurement to warn from.
 
 **How to act.** Open the related returned allocation. If the call only selects
@@ -504,9 +504,9 @@ disables the selection; `true` does not suppress it. In an annotation, prefix th
 name with `-` to disable it. See the `known defects` legend after the findings
 for what a code names. An unknown name or code fails with exit `2`, the same as a
 missing path. Suppression is never silent: the report always says how many
-findings were removed and by what, e.g.
-`3 findings suppressed (TC-9, megamorphic-elements)` — a clean run that is
-clean because rules were switched off says so.
+findings were removed and which rules they came from, e.g.
+`3 findings suppressed (megamorphic-elements)` — a run that is clean only
+because rules were switched off says so.
 
 A per-function override such as `/** @jitmax -megamorphic-elements -TC-9 */`
 disables those rules for that function and everything its walk reaches,
