@@ -1398,6 +1398,34 @@ test('a profile matching no function in the program names the frames, and exits 
   assert.strictEqual(run.status, 1);
 });
 
+// TC-145: a config that switches off the one rule that fired left a run that
+// printed `1 finding suppressed` and then `every annotated function is clean`
+// two lines below it. The exit code is the gate's contract and stays 0; the
+// sentence stops denying the line above it.
+test('a run whose findings were all suppressed does not call itself clean', () => {
+  const config = path.join(root, 'tmp', `test-suppress-${process.pid}.toml`);
+  fs.writeFileSync(config, '[rules]\n"accumulating-spread" = false\n');
+  const run = spawnSync(process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), config, path.join(root, 'examples', 'radash-assign.before.ts')],
+    { cwd: root, encoding: 'utf8' });
+  fs.unlinkSync(config);
+  assert.match(run.stdout, /1 finding suppressed \(accumulating-spread\)/);
+  assert.doesNotMatch(run.stdout, /is clean/);
+  assert.match(run.stdout, /no errors shown: 1 finding suppressed above, not fixed\./);
+  assert.strictEqual(run.status, 0);
+});
+
+// TC-154: a site inside a nested function the walk also follows as its own
+// body is found twice for one mark, and the fan-in counted findings, so one
+// annotated function printed "reached by 2 annotated functions".
+test('fan-in counts annotated functions, not findings', () => {
+  const run = spawnSync(process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'once')],
+    { cwd: root, encoding: 'utf8' });
+  assert.match(run.stdout, /1 annotated function/);
+  assert.doesNotMatch(run.stdout, /reached by/);
+});
+
 // TC-128: five key ORDERS of one key set are five maps at one load site, and
 // `%HaveSameMap` says so. No rule can separate them from five builders that
 // agree, because key order is not part of a TypeScript type — the rules record

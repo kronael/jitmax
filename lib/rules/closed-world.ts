@@ -24,7 +24,7 @@ const evidence: Evidence = {
     'need from it" is advice nobody can take — those are counted and not named (BUGS ' +
     'TC-55, TC-110). A method read off a value typed `any` is not this rule either: ' +
     'nothing resolves there, so the platform test cannot fire and the tool has no way to ' +
-    "tell a Map builtin from somebody's code — the site is reported as blindness and the " +
+    "tell a builtin from somebody's code — the site is reported as blindness and the " +
     'run is not clean, which is what it is (BUGS TC-129). And this bounds what ONE ' +
     'unchecked call can cost, not what any ' +
     'particular one does cost ' +

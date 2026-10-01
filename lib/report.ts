@@ -188,8 +188,8 @@ export function render(
   // fan-in is kept rather than discarded: a line reached by 28 annotated
   // functions is a better fix than one reached by one.
   const reach = new Map<string, number>();
-  for (const f of kept.flatMap((r) => r.findings)) {
-    reach.set(findingKey(f), (reach.get(findingKey(f)) ?? 0) + 1);
+  for (const { findings } of kept) {
+    for (const key of new Set(findings.map(findingKey))) reach.set(key, (reach.get(key) ?? 0) + 1);
   }
   const shown = new Set<string>();
   const perSite = kept.map(({ mark, findings }) => ({
@@ -317,7 +317,7 @@ export function render(
   if (blind.untyped.length > 0) {
     out.push(
       `  ${plural(blind.untyped.length, 'call')} read a method off a value typed \`any\`, so`,
-      "  nothing resolved and the walk cannot tell a Map builtin from somebody's code:",
+      "  nothing resolved and the walk cannot tell a builtin from somebody's code:",
       `  ${listed(blind.untyped)}`,
       '  give the receiver a type and the call is checked like any other.',
       '  This is not a clean run.'
@@ -485,6 +485,8 @@ export function render(
     '',
     nothingChecked
       ? `  no ${subject} here — nothing was checked, so this is not a clean run.`
+      : clean && suppression.count > 0
+      ? `  no errors shown: ${plural(suppression.count, 'finding')} suppressed above, not fixed.`
       : clean
       ? `  every ${subject} is clean.`
       : all.length === 0 && blind.unresolved.length > 0
@@ -507,7 +509,7 @@ export function render(
   // a load site among them, measured at the same order as the case they DO
   // report. That text sat in `EVIDENCE.unreported` with no reader, so a clean
   // run said nothing about it and silence read as coverage (BUGS TC-128).
-  if (clean) {
+  if (clean && suppression.count === 0) {
     const unchecked = Object.entries(EVIDENCE)
       .filter(([, e]) => e.unreported)
       .map(([rule, e]) => [rule, e.unreported as string] as const)
