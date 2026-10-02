@@ -19,12 +19,13 @@ A real run against radash's `assign`, vendored unchanged into `examples/`.
 
 ## Quick start
 
-You need [Bun](https://bun.sh/docs/installation) and TypeScript 5.x in the
-project you check. jitmax parses with your project's own compiler, and
-`bun add typescript` installs 7.x, which lacks the 5.x compiler API:
+You need [Bun](https://bun.sh/docs/installation) and TypeScript 5.x or 6.x in
+the project you check. jitmax parses with your project's own compiler, so a
+project on either keeps it. `bun add typescript` installs 7.x, which lacks the
+compiler API jitmax reads; a project without TypeScript, or on 7.x, adds 6.x:
 
 ```sh
-bun add --dev typescript@^5.9    # or: npm install --save-dev typescript@^5.9
+bun add --dev typescript@^6    # or: npm install --save-dev typescript@^6
 ```
 
 A compiler without that API stops the run at exit `2`, naming the version

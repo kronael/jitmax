@@ -23,10 +23,10 @@ export function load(cwd: string): Ts {
     // (BUGS TC-144).
     if (ts.sys == null) {
       throw new Error(
-        `jitmax needs TypeScript >=5.0.0 <6, and the "typescript" package ` +
+        `jitmax needs TypeScript >=5.0.0 <7, and the "typescript" package ` +
           `resolved here is ${ts.version}, which has no "sys" host. Install a ` +
           'supported version in this project:\n' +
-          '  npm install --save-dev typescript@^5.9'
+          '  npm install --save-dev typescript@^6'
       );
     }
     return ts;

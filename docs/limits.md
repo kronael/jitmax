@@ -16,6 +16,12 @@ tool as a whole.
   named `tsconfig.json`, follows its `extends`, and does not build project
   `references`. Run it where a `tsconfig.json` holds or extends the options
   your code compiles with.
+- **TypeScript 6 reads a project the way 6 does.** An option 6 deprecates, such
+  as `baseUrl`, stops the run at exit `2`, as it stops `tsc`, unless the
+  `tsconfig.json` sets `ignoreDeprecations`. With no `tsconfig.json` at all,
+  6's own defaults apply where jitmax sets none: strict checking is on and no
+  `@types` package loads, so Node's globals read as `any`, are reported as a
+  coverage gap, and the report can differ from 5.x's on the same files.
 - **Exit `1` means a finding or incomplete coverage.** An unresolved import in a
   file that holds a selected function, or a body its walk reaches, reads as
   `any` and is a coverage gap, so the run exits `1`. Imports in other files are

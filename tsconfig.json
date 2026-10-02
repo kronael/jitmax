@@ -9,9 +9,10 @@
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "types": ["node"]
   },
   "include": ["bin", "lib", "test", "examples", "bench"],
-  "//": "bench/natives.js is the ONE file that uses bare V8 natives syntax (%Foo), which neither tsc nor node's type stripper can parse; it is three wrappers, the probes that call them are TypeScript, and bench/natives.d.ts is what the compiler reads in its place. test/fixtures is INPUT to the tool, not part of this build. Two fixtures are deliberately broken source — an unresolvable import and a use-before-declaration cycle — because that is what they exist to reproduce, and a build that typechecks them fails on purpose-built failures.",
+  "//": "bench/natives.js is the ONE file that uses bare V8 natives syntax (%Foo), which neither tsc nor node's type stripper can parse; it is three wrappers, the probes that call them are TypeScript, and bench/natives.d.ts is what the compiler reads in its place. test/fixtures is INPUT to the tool, not part of this build. Two fixtures are deliberately broken source — an unresolvable import and a use-before-declaration cycle — because that is what they exist to reproduce, and a build that typechecks them fails on purpose-built failures. `types` names @types/node because TypeScript 6 loads no @types package it is not told to, and both the build and every fixture scan read Node's globals.",
   "exclude": ["test/fixtures", "bench/natives.js"]
 }

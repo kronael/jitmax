@@ -77,9 +77,10 @@
 
 <p>
   You need <a href="https://bun.sh/docs/installation">Bun</a> and TypeScript
-  5.x in the project you check. <code>bun add typescript</code> installs 7.x,
-  which lacks the compiler API jitmax uses, so pin 5.x with
-  <code>bun add --dev typescript@^5.9</code>. Save this as
+  5.x or 6.x in the project you check. <code>bun add typescript</code> installs
+  7.x, which lacks the compiler API jitmax uses, so a project without
+  TypeScript, or on 7.x, adds 6.x with <code>bun add --dev typescript@^6</code>.
+  Save this as
   <code>shapes.ts</code> in the project root. The element type declares five
   property sets:
 </p>

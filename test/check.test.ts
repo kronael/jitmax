@@ -1063,7 +1063,7 @@ test('a resolved TypeScript with no sys host fails loudly at load, naming the ve
     fs.writeFileSync(path.join(pkg, 'index.js'), 'exports.version = "7.0.2";\n');
     assert.throws(
       () => load(dir),
-      /TypeScript >=5\.0\.0 <6.*\b7\.0\.2\b.*no "sys" host.*npm install --save-dev typescript@\^5\.9/s
+      /TypeScript >=5\.0\.0 <7.*\b7\.0\.2\b.*no "sys" host.*npm install --save-dev typescript@\^6/s
     );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -3610,6 +3610,31 @@ test('every published surface states this version and this many rules', () => {
 });
 
 /**
+ * The supported TypeScript is stated in package.json, in load()'s refusal and
+ * in prose on three surfaces. The prose said 5.x and told a reader to pin
+ * `^5.9` while TypeScript 6 read lru-cache and marked byte for byte as 5.9.3
+ * did, and following it downgraded the compiler of two of three trial repos
+ * (BUGS TC-163). Every surface states the majors the peer range admits, and
+ * no other.
+ */
+test('every surface states the TypeScript majors package.json supports', () => {
+  const pkg = JSON.parse(doc('package.json')) as { peerDependencies: { typescript: string } };
+  const range = pkg.peerDependencies.typescript;
+  const bounds = range.match(/^>=(\d+)\.0\.0 <(\d+)$/);
+  assert.ok(bounds, `peerDependencies.typescript is ${range}, not a range of whole majors`);
+  const majors: string[] = [];
+  for (let m = Number(bounds[1]); m < Number(bounds[2]); m++) majors.push(`${m}.x`);
+  const phrase = `TypeScript ${majors.join(' or ')}`;
+  for (const name of ['README.md', path.join('test', 'README.md'), path.join('site', 'index.html')]) {
+    const text = doc(name).replace(/\s+/g, ' ');
+    const stated = [...text.matchAll(/TypeScript \d+\.x(?: or \d+\.x)*/g)].map((m) => m[0]);
+    assert.ok(stated.length > 0, `${name} no longer states the TypeScript it needs`);
+    assert.deepStrictEqual([...new Set(stated)], [phrase], `${name}; package.json says ${range}`);
+  }
+  assert.ok(doc(path.join('lib', 'ts.ts')).includes(`TypeScript ${range},`), `lib/ts.ts; package.json says ${range}`);
+});
+
+/**
  * Checks the installed executable contract using the package manifest.
  * Assumes Git and tar are available in the development checkout.
  * Verifies runtime, licences and user guides ship without internal notes.
@@ -3671,11 +3696,12 @@ test('installed copies support Bun source and explicit Node builds', () => {
   // TypeScript 7 is the native rewrite: no `ts.sys` and no `ts.createProgram`,
   // which is every call lib/ts.ts makes. An open `>=5.0.0` let a fresh install
   // resolve it, so the tool was dead on arrival for anyone who had not pinned
-  // 5.x themselves — invisible here, because this repo develops against 5.9.
+  // 5.x or 6.x themselves — invisible here, because this repo develops
+  // against 5.9.
   const upper = pkg.peerDependencies.typescript.match(/<\s*(\d+)/);
   assert.ok(upper, `peerDependencies.typescript is ${pkg.peerDependencies.typescript}, which has no upper bound`);
   assert.ok(
-    Number(upper[1]) <= 6,
+    Number(upper[1]) <= 7,
     `peerDependencies.typescript allows TypeScript ${upper[1]}; ts.sys and ts.createProgram are gone from 7`
   );
 });
