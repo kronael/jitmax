@@ -41,7 +41,8 @@ Or pass a TOML file:
   "megamorphic-elements" = false
 
 Options: -h, --help  Show this help and exit; other arguments are ignored.
-         -v, --verbose  Show evidence, known defects and all source locations.
+         -v, --verbose  Show evidence, known defects, benchmark background and all
+                        source locations.
 Exit codes: 0 checked, no errors; 1 errors or incomplete coverage;
             2 the tool failed (input, configuration, or syntax error).
 `);

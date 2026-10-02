@@ -228,11 +228,18 @@ const detect: Rule = (ts, checker, body, add, mark) => {
             'property sets, counted from the classes and builders that can reach it; ') +
         megamorphicCandidate('load'),
       fix:
-        'inspect the element builders. If semantics allow, use consistent own properties ' +
-        'and insertion order',
+        shapes.classInstances
+          ? 'inspect the element classes. If semantics allow, guard by concrete class and ' +
+            'give each class a separate property-read site'
+          : 'inspect the element builders. If semantics allow, use consistent own properties ' +
+            'and insertion order',
       note:
-        'type assertions do not change runtime shapes. Adding a missing property ' +
-        'can change key enumeration and presence checks. Library callers may need ' +
+        (shapes.classInstances
+          ? 'different prototypes keep class instances on different maps even with identical ' +
+            'own properties. Type assertions do not change runtime shapes. '
+          : 'type assertions do not change runtime shapes. Adding a missing property ' +
+            'can change key enumeration and presence checks. ') +
+        'Library callers may need ' +
         'an upstream change; no automatic rewrite is established here',
       related: [
         { ...at(body.sf, read), name: `read: ${read.getText(body.sf)}` },

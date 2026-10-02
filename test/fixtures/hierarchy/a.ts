@@ -28,3 +28,18 @@ export function sumOne(rows: Base[]): number {
   return s;
 }
 export const one = sumOne([new K1(), new K1()]);
+
+/** @jitmax */
+export function sumBuilt(rows: Base[]): number {
+  let s = 0;
+  for (const r of rows) s += r.kind();
+  return s;
+}
+export const built = sumBuilt([new K1(), new K2(), new K3(), new K4(), new K5(), new K6()]);
+
+/** @jitmax */
+export function sumDeclared(rows: (K1 | K2 | K3 | K4 | K5 | K6)[]): number {
+  let s = 0;
+  for (const r of rows) s += r.kind();
+  return s;
+}

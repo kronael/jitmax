@@ -371,11 +371,13 @@ const detect: Rule = (ts, checker, body, add, mark) => {
       // from this string: they were the last user-facing integers in this rule
       // typed by hand, and the test asserted the sentence still said 12 and 48
       // rather than that the data still did (the re-aimed BUGS TC-48).
-      const rebuild =
-        `The own-property rebuild improves reads at ${N['ex.omit.sizes']}, ` +
-        `but the whole call is slower (${N['ex.omit.whole']}, before/after time). ` +
-        'Rebuilding changes object identity; ' +
-        'preserve aliases, prototypes and property semantics';
+      const rebuildSafety =
+        'Rebuilding changes object identity; preserve aliases, prototypes and property ' +
+        'semantics. Benchmark construction and reads together: the rebuild can cost more ' +
+        'than it saves';
+      const rebuildCost =
+        `the own-property rebuild improves reads at ${N['ex.omit.sizes']}, but the whole ` +
+        `call is slower (${N['ex.omit.whole']}, before/after time)`;
       add({
         ...at(body.sf, node),
         rule: NAME,
@@ -388,12 +390,13 @@ const detect: Rule = (ts, checker, body, add, mark) => {
         note: seen
           ? `${seen.op} observes this object and tells an ` +
             `absent key from one holding undefined, so assigning undefined is not a rewrite ` +
-            `here. ${rebuild}`
+            `here. ${rebuildSafety}`
           : 'assigning undefined is equivalent only while nothing downstream tells an absent ' +
             'key from one holding undefined: spread and Object.assign copy it; `in`, for-in, ' +
             'hasOwnProperty, Object.keys, Object.values, Object.entries, ' +
             'Object.getOwnPropertyNames and Reflect.ownKeys see it; JSON.stringify does not, ' +
-            `it omits both. ${rebuild}`,
+            `it omits both. ${rebuildSafety}`,
+        background: rebuildCost,
         related: seen ? [{ ...seen, name: `${seen.op} observes key presence` }] : undefined,
       });
     }

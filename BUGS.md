@@ -31,7 +31,7 @@ setup instructions.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
-## TC-166 — megamorphic-elements prints an own-properties fix for a count made of classes (2026-10-02, open)
+## ✅ FIXED 2026-10-02 — TC-166 — megamorphic-elements prints an own-properties fix for a count made of classes (2026-10-02, fixed)
 
 When the count comes from the hierarchy — "receives elements with N distinct
 property sets, counted from the classes and builders that can reach it" — the
@@ -47,7 +47,11 @@ advice that cannot apply to it. Found looking for a real-library pair for
 
 - **Severity:** medium
 - **Scope:** rules, docs
-- **Status:** open (record only)
+- **Status:** fixed
+- **Fix:** Class evidence from declared members, traced builders and the hierarchy
+  selects guards with separate property-read sites. The note explains that
+  different prototypes keep different maps despite matching own properties.
+  The existing hierarchy test covers all three sources and plain object advice.
 
 ## ✅ FIXED 2026-10-01 — TC-165 — the `any` notice says "a Map builtin" for string and array calls (2026-10-01, fixed)
 

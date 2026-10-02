@@ -81,8 +81,8 @@ export interface Blind {
   // alias. Naming the config that was in force is what separates them.
   tsconfig: string | undefined;
   // The unresolved bare specifiers that DO match a `paths` pattern in that
-  // file: the alias is declared here and its target is not on disk, which is
-  // not a missing install and must not be reported as one (BUGS TC-80).
+  // file: the alias is declared here, so check its target and module resolution
+  // rather than assuming a package is missing (BUGS TC-80).
   aliased: string[];
   // Any tsconfig.json sitting at or above a path this run was POINTED at that
   // is not the one it read. A config is found from the working directory and
@@ -227,11 +227,11 @@ export function render(
     // `npm install, then run again` named one of two causes and was the wrong
     // one for the run that filed this: the imports were a tsconfig `paths`
     // alias, and the user had to work that out unaided. A relative specifier
-    // that resolves to nothing is a file that is not on disk; a bare one is a
-    // package or an alias, and which of those it is is a question about the
+    // needs path and resolution checks; a bare one is a package or an alias,
+    // and which of those it is is a question about the
     // config that was in force — so the config is named, every time, and the
     // alias is answered rather than left to the reader (BUGS TC-80).
-    const relative = blind.unresolved.some((m) => m.startsWith('.') || m.startsWith('/'));
+    const relative = blind.unresolved.filter((m) => m.startsWith('.') || m.startsWith('/'));
     const bare = blind.unresolved.filter((m) => !m.startsWith('.') && !m.startsWith('/'));
     const unaliased = bare.filter((m) => !blind.aliased.includes(m));
     out.push(
@@ -239,38 +239,36 @@ export function render(
       '  they declare read as `any` and every type-based rule is blind on the files',
       `  that import them: ${listed(blind.unresolved)}`
     );
-    if (relative) out.push('  a relative specifier resolves to no file on disk: check the path.');
+    if (relative.length > 0) {
+      out.push(...wrap('  ', `check the path and module resolution for: ${listed(relative)}`));
+    }
     if (blind.aliased.length > 0) {
-      const which =
-        blind.aliased.length === 1
-          ? `${blind.aliased[0]} matches`
-          : `${blind.aliased.length} of them match`;
-      out.push(
-        `  ${which} a \`paths\` entry in ${blind.tsconfig}: the alias is declared`,
-        '  and its target is not on disk, which installing a package does not fix.'
-      );
+      const which = blind.aliased.length === 1 ? 'matches' : 'match';
+      out.push(...wrap('  ',
+        `${listed(blind.aliased)} ${which} a \`paths\` entry in ${blind.tsconfig}: ` +
+        'check its target files and module resolution settings.'
+      ));
     }
     if (unaliased.length > 0) {
-      out.push('  a bare specifier is a package or a `paths` alias, and the fixes differ.');
       out.push(
         ...(blind.tsconfig === undefined
           ? [
-              '  No tsconfig.json was found above this directory, so no `paths` entry was in',
-              '  force at all: run `npm install`, or run this from the directory holding the',
-              '  tsconfig.json that declares the alias.',
+              '  no tsconfig.json was found above this directory, so no `paths` alias could',
+              `  match ${listed(unaliased)}: run \`npm install\`, or run this from the`,
+              '  directory holding the tsconfig that declares one.',
             ]
           : [
-              `  ${blind.tsconfig} is the tsconfig this run read and it declares no \`paths\` entry`,
-              '  that matches: run `npm install`, or run this from the directory holding the',
-              '  tsconfig.json that declares the alias.',
+              `  ${blind.tsconfig} declares no \`paths\` entry for ${listed(unaliased)}: run`,
+              '  `npm install`, or run this from the directory holding the tsconfig that does.',
             ])
       );
     }
     if (blind.nearer.length > 0) {
       out.push(
-        '  a tsconfig is found from the working directory and never from the path argument,',
-        '  and one this run did not read sits over the paths you named — run this from that',
-        `  directory instead: ${listed(blind.nearer)}`
+        ...wrap('  ',
+          `this run did not read ${listed(blind.nearer)}. Configs are found from the ` +
+          'working directory, not the path argument; run from the intended config’s directory.'
+        )
       );
     }
     out.push('  This is not a clean run.');
@@ -432,6 +430,7 @@ export function render(
           coverageNotes.set(f.rule, f.note);
         } else out.push(...wrap('      note: ', f.note));
       }
+      if (verbose && f.background) out.push(...wrap('      benchmark: ', f.background));
       const related = f.related ?? [];
       const shownSources = verbose ? related : related.slice(0, 2);
       for (const source of shownSources) {

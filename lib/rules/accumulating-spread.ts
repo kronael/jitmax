@@ -116,13 +116,14 @@ const detect: Rule = (ts, checker, body, add) => {
     return undefined;
   };
 
-  const FIX: Record<Form, { fix: string; note: string }> = {
+  const FIX: Record<Form, { fix: string; note: string; background: string }> = {
     array: {
       fix: 'push onto NAME only if this code owns it and no caller needs an earlier copy',
       note:
-        `the finished array reads the same in the benchmark, ${N['spread.array.reads']}. ` +
-        'Mutation changes what aliases observe. Preserve element order and sparse-array ' +
-        'behavior; append batches element by element, not with push(...batch)',
+        'Mutation changes what aliases observe. ' +
+        'Preserve element order and sparse-array behavior; append batches element by ' +
+        'element, not with push(...batch)',
+      background: `the finished array reads the same in the benchmark, ${N['spread.array.reads']}`,
     },
     object: {
       fix:
@@ -131,11 +132,13 @@ const detect: Rule = (ts, checker, body, add) => {
       note:
         'define own data properties when replacing spread. Mutation changes aliases: ' +
         'preserve own keys, symbols, getters and property order. Assignment and ' +
-        'Object.assign can invoke target setters, including __proto__. ' +
-        `The remeda example builds at ${N['ex.mergeall.build']} at n=8 and ` +
+        'Object.assign can invoke target setters, including __proto__. The rewrite can ' +
+        'cost more to build than it saves and is not shown to read faster. The mutating ' +
+        'form checks CLEAN because no rule here detects dictionary-mode objects',
+      background:
+        `the remeda example builds at ${N['ex.mergeall.build']} at n=8 and ` +
         `${N['ex.mergeall.build64']} at n=64, before/after time; read intervals span 1.0: ` +
-        'no established read benefit. The mutating form checks CLEAN because no rule ' +
-        'here detects dictionary-mode objects',
+        'no established read benefit',
     },
   };
 
@@ -146,6 +149,7 @@ const detect: Rule = (ts, checker, body, add) => {
       message: `each pass copies all of ${name} into a new accumulator`,
       fix: FIX[form].fix.replaceAll('NAME', name),
       note: FIX[form].note.replaceAll('NAME', name),
+      background: FIX[form].background.replaceAll('NAME', name),
     });
 
   // The accumulator of a reduce is spread by the callback, so the loop that

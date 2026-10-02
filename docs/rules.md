@@ -82,9 +82,12 @@ from five builders that agree.
 it. When the union alone explains the count, the message says the element type
 has N property sets. When classes or builders the walk found add to it, the
 message says the elements receive N, and `related:` names them. Look where
-those elements are built. If the program allows it, give them the same own
-properties in the same order, then benchmark the whole caller, construction
-included. Adding a property can change key enumeration and `in` checks; a type
+those elements are built. For plain objects, if the program allows it, give
+them the same own properties in the same order. For class instances, guard by
+concrete class and give each class a separate property-read site; different
+prototypes keep different maps even with identical own properties. Benchmark
+the whole caller, construction included. Adding a property can change key
+enumeration and `in` checks; a type
 assertion changes neither the object nor its map. A library caller may need an
 upstream change.
 

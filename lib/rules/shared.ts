@@ -50,12 +50,11 @@ export interface Evidence {
 export interface Finding extends Site {
   rule: string;
   message: string;
-  // The change to make, and nothing else. What it holds under, what it was
-  // measured at and where it stops paying are `note`, printed under it — one
-  // fix carried all four in a 553-character sentence, and the action was its
-  // first and fourth clause.
+  // The action to take; `note` carries rewrite conditions and tradeoffs.
   fix: string;
   note?: string;
+  // Benchmark details printed only under -v; rewrite conditions stay in `note`.
+  background?: string;
   related?: Array<Site & { name: string }>;
   relatedNote?: string;
   // The static initializer every path from the mark to this site runs
@@ -357,6 +356,7 @@ export function arrayValues(ts: Ts, checker: TS.TypeChecker, body: Body): ArrayV
 // type is one no declared type checks (BUGS TC-111).
 export interface Shapes {
   count: number;
+  classInstances: boolean;
   // The union's own count, so a finding can say where its number came from.
   declared: number;
   // The classes the hierarchy contributed, for the finding to name.
@@ -370,11 +370,17 @@ export function elementShapes(ts: Ts, checker: TS.TypeChecker, mark: Mark, value
   const objects = admitted.filter(
     (m) => m.flags & (ts.TypeFlags.Object | ts.TypeFlags.Intersection)
   );
-  if (objects.length === 0) return { count: declared, declared, classes: [] };
+  let classInstances = objects.some((m) =>
+    (m.getSymbol()?.getDeclarations() ?? []).some(
+      (d) => ts.isClassDeclaration(d) || ts.isClassExpression(d)
+    )
+  );
+  if (objects.length === 0) return { count: declared, declared, classes: [], classInstances };
   if (!mark.flow) throw new Error('source tracing requires a scanned function');
   const reaching = mark.flow.sources(value.p.name, true);
   for (const o of reaching.origins.values()) {
     if (o.kind === 'class') {
+      classInstances = true;
       keys.add(shapeKey(checker, instanceOf(ts, checker, o.node as TS.ClassLikeDeclaration)));
     } else if (o.kind === 'literal') {
       keys.add(shapeKey(checker, checker.getTypeAtLocation(o.node)));
@@ -390,7 +396,12 @@ export function elementShapes(ts: Ts, checker: TS.TypeChecker, mark: Mark, value
     }
   }
   for (const c of classes) keys.add(shapeKey(checker, instanceOf(ts, checker, c)));
-  return { count: keys.size, declared, classes: [...classes] };
+  return {
+    count: keys.size,
+    declared,
+    classes: [...classes],
+    classInstances: classInstances || classes.size > 0,
+  };
 }
 
 // The element type's members a `.filter()` lets into the array: all of them,

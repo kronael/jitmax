@@ -494,18 +494,24 @@ test('accumulator advice separates read cost from ownership and copy semantics',
     assert.fail(`no accumulating-spread finding on ${name}`);
   const fixFor = (name: string): string => spreadFor(name).fix;
   const noteFor = (name: string): string => spreadFor(name).note ?? '';
+  const backgroundFor = (name: string): string => spreadFor(name).background ?? '';
   assert.match(fixFor('collect'), /^push onto acc /);
   assert.doesNotMatch(noteFor('collect'), /normalizes/);
   assert.match(fixFor('collectByConcat'), /^push onto acc /);
   assert.match(fixFor('collect'), /owns it.*earlier copy/);
   assert.match(noteFor('collect'), /aliases observe/);
   assert.match(noteFor('collect'), /sparse-array/);
+  assert.ok(!noteFor('collect').includes(N['spread.array.reads']));
+  assert.ok(backgroundFor('collect').includes(N['spread.array.reads']));
   assert.match(fixFor('collectObject'), /benchmark a privately owned/);
   assert.match(noteFor('collectObject'), /define own data properties/);
   assert.match(noteFor('collectObject'), /checks CLEAN/);
-  assert.match(noteFor('collectByAssign'), /read intervals span 1.0/);
-  assert.ok(noteFor('collectObject').includes(N['ex.mergeall.build']));
-  assert.ok(noteFor('collectObject').includes(N['ex.mergeall.build64']));
+  assert.match(noteFor('collectObject'), /cost more to build than it saves/);
+  assert.match(noteFor('collectObject'), /not shown to read faster/);
+  assert.doesNotMatch(noteFor('collectByAssign'), /read intervals span 1.0/);
+  assert.match(backgroundFor('collectByAssign'), /read intervals span 1.0/);
+  assert.ok(backgroundFor('collectObject').includes(N['ex.mergeall.build']));
+  assert.ok(backgroundFor('collectObject').includes(N['ex.mergeall.build64']));
   assert.match(noteFor('collectObject'), /target setters, including __proto__/);
   const source = JSON.parse('{"__proto__":{"tag":"own"}}');
   const copied = { ...source };
@@ -569,15 +575,21 @@ test('delete on a null-prototype object stays silent: it was never fast', () => 
 // Asserted against the DATA, not against the sentence. This test used to match
 // the literal `12 keys and not at 48`, so the two integers could stop being
 // what example.jl holds and nothing would fail — the re-aimed TC-48. It now
-// reads the derived pair and requires the fix to quote it.
+// reads the derived pair and requires the background to quote it, and the
+// default note to state the tradeoff without the numbers behind it.
 test('the delete fix states the rebuild tradeoff at the swept sizes', () => {
   const f = rawFindings('drop').find((x) => x.rule === 'delete-property');
   const sizes = N['ex.omit.sizes'];
   assert.match(sizes, /^n=\d+ and n=\d+$/, `ex.omit.sizes reads "${sizes}"`);
   assert.ok(
-    (f?.note ?? '').includes(sizes),
-    `the fix's note does not quote the swept sizes (${sizes}): ${f?.note}`
+    (f?.background ?? '').includes(sizes),
+    `the fix's background does not quote the swept sizes (${sizes}): ${f?.background}`
   );
+  assert.ok(
+    !(f?.note ?? '').includes(sizes),
+    `the default note still quotes the swept sizes (${sizes}), unmoved to -v: ${f?.note}`
+  );
+  assert.match(f?.note ?? '', /cost more than it saves/);
   const swept = [
     ...new Set(
       rows(root, 'example.jl')
@@ -1162,17 +1174,31 @@ test('the report says how many findings were suppressed and by what', () => {
 
 /** Verbose reports retain each defect code and one explanation, with a compact-mode pointer. */
 test('verbose findings print their evidence and defects with one legend', () => {
-  const results = ['drop', 'viaCallee'].map((name) => ({
+  const results = ['drop', 'viaCallee', 'collect', 'collectObject'].map((name) => ({
     mark: markFor(name), findings: rawFindings(name),
   }));
   const brief = render(root, results);
-  assert.doesNotMatch(brief, /measured in|known defect:|TC-9/);
+  assert.doesNotMatch(brief, /measured in|known defect:|TC-9|benchmark: /);
   assert.match(brief, /Evidence, known defects and all related locations: -v/);
   const out = render(root, results, undefined, undefined, undefined, true);
   assert.match(out, /^ {6}known defect: TC-9$/m);
   assert.match(out, /^ {4}TC-9 +rules fire outside the conditions their own evidence establishes$/m);
   assert.strictEqual((out.match(/^ {4}TC-9 /gm) ?? []).length, 1);
   assert.strictEqual((out.match(/measured in bench\/delete.jl/g) ?? []).length, 2);
+  assert.match(out, /^ {6}benchmark: the own-property rebuild improves reads at/m);
+  const briefText = brief.replace(/\s+/g, ' ');
+  const verboseText = out.replace(/\s+/g, ' ');
+  for (const { findings } of results) {
+    for (const finding of findings.filter((f) => f.background)) {
+      assert.ok(briefText.includes(finding.note ?? ''), brief);
+      assert.ok(verboseText.includes(finding.background ?? ''), out);
+      assert.ok(!briefText.includes(finding.background ?? ''), brief);
+    }
+  }
+  for (const key of ['spread.array.reads', 'ex.mergeall.build', 'ex.mergeall.build64',
+    'ex.omit.sizes', 'ex.omit.whole'] as const) {
+    assert.ok(verboseText.includes(N[key]), `${key}: ${out}`);
+  }
   assert.strictEqual(out.split('\n')[0], brief.split('\n')[0]);
 });
 
@@ -2143,6 +2169,15 @@ test('class hierarchies and builders count as element shapes, beside the union',
   );
   assert.match(elements('sumUnion')[0]?.message ?? '', /rows has 6 distinct property sets in its element type/);
   assert.match(elements('sumRows')[0]?.message ?? '', /rows receives elements with 5 distinct property sets/);
+  for (const name of ['sumClasses', 'sumBuilt', 'sumDeclared']) {
+    const [finding] = elements(name);
+    assert.match(finding?.fix ?? '', /guard by concrete class.*separate property-read site/);
+    assert.doesNotMatch(finding?.fix ?? '', /consistent own properties/);
+    assert.match(finding?.note ?? '', /different prototypes/);
+  }
+  for (const name of ['sumUnion', 'sumRows']) {
+    assert.match(elements(name)[0]?.fix ?? '', /consistent own properties/);
+  }
   assert.deepStrictEqual(elements('sumOne'), []);
   assert.deepStrictEqual(elements('sumSame'), []);
 });
@@ -2370,6 +2405,19 @@ test('an unresolved module is named, and the run is never clean', () => {
   assert.strictEqual(run.status, 1);
 });
 
+/** An unresolved relative import gets path and resolution advice, not an install command. */
+test('an unresolved relative specifier is told to check the path, not npm install', () => {
+  const run = spawnSync(
+    process.execPath,
+    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'relative')],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.match(run.stdout, /1 module could not be resolved/);
+  assert.match(run.stdout, /check the path and module resolution for: \.\/missing-row\.ts/);
+  assert.ok(!run.stdout.includes('npm install'), run.stdout);
+  assert.strictEqual(run.status, 1);
+});
+
 // A bare specifier is a missing package OR an alias, and the two have opposite
 // fixes. The report offered `npm install` and "check that this run read the
 // tsconfig.json defining it" without ever saying WHICH tsconfig.json this run
@@ -2402,6 +2450,8 @@ test('a bare specifier that matches a `paths` entry is reported as an alias', ()
   assert.match(run.stdout, /1 module could not be resolved/);
   assert.match(run.stdout, /matches a `paths` entry in tsconfig\.json/);
   assert.match(run.stdout, /@app\/row/);
+  assert.match(run.stdout.replace(/\s+/g, ' '), /check its target files and module resolution settings/);
+  assert.doesNotMatch(run.stdout, /not on disk/);
   // The wrong advice, gone: nothing here is fixed by installing a package.
   assert.ok(!run.stdout.includes('npm install'), run.stdout);
   assert.strictEqual(run.status, 1);
@@ -2469,7 +2519,34 @@ test('a tsconfig beside the named path, and not read, is named', () => {
   assert.match(run.stdout, /1 module could not be resolved/);
   assert.match(run.stdout, /test\/fixtures\/alias\/tsconfig\.json/);
   assert.match(run.stdout, /this run did not read/);
+  assert.match(run.stdout.replace(/\s+/g, ' '), /run from the intended config’s directory/);
   assert.strictEqual(run.status, 1);
+});
+
+/** Without a tsconfig, an unresolved bare import gets package and alias remedies. */
+test('a bare specifier with no tsconfig above it says so, not a path to read', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jitmax-notsconfig-'));
+  try {
+    fs.writeFileSync(
+      path.join(dir, 'hot.ts'),
+      "import type { Row } from 'no-such-package-anywhere';\n\n" +
+        '/** @jitmax */\nexport function total(rows: Row[]): number {\n' +
+        '  let s = 0;\n  for (const r of rows) s += r.x + r.y;\n  return s;\n}\n'
+    );
+    const run = spawnSync(
+      process.execPath,
+      [path.join(root, 'bin', 'jitmax.ts'), path.join(dir, 'hot.ts')],
+      { cwd: dir, encoding: 'utf8' }
+    );
+    assert.match(run.stdout, /1 module could not be resolved/);
+    assert.match(run.stdout, /no tsconfig\.json was found above this directory/);
+    assert.match(run.stdout, /no-such-package-anywhere/);
+    assert.match(run.stdout, /npm install/);
+    assert.strictEqual(run.status, 1, run.stdout);
+  } finally {
+    fs.unlinkSync(path.join(dir, 'hot.ts'));
+    fs.rmdirSync(dir);
+  }
 });
 
 // TC-124. `isFunctionLike` tests the NODE KIND, and an overload signature and an
