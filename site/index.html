@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="krons:type" content="products">
-<meta name="krons:date" content="2026-10-01">
+<meta name="krons:date" content="2026-10-02">
 <meta name="krons:pin"  content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="A static checker for speed-sensitive TypeScript on V8 — numba's @njit, for V8. Mark a hot function and jitmax reports the patterns that measurably push V8 off its fast path, in that function and every function it calls, and the calls it cannot check.">
@@ -105,22 +105,18 @@ export function total(rows: Row[]): number {
 
 <pre><code>  shapes.ts:9  total()
     shapes.ts:9:23  error  megamorphic-elements
-      rows has 5 distinct property sets in its element type; this is a
-      candidate for megamorphic load feedback, not an observed runtime map
-      count
-      related: shapes.ts:11:34 read: row.x
-      sources: No builder located for this value. Source tracing is partial:
-               no visible caller of total &mdash; its arguments come from outside
-               this program.
-      next: inspect where these elements are built, not just this parameter.
-            If semantics allow, use consistent own properties and insertion
-            order; benchmark the full caller including construction
+      rows has 5 distinct property sets in its element type; candidate for
+      megamorphic load feedback, not an observed runtime map count
+      next: inspect the element builders. If semantics allow, use consistent
+            own properties and insertion order
       note: type assertions do not change runtime shapes. Adding a missing
             property can change key enumeration and presence checks. Library
             callers may need an upstream change; no automatic rewrite is
             established here
-      measured in bench/shape-sets.jl and bench/shapes-calibrated.jl
-      known defects: TC-2, TC-9</code></pre>
+      related: shapes.ts:11:34 read: row.x
+      sources: No builder located for this value. Source tracing is partial:
+               no visible caller of total — its arguments come from outside
+               this program.</code></pre>
 
 <p>
   The first line is the annotated function the walk started from; the finding
