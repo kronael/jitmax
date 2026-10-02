@@ -3,6 +3,7 @@ import { at, unwrap, type Call } from '../scan.ts';
 import { N } from '../numbers.ts';
 import {
   arrayValues,
+  carrying,
   cells,
   megamorphicCandidate,
   MAX_CACHED_MAPS,
@@ -86,7 +87,8 @@ const detect: Rule = (ts, checker, body, add, mark) => {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const recv = unwrap(ts, node.expression.expression);
       const t = checker.getTypeAtLocation(recv);
-      const shapes = objectShapes(ts, checker, t);
+      const method = node.expression.name.text;
+      const shapes = objectShapes(ts, checker, t, carrying(checker, t, method));
       if (shapes > MAX_CACHED_MAPS && !claimed.has(t)) {
         add({
           ...at(body.sf, node),
@@ -96,7 +98,7 @@ const detect: Rule = (ts, checker, body, add, mark) => {
           // reason: five names for one property set are one map (TC-42).
           message:
             `${recv.getText(body.sf)} has ${shapes} distinct property sets in its ` +
-            `declared type and .${node.expression.name.text}() is called on it; ` +
+            `declared type that carry .${method}(), and it is called on it; ` +
             megamorphicCandidate('call'),
           fix:
             'inspect the receiver builders and profile this call. If a runtime guard ' +

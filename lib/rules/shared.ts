@@ -253,9 +253,28 @@ const shapeKey = (checker: TS.TypeChecker, t: TS.Type): string =>
 // and so do five variants of a discriminated union over the same key set, and
 // the rule fired on both while quoting a benchmark that measured neither. The
 // count is over distinct property-name sets, so a rename cannot make a shape
-// and the printed fix cannot be satisfied by one.
-export const objectShapes = (ts: Ts, checker: TS.TypeChecker, t: TS.Type): number =>
-  new Set(unionKeys(ts, checker, t)).size;
+// and the printed fix cannot be satisfied by one. `admitted` narrows the
+// members counted, as `carrying` does for a call.
+export const objectShapes = (
+  ts: Ts,
+  checker: TS.TypeChecker,
+  t: TS.Type,
+  admitted: readonly TS.Type[] = members(t)
+): number => new Set(unionKeys(ts, checker, t, admitted)).size;
+
+// The members of a receiver's type that can answer `.method()`. A member with
+// no such property never dispatches there — the call throws first — so it is
+// not a map at that call: lib/flow.ts's `carries` drops such origins for the
+// same reason. vue's `(type as typeof TeleportImpl).process(…)` was counted as
+// every member of `VNodeTypes`, nine property sets, at a call two of them can
+// make (BUGS TC-149). Object.prototype's members are found on every object
+// type, and a member with an index signature could hold any name.
+export const carrying = (checker: TS.TypeChecker, t: TS.Type, method: string): TS.Type[] =>
+  members(t).filter(
+    (m) =>
+      checker.getPropertyOfType(m, method) !== undefined ||
+      checker.getIndexInfosOfType(m).length > 0
+  );
 
 const unionKeys = (
   ts: Ts,

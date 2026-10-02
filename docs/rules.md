@@ -97,7 +97,9 @@ caller speedup.
 **What it detects.** A method call whose receiver has five or more distinct
 property sets in its declared type, or that five or more traced
 implementations reach. In a declared type, five classes with the same property
-names count as one set.
+names count as one set, and a member without the called method does not count:
+the call throws on it before any dispatch. A type assertion on the receiver
+changes neither count.
 
 **It fires on** `areaOfFive`:
 

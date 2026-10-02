@@ -2160,6 +2160,21 @@ test('a filter on a discriminant narrows the element shapes it builds', () => {
   assert.deepStrictEqual(byName.get('longOnes'), ['megamorphic-elements']);
 });
 
+/**
+ * A member of the receiver's type with no such method throws at the call
+ * rather than dispatching there. vue's `(type as typeof TeleportImpl).process()`
+ * was billed for every member of `VNodeTypes` where two carry `process`;
+ * `patch` is that shape and stays silent. `executeAll` casts to the interface
+ * five pipes share, which narrows nothing, and still fires (BUGS TC-149).
+ */
+test('a dispatch counts only the members of its declared type that carry the method', () => {
+  const byName = findingsByFunction(path.join('test', 'fixtures', 'carrying'));
+  const dispatch = (name: string) =>
+    (byName.get(name) ?? assert.fail(`no mark ${name}`)).filter((f) => f.rule === 'megamorphic-dispatch');
+  assert.deepStrictEqual(dispatch('patch'), []);
+  assert.match(dispatch('executeAll')[0]?.message ?? '', /has 5 distinct property sets/);
+});
+
 // Type identity is not value provenance. `probe` is annotated with the whole
 // element union, so `(probe as A).a` — the one load in `collect` — satisfied a
 // `t === element` test for both arrays in scope, neither of which is ever read.
