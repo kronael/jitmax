@@ -3131,8 +3131,6 @@ const HISTORICAL: Record<string, string> = {
   '1.21-1.34x': 'the post-construction property add, refuted and shipping no rule',
   '6.17-6.34x': 'the 16-keyed-store dictionary effect: measured, no rule, BUGS TC-12',
   // The three sweeps of a cell rule 13 refuses, printed as the refutation.
-  '1.64x': 'one of three disagreeing sweeps, quoted to show they disagree',
-  '0.91x': 'one of three disagreeing sweeps, quoted to show they disagree',
   // `0.89x` stood here for the same reason and is now DERIVED: the select
   // number cell at n=100000 was re-measured and disagrees at 0.89x, 0.97x and
   // 1.03x, so `select.silent.number.withdrawn` quotes the figure out of the
