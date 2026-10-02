@@ -44,8 +44,10 @@ tool as a whole.
 
 ## What a finding cannot know
 
-- **The shape, never the n.** A rule sees a pattern, not how much data passes
-  through it, and the annotation cannot say. A helper that only ever sees eight
+- **Most input sizes are only known at runtime.** A rule sees a pattern, not
+  how much data passes through it, and the annotation cannot say;
+  `chained-allocation` uses the bounds it can see, such as an array literal or a
+  literal `.slice()`. A helper that only ever sees eight
   items fires like one that sees a million (`TC-9`).
 - **Called often is not CPU-bound.** A finding in a function that mostly waits
   on I/O may matter little, and a call count alone does not show what a call

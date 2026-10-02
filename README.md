@@ -60,16 +60,17 @@ not what imports it, so its callers read as `no visible caller`.
   Bun's JavaScriptCore. [The rule terms](docs/rules.md#terms) explain, in
   plain words, how V8 makes code fast and what slows it down.
 - **Promise:** every rule that claims a slowdown carries a benchmark run in
-  this repository, with its raw timings in `bench/`, and cites the V8 source
-  line where one shows the mechanism. A rule stays silent on the specific
+  this repository, with its raw timings in `bench/`. Rules about a V8
+  mechanism also cite V8's source; `accumulating-spread` measures copying cost
+  that applies on any engine. A rule stays silent on the specific
   cases its own benchmark refuted that it can recognise in source, and a test
   fails if it fires there. A call into your own or a dependency's code that
   the walk cannot follow is reported and fails the run. Calls into Node and V8
   builtins are counted, not checked; "clean" means no enabled rule fired and
   no tracked gap remains.
 - **Not a profiler, not a cost estimate:** a finding is a measured candidate,
-  not a cost in your workload. A rule cannot see input sizes, so it can fire
-  where a rewrite does not pay off for your data. A printed fix can make the
+  not a cost in your workload. Most input sizes are only known at runtime,
+  so a rule can fire where a rewrite does not pay off for your data. A printed fix can make the
   call slower: es-toolkit's `omit` fix improves reads at n=12 and n=48, but
   slows the call, and [the examples](examples/README.md#what-each-fix-is-worth)
   measure four fixes. Profile and benchmark your caller before you keep a

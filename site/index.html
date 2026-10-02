@@ -127,8 +127,7 @@ export function total(rows: Row[]): number {
   <code>note:</code> what that change can break besides speed. On the
   benchmark behind this rule, reads through five property sets ran
   3.4&ndash;11.3x slower than through one. A finding is a measured candidate,
-  not a cost in your program: a rule cannot see how much data passes through
-  the code, and a printed fix can make the call slower. Benchmark your caller
+  not a cost in your program: most input sizes are only known at runtime, and a printed fix can make the call slower. Benchmark your caller
   before you keep a change. Bun runs the checker; every rule is about V8, not
   Bun's engine.
 </p>
