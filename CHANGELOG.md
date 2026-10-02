@@ -6,6 +6,41 @@ The Bun repository workflow needs no npm publication or release tag, and
 Entries below record their versions' behavior and trials as they stood at the
 time, including access limits that no longer hold.
 
+## [v0.17.0] — 20261002
+
+> jitmax v0.17.0 — the config finds itself, and fewer silent misses
+>
+> jitmax now finds jitmax.toml on its own, checks named callbacks and getters, and its docs lead with what it is.
+>
+> • config — with no .toml argument, the nearest jitmax.toml up from the working directory applies
+> • coverage — `rows.map(grow)` checks `grow`, and a property read runs its getter through the walk
+> • docs — the README leads with the proposition, the aim and a bunx command; history is gone
+>
+> Full notes: https://github.com/kronael/jitmax/blob/main/CHANGELOG.md
+
+### Changed
+
+- With no `.toml` argument, jitmax uses the nearest `jitmax.toml` from the working directory
+  upward, the way TypeScript finds `tsconfig.json`, and prints which file it used. A `.toml`
+  named on the command line wins.
+- The walk follows a function passed by name to a call, as it already followed an inline
+  arrow, and a property read that resolves to a getter with a body. Code that was silently
+  unchecked can now report findings, so a run that passed can fail.
+- The README states the proposition, the aim and the `bunx` command first; every guide says
+  each fact once and carries no development history. Survey counts are re-measured at
+  `de7bded`.
+
+### Fixed
+
+- `closed-world`'s evidence no longer calls one sweep a bound on an unchecked call.
+- The docs no longer overstate coverage, the count `interface-dispatch` prints, what
+  `--plan` shows, which imports are checked, or when `delete` slows an object.
+
+### Known limits
+
+- Counts are static evidence, not observed runtime maps or caller speedups.
+- `allocating-select` fires at no site across 22 corpora (TC-148, owner decision).
+
 ## [v0.16.0] — 20261001
 
 > jitmax v0.16.0 — fewer false errors, findings a newcomer can follow
