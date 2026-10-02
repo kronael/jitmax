@@ -85,11 +85,9 @@ defines cells, sweeps and the tests below.
 - **No cell that failed replication is inside a published range.** Every cell
   runs three times, and one whose three intervals share no value is withdrawn
   where the number is made; the generated table names it beside the number it
-  left. `closed-world`'s n=100000 cell read 3.21x and 4.68x and 4.73x, and
-  `delete-property`'s n=262144 read cell disagreed the same way, so 4.64-4.95x
-  and 12.3-13.6x rest only on the cells that replicate. A withdrawn triple is
-  still printed, as a refutation, so no range reads tighter than its
-  measurement was.
+  left, in [the numbers table](../bench/README.md#derived-numbers-and-the-rows-they-are).
+  A withdrawn triple is still printed, as a refutation, so no range reads
+  tighter than its measurement was.
 - **605 published rows were measured under a load gate they exceeded.** The
   load gate is the runner's refusal to measure while other threads compete for
   the CPU. Those rows stay in the raw files and are not withdrawn, so a

@@ -23,8 +23,9 @@ bin/jitmax.ts        argv, then the pipeline below, then the exit code
 ## The pipeline
 
 **Load the project's TypeScript.** `lib/ts.ts` resolves `typescript` from the
-scanned project first and falls back to this package's own, so the tool parses
-with the compiler the project builds with and reads the same types. It needs
+working directory first and falls back to this package's own. Run jitmax from
+the target project's root to parse with its installed compiler; a source path
+does not change which compiler is used. It needs
 the 5.x API, `ts.sys` and `ts.createProgram`, which TypeScript 7, the native
 rewrite, does not have. `load()` checks for `ts.sys` on whatever it resolved
 and fails with exit `2`, naming the version it found. It checks the capability,

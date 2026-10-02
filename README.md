@@ -17,28 +17,6 @@ bunx github:kronael/jitmax src
 
 A real run against radash's `assign`, vendored unchanged into `examples/`.
 
-## Aim
-
-- **For:** anyone whose speed-sensitive TypeScript runs on V8, the engine in
-  Node, Chrome and Deno. Bun runs the checker, but every rule is about V8, not
-  Bun's JavaScriptCore. [The rule terms](docs/rules.md#terms) explain, in
-  plain words, how V8 makes code fast and what slows it down.
-- **Promise:** every rule that claims a slowdown carries a benchmark run in
-  this repository, with its raw timings in `bench/`, and cites the V8 source
-  line where one shows the mechanism. A rule stays silent on the specific
-  cases its own benchmark refuted that it can recognise in source, and a test
-  fails if it fires there. A call into your own or a dependency's code that
-  the walk cannot follow is reported and fails the run. Calls into Node and V8
-  builtins are counted, not checked; "clean" means no enabled rule fired and
-  no tracked gap remains.
-- **Not a profiler, not a cost estimate:** a finding is a measured candidate,
-  not a cost in your workload. A rule cannot see input sizes, so it can fire
-  where a rewrite does not pay off for your data. A printed fix can make the
-  call slower: es-toolkit's `omit` fix improves reads at n=12 and n=48, but
-  slows the call, and [the examples](examples/README.md#what-each-fix-is-worth)
-  measure four fixes. Profile and benchmark your caller before you keep a
-  change.
-
 ## Quick start
 
 You need [Bun](https://bun.sh/docs/installation) and TypeScript 5.x in the
@@ -74,6 +52,28 @@ Paths choose files and nothing else: compiler options come from the
 `tsconfig.json` found from the working directory upward. With no path, jitmax
 checks that config's file list. A single file brings in what it imports but
 not what imports it, so its callers read as `no visible caller`.
+
+## Aim
+
+- **For:** anyone whose speed-sensitive TypeScript runs on V8, the engine in
+  Node, Chrome and Deno. Bun runs the checker, but every rule is about V8, not
+  Bun's JavaScriptCore. [The rule terms](docs/rules.md#terms) explain, in
+  plain words, how V8 makes code fast and what slows it down.
+- **Promise:** every rule that claims a slowdown carries a benchmark run in
+  this repository, with its raw timings in `bench/`, and cites the V8 source
+  line where one shows the mechanism. A rule stays silent on the specific
+  cases its own benchmark refuted that it can recognise in source, and a test
+  fails if it fires there. A call into your own or a dependency's code that
+  the walk cannot follow is reported and fails the run. Calls into Node and V8
+  builtins are counted, not checked; "clean" means no enabled rule fired and
+  no tracked gap remains.
+- **Not a profiler, not a cost estimate:** a finding is a measured candidate,
+  not a cost in your workload. A rule cannot see input sizes, so it can fire
+  where a rewrite does not pay off for your data. A printed fix can make the
+  call slower: es-toolkit's `omit` fix improves reads at n=12 and n=48, but
+  slows the call, and [the examples](examples/README.md#what-each-fix-is-worth)
+  measure four fixes. Profile and benchmark your caller before you keep a
+  change.
 
 ## Read a finding
 
@@ -215,7 +215,18 @@ Development needs a full Git clone, Node `>=22.18`, npm and Make:
 ```sh
 npm ci --ignore-scripts
 make          # lint, test, demo checks
-make verify   # also the pinned V8 citations and the radash reality run
+```
+
+`make verify` adds the V8 citation check and the radash reality run, which need
+two pinned checkouts:
+
+```sh
+git clone --filter=blob:none --sparse https://github.com/v8/v8 v8src
+git -C v8src sparse-checkout set src include
+git -C v8src checkout c635f0d160b6e988b5ea5a907511a2929beb5d5e
+git clone --filter=blob:none https://github.com/rayepps/radash tmp/demo-real
+git -C tmp/demo-real checkout 4cab1900d08e0997abc4f17aec3cbfe18958d766
+make verify
 ```
 
 To run a clone instead of the GitHub install, use
