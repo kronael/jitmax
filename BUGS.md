@@ -31,6 +31,24 @@ setup instructions.
 > it was written down, and each is recorded rather than fixed because the fix
 > changes what the tool reports.
 
+## TC-166 — megamorphic-elements prints an own-properties fix for a count made of classes (2026-10-02, open)
+
+When the count comes from the hierarchy — "receives elements with N distinct
+property sets, counted from the classes and builders that can reach it" — the
+`fix:` line still reads "use consistent own properties and insertion order"
+(`lib/rules/megamorphic-elements.ts`, `fix`). Instances of two classes are two
+V8 maps whatever their own properties, because the map carries the prototype,
+so the printed change cannot bring that count under the budget. The change
+that can is `megamorphic-dispatch`'s guard and dedicated call sites, which
+that rule's `claimed` set keeps off the same site. Every hierarchy finding on
+record — pixi's `Container` children (TC-104), ajv's `Node` subclasses — prints
+advice that cannot apply to it. Found looking for a real-library pair for
+`examples/`; no test — docs.
+
+- **Severity:** medium
+- **Scope:** rules, docs
+- **Status:** open (record only)
+
 ## ✅ FIXED 2026-10-01 — TC-165 — the `any` notice says "a Map builtin" for string and array calls (2026-10-01, fixed)
 
 Printed "cannot tell a Map builtin from somebody's code" for
