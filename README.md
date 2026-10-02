@@ -79,7 +79,7 @@ source directory when you need them.
 
 ## Read a finding
 
-Give the elements five shapes and the first rule fires. Save this as
+This example triggers `megamorphic-elements`. Save this as
 `shapes.ts`:
 
 ```ts
@@ -234,7 +234,7 @@ make verify
 To run a clone instead of the GitHub install, use
 `bun /path/to/jitmax/bin/cli.js` in place of `bunx github:kronael/jitmax`; it
 needs the clone's dependencies and no build.
-[Development](ARCHITECTURE.md#development) lists every target.
+[Development](ARCHITECTURE.md#development) lists the main development commands.
 
 GPL-2.0-only; see [LICENSE](LICENSE). The radash, remeda, es-toolkit and zod
 functions in `examples/` keep their MIT licences, copyright lines, versions and
