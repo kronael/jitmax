@@ -2175,6 +2175,17 @@ test('a dispatch counts only the members of its declared type that carry the met
   assert.match(dispatch('executeAll')[0]?.message ?? '', /has 5 distinct property sets/);
 });
 
+/**
+ * A class a test file declares is not a shape production code builds. pixi's
+ * `__tests__/DummyView.ts` was one of `Container`'s subclasses in every
+ * element count over `Container`; `Dummy` is that class, and `sumKinds`
+ * receives the four production subclasses and stays silent (BUGS TC-156).
+ */
+test('a class declared in a test file is not in the hierarchy an element count reads', () => {
+  const byName = rulesByFunction(path.join('test', 'fixtures', 'testclasses'));
+  assert.deepStrictEqual(byName.get('sumKinds'), ['interface-dispatch']);
+});
+
 // Type identity is not value provenance. `probe` is annotated with the whole
 // element union, so `(probe as A).a` — the one load in `collect` — satisfied a
 // `t === element` test for both arrays in scope, neither of which is ever read.

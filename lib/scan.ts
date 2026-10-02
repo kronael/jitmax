@@ -223,6 +223,15 @@ function nameOf(ts: Ts, node: TS.Node): string {
 export const isOwnSource = (program: TS.Program, sf: TS.SourceFile): boolean =>
   !sf.isDeclarationFile && !program.isSourceFileFromExternalLibrary(sf);
 
+// A test file: under a `__tests__` directory, or named `*.test.*` or `*.spec.*`
+// — what Jest's default `testMatch` runs, less a bare `test.js`, which in
+// ramda is the library's own `R.test`. Its code is checked when a function in
+// it is annotated, and is never what production code receives: pixi's
+// `__tests__/DummyView.ts` was counted as one of `Container`'s shapes (BUGS
+// TC-156).
+export const isTestFile = (sf: TS.SourceFile): boolean =>
+  /(^|\/)__tests__\/|\.(test|spec)\.[cm]?[jt]sx?$/.test(sf.fileName);
+
 // The symbol a name binds to, through an import alias. The callee walk here and
 // the value walk in lib/flow.ts both start here and both had their own copy;
 // the try/catch is load-bearing, because getAliasedSymbol throws on a symbol

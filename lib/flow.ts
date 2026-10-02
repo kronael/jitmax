@@ -1,6 +1,6 @@
 import type * as TS from 'typescript';
 import type { Ts } from './ts.ts';
-import { isFunctionLike, isOwnSource, symbolOf, targetsOf, unwrap } from './scan.ts';
+import { isFunctionLike, isOwnSource, isTestFile, symbolOf, targetsOf, unwrap } from './scan.ts';
 
 // What actually reaches a receiver, by dataflow — not what could structurally
 // fit its interface. Enumerating every type assignable to an interface is the
@@ -815,6 +815,7 @@ export function makeIndex(ts: Ts, program: TS.Program): Walk['index'] {
       return undefined;
     };
     for (const sf of own()) {
+      const test = isTestFile(sf);
       const visit = (node: TS.Node): void => {
         if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
           if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.SuperKeyword) {
@@ -844,7 +845,7 @@ export function makeIndex(ts: Ts, program: TS.Program): Walk['index'] {
         ) {
           push(writes, node.name.text, { kind: 'propdecl', member: node });
         } else if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
-          classes.push(node);
+          if (!test) classes.push(node);
         }
         ts.forEachChild(node, visit);
       };
