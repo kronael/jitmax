@@ -262,7 +262,7 @@ simply be removed.
 - **Source:** tmp/lib-core run
 - **Status:** open
 
-## TC-148 — allocating-select fires at no site in 22 codebases (2026-10-01, open, owner decision)
+## ✅ FIXED 2026-10-02 — TC-148 — allocating-select fires at no site in 22 codebases (2026-10-01, fixed)
 
 0 sites in 2,953 annotated functions at 17b64dc; builds() needs a callee body,
 so a packaged Decimal.min (.d.ts) can never fire it. A scratch build without
@@ -272,7 +272,16 @@ the rule is byte-identical on 22/22 corpora; demo/ loses only `lowest`.
 - **Scope:** rules
 - **Affected:** `lib/rules/allocating-select.ts`
 - **Source:** scratch variant, 22/22 corpus outputs byte-identical
-- **Status:** open, owner decision
+- **Status:** fixed
+- **Fix:** `55977e9`. builds() read the return statement's own text, and real
+  selectors do not write `return new …`: Babylon.js's `Vector3.Minimize` fills
+  a local and returns it, with the `new` in its `clone()`. A returned local is
+  followed to what the callee writes to it and a returned call into its body,
+  three bodies deep; the target has to be carried across passes, which drops
+  the one wrap the deeper search added in the 22 (TypeScript's
+  `combineTypeMappers` into a context built in the same pass). Babylon.js
+  9.29.0 reports four sites; the 22 corpora stay byte-identical. A packaged
+  `.d.ts` selector still has no body and stays `closed-world`'s finding.
 
 ## TC-147 — `jitmax src` is reported to report less than the bare form (2026-10-01, open, unreproduced)
 
