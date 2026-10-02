@@ -37,7 +37,7 @@ export const N = {
   'disp.silent.shared4': '2.10-2.28x',
   // dispatch.jl: every shape carrying its OWN function, reads only, two to six targets, every size
   'disp.silent.own': '3.5-15.8x',
-  // spread.jl: array spread against push at n=1000, construction counted, both sweeps
+  // spread.jl: array spread against push at n=1000, construction counted, three replications
   'spread.array.n1000': '149-166x',
   // spread.jl: the same at n=10000, the three replications
   'spread.array.n10000': '1766-1889x',
@@ -47,7 +47,7 @@ export const N = {
   'spread.concat': '777-807x',
   // spread.jl: every interval measured for that cell
   'spread.concat.ci': '695-928',
-  // spread.jl: the finished array read back, spread against push, both sizes and both sweeps
+  // spread.jl: the finished array read back, spread against push, both sizes, three replications per cell
   'spread.array.reads': '0.96-1.02x',
   // spread-object.jl: the finished object read back, spread against keyed assignment, n=500
   'spread.object.reads': '0.03x',
@@ -93,7 +93,7 @@ export const N = {
   'chained.entries.n10000': '2.55-2.61x',
   // chained.jl: every interval measured for that cell
   'chained.entries.n10000.ci': '2.23-2.97',
-  // chained.jl: the 0.3 sweep, which is every row the dispatch-table kernel wrote — 2 of 24 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table, splitjoin|packed|excl|1000|dispatch-table
+  // chained.jl: the cells that use the dispatch-table kernel — 2 of 24 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table, splitjoin|packed|excl|1000|dispatch-table
   'chained.cells': '22',
   // chained.jl: the smallest n any construction-counted cell in this sweep was measured at — 1 of 12 cells withdrawn as unreplicable (rule 13): chained|fused|incl|1000|dispatch-table
   'chained.n.min': '1000',
@@ -169,7 +169,7 @@ export const N = {
   'ex.cleanenum.whole16': '1.10-1.12x',
   // example.jl: the same at 256 members — rejected under rule 6 (the broad-warning bar), quoted as the refutation it is
   'ex.cleanenum.whole256': '1.03-1.10x',
-  // example.jl: remeda mergeAll — building the result at n=8
+  // example.jl: remeda mergeAll — calls plus one read pass over the batch of results, n=8
   'ex.mergeall.build': '0.13x',
   // example.jl: the same at n=64 — what its three sweeps agree on
   'ex.mergeall.build64': '1.48-1.59x',

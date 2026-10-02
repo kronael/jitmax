@@ -354,7 +354,7 @@ export const CITATIONS: Record<string, Citation> = {
   'spread.array.n1000': {
     claims: 'rule',
     file: 'spread.jl',
-    cells: 'array spread against push at n=1000, construction counted, both sweeps',
+    cells: 'array spread against push at n=1000, construction counted, three replications',
     pick: (r) => r.variant === 'spread' && r.mode === 'incl' && r.n === 1000,
     agg: 'range',
   },
@@ -393,7 +393,7 @@ export const CITATIONS: Record<string, Citation> = {
   'spread.array.reads': {
     claims: 'nothing',
     file: 'spread.jl',
-    cells: 'the finished array read back, spread against push, both sizes and both sweeps',
+    cells: 'the finished array read back, spread against push, both sizes, three replications per cell',
     pick: (r) => r.variant === 'spread' && r.mode === 'excl',
     agg: 'range',
   },
@@ -602,7 +602,7 @@ export const CITATIONS: Record<string, Citation> = {
   'chained.cells': {
     claims: 'nothing',
     file: 'chained.jl',
-    cells: 'the 0.3 sweep, which is every row the dispatch-table kernel wrote',
+    cells: 'the cells that use the dispatch-table kernel',
     pick: (r) => r.kernel === 'dispatch-table',
     agg: 'count',
   },
@@ -950,7 +950,7 @@ export const CITATIONS: Record<string, Citation> = {
   'ex.mergeall.build': {
     claims: 'nothing',
     file: 'example.jl',
-    cells: 'remeda mergeAll — building the result at n=8',
+    cells: 'remeda mergeAll — calls plus one read pass over the batch of results, n=8',
     pick: (r) => r.example === 'remeda-merge-all' && r.mode === 'incl' && r.n === 8,
     agg: 'range',
   },

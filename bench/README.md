@@ -104,12 +104,12 @@ computed from them:
 | `1.41-1.65x` | `bench/dispatch.jl` — four shapes on a prototype method, reads only, every size — where the rule is quiet |
 | `2.10-2.28x` | `bench/dispatch.jl` — four shapes on one shared own-property function, reads only, every size |
 | `3.5-15.8x` | `bench/dispatch.jl` — every shape carrying its OWN function, reads only, two to six targets, every size |
-| `149-166x` | `bench/spread.jl` — array spread against push at n=1000, construction counted, both sweeps |
+| `149-166x` | `bench/spread.jl` — array spread against push at n=1000, construction counted, three replications |
 | `1766-1889x` | `bench/spread.jl` — the same at n=10000, the three replications |
 | `1877x and 2348x` | `bench/spread.jl` — two single sweeps of that cell, kept apart from its replicated result — a sweep not re-measured under runner r2 |
 | `777-807x` | `bench/spread.jl` — acc.concat(v) against push at n=1000, construction counted |
 | `695-928` | `bench/spread.jl` — every interval measured for that cell |
-| `0.96-1.02x` | `bench/spread.jl` — the finished array read back, spread against push, both sizes and both sweeps |
+| `0.96-1.02x` | `bench/spread.jl` — the finished array read back, spread against push, both sizes, three replications per cell |
 | `0.03x` | `bench/spread-object.jl` — the finished object read back, spread against keyed assignment, n=500 |
 | `186-200x` | `bench/spread-object.jl` — object spread against keyed assignment at n=500, the three replications |
 | `814-887x` | `bench/spread-object.jl` — Object.assign({}, acc, …) at n=500, the three replications |
@@ -132,7 +132,7 @@ computed from them:
 | `3.50-4.04` | `bench/chained.jl` — every interval measured for that cell |
 | `2.55-2.61x` | `bench/chained.jl` — the same at n=10000 |
 | `2.23-2.97` | `bench/chained.jl` — every interval measured for that cell |
-| `22` | `bench/chained.jl` — the 0.3 sweep, which is every row the dispatch-table kernel wrote — 2 of 24 cells withdrawn as unreplicable (rule 13): chained\|fused\|incl\|1000\|dispatch-table, splitjoin\|packed\|excl\|1000\|dispatch-table |
+| `22` | `bench/chained.jl` — the cells that use the dispatch-table kernel — 2 of 24 cells withdrawn as unreplicable (rule 13): chained\|fused\|incl\|1000\|dispatch-table, splitjoin\|packed\|excl\|1000\|dispatch-table |
 | `1000` | `bench/chained.jl` — the smallest n any construction-counted cell in this sweep was measured at — 1 of 12 cells withdrawn as unreplicable (rule 13): chained\|fused\|incl\|1000\|dispatch-table |
 | `0.95-1.10x` | `bench/chained.jl` — reading the finished array back, all six chained forms, both sizes — 1 of 12 cells withdrawn as unreplicable (rule 13): splitjoin\|packed\|excl\|1000\|dispatch-table |
 | `0.84-1.00x` | `bench/chained.jl` — Object.keys(o).map(f) against the for-in walk that fuses it, construction counted |
@@ -170,7 +170,7 @@ computed from them:
 | `11.3-11.7x` | `bench/example.jl` — the same at 48 keys — what its three sweeps agree on |
 | `1.10-1.12x` | `bench/example.jl` — zod cleanEnum — the whole call at a 16-member enum, what its three sweeps agree on |
 | `1.03-1.10x` | `bench/example.jl` — the same at 256 members — rejected under rule 6 (the broad-warning bar), quoted as the refutation it is |
-| `0.13x` | `bench/example.jl` — remeda mergeAll — building the result at n=8 |
+| `0.13x` | `bench/example.jl` — remeda mergeAll — calls plus one read pass over the batch of results, n=8 |
 | `1.48-1.59x` | `bench/example.jl` — the same at n=64 — what its three sweeps agree on |
 | `1.00-1.03x` | `bench/example.jl` — remeda mergeAll — the caller's reads on the result, both sizes, all six sweeps |
 
@@ -256,7 +256,8 @@ A measurement that refutes a rule is published like one that supports it.
   packed one, and is faster once you count building it, 0.28-0.68x.
   `bench/sparse.jl`.
 - **Boxed arrays: real, and decided by values.** A boxed array costs
-  1.39-1.66x to read, and 1.58-1.69x to build at RAM size. But V8 picks the
+  1.39-1.66x for reads alone, and 1.58-1.69x for construction plus reads at
+  RAM size. But V8 picks the
   elements kind from the values stored, not the declared type: a
   `(number | string)[]` holding only numbers measures 0.96-1.08x against
   `number[]`. A rule on the declared type would fire on the wrong arrays.
