@@ -1518,6 +1518,46 @@ test('jitmax.toml is found from the working directory upward, and a named one wi
   assert.strictEqual(named.status, 1);
 });
 
+// A function passed by name runs where the callee runs it, as an inline arrow
+// does, and a property read can run a getter. Both left real per-call work
+// unchecked under a clean report: rows.map(grow) was silent while
+// rows.map((r) => grow(r)) was caught.
+test('a callback passed by name and a getter are followed like a call', () => {
+  const dir = path.join(root, 'tmp', `test-implicit-${process.pid}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const grow = [
+    'function grow(x: number): number[] {',
+    '  let acc: number[] = [];',
+    '  for (let i = 0; i < x; i++) acc = [...acc, i];',
+    '  return acc;',
+    '}',
+  ];
+  const callback = path.join(dir, 'callback.ts');
+  fs.writeFileSync(callback, [...grow, '/** @jitmax */',
+    'export function total(rows: number[]): number[][] { return rows.map(grow); }', ''].join('\n'));
+  const getter = path.join(dir, 'getter.ts');
+  fs.writeFileSync(getter, [
+    'const result = { get values(): number[] {',
+    '  let acc: number[] = [];',
+    '  for (let i = 0; i < 100; i++) acc = [...acc, i];',
+    '  return acc;',
+    '} };',
+    '/** @jitmax */',
+    'export function size(): number { return result.values.length; }',
+    '',
+  ].join('\n'));
+  const run = (file: string) => spawnSync(process.execPath, [path.join(root, 'bin', 'jitmax.ts'), file],
+    { cwd: root, encoding: 'utf8' });
+  const byName = run(callback);
+  const read = run(getter);
+  for (const f of [callback, getter]) fs.unlinkSync(f);
+  fs.rmdirSync(dir);
+  assert.match(byName.stdout, /callback\.ts:3:\d+ {2}error {2}accumulating-spread/);
+  assert.strictEqual(byName.status, 1);
+  assert.match(read.stdout, /getter\.ts:3:\d+ {2}error {2}accumulating-spread/);
+  assert.strictEqual(read.status, 1);
+});
+
 // TC-154: a site inside a nested function the walk also follows as its own
 // body is found twice for one mark, and the fan-in counted findings, so one
 // annotated function printed "reached by 2 annotated functions".

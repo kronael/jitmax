@@ -731,6 +731,17 @@ function reach(
       // not, which is the failure the rule exists to prevent (BUGS TC-10).
       if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
         const text = node.expression.getText(body.sf);
+        // A function passed by name runs where the callee runs it, exactly as
+        // an inline arrow in the same place would — and the inline one is
+        // walked as a nested closure. `rows.map(grow)` left grow unchecked and
+        // unreported while `rows.map((r) => grow(r))` caught it.
+        for (const arg of node.arguments ?? []) {
+          const a = unwrap(ts, arg);
+          if (!ts.isIdentifier(a) && !ts.isPropertyAccessExpression(a)) continue;
+          for (const d of targetsOf(ts, checker, a)) {
+            if (followable(ts, d)) admit(body.node, d, undefined, true);
+          }
+        }
         if (PRIMITIVES.has(text)) {
           // No call boundary here at all — see PRIMITIVES. Counted, once per
           // site, so the report can say what was stepped over and under which
@@ -939,6 +950,17 @@ function reach(
               }
             }
           }
+        }
+      }
+      // Reading a property can run a getter. A read that resolves to an
+      // accessor with a body in the program is a call, and is followed as one;
+      // otherwise a getter's work ran under a clean report.
+      const callee =
+        ts.isCallExpression(node.parent) && unwrap(ts, node.parent.expression) === node;
+      if (ts.isPropertyAccessExpression(node) && !callee) {
+        const symbol = checker.getSymbolAtLocation(node.name);
+        for (const d of symbol?.declarations ?? []) {
+          if (ts.isGetAccessorDeclaration(d) && followable(ts, d)) admit(body.node, d, undefined, closure);
         }
       }
       ts.forEachChild(node, (c) => visit(c, closure || isClosure(ts, c)));
