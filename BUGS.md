@@ -84,10 +84,11 @@ was TypeScript 7's missing `ts.sys`, which 6 has.
 - **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
   arktype ca8ec6c)
 - **Status:** fixed
-- **Fix:** `71657d7`. The peer range is `>=5.0.0 <7`, `load()`'s refusal
+- **Fix:** `47db990`. The peer range is `>=5.0.0 <7`, `load()`'s refusal
   advises `typescript@^6`, and README, site, `test/README.md` and
-  ARCHITECTURE say 5.x or 6.x, held to `package.json` by a test. CI runs the
-  whole job under the lockfile's 5.x and under 6. Verified with
+  ARCHITECTURE say 5.x or 6.x, held to `package.json` by a test. A CI matrix over
+  the lockfile's 5.x and 6 is held back: the push token has no `workflow`
+  scope. Verified with
   `typescript@6.0.3` in a scratch copy: lint clean, every test passes but the
   one that archives the repository and so needs a clone, `make check` exits
   1, `make reality` holds. Under this repository's `tsconfig.json`, radash,
@@ -205,8 +206,8 @@ depends on the test classes; a smaller hierarchy could.
 - **Severity:** low
 - **Scope:** rules, flow
 - **Status:** fixed
-- **Fix:** `3372f36` keeps a class declared in a test file out of the
-  hierarchy, and `1efaffd` (TC-150) stops a test's calls and writes from
+- **Fix:** `64bb555` keeps a class declared in a test file out of the
+  hierarchy, and `ad15cd2` (TC-150) stops a test's calls and writes from
   carrying its literals in. A test file is one under `__tests__` or named
   `*.test.*` or `*.spec.*` (`isTestFile` in `lib/scan.ts`, stated in
   `docs/limits.md`). A test's `new` of a class the program declares still
@@ -290,7 +291,7 @@ vue watch.ts:161 `.some()` on an array reports 7 "implementations", all from
 - **Severity:** medium
 - **Scope:** `lib/flow.ts`
 - **Status:** fixed
-- **Fix:** `1efaffd`. The flow index records nothing from a test file but its
+- **Fix:** `ad15cd2`. The flow index records nothing from a test file but its
   `new` expressions, which only say a class is built. vue
   (`tmp/lib-core/packages`): `watch.ts:161` and `:163` are `closed-world`
   calls on a receiver with no visible caller, no finding sits in a `.spec.ts`
@@ -319,7 +320,7 @@ simply be removed.
 - **Scope:** rules
 - **Source:** tmp/lib-core run
 - **Status:** fixed
-- **Fix:** `2b59140`. The declared-type count admits only the members that
+- **Fix:** `c6341cd`. The declared-type count admits only the members that
   carry the called method (`carrying` in `lib/rules/shared.ts`): a member
   without it throws at the call before any dispatch, the argument
   `lib/flow.ts`'s `carries` already makes for origins. The cast is not
