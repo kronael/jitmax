@@ -30,7 +30,7 @@ summary as evidence.
    `npx --package <tarball> jitmax` and `bunx -p <tarball> jitmax`; require the
    same finding and exit 1 from both.
 5. Run `make reality 2>&1 | tee tmp/service-eval/reality.log`. Require exit 0.
-   The target itself requires ten errors at the pinned radash revision, exactly
+   The target itself requires six errors at the pinned radash revision, exactly
    one `accumulating-spread` on `assign()`, and only the two escape rules beside
    it.
 6. Run `make v8-check 2>&1 | tee tmp/service-eval/v8-check.log`. Require exit 0

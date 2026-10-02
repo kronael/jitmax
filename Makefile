@@ -46,7 +46,7 @@ v8-check:
 # rather than passing quietly, the same rule as v8-check. This was prose nothing
 # ran, and it asked for a count that had been wrong for a release (TC-123).
 REAL = tmp/demo-real
-REAL_ERRORS = 10
+REAL_ERRORS = 6
 reality:
 	@test -d $(REAL)/src || { \
 	  echo "reality: $(REAL)/src is missing. git clone https://github.com/rayepps/radash $(REAL)"; \

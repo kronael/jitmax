@@ -2186,6 +2186,24 @@ test('a class declared in a test file is not in the hierarchy an element count r
   assert.deepStrictEqual(byName.get('sumKinds'), ['interface-dispatch']);
 });
 
+/**
+ * What a test file passes is not what production code receives. vue's
+ * `watch.ts:161` counted seven implementations at `source.some()`, every one a
+ * literal from a `.spec.ts`; `anyActive` is that call, reached only from
+ * `watch.spec.ts`, and reads as a receiver nothing visible reaches. `anyBuilt`
+ * gets the same five shapes from production code and still fires, and the five
+ * rows only the test builds are no element shapes of `sumRows` (BUGS TC-150,
+ * TC-156). A production class a test constructs is still built: `F5` is the
+ * fifth shape of `applyAll`.
+ */
+test('what a test file passes or writes is no source for a receiver', () => {
+  const byName = rulesByFunction(path.join('test', 'fixtures', 'testcallers'));
+  assert.deepStrictEqual(byName.get('anyActive'), ['interface-dispatch']);
+  assert.deepStrictEqual(byName.get('anyBuilt'), ['megamorphic-dispatch']);
+  assert.deepStrictEqual(byName.get('sumRows'), []);
+  assert.ok(byName.get('applyAll')?.includes('megamorphic-elements'));
+});
+
 // Type identity is not value provenance. `probe` is annotated with the whole
 // element union, so `(probe as A).a` — the one load in `collect` — satisfied a
 // `t === element` test for both arrays in scope, neither of which is ever read.

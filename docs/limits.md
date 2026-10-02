@@ -22,11 +22,14 @@ tool as a whole.
   outside this check; use your compiler to check the whole project.
   Install the project's dependencies first; the report says which unresolved
   imports match a configured path alias.
-- **Test files are checked, and their classes are not shapes.** A file under a
-  `__tests__` directory, or named `*.test.*` or `*.spec.*`, is a test file; a
-  bare `test.ts` is not one. A function annotated in one is checked like any
-  other, but a class it declares is not counted among a hierarchy's shapes:
-  production code never receives it.
+- **Test files are checked, and are not sources.** A file under a `__tests__`
+  directory, or named `*.test.*` or `*.spec.*`, is a test file; a bare
+  `test.ts` is not one. A function annotated in one is checked like any other,
+  but what a test file passes, writes or declares never counts as what reaches
+  a receiver or an array: production code is not run with it. A `new` in a
+  test still shows that a class the program declares is built. A parameter
+  only tests pass values to has no visible caller, so a call the walk cannot
+  bind on it is reported as unchecked, not as megamorphic.
 - **Nested functions are read even when nothing calls them.** A finding inside
   one can fail the run without describing work the marked function does.
 - **A pattern split across functions goes unreported.** The walk reads every

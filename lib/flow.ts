@@ -76,7 +76,11 @@ export interface Query {
 // Reverse edges cannot be rooted at the call site — "every caller of f" and
 // "every write to .f" need the program scanned once. Keyed by NAME, resolved
 // by symbol only on demand, so the one pass stays a cheap AST walk and the
-// checker is only asked about candidates a query actually pulls.
+// checker is only asked about candidates a query actually pulls. In a test file
+// the pass records only `constructions`: what a test passes, writes or declares
+// never reaches production code, and vue's `watch.ts:161` counted seven
+// implementations at `source.some()`, every one a value a `.spec.ts` passed
+// (BUGS TC-150).
 export type Write =
   | { kind: 'assign'; access: TS.PropertyAccessExpression; value: TS.Expression }
   | { kind: 'propassign'; prop: TS.PropertyAssignment }
@@ -89,6 +93,11 @@ export interface Index {
   varWrites: Map<string, TS.BinaryExpression[]>;
   supers: Array<{ call: TS.CallExpression; cls: TS.ClassLikeDeclaration }>;
   classes: TS.ClassLikeDeclaration[];
+  // Every `new`, test files included, for `constructed` alone: a test that
+  // builds a class the program declares shows the class is built, as code
+  // outside the program would. pixi's library builds none of its filters
+  // itself. The arguments are never read from here.
+  constructions: Map<string, TS.NewExpression[]>;
 }
 
 // Everything one program's walk shares: the two module handles, and the
@@ -793,6 +802,7 @@ export function makeIndex(ts: Ts, program: TS.Program): Walk['index'] {
     const varWrites = new Map<string, TS.BinaryExpression[]>();
     const supers: Array<{ call: TS.CallExpression; cls: TS.ClassLikeDeclaration }> = [];
     const classes: TS.ClassLikeDeclaration[] = [];
+    const constructions = new Map<string, TS.NewExpression[]>();
     const push = <V>(m: Map<string, V[]>, k: string, v: V): void => {
       const at = m.get(k);
       if (at) at.push(v);
@@ -814,44 +824,51 @@ export function makeIndex(ts: Ts, program: TS.Program): Walk['index'] {
       }
       return undefined;
     };
+    const record = (node: TS.Node): void => {
+      if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+        if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.SuperKeyword) {
+          const cls = enclosingClass(node);
+          if (cls) supers.push({ call: node, cls });
+        } else {
+          const name = calleeName(node.expression);
+          if (name !== undefined) push(calls, name, node);
+        }
+      } else if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      ) {
+        if (ts.isPropertyAccessExpression(node.left)) {
+          push(writes, node.left.name.text, { kind: 'assign', access: node.left, value: node.right });
+        } else if (ts.isIdentifier(node.left)) {
+          push(varWrites, node.left.text, node);
+        }
+      } else if (ts.isPropertyAssignment(node) && ts.isIdentifier(node.name)) {
+        push(writes, node.name.text, { kind: 'propassign', prop: node });
+      } else if (ts.isShorthandPropertyAssignment(node)) {
+        push(writes, node.name.text, { kind: 'shorthand', prop: node });
+      } else if (
+        ts.isPropertyDeclaration(node) &&
+        node.initializer &&
+        (ts.isIdentifier(node.name) || ts.isPrivateIdentifier(node.name))
+      ) {
+        push(writes, node.name.text, { kind: 'propdecl', member: node });
+      } else if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
+        classes.push(node);
+      }
+    };
     for (const sf of own()) {
       const test = isTestFile(sf);
       const visit = (node: TS.Node): void => {
-        if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
-          if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.SuperKeyword) {
-            const cls = enclosingClass(node);
-            if (cls) supers.push({ call: node, cls });
-          } else {
-            const name = calleeName(node.expression);
-            if (name !== undefined) push(calls, name, node);
-          }
-        } else if (
-          ts.isBinaryExpression(node) &&
-          node.operatorToken.kind === ts.SyntaxKind.EqualsToken
-        ) {
-          if (ts.isPropertyAccessExpression(node.left)) {
-            push(writes, node.left.name.text, { kind: 'assign', access: node.left, value: node.right });
-          } else if (ts.isIdentifier(node.left)) {
-            push(varWrites, node.left.text, node);
-          }
-        } else if (ts.isPropertyAssignment(node) && ts.isIdentifier(node.name)) {
-          push(writes, node.name.text, { kind: 'propassign', prop: node });
-        } else if (ts.isShorthandPropertyAssignment(node)) {
-          push(writes, node.name.text, { kind: 'shorthand', prop: node });
-        } else if (
-          ts.isPropertyDeclaration(node) &&
-          node.initializer &&
-          (ts.isIdentifier(node.name) || ts.isPrivateIdentifier(node.name))
-        ) {
-          push(writes, node.name.text, { kind: 'propdecl', member: node });
-        } else if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
-          if (!test) classes.push(node);
+        if (ts.isNewExpression(node)) {
+          const name = calleeName(node.expression);
+          if (name !== undefined) push(constructions, name, node);
         }
+        if (!test) record(node);
         ts.forEachChild(node, visit);
       };
       ts.forEachChild(sf, visit);
     }
-    index = { calls, writes, varWrites, supers, classes };
+    index = { calls, writes, varWrites, supers, classes, constructions };
     return index;
   };
 }
@@ -910,9 +927,7 @@ export function makeConstructed(
     const name = c.name?.text;
     const built =
       name !== undefined &&
-      (index().calls.get(name) ?? []).some(
-        (call) => ts.isNewExpression(call) && targets(call.expression).includes(c)
-      );
+      (index().constructions.get(name) ?? []).some((call) => targets(call.expression).includes(c));
     constructedCache.set(c, built);
     return built;
   };

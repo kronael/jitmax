@@ -72,7 +72,9 @@ fixpoint. That is 0-CFA: a flow analysis that gives each variable one set of
 possible origins for the whole program, without tracking the path that reached
 it. The results are static possibilities, not a runtime map count: a branch
 can exclude an origin from a particular call, and merging and analysis limits
-can omit others.
+can omit others. Test files are no origin: the program-wide pass that finds
+callers, writes and classes reads only their `new` expressions, as evidence
+that a class is built (`isTestFile` in `lib/scan.ts`).
 
 **Locate sources.** After the scan, the megamorphic rules query
 `Flow.sources` through the same walkers, with the same cache and budgets.
