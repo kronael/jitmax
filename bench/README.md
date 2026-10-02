@@ -197,8 +197,9 @@ The tables cite these rules by number.
 5. **The ratio of mean process times, with a paired bootstrap 95% interval.**
    Every raw per-pair timing is published beside it, so the interval can be
    recomputed. Never a best run.
-6. **An interval that spans 1.0 is rejected.** A number quoted as a rule's
-   evidence needs an agreement (rule 13) whose lower end is above 1.00. A broad
+6. **Acceptance uses the three sweeps' shared interval**, the agreement of rule
+   13. A number quoted as a rule's evidence needs that agreement's lower end above
+   1.00; one sweep's own interval may include 1.00 while the agreement passes. A broad
    warning, which `chained-allocation` is held to, also needs that lower end
    above 1.05 and a mean of the three sweep ratios of 1.10 or more. A cell that
    fails is never evidence; where the docs quote one, they call it rejected.
@@ -223,9 +224,7 @@ The tables cite these rules by number.
 12. **The working set is swept from L1 cache to RAM.** One size hides the point
     where memory bandwidth flattens an effect.
 13. **Every cell runs as three whole sweeps.** The interval in rule 5 resamples
-    the pairs of one sweep and cannot see what varies between sweeps:
-    near-identical constructions measured 1.64x, 0.91x and 0.89x with mutually
-    exclusive intervals. A cell's **agreement** is the range every one of its
+    the pairs of one sweep and cannot see what varies between sweeps. A cell's **agreement** is the range every one of its
     three intervals contains. A cell with no agreement is **withdrawn as
     unreplicable**, and its three numbers are printed anyway.
 

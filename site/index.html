@@ -6,7 +6,7 @@
 <meta name="krons:date" content="2026-10-01">
 <meta name="krons:pin"  content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="A static checker for speed-sensitive TypeScript on V8 — numba's @njit, for V8. Mark a hot function and jitmax reports the patterns that measurably push V8 off its fast path, in that function and every function it calls, each backed by a benchmark in the repository.">
+<meta name="description" content="A static checker for speed-sensitive TypeScript on V8 — numba's @njit, for V8. Mark a hot function and jitmax reports the patterns that measurably push V8 off its fast path, in that function and every function it calls, and the calls it cannot check.">
 <title>jitmax — @njit for TypeScript on V8</title>
 <link rel="stylesheet" href="/pub/krons/assets/hub.css">
 <meta property="og:title" content="jitmax — @njit for TypeScript on V8">
@@ -46,9 +46,9 @@
     checks it and every function it calls whose source it can read, and
     reports the patterns that measurably push V8 off its fast path: a fifth
     object shape at one property read or method call, a <code>delete</code>,
-    an array built per pipeline stage. You get one error per finding, with its
-    file and line, the next step and the benchmark behind the rule, and an
-    exit code a CI gate can read. It never runs or rewrites your code. Run it
+    an array built per pipeline stage. You get findings with file and line, the
+    next step, and an exit code a CI gate can read. Slowdown rules cite their
+    benchmark; coverage rules report unchecked calls without claiming they are slow. It never runs or rewrites your code. Run it
     from your project root:
     <code>bunx github:kronael/jitmax src</code>
   </div>
@@ -80,8 +80,8 @@
   5.x in the project you check. <code>bun add typescript</code> installs 7.x,
   which lacks the compiler API jitmax uses, so pin 5.x with
   <code>bun add --dev typescript@^5.9</code>. Save this as
-  <code>shapes.ts</code> in the project root. The array's elements have five
-  shapes:
+  <code>shapes.ts</code> in the project root. The element type declares five
+  property sets:
 </p>
 
 <pre><code>type Row =

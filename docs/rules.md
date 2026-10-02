@@ -42,8 +42,9 @@ nothing warns you.
   benchmark does not match, because nothing in the source separates that case.
   On a clean run, `-v` prints each rule's misses.
 
-Every snippet below comes from [`demo/lib.ts`](../demo/lib.ts), the fixture
-file `make check` runs: each rule has a fixture that fires and one for each
+Every snippet below is an excerpt from [`demo/lib.ts`](../demo/lib.ts), the
+fixture file `make check` runs; the types and classes it uses are defined there,
+so copy the fixture, not the excerpt, to reproduce a finding: each rule has a fixture that fires and one for each
 silent case.
 
 ## megamorphic-elements
@@ -112,8 +113,9 @@ a prototype method cost 1.41-1.65x, an order of magnitude below the fifth.
 `interface-dispatch` still reports that call, because the walk cannot pick
 which body runs.
 
-**It misses** two cases. Five classes with identical fields are five maps but
-one property set. And an object that carries its own function in a field
+**It misses** two cases. The declared-type count merges classes with the same
+field names, so five such classes count as one property set; the dataflow walk
+can still trace them as five implementations. And an object that carries its own function in a field
 costs 3.5-15.8x from the *second* target, flat up to six, with no threshold:
 a call slot caches one target, not four (`TC-13`). No declared type separates
 that from a prototype method.
@@ -398,9 +400,9 @@ lines, in order:
   rule's recorded limits, explained [below](#known-defects).
 
 After the findings, the report says what each cited defect code means and
-where the rule evidence and measurements are. A finding prints no cost: a
-measured ratio depends on how much data passes through the code, and the
-annotation does not say.
+where the rule evidence and measurements are. A finding gives no cost estimate
+for your code. Ratios in `note:` describe benchmark examples, whose sizes and
+workloads may differ from yours.
 
 ## Severity
 

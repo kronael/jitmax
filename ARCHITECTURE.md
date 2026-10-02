@@ -98,10 +98,10 @@ analysis limits.
 
 ## Which calls are not gaps
 
-A call TurboFan lowers to inline machine code has no call boundary, so reaching
-one is not a gap in coverage. That list is derived from the pinned V8's
-`js-call-reducer.cc` by `make builtins` into `lib/builtins.ts`, never written
-by hand. Node's own modules and anything reached off `globalThis` are the
+jitmax does not count a call to a builtin that the pinned V8's call reducer can
+lower to inline code as a coverage gap. That is a policy, not proof that V8
+inlines a given call: reduction depends on runtime feedback. `make builtins`
+derives the names from `js-call-reducer.cc` into `lib/builtins.ts`. Node's own modules and anything reached off `globalThis` are the
 platform: no install gives the walk a body to read, so they are counted for
 the run and never named.
 

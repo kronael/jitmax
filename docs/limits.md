@@ -50,10 +50,11 @@ tool as a whole.
   on I/O may matter little, and a call count alone does not show what a call
   costs. A CPU profile selects functions by sampled self time instead; profile
   representative inputs before you change code.
-- **A TypeScript type is not a V8 map** (`TC-2`). The megamorphic rules count
-  the property-name sets they can see: union members, the classes and literals
+- **A TypeScript type is not a V8 map** (`TC-2`). `megamorphic-elements` counts
+  the property-name sets it can see: union members, the classes and literals
   the walk traces, and, where tracing is incomplete, the classes a type admits
-  through `extends`. Five aliases of one type are one set. The same keys added
+  through `extends`. `megamorphic-dispatch` also counts traced class
+  implementations, which separates classes with identical fields. Five aliases of one type are one set. The same keys added
   in another order make another map, and no rule can see that. To check a
   megamorphic finding against real maps, compare objects with
   `%HaveSameMap(a, b)` under `node --allow-natives-syntax`.

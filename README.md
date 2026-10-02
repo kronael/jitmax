@@ -4,8 +4,9 @@ jitmax is a static checker for speed-sensitive TypeScript on V8 — numba's
 `@njit`, for V8. Mark a hot function `/** @jitmax */`; jitmax reads it and
 every function it calls whose source it can see, and reports the patterns that
 measurably push V8 off its fast path, plus the calls it could not check. You
-get one error per finding, with its file and line, the next step and the
-benchmark behind the rule, and an exit code a CI gate can read. It never runs,
+get findings with file and line, the next step, and an exit code a CI gate
+can read. Slowdown rules cite their benchmark; coverage rules report unchecked
+calls without claiming they are slow. It never runs,
 compiles or rewrites your code:
 
 ```sh
