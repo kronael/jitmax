@@ -1,4 +1,4 @@
-The files in this directory named *.before.ts are vendored verbatim from four
+The files in this directory named *.before.ts are vendored verbatim from six
 MIT-licensed libraries, and the *.after.ts files are those same functions with
 jitmax's printed fix applied. They are derivative works of the originals
 and stay under their upstream MIT licence, not under the GPL-2.0-only licence
@@ -29,6 +29,16 @@ Copyright (c) 2020 Colin McDonnell
   zod 4.4.3 — https://github.com/colinhacks/zod
   packages/zod/src/v4/core/util.ts at commit 5e60885
   → zod-clean-enum.before.ts, zod-clean-enum.after.ts
+
+Copyright (c) 2019 typescript-eslint and other contributors
+  typescript-eslint 8.67.0 — https://github.com/typescript-eslint/typescript-eslint
+  packages/eslint-plugin/src/util/misc.ts at commit 56c9ed9
+  → tseslint-find-last-index.before.ts, tseslint-find-last-index.after.ts
+
+Copyright (c) 2018-present, Yuxi (Evan) You and Vue contributors
+  Vue 3.5.41 — https://github.com/vuejs/core
+  packages/shared/src/normalizeProp.ts and packages/shared/src/general.ts at commit e2bede9
+  → vue-stringify-style.before.ts, vue-stringify-style.after.ts
 
 
                             The MIT License (MIT)

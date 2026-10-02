@@ -141,11 +141,11 @@ bench-all:
 tiers:
 	node bench/tiers.ts all
 
-# The end-to-end examples: four real library functions, the finding jitmax
-# printed on each, and what applying that fix is worth to a caller. The check
-# comes first because the findings are the reason the benchmark exists; exit 1
-# there means findings, which is the expected outcome, and exit 2 means the tool
-# failed, which is not.
+# The end-to-end examples: the checker over every vendored library function,
+# then the sweep over the four whose fix is a rewrite — what applying it is
+# worth to a caller. The check comes first because the findings are the reason
+# the benchmark exists; exit 1 there means findings, which is the expected
+# outcome, and exit 2 means the tool failed, which is not.
 example:
 	node bin/jitmax.ts examples; test $$? -le 1
 	node bench/run.ts example

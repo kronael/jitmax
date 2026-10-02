@@ -345,6 +345,9 @@ does not bound or predict what an unchecked call costs. The sweep's callee is
 readable and padded; the rule's is unreadable and unsized, so every finding
 prints `TC-33`.
 
+**A real finding.** typescript-eslint `findLastIndex` and the annotation that
+clears it are in [examples/README.md](../examples/README.md#the-coverage-rules-the-finding-and-the-annotation-that-clears-it).
+
 ## interface-dispatch
 
 **What it detects.** A call through an interface or a function value whose
@@ -384,6 +387,9 @@ choose which implementation runs.
 
 **The cost.** None claimed, and no sweep. It reports what was not checked;
 read it as coverage, never as a price.
+
+**A real finding.** Vue `stringifyStyle`, with one implementation annotated and
+the root suppressed, is in [examples/README.md](../examples/README.md#the-coverage-rules-the-finding-and-the-annotation-that-clears-it).
 
 ## How the two coverage rules divide the work
 

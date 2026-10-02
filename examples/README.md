@@ -13,18 +13,23 @@ whole change.
 | `mergeAll()` | remeda 2.0.0, `packages/remeda/src/mergeAll.ts` @ 72ca45e — https://github.com/remeda/remeda | `accumulating-spread` |
 | `omit()` | es-toolkit 1.50.0, `src/object/omit.ts` @ bec4905 — https://github.com/toss/es-toolkit | `delete-property` |
 | `cleanEnum()` | zod 4.4.3, `packages/zod/src/v4/core/util.ts` @ 5e60885 — https://github.com/colinhacks/zod | `chained-allocation` |
+| `findLastIndex()` | typescript-eslint 8.67.0, `packages/eslint-plugin/src/util/misc.ts` @ 56c9ed9 — https://github.com/typescript-eslint/typescript-eslint | `closed-world` |
+| `stringifyStyle()` | Vue 3.5.41, `packages/shared/src/normalizeProp.ts` and `src/general.ts` @ e2bede9 — https://github.com/vuejs/core | `interface-dispatch` |
 
-All four are MIT. Each `.before.ts` header carries its upstream copyright line,
+All six are MIT. Each `.before.ts` header carries its upstream copyright line,
 version and commit, and [LICENSE-MIT](LICENSE-MIT) reproduces the permission
-notice that travels with them. All four come from the survey below.
+notice that travels with them. All six come from the survey below. From a
+checkout, `node bin/jitmax.ts examples` reports every `.before.ts` and nothing
+on any `.after.ts`.
 
 ## What each fix is worth
 
-The four examples cover `accumulating-spread`, `delete-property` and
-`chained-allocation`. The megamorphic rules have real detections, below, and
-no measured rewrite; `allocating-select` fired nowhere in the survey and has
-a real detection in Babylon.js, below; the two coverage rules make no speed
-claim.
+The first four examples carry a rewrite, measured below: `accumulating-spread`,
+`delete-property` and `chained-allocation`. The last two carry the fix the
+coverage rules print, an annotation, and make no speed claim: [the coverage
+rules](#the-coverage-rules-the-finding-and-the-annotation-that-clears-it) shows
+each. The megamorphic rules and `allocating-select` have real detections,
+below, and no measured rewrite.
 
 Each cell runs the function over a batch of inputs through one caller, and
 follows [the protocol](../bench/README.md#how-a-cell-is-measured): three whole
@@ -153,6 +158,17 @@ Each prints `rules from jitmax.toml, found from the working directory` and
 exits `1` with its megamorphic finding. The preset switches the other six
 rules off, and the report counts what they would have found.
 
+No `.before.ts` and `.after.ts` pair exists for either rule, because the
+printed fix is not a change to the function the rule fired on. For
+`megamorphic-elements` it is a change to the builders of the elements, and
+zod's issues are built across its check functions, not in `prefixIssues`; for
+`megamorphic-dispatch` it is a guard that gives each receiver kind its own call
+site, and date-fns's thirty-one parser classes leave no guard to write. Every
+other site the two rules reach in the 22-codebase survey below is a compiler
+AST, a framework node type or a class hierarchy, where the shapes are the
+library's public API. A rewrite that pays would have to be written for the
+purpose, and that would be a benchmark, not an example.
+
 ## An allocating-select detection
 
 `allocating-select` fires on **Babylon.js** `updateSceneBounds` and
@@ -184,6 +200,69 @@ bunx github:kronael/jitmax \
 
 It exits `1` with the four findings among the coverage findings of two
 functions whose walk the body limit truncates.
+
+## The coverage rules: the finding and the annotation that clears it
+
+`closed-world` and `interface-dispatch` make no speed claim. Each reports a
+call the walk could not check, and the fix each prints is a decision: read the
+code the walk could not, then record that on the annotation. Two vendored
+functions show what that looks like.
+
+**typescript-eslint `findLastIndex`** calls the `predicate` its caller passes.
+No caller is in the program, so the callback has no body the walk can read:
+
+```sh
+node bin/jitmax.ts examples/tseslint-find-last-index.before.ts
+```
+
+```text
+  examples/tseslint-find-last-index.before.ts:7  findLastIndex()
+    examples/tseslint-find-last-index.before.ts:14:19  error  closed-world
+      calls predicate, which we have no body for; the promise stops here
+      sources: No receiver source located. Source tracing is partial: no
+               visible caller of findLastIndex — its arguments come from
+               outside this program.
+      next: resolve predicate to its TypeScript implementation, or review the
+            dependency separately and add -closed-world to this root's @jitmax
+            annotation
+```
+
+The after half is the same function under `/** @jitmax -closed-world */`. The
+callback is reviewed where it is written, and the annotation records that. The
+run prints `1 finding suppressed (closed-world)` and exits 0.
+
+**Vue `stringifyStyle`** calls `hyphenate`, which Vue builds through
+`cacheStringFunction`, a memoiser whose `fn` is whichever of four string
+helpers it was given. The walk reaches `fn(str)` and finds all four:
+
+```sh
+node bin/jitmax.ts examples/vue-stringify-style.before.ts
+```
+
+```text
+  examples/vue-stringify-style.before.ts:48  stringifyStyle()
+    examples/vue-stringify-style.before.ts:17:33  error  interface-dispatch
+      calls fn; 4 implementations reach this call (function
+      (vue-stringify-style.before.ts:23), function
+      (vue-stringify-style.before.ts:30), function
+      (vue-stringify-style.before.ts:34), function
+      (vue-stringify-style.before.ts:41)), and their bodies are not followed;
+      the promise stops here
+      next: inspect the implementations of fn. Annotating one checks its body
+            but does not clear this call-site error; to clear it, review the
+            implementations and add -interface-dispatch to this root's @jitmax
+            annotation
+```
+
+The after half does both things that `next:` line names. `/** @jitmax */` on
+the `hyphenate` implementation, the one `stringifyStyle` reaches, checks its
+body as a root of its own. `-interface-dispatch` on `stringifyStyle` records
+that the four were reviewed and clears the call-site error. The run reports 2
+annotated functions, `1 finding suppressed (interface-dispatch)`, and exits 0.
+
+Neither annotation changes what the function computes. `make test` holds both
+halves of each pair to the same results, and holds the suppressed finding in
+place under the annotation.
 
 ## The survey
 

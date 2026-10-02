@@ -3066,13 +3066,26 @@ test('no workload reads the variant string inside a function except the three on
 // must report exactly the finding its header quotes; each `.after.ts` carries
 // that fix and must be silent. If an after half ever regains a finding, the
 // pair it was measured as is no longer the pair in the file.
+//
+// Silent as the CLI reads it. The two coverage rules print an annotation as
+// their fix, so their after halves carry `-closed-world` and
+// `-interface-dispatch`, and `check()` still returns the finding the
+// annotation suppresses — bin/jitmax.ts filters it through `resolveDisabled`,
+// and so does this. The raw view is asserted beside it: a coverage example's
+// after half is a reviewed finding, not a vanished one.
 
 test('every example before half reports its finding and every after half is clean', () => {
   const dir = path.join(root, 'examples');
   const { checker, marks } = scan(ts, program(ts, root, [dir]));
-  const byFile = new Map(
-    marks.map((m) => [path.basename(m.file), check(ts, checker, m).map((f) => f.rule)])
-  );
+  const byFile = new Map<string, string[]>();
+  const raw = new Map<string, string[]>();
+  for (const m of marks) {
+    const file = path.basename(m.file);
+    const disabled = resolveDisabled(m.disabled);
+    const found = check(ts, checker, m).map((f) => f.rule);
+    raw.set(file, [...(raw.get(file) ?? []), ...found]);
+    byFile.set(file, [...(byFile.get(file) ?? []), ...found.filter((r) => !disabled.has(r))]);
+  }
   assert.deepStrictEqual(
     Object.fromEntries([...byFile].sort()),
     {
@@ -3082,10 +3095,43 @@ test('every example before half reports its finding and every after half is clea
       'radash-assign.before.ts': ['accumulating-spread'],
       'remeda-merge-all.after.ts': [],
       'remeda-merge-all.before.ts': ['accumulating-spread'],
+      'tseslint-find-last-index.after.ts': [],
+      'tseslint-find-last-index.before.ts': ['closed-world'],
+      'vue-stringify-style.after.ts': [],
+      'vue-stringify-style.before.ts': ['interface-dispatch'],
       'zod-clean-enum.after.ts': [],
       'zod-clean-enum.before.ts': ['chained-allocation'],
     }
   );
+  assert.deepStrictEqual(raw.get('tseslint-find-last-index.after.ts'), ['closed-world']);
+  assert.deepStrictEqual(raw.get('vue-stringify-style.after.ts'), ['interface-dispatch']);
+});
+
+// The coverage examples change annotations and nothing else, so both halves
+// have to compute the same thing — the check every measured pair gets from the
+// driver's per-pair checksum, done here for the two pairs no sweep runs.
+test('coverage example halves compute the same results', async () => {
+  const index = [
+    await import('../examples/tseslint-find-last-index.before.ts'),
+    await import('../examples/tseslint-find-last-index.after.ts'),
+  ];
+  for (const { findLastIndex } of index) {
+    assert.strictEqual(findLastIndex([1, 4, 2, 4, 3], (v) => v === 4), 3);
+    assert.strictEqual(findLastIndex([1, 2], (v) => v > 5), -1);
+    assert.strictEqual(findLastIndex([], () => true), -1);
+  }
+  const style = [
+    await import('../examples/vue-stringify-style.before.ts'),
+    await import('../examples/vue-stringify-style.after.ts'),
+  ];
+  for (const { stringifyStyle } of style) {
+    assert.strictEqual(
+      stringifyStyle({ fontSize: 12, backgroundColor: 'red', '--gap': '1px' }),
+      'font-size:12;background-color:red;--gap:1px;'
+    );
+    assert.strictEqual(stringifyStyle('color:red'), 'color:red');
+    assert.strictEqual(stringifyStyle(undefined), '');
+  }
 });
 
 test('object example rewrites preserve copied properties', async () => {

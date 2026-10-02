@@ -204,7 +204,7 @@ Type errors are your compiler's job; jitmax does not report them.
 |---|---|
 | What does each rule detect and cost, and where is it silent? | [docs/rules.md](docs/rules.md) |
 | Where is jitmax blind or wrong? | [docs/limits.md](docs/limits.md) |
-| What does a printed fix gain on real library code? | [examples/README.md](examples/README.md) |
+| What does each rule find in real library code, and what does a fix gain? | [examples/README.md](examples/README.md) |
 | How was each number measured, and how do I re-run it? | [bench/README.md](bench/README.md) |
 | How is jitmax built? | [ARCHITECTURE.md](ARCHITECTURE.md) |
 
@@ -236,9 +236,9 @@ To run a clone instead of the GitHub install, use
 needs the clone's dependencies and no build.
 [Development](ARCHITECTURE.md#development) lists the main development commands.
 
-GPL-2.0-only; see [LICENSE](LICENSE). The radash, remeda, es-toolkit and zod
-functions in `examples/` keep their MIT licences, copyright lines, versions and
-commits; [examples/LICENSE-MIT](examples/LICENSE-MIT) carries the permission
+GPL-2.0-only; see [LICENSE](LICENSE). The radash, remeda, es-toolkit, zod,
+typescript-eslint and Vue functions in `examples/` keep their MIT licences,
+copyright lines, versions and commits; [examples/LICENSE-MIT](examples/LICENSE-MIT) carries the permission
 notices. V8 is a trademark of Google LLC; this project is not affiliated with,
 endorsed by, or sponsored by Google.
 
