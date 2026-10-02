@@ -105,28 +105,30 @@ jitmax — 1 annotated function, 1 error
 
   shapes.ts:9  total()
     shapes.ts:9:23  error  megamorphic-elements
-      rows has 5 distinct property sets in its element type; this is a
-      candidate for megamorphic load feedback, not an observed runtime map
-      count
-      related: shapes.ts:11:34 read: row.x
-      sources: No builder located for this value. Source tracing is partial:
-               no visible caller of total — its arguments come from outside
-               this program.
-      next: inspect where these elements are built, not just this parameter.
-            If semantics allow, use consistent own properties and insertion
-            order; benchmark the full caller including construction
+      rows has 5 distinct property sets in its element type; candidate for
+      megamorphic load feedback, not an observed runtime map count
+      next: inspect the element builders. If semantics allow, use consistent
+            own properties and insertion order
       note: type assertions do not change runtime shapes. Adding a missing
             property can change key enumeration and presence checks. Library
             callers may need an upstream change; no automatic rewrite is
             established here
-      measured in bench/shape-sets.jl and bench/shapes-calibrated.jl
-      known defects: TC-2, TC-9
+      related: shapes.ts:11:34 read: row.x
+      sources: No builder located for this value. Source tracing is partial:
+               no visible caller of total — its arguments come from outside
+               this program.
+
+  Static findings are candidates, not measured costs in this workload.
+  Profile and benchmark the caller before keeping a change.
+  Related locations are representative; static counts are not runtime counts.
+  Evidence, known defects and all related locations: -v.
+  Rule limits: docs/rules.md; benchmarks: bench/README.md (jitmax package).
 ```
 
-A legend of the defect codes and a footer follow. `shapes.ts:9  total()` is
-the annotated function the walk started from; the finding can sit in any
-function it calls. `next:` is what to look at or try, and `note:` is what that
-change can break besides speed.
+`shapes.ts:9  total()` is the annotated function the walk started from; the
+finding can sit in any function it calls. `next:` is what to look at or try,
+and `note:` is what that change can break besides speed. Run with `-v` for
+benchmark paths, known defects and every related source location.
 [Reading a finding](docs/rules.md#reading-a-finding) explains every line.
 
 ## Choose rules and functions

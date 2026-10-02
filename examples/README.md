@@ -216,15 +216,25 @@ node bin/jitmax.ts examples/tseslint-find-last-index.before.ts
 ```
 
 ```text
+jitmax — 1 annotated function, 1 error
+
   examples/tseslint-find-last-index.before.ts:7  findLastIndex()
     examples/tseslint-find-last-index.before.ts:14:19  error  closed-world
-      calls predicate, which we have no body for; the promise stops here
-      sources: No receiver source located. Source tracing is partial: no
-               visible caller of findLastIndex — its arguments come from
-               outside this program.
+      predicate: no readable implementation
       next: resolve predicate to its TypeScript implementation, or review the
             dependency separately and add -closed-world to this root's @jitmax
             annotation
+      sources: No receiver source located. Source tracing is partial: no
+               visible caller of findLastIndex — its arguments come from
+               outside this program.
+
+  note (closed-world): missing source does not prove V8 failed to inline. A
+                       .d.ts has no implementation to check
+
+  Static findings are candidates, not measured costs in this workload.
+  Profile and benchmark the caller before keeping a change.
+  Evidence, known defects and all related locations: -v.
+  Rule limits: docs/rules.md; benchmarks: bench/README.md (jitmax package).
 ```
 
 The after half is the same function under `/** @jitmax -closed-world */`. The
@@ -240,23 +250,37 @@ node bin/jitmax.ts examples/vue-stringify-style.before.ts
 ```
 
 ```text
+jitmax — 1 annotated function, 1 error
+  1 call into the platform, not listed: the body is native
+  1 interface call resolved to the one implementation this program builds, and
+  followed — sound only for a closed program
+
   examples/vue-stringify-style.before.ts:48  stringifyStyle()
     examples/vue-stringify-style.before.ts:17:33  error  interface-dispatch
-      calls fn; 4 implementations reach this call (function
-      (vue-stringify-style.before.ts:23), function
-      (vue-stringify-style.before.ts:30), function
-      (vue-stringify-style.before.ts:34), function
-      (vue-stringify-style.before.ts:41)), and their bodies are not followed;
-      the promise stops here
-      next: inspect the implementations of fn. Annotating one checks its body
-            but does not clear this call-site error; to clear it, review the
-            implementations and add -interface-dispatch to this root's @jitmax
-            annotation
+      calls fn; 4 implementations reach this call; their bodies are not
+      followed
+      next: review the implementations of fn, then record the review with
+            -interface-dispatch on this root's @jitmax annotation
+      related: examples/vue-stringify-style.before.ts:23:3 function
+      related: examples/vue-stringify-style.before.ts:30:3 function
+      2 more related source locations omitted; use -v to show all
+
+  note (interface-dispatch): annotating a target checks its body but does not
+                             clear this call-site error. Keep the abstraction;
+                             a type assertion does not select a runtime
+                             implementation
+
+  Static findings are candidates, not measured costs in this workload.
+  Profile and benchmark the caller before keeping a change.
+  Related locations are representative; static counts are not runtime counts.
+  Evidence, known defects and all related locations: -v.
+  Rule limits: docs/rules.md; benchmarks: bench/README.md (jitmax package).
 ```
 
-The after half does both things that `next:` line names. `/** @jitmax */` on
-the `hyphenate` implementation, the one `stringifyStyle` reaches, checks its
-body as a root of its own. `-interface-dispatch` on `stringifyStyle` records
+The after half reviews the implementations and checks the one used here.
+`/** @jitmax */` on the `hyphenate` implementation, the one `stringifyStyle`
+reaches, checks its body as a root of its own. `-interface-dispatch` on
+`stringifyStyle` records
 that the four were reviewed and clears the call-site error. The run reports 2
 annotated functions, `1 finding suppressed (interface-dispatch)`, and exits 0.
 

@@ -342,8 +342,8 @@ inline the code.
 measured 4.64-4.95x against the same helper under it, at n=1000, in
 `bench/inline.jl`. That is one possible cost of a call V8 does not inline; it
 does not bound or predict what an unchecked call costs. The sweep's callee is
-readable and padded; the rule's is unreadable and unsized, so every finding
-prints `TC-33`.
+readable and padded; the rule's is unreadable and unsized. `-v` identifies
+that mismatch as `TC-33`.
 
 **A real finding.** typescript-eslint `findLastIndex` and the annotation that
 clears it are in [examples/README.md](../examples/README.md#the-coverage-rules-the-finding-and-the-annotation-that-clears-it).
@@ -408,22 +408,27 @@ a count. A bare function call keeps its coverage finding, whatever the count.
 The [README](../README.md#read-a-finding) shows one finding in full. Its
 lines, in order:
 
-- The first line names the annotated function the walk started from. The
-  finding under it can sit in any function it calls, in any file.
-- The second gives the position, the severity and the rule, then what the
-  rule saw.
-- `related:` points to representative builders, implementations or
-  allocations, and `sources:` says where tracing stopped. Neither proves the
-  value reaches the site at run time. `-v` shows every location, not five.
+- The function heading names the annotated function the walk started from.
+  The finding under it can sit in any function it calls, in any file.
+- The finding gives the position, severity and rule, then what the rule saw.
 - `next:` is what to look at or try; `note:` is what that change can break
   besides speed.
-- `measured in` names the sweep behind the rule. `known defects:` are the
-  rule's recorded limits, explained [below](#known-defects).
+- `related:` points to the first two source locations: reads, builders,
+  implementations or allocations. An omitted count names how many more
+  locations `-v` can show. `sources:` says where tracing stopped, even without
+  `-v`.
+- With `-v`, `measured in` names the sweep behind the rule and `known defects:`
+  gives its recorded limits, explained [below](#known-defects). One legend
+  below the findings explains the cited codes.
 
-After the findings, the report says what each cited defect code means and
-where the rule evidence and measurements are. A finding gives no cost estimate
-for your code. Ratios in `note:` describe benchmark examples, whose sizes and
-workloads may differ from yours.
+The report prints shared `closed-world` and `interface-dispatch` notes once
+per rule, below the findings. Source locations are representative: neither
+those locations nor static counts prove what reaches a site at run time.
+
+The footer names this rule guide and the [benchmarks](../bench/README.md) in
+the jitmax package. A finding gives no cost estimate for your code. Ratios in
+`note:` describe benchmark examples, whose sizes and workloads may differ from
+yours. Profile and benchmark the caller before keeping a change.
 
 ## Severity
 
@@ -438,8 +443,9 @@ per-call path also reaches keeps its error.
 
 ## Known defects
 
-A finding prints the defect codes its rule carries, and the legend under the
-findings names each one. These are open limits, not bugs in your code.
+With `-v`, each finding prints the defect codes its rule carries, and one
+legend under the findings names each code. These are open limits, not bugs
+in your code.
 
 | Code | What it means |
 |---|---|
