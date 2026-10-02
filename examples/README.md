@@ -154,7 +154,7 @@ rules off, and the report counts what they would have found.
 
 ## The survey
 
-The checker, at commit `75a1568`, ran on 22 open-source codebases: twelve
+The checker, at commit `de7bded`, ran on 22 open-source codebases: twelve
 libraries, two applications and eight other codebases, each cloned shallow.
 `examples/annotate.js` marked every function, not nested inside another, whose
 body holds a loop or an array-iteration call; radash was marked by hand. That
@@ -199,18 +199,18 @@ allocation only in a callee whose body is in the program, so a packaged
 
 | Program | annotated | findings | what fired |
 |---|---|---|---|
-| TypeScript 5.9.3 (`src/compiler`) | 465 | 4327 | 4048 `interface-dispatch`, 246 `closed-world`, 16 `megamorphic-dispatch`, 11 `megamorphic-elements`, 4 `chained-allocation`, 1 each `delete-property` and `accumulating-spread` |
-| typescript-eslint 8.67.0 | 311 | 935 | 882 `closed-world`, 44 `interface-dispatch`, 6 `chained-allocation`, 2 `delete-property`, 1 `megamorphic-dispatch` |
+| TypeScript 5.9.3 (`src/compiler`) | 465 | 4308 | 4029 `interface-dispatch`, 246 `closed-world`, 16 `megamorphic-dispatch`, 11 `megamorphic-elements`, 4 `chained-allocation`, 1 each `delete-property` and `accumulating-spread` |
+| typescript-eslint 8.67.0 | 311 | 936 | 883 `closed-world`, 44 `interface-dispatch`, 6 `chained-allocation`, 2 `delete-property`, 1 `megamorphic-dispatch` |
 
 ### Other codebases
 
 | Codebase | annotated | findings | what fired besides `closed-world` |
 |---|---|---|---|
-| svelte (`packages/svelte/src`) | 504 | 401 | 65 `interface-dispatch`, 13 `delete-property`, 12 `chained-allocation`, 2 `accumulating-spread` |
-| vue (`packages/*/src`) | 409 | 1754 | 543 `interface-dispatch`, 13 `delete-property`, 10 `megamorphic-dispatch`, 7 `megamorphic-elements`, 5 `chained-allocation`, 4 `accumulating-spread` |
+| svelte (`packages/svelte/src`) | 504 | 402 | 65 `interface-dispatch`, 13 `delete-property`, 12 `chained-allocation`, 2 `accumulating-spread` |
+| vue (`packages/*/src`) | 409 | 1764 | 547 `interface-dispatch`, 13 `delete-property`, 10 `megamorphic-dispatch`, 7 `megamorphic-elements`, 5 `chained-allocation`, 4 `accumulating-spread` |
 | typebox | 199 | 53 | 30 `accumulating-spread`, 16 `interface-dispatch`, 3 `delete-property` |
 | mobx | 49 | 64 | 32 `interface-dispatch`, 2 `delete-property` |
 | valibot | 87 | 107 | 60 `interface-dispatch`, 9 `chained-allocation`, 1 each `megamorphic-dispatch` and `delete-property` |
 | rxjs | 60 | 105 | 33 `interface-dispatch` |
-| immer | 10 | 37 | 13 `interface-dispatch`, 2 `delete-property` |
+| immer | 10 | 38 | 14 `interface-dispatch`, 2 `delete-property` |
 | ts-pattern | 9 | 22 | nothing |
