@@ -60,8 +60,9 @@ error. A callee that resolves to a declaration with no body is a
 is an `interface-dispatch` finding: the walk reports where it stopped instead
 of letting the site vanish.
 
-**Count what reaches a receiver.** `lib/flow.ts` answers "what actually reaches
-this value", not "what could structurally fit its interface". TypeScript is
+**Count what reaches a receiver.** `lib/flow.ts` traces the possible origins of a
+receiver through assignments and calls, instead of counting every class that
+could structurally fit its interface. TypeScript is
 structural, so dozens of shapes in a checkout can satisfy a two-method
 interface without ever reaching the call. From the call site the walk goes
 back: a receiver that is a parameter leads to every visible call site of its

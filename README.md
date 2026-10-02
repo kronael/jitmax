@@ -28,8 +28,8 @@ bun add --dev typescript@^5.9    # or: npm install --save-dev typescript@^5.9
 ```
 
 A compiler without that API stops the run at exit `2`, naming the version
-found. Install the project's other dependencies too: an import that does not
-resolve reads as `any`, and the run reports it as a coverage gap.
+found. Install the project's other dependencies too: an unresolved import in a file
+the walk checks reads as `any`, and the run reports it as a coverage gap.
 
 Save this as `hot.ts` in the project root, and run from there:
 

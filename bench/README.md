@@ -52,9 +52,10 @@ example        four shipped library functions, before and after
 ```
 
 `make bench-<name>`, `make bench` for `shapes`, and `make example` run the
-same sweeps without `--force`. They resume the published `.jl` files: each
-measures only the cells its file lacks, so on a complete checkout it measures
-nothing. `make example` also checks the four examples first. Two targets
+same sweeps without `--force`. They append to the published `.jl` files and
+skip a cell only when it already holds three observations the current runner
+accepts, so a full checkout can still need measurements. `--plan` lists the
+cells a run would measure, without measuring. `make example` also checks the four examples first. Two targets
 measure no cost:
 
 ```sh

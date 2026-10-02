@@ -16,9 +16,10 @@ tool as a whole.
   named `tsconfig.json`, follows its `extends`, and does not build project
   `references`. Run it where a `tsconfig.json` holds or extends the options
   your code compiles with.
-- **Exit `1` means a finding or incomplete coverage.** An import that does not
-  resolve reads as `any` and is a coverage gap, so a project with unresolved
-  imports exits `1` whatever its code looks like. Install its dependencies
+- **Exit `1` means a finding or incomplete coverage.** An unresolved import in a
+  file that holds a selected function, or a body its walk reaches, reads as
+  `any` and is a coverage gap, so the run exits `1`. Imports in other files are
+  outside this check; use your compiler to check the whole project. Install its dependencies
   first; the report says which of the two it found.
 - **A pattern split across functions goes unreported.** The walk reads every
   callee with source, but `accumulating-spread` needs the loop and the copy in

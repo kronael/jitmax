@@ -358,8 +358,10 @@ export function runTrio(vs: number[]): number {
 receiver: the walk follows it instead, and finds the `accumulating-spread`
 inside it.
 
-**It misses** implementations outside the program, and it counts classes by
-identity and literals by shape, so its count is a lower bound on maps.
+**It misses** implementations outside the program and merges literals with
+the same property names. It can also count origins from branches that never
+run. The count describes static possibilities, not how many V8 maps reach the
+call at runtime.
 
 **How to act.** Look at the related implementations. Annotating one of them
 checks its body but does not clear this error. To clear it, review the
