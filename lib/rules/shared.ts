@@ -123,7 +123,7 @@ export type RuleModule =
   | { name: string; evidence: Evidence; scope: 'body'; detect: Rule }
   | { name: string; evidence: Evidence; scope: 'escapes'; detect: EscapeRule };
 
-const isLoop = (ts: Ts, n: TS.Node): boolean =>
+export const isLoop = (ts: Ts, n: TS.Node): boolean =>
   ts.isForStatement(n) ||
   ts.isForOfStatement(n) ||
   ts.isForInStatement(n) ||

@@ -268,6 +268,73 @@ export function lowestNumber(rows: number[], bucket: { lo: number }): void {
   for (const r of rows) bucket.lo = Math.min(bucket.lo, r);
 }
 
+/** A selector that builds its result through a local and a clone — the shape
+ * of Babylon.js's Vector3.Minimize, where the `new` is one body further on and
+ * never inside the `return` itself (BUGS TC-148). */
+class Vec {
+  constructor(
+    public x: number,
+    public y: number
+  ) {}
+  clone(): Vec {
+    return new Vec(this.x, this.y);
+  }
+  minimizeInPlace(o: Vec): this {
+    this.x = Math.min(this.x, o.x);
+    this.y = Math.min(this.y, o.y);
+    return this;
+  }
+  static lower(a: Vec, b: Vec): Vec {
+    const out = a.clone();
+    out.minimizeInPlace(b);
+    return out;
+  }
+}
+
+const ORIGIN = new Vec(0, 0);
+
+/** Returns a module-level constant: built once, not on every pass. Silent. */
+function lowerOrOrigin(a: Vec, b: Vec): Vec {
+  return a.x < b.x && a.y < b.y ? a : ORIGIN;
+}
+
+/** Returns a local that only ever holds a candidate. Silent. */
+function lowerPicked(a: Vec, b: Vec): Vec {
+  const pick = a.x < b.x && a.y < b.y ? a : b;
+  return pick;
+}
+
+/** @jitmax */
+export function lowestCorner(points: Vec[], box: { lo: Vec }): void {
+  for (const p of points) box.lo = Vec.lower(box.lo, p);
+}
+
+/** @jitmax */
+export function lowestOrOrigin(points: Vec[], box: { lo: Vec }): void {
+  for (const p of points) box.lo = lowerOrOrigin(box.lo, p);
+}
+
+/** @jitmax */
+export function lowestPicked(points: Vec[], box: { lo: Vec }): void {
+  for (const p of points) box.lo = lowerPicked(box.lo, p);
+}
+
+/** The holder is built inside the pass, so nothing is carried from one pass to
+ * the next and there is no incumbent a compare could keep — the TypeScript
+ * compiler's `const context = createInferenceContext(…)` followed by
+ * `context.nonFixingMapper = combineTypeMappers(context.nonFixingMapper, mapper)`
+ * in the same pass. Silent. */
+/** @jitmax */
+export function lowestEachPass(points: Vec[], seed: Vec): Vec[] {
+  const out: Vec[] = [];
+  for (const p of points) {
+    const box = { lo: seed };
+    box.lo = Vec.lower(box.lo, p);
+    out.push(box.lo);
+  }
+  return out;
+}
+
 /** One spread, no loop to re-run it: silent. */
 /** @jitmax */
 export function mergeOnce(a: Record<string, number>, b: Record<string, number>) {

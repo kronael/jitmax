@@ -22,8 +22,9 @@ notice that travels with them. All four come from the survey below.
 
 The four examples cover `accumulating-spread`, `delete-property` and
 `chained-allocation`. The megamorphic rules have real detections, below, and
-no measured rewrite; `allocating-select` fired nowhere in the survey; the two
-coverage rules make no speed claim.
+no measured rewrite; `allocating-select` fired nowhere in the survey and has
+a real detection in Babylon.js, below; the two coverage rules make no speed
+claim.
 
 Each cell runs the function over a batch of inputs through one caller, and
 follows [the protocol](../bench/README.md#how-a-cell-is-measured): three whole
@@ -151,6 +152,38 @@ bunx github:kronael/jitmax src/parse/index.ts                 # in date-fns/pkgs
 Each prints `rules from jitmax.toml, found from the working directory` and
 exits `1` with its megamorphic finding. The preset switches the other six
 rules off, and the report counts what they would have found.
+
+## An allocating-select detection
+
+`allocating-select` fires on **Babylon.js** `updateSceneBounds` and
+`_updateWorldScaleMatrix`, which grow a bounding box over every shadow-casting
+mesh with `bounds.min = Vector3.Minimize(bounds.min, localBounds.min)` and the
+`Maximize` line under it:
+`packages/dev/core/src/Rendering/IBLShadows/iblShadowsRenderPipeline.pure.ts:748:13`
+and `:749:13`, and
+`packages/dev/core/src/FrameGraph/Tasks/Rendering/iblShadows/iblShadowsVoxelizationTask.ts:251:13`
+and `:252:13`, at revision `02b5a5e79b0140f79dc75f703e82cb79d8b5fa4c` of
+`BabylonJS/Babylon.js` (9.29.0). `related:` names the allocation each call
+returns, `new Vector3()` at `packages/dev/core/src/Maths/math.vector.pure.ts:3132:21`
+and `:3146:21` — a local the selector fills and returns. Babylon has the
+in-place form, `minimizeInPlace`, which fits a bound the function owns. The
+function is a method on a render pipeline, so there is no vendored pair and
+no measured rewrite.
+
+To reproduce, check out that revision. Babylon's root `tsconfig.json` sets
+`ignoreDeprecations: "6.0"`, which TypeScript 5.9 rejects, so run from a
+directory holding a `tsconfig.json` that maps `core/*` to
+`packages/dev/core/src/*`, with `examples/annotate.js` run over the two
+directories first:
+
+```sh
+bunx github:kronael/jitmax \
+  <babylon>/packages/dev/core/src/Rendering/IBLShadows/iblShadowsRenderPipeline.pure.ts \
+  <babylon>/packages/dev/core/src/FrameGraph/Tasks/Rendering/iblShadows/iblShadowsVoxelizationTask.ts
+```
+
+It exits `1` with the four findings among the coverage findings of two
+functions whose walk the body limit truncates.
 
 ## The survey
 

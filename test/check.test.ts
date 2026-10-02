@@ -163,7 +163,11 @@ test('a function is checked only where it is annotated', () => {
       'joinByPlus',
       'keysMap',
       'lowest',
+      'lowestCorner',
+      'lowestEachPass',
       'lowestNumber',
+      'lowestOrOrigin',
+      'lowestPicked',
       'mergeInto',
       'mergeOnce',
       'mixed',
@@ -934,7 +938,7 @@ test('allocation and deletion advice points to the source behind the finding', (
   const findings = findingsByFunction(dir);
   const selection = findings.get('lowest')?.find((f) => f.rule === 'allocating-select');
   assert.ok(selection);
-  assert.match(selection.message, /contains an allocation/);
+  assert.match(selection.message, /returns an object it allocates/);
   assert.doesNotMatch(selection.message, /every pass/);
   assert.match(selection.note ?? '', /do not prove selection or allocation on every path/);
   assert.match(selection.note ?? '', /ties.*object identity.*side effects/);
@@ -972,6 +976,39 @@ test('an allocation the callee neither returns nor reaches stays silent', () => 
 
 test('the same loop on numbers stays silent', () => {
   assert.deepStrictEqual(rules('lowestNumber'), []);
+});
+
+// Babylon.js's Vector3.Minimize: `const min = new Vector3(); …; return min`,
+// with the `new` of its sibling `clone()` one body further on. The search read
+// the return statement's own text and found neither, which is why the rule
+// fired at no site in 22 codebases (BUGS TC-148). The related site is the
+// `new`, wherever the follow-through found it.
+test('a selector that returns a local it allocated fires', () => {
+  assert.deepStrictEqual(rules('lowestCorner'), ['allocating-select']);
+  const selection = rawFindings('lowestCorner').find((f) => f.rule === 'allocating-select');
+  assert.ok(selection);
+  const allocation = selection.related?.[0];
+  assert.ok(allocation);
+  const line = fs.readFileSync(allocation.file, 'utf8').split('\n')[allocation.line - 1]!;
+  assert.ok(line.slice(allocation.column - 1).startsWith('new Vec('));
+});
+
+// The follow-through stops at the callee's own locals. A module-level constant
+// is built once, and a local that only ever holds a candidate allocates on no
+// pass — both are `pick(a, b) { return a }` by another route (TC-34).
+test('a selector that returns an outer constant or a picked candidate stays silent', () => {
+  assert.deepStrictEqual(rules('lowestOrOrigin'), []);
+  assert.deepStrictEqual(rules('lowestPicked'), []);
+});
+
+// The benchmark's loop carries one value forward. A holder built inside the
+// pass carries nothing, so there is no incumbent and nothing for a compare to
+// keep: the TypeScript compiler's `context.nonFixingMapper =
+// combineTypeMappers(context.nonFixingMapper, mapper)`, with `context` created
+// in the same pass, was the one site the deeper allocation search added in 22
+// codebases, and it is a wrap, not a choice.
+test('a store into a holder the pass itself builds stays silent', () => {
+  assert.deepStrictEqual(rules('lowestEachPass'), []);
 });
 
 test('delete fires', () => {

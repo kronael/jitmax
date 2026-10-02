@@ -222,8 +222,11 @@ published as rejected.
 ## allocating-select
 
 **What it detects.** A loop replaces a stored object through a call with peer
-arguments, and the callee returns a fresh allocation. It does not prove that
-the call only selects a candidate, or that it allocates on every path.
+arguments, and the callee returns a fresh allocation — in its `return`, in a
+local it fills and returns, or in a callee of its own. The stored object has
+to be carried from one pass to the next: a holder the pass itself builds has
+no incumbent. It does not prove that the call only selects a candidate, or
+that it allocates on every path.
 
 **It fires on** `lowest`:
 
@@ -251,7 +254,10 @@ call if it merges, transforms or must return a fresh object.
 
 **The cost.** 2.60-2.89x when the chosen value outlives the loop, in
 `bench/select.jl`. In 2953 annotated functions across 22 codebases the rule
-never fired; see the [examples](../examples/README.md).
+never fired; it fires at four sites in Babylon.js, listed in the
+[examples](../examples/README.md#an-allocating-select-detection). The callee
+has to have a body in the program: a packaged `Decimal.max` declared in a
+`.d.ts` is `closed-world`'s finding, not this rule's.
 
 ## delete-property
 

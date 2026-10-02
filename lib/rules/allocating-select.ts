@@ -1,9 +1,10 @@
 import type * as TS from 'typescript';
-import { at, isFunctionLike } from '../scan.ts';
+import { at, isFunctionLike, unwrap } from '../scan.ts';
 import { N } from '../numbers.ts';
 import {
   cells,
   elementType,
+  isLoop,
   members,
   reassignedInLoop,
   walkLoops,
@@ -67,39 +68,96 @@ const detect: Rule = (ts, checker, body, add) => {
   // an object and allocates on no pass at all, and this rule asserted one on
   // every pass (BUGS TC-34). The benchmark measured `Box.min`, whose body runs
   // `new Box(...)`. So read the body the program already has, and require
-  // something in it that builds an object. Where there is no body the rule
-  // stays out: an unreadable callee is `closed-world`'s finding, not this one's.
-  const builds = (call: TS.CallExpression): TS.Node | undefined => {
+  // that what it RETURNS is something it builds. Where there is no body the
+  // rule stays out: an unreadable callee is `closed-world`'s finding, not
+  // this one's.
+  const bodyOf = (call: TS.CallExpression): TS.Node | undefined => {
     const decl = checker.getResolvedSignature(call)?.declaration;
-    if (!decl || !('body' in decl)) return undefined;
-    const fnBody = (decl as { body?: TS.Node }).body;
-    if (!fnBody) return undefined;
-    // Two limits on where the allocation may sit, both of them cases the rule
-    // fired on: it must be inside a `return`, because a scratch array the
-    // callee keeps to itself is not the value the loop stores; and the walk
-    // stops at a nested function, because an object literal inside a callback
-    // the callee never invokes is not an allocation this call makes.
-    let found: TS.Node | undefined;
-    const visit = (n: TS.Node, returning: boolean): void => {
-      if (found) return;
-      if (n !== fnBody && isFunctionLike(ts, n)) return;
-      const inReturn = returning || ts.isReturnStatement(n);
-      if (
-        inReturn &&
-        (ts.isNewExpression(n) ||
-          ts.isObjectLiteralExpression(n) ||
-          ts.isArrayLiteralExpression(n))
-      ) {
-        found = n;
-        return;
-      }
-      ts.forEachChild(n, (c) => visit(c, inReturn));
+    return decl && 'body' in decl ? (decl as { body?: TS.Node }).body : undefined;
+  };
+
+  // Two limits on where the allocation may sit, both of them cases the rule
+  // fired on: it must reach a `return`, because a scratch array the callee
+  // keeps to itself is not the value the loop stores; and the walk stops at a
+  // nested function, because an object literal inside a callback the callee
+  // never invokes is not an allocation this call makes.
+  //
+  // "Reach" and not "sit inside": the search read the return statement's own
+  // text, and real code does not write `return new Vector3(…)`. Babylon.js's
+  // `Vector3.Minimize` writes `const min = new Vector3(); …; return min`, and
+  // its `clone()` puts the `new` one body further on — so the rule fired at 0
+  // of 2,953 annotated functions in 22 codebases while the loops it was
+  // written for were there (BUGS TC-148). A returned local is followed to
+  // every value this body writes to it, and a returned call into the body it
+  // resolves to, HOPS bodies deep. A parameter or an outer binding is not
+  // followed: `return a` is a candidate, and a module-level constant is built
+  // once, not per pass.
+  const within = (n: TS.Node, root: TS.Node): boolean => {
+    for (let p: TS.Node | undefined = n; p; p = p.parent) if (p === root) return true;
+    return false;
+  };
+  const HOPS = 3;
+  const builds = (call: TS.CallExpression): TS.Node | undefined => {
+    const seen = new Set<TS.Node>();
+    const writes = (fnBody: TS.Node, id: TS.Identifier): TS.Expression[] => {
+      const sym = checker.getSymbolAtLocation(id);
+      const decl = sym?.valueDeclaration;
+      if (!decl || !ts.isVariableDeclaration(decl) || !within(decl, fnBody)) return [];
+      if (seen.has(decl)) return [];
+      seen.add(decl);
+      const out: TS.Expression[] = [];
+      if (decl.initializer) out.push(decl.initializer);
+      const visit = (n: TS.Node): void => {
+        if (n !== fnBody && isFunctionLike(ts, n)) return;
+        if (
+          ts.isBinaryExpression(n) &&
+          n.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+          ts.isIdentifier(n.left) &&
+          checker.getSymbolAtLocation(n.left) === sym
+        ) {
+          out.push(n.right);
+        }
+        ts.forEachChild(n, visit);
+      };
+      visit(fnBody);
+      return out;
     };
-    // A concise arrow body IS the returned expression — there is no
-    // ReturnStatement to find, so `(a, b) => (a.lt(b) ? a : new Money(b.v))`
-    // allocated on every pass and this rule stayed silent on it.
-    visit(fnBody, !ts.isBlock(fnBody));
-    return found;
+    const returned = (fnBody: TS.Node, hops: number): TS.Node | undefined => {
+      let found: TS.Node | undefined;
+      const visit = (n: TS.Node, returning: boolean): void => {
+        if (found) return;
+        if (n !== fnBody && isFunctionLike(ts, n)) return;
+        const inReturn = returning || ts.isReturnStatement(n);
+        if (inReturn) {
+          if (
+            ts.isNewExpression(n) ||
+            ts.isObjectLiteralExpression(n) ||
+            ts.isArrayLiteralExpression(n)
+          ) {
+            found = n;
+            return;
+          }
+          if (ts.isIdentifier(n)) for (const v of writes(fnBody, n)) visit(v, true);
+          if (ts.isCallExpression(n) && hops > 1) {
+            const next = bodyOf(n);
+            if (next && !seen.has(next)) {
+              seen.add(next);
+              found = returned(next, hops - 1);
+            }
+          }
+        }
+        ts.forEachChild(n, (c) => visit(c, inReturn));
+      };
+      // A concise arrow body IS the returned expression — there is no
+      // ReturnStatement to find, so `(a, b) => (a.lt(b) ? a : new Money(b.v))`
+      // allocated on every pass and this rule stayed silent on it.
+      visit(fnBody, !ts.isBlock(fnBody));
+      return found;
+    };
+    const fnBody = bodyOf(call);
+    if (!fnBody) return undefined;
+    seen.add(fnBody);
+    return returned(fnBody, HOPS);
   };
 
   // The benchmark measured a CHOICE between two values of ONE type:
@@ -141,6 +199,32 @@ const detect: Rule = (ts, checker, body, add) => {
     return call.arguments.every((a) => candidate(checker.getTypeAtLocation(a)));
   };
 
+  // The benchmark's loop CARRIES one value forward, and the incumbent wins
+  // nearly every pass. A holder the pass itself builds carries nothing: the
+  // TypeScript compiler writes `const context = createInferenceContext(…)` and
+  // then `context.nonFixingMapper = combineTypeMappers(context.nonFixingMapper,
+  // mapper)` in the same pass, which is a store into an object that did not
+  // exist on the pass before, so there is no incumbent a compare could keep.
+  // The target's root binding has to be declared outside the innermost loop,
+  // or the callback an array method re-runs, that re-runs the store. A
+  // parameter is outside by definition — `reduce`'s accumulator is one. A
+  // `for (let acc = …; …)` initializer runs once, so only the statement it
+  // re-runs counts as the pass; a `for (const p of …)` binding is per pass and
+  // the whole statement does.
+  const carried = (target: TS.Expression, assignment: TS.Node): boolean => {
+    let root = unwrap(ts, target);
+    while (ts.isPropertyAccessExpression(root) || ts.isElementAccessExpression(root)) {
+      root = unwrap(ts, root.expression);
+    }
+    if (!ts.isIdentifier(root)) return true;
+    const decl = checker.getSymbolAtLocation(root)?.valueDeclaration;
+    if (!decl || !ts.isVariableDeclaration(decl)) return true;
+    let pass: TS.Node | undefined = assignment.parent;
+    while (pass && !isLoop(ts, pass) && !isFunctionLike(ts, pass)) pass = pass.parent;
+    if (!pass) return true;
+    return !within(decl, ts.isForStatement(pass) ? pass.statement : pass);
+  };
+
   walkLoops(ts, checker, body.node, (node, inLoop) => {
     if (reassignedInLoop(ts, node, inLoop) && ts.isCallExpression(node.right)) {
       const target = node.left.getText(body.sf);
@@ -149,6 +233,7 @@ const detect: Rule = (ts, checker, body, add) => {
         call.arguments.some((a) => a.getText(body.sf) === target) &&
         // A second, DIFFERENT argument, or there is nothing to choose between.
         call.arguments.some((a) => a.getText(body.sf) !== target) &&
+        carried(node.left, node) &&
         allocates(call) &&
         selectsAmongPeers(node.left, call)
       ) {
@@ -159,7 +244,7 @@ const detect: Rule = (ts, checker, body, add) => {
           rule: NAME,
           message:
             `${target} is replaced by ${call.expression.getText(body.sf)}(...) in a loop; ` +
-            'the callee contains an allocation in a returned expression',
+            'the callee returns an object it allocates',
           fix:
             `if this call only selects a candidate, compare first and assign ${target} ` +
             'only when the chosen value changes',
@@ -169,7 +254,7 @@ const detect: Rule = (ts, checker, body, add) => {
             'keep the call if it merges, transforms or must return a fresh object',
           related: [{
             ...at(allocation.getSourceFile(), allocation),
-            name: 'allocation in returned expression',
+            name: 'the allocation the callee returns',
           }],
         });
       }
