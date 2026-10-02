@@ -22,6 +22,8 @@ tool as a whole.
   outside this check; use your compiler to check the whole project.
   Install the project's dependencies first; the report says which unresolved
   imports match a configured path alias.
+- **Nested functions are read even when nothing calls them.** A finding inside
+  one can fail the run without describing work the marked function does.
 - **A pattern split across functions goes unreported.** The walk reads every
   callee with source, but `accumulating-spread` needs the loop and the copy in
   one body: `acc = append(acc, x)` in a loop, with

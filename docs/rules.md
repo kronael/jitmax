@@ -256,7 +256,8 @@ never fired; see the [examples](../examples/README.md).
 ## delete-property
 
 **What it detects.** `delete` of a property on an ordinary object, which can
-move the object into dictionary mode. Every later read of it pays.
+move the object into dictionary mode, which makes later reads of it cost more.
+The rule does not prove that the property exists or that the move happens.
 
 **It fires on** `drop`:
 
