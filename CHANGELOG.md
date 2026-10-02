@@ -6,6 +6,25 @@ The Bun repository workflow needs no npm publication or release tag, and
 Entries below record their versions' behavior and trials as they stood at the
 time, including access limits that no longer hold.
 
+## [v0.17.1] — 20261002
+
+> jitmax v0.17.1 — clearer fixes, more precise findings
+>
+> Reports put the next action first, retain rewrite cautions, and check allocations returned by named selectors.
+>
+> • reports — benchmark detail moves to `-v`; ownership and rewrite costs stay visible
+> • precision — unrelated union members and test-only classes do not inflate receiver counts
+> • coverage — selectors lead to returned allocations; TypeScript 5 and 6 are supported
+> • examples — all eight rules have real source findings, with coverage limits stated
+>
+> Full notes: https://github.com/kronael/jitmax/blob/main/CHANGELOG.md
+
+- Reports lead with the fix and source locations; `-v` adds benchmark detail. Unresolved imports name the config directory.
+- Shape advice distinguishes class instances from plain object literals.
+- Receiver counts exclude union members without the called method and classes or origins from test files.
+- `allocating-select` follows named selectors and returned allocations; the examples locate four Babylon.js sites.
+- TypeScript 6 joins the supported peer range. The survey and examples match the current detector.
+
 ## [v0.17.0] — 20261002
 
 > jitmax v0.17.0 — the config finds itself, and fewer silent misses
