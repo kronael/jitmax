@@ -73,7 +73,7 @@ functions and still 33 errors; only suppression clears them.
   call-site error, or clear the error when every located implementation is
   annotated.
 
-## TC-163 — the docs require TypeScript <6, but TypeScript 6 gives identical results (2026-10-01, open, owner decision)
+## ✅ FIXED 2026-10-02 — TC-163 — the docs require TypeScript <6, but TypeScript 6 gives identical results (2026-10-01, fixed)
 
 lru-cache on TS 6.0.2 and marked on TS 6.0.3 produced reports byte-identical to
 the 5.9.3 runs; the README says "skip that and the scan stops at exit 2", and
@@ -83,9 +83,23 @@ was TypeScript 7's missing `ts.sys`, which 6 has.
 - **Severity:** medium
 - **Source:** three-repo trial 2026-10-01 (lru-cache 7e71a1f, marked 4ee44f7,
   arktype ca8ec6c)
-- **Status:** open, owner decision
-- **Fix:** test against TS 6 and widen the peer range, or state that TS 6
-  works without a guarantee.
+- **Status:** fixed
+- **Fix:** `71657d7`. The peer range is `>=5.0.0 <7`, `load()`'s refusal
+  advises `typescript@^6`, and README, site, `test/README.md` and
+  ARCHITECTURE say 5.x or 6.x, held to `package.json` by a test. CI runs the
+  whole job under the lockfile's 5.x and under 6. Verified with
+  `typescript@6.0.3` in a scratch copy: lint clean, every test passes but the
+  one that archives the repository and so needs a clone, `make check` exits
+  1, `make reality` holds. Under this repository's `tsconfig.json`, radash,
+  vue, zod, date-fns, immutable, es-toolkit, valibot and the TypeScript 5.9
+  compiler give byte-identical reports under 5.9.3 and 6.0.3; svelte differs
+  in two `lib.dom.d.ts` line numbers, and pixi only in its coverage header,
+  where 6's `lib.dom` types WebGPU. Two things 6 changes needed a change here:
+  `tsconfig.json` names `@types/node`, which 6 no longer loads unasked, and
+  the path-mapping fixtures drop `baseUrl`, which 6 deprecates. With no
+  `tsconfig.json` at all, 6's defaults (strict on, no `@types`) apply; pixi
+  read that way gives 222 errors under 6 and 221 under 5.9.3, which
+  `docs/limits.md` states.
 
 ## ✅ FIXED 2026-10-01 — TC-162 — one call is counted as two errors (2026-10-01, fixed)
 
@@ -180,7 +194,7 @@ model". arktype: `super()` at `ark/schema/shared/errors.ts:42` goes to
   declaration; follow `super` through an `as` cast; classify a cast global
   constructor as platform.
 
-## TC-156 — classes and builders from test files count as element shapes (2026-10-01, open)
+## ✅ FIXED 2026-10-02 — TC-156 — classes and builders from test files count as element shapes (2026-10-01, fixed)
 
 When the scanned path holds tests, their classes join the hierarchy and their
 literals join the flow origins: pixi's `src/**/__tests__/DummyView.ts` is in
@@ -190,7 +204,18 @@ depends on the test classes; a smaller hierarchy could.
 
 - **Severity:** low
 - **Scope:** rules, flow
-- **Status:** open
+- **Status:** fixed
+- **Fix:** `3372f36` keeps a class declared in a test file out of the
+  hierarchy, and `1efaffd` (TC-150) stops a test's calls and writes from
+  carrying its literals in. A test file is one under `__tests__` or named
+  `*.test.*` or `*.spec.*` (`isTestFile` in `lib/scan.ts`, stated in
+  `docs/limits.md`). A test's `new` of a class the program declares still
+  shows the class is built: pixi's library constructs none of its filters.
+  pixi: `DummyView` appears nowhere in the report;
+  `checkChildrenDidChange.ts:28` and `updateRenderGroupTransforms.ts:31` count
+  15 property sets where they counted 16, `Container.ts:1066` and `:1138` 17
+  implementations where they counted 18, and all four still fire. Tests:
+  `test/fixtures/testclasses`, and `applyAll` in `test/fixtures/testcallers`.
 
 ## TC-155 — most of TC-107's cold errors are annotated roots, which no walk edge separates (2026-10-01, open, proposal)
 
@@ -257,16 +282,31 @@ pairs". A declared `sweeps[]` field would also close TC-120.
 - **Scope:** lib/rules
 - **Status:** proposal
 
-## TC-150 — receiver flow counts allocations in test files (2026-10-01, open)
+## ✅ FIXED 2026-10-02 — TC-150 — receiver flow counts allocations in test files (2026-10-01, fixed)
 
 vue watch.ts:161 `.some()` on an array reports 7 "implementations", all from
 *.spec.ts.
 
 - **Severity:** medium
 - **Scope:** `lib/flow.ts`
-- **Status:** open
+- **Status:** fixed
+- **Fix:** `1efaffd`. The flow index records nothing from a test file but its
+  `new` expressions, which only say a class is built. vue
+  (`tmp/lib-core/packages`): `watch.ts:161` and `:163` are `closed-world`
+  calls on a receiver with no visible caller, no finding sits in a `.spec.ts`
+  any more, and 1832 errors become 1827. pixi: 224 become 221, three
+  `interface-dispatch` sites losing implementations from test files; no
+  megamorphic finding moves. radash: 10 become 6, so `make reality` is pinned
+  at 6. Of nine `interface-dispatch` errors that counted callbacks from
+  `array.test.ts`, six (`array.ts:143`-`144` `getter`, `:213` `getKey` and
+  `getValue`) resolve to their one production implementation and are
+  followed, and three (`:171`, `:233`, `:234`) are `closed-world`; two calls
+  the walk had followed into a test callback (`array.ts:14`, `object.ts:66`)
+  are `closed-world`, and the unresolved `chai` it reached through
+  `array.test.ts` is gone. The commit message says four and five; six and
+  three is the count. Test: `test/fixtures/testcallers`.
 
-## TC-149 — megamorphic-dispatch reads the receiver type through a narrowing cast (2026-10-01, open)
+## ✅ FIXED 2026-10-02 — TC-149 — megamorphic-dispatch reads the receiver type through a narrowing cast (2026-10-01, fixed)
 
 `unwrap()` at megamorphic-dispatch.ts:87 strips `as typeof TeleportImpl`; 7
 vue sites (renderer.ts:460,473,2067,2206; hydration.ts:262,333,345) are
@@ -278,7 +318,16 @@ simply be removed.
 - **Severity:** high
 - **Scope:** rules
 - **Source:** tmp/lib-core run
-- **Status:** open
+- **Status:** fixed
+- **Fix:** `2b59140`. The declared-type count admits only the members that
+  carry the called method (`carrying` in `lib/rules/shared.ts`): a member
+  without it throws at the call before any dispatch, the argument
+  `lib/flow.ts`'s `carries` already makes for origins. The cast is not
+  trusted; it changes neither count. vue: 1840 errors become 1832, the seven
+  sites above go silent and so does `codegen.ts:1054` (`e.replace()`, where
+  only the string member has a `replace`). pixi `executeInstructions.ts:20`
+  still fires, at 14 property sets that carry `.execute()` where it read 20.
+  Test: `test/fixtures/carrying`.
 
 ## ✅ FIXED 2026-10-02 — TC-148 — allocating-select fires at no site in 22 codebases (2026-10-01, fixed)
 
