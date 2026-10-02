@@ -20,7 +20,7 @@ Examples:
   jitmax src                 Check annotated functions in a directory
   jitmax jitmax.toml src     Apply rule settings from a TOML file
   jitmax run.cpuprofile src  Select hot functions from a CPU profile
-  jitmax -v src/hot.ts       Show all available related source locations
+  jitmax -v src/hot.ts       Show evidence, known defects and all source locations
   jitmax                    Use the tsconfig file list
 
 Mark a hot function: /** @jitmax */
@@ -41,7 +41,7 @@ Or pass a TOML file:
   "megamorphic-elements" = false
 
 Options: -h, --help  Show this help and exit; other arguments are ignored.
-         -v, --verbose  Show all available related source locations.
+         -v, --verbose  Show evidence, known defects and all source locations.
 Exit codes: 0 checked, no errors; 1 errors or incomplete coverage;
             2 the tool failed (input, configuration, or syntax error).
 `);
@@ -240,7 +240,7 @@ Exit codes: 0 checked, no errors; 1 errors or incomplete coverage;
   // somebody marked as hot is actionable by definition, and a user who
   // disagrees with a rule switches it off in the `[rules]` table or with a
   // `-rulename` on the annotation. The unmeasured trigger is still stated —
-  // `known defect: TC-33`, under every one of those findings (BUGS TC-33).
+  // `known defect: TC-33`, under those findings with -v (BUGS TC-33).
   // An unresolved module exits 1 for the same reason a truncated walk does: the
   // rules were blind on those files and silence from them proves nothing. The
   // text says so too, so the two still agree (BUGS TC-51). An unmatched hot

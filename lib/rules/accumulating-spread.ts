@@ -129,13 +129,13 @@ const detect: Rule = (ts, checker, body, add) => {
         'benchmark a privately owned mutable accumulator against the copy, including ' +
         'the caller\'s reads; keep copying when snapshots or read cost require it',
       note:
-        'define own data properties when replacing spread; the remeda example preserves ' +
-        `copy semantics but builds at ${N['ex.mergeall.build']} at n=8 and ` +
-        `${N['ex.mergeall.build64']} at n=64 (before/after time). Its read intervals ` +
-        'span 1.0: no established read benefit. Mutation changes aliases: preserve own keys, symbols, getters and ' +
-        'property order. Assignment and Object.assign can invoke target setters, including ' +
-        '__proto__; they are not drop-in replacements for object spread. ' +
-        'No rule here detects a dictionary-mode object, so the mutating form checks CLEAN',
+        'define own data properties when replacing spread. Mutation changes aliases: ' +
+        'preserve own keys, symbols, getters and property order. Assignment and ' +
+        'Object.assign can invoke target setters, including __proto__. ' +
+        `The remeda example builds at ${N['ex.mergeall.build']} at n=8 and ` +
+        `${N['ex.mergeall.build64']} at n=64, before/after time; read intervals span 1.0: ` +
+        'no established read benefit. The mutating form checks CLEAN because no rule ' +
+        'here detects dictionary-mode objects',
     },
   };
 
@@ -143,7 +143,7 @@ const detect: Rule = (ts, checker, body, add) => {
     add({
       ...at(body.sf, node),
       rule: NAME,
-      message: `${name} is rebuilt from a copy of itself; every pass copies everything it already holds`,
+      message: `each pass copies all of ${name} into a new accumulator`,
       fix: FIX[form].fix.replaceAll('NAME', name),
       note: FIX[form].note.replaceAll('NAME', name),
     });

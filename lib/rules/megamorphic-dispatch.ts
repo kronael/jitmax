@@ -100,8 +100,7 @@ const detect: Rule = (ts, checker, body, add, mark) => {
             megamorphicCandidate('call'),
           fix:
             'inspect the receiver builders and profile this call. If a runtime guard ' +
-            'can separate receiver kinds, test dedicated call sites; benchmark the ' +
-            'full caller before keeping the change',
+            'can separate receiver kinds, test dedicated call sites',
           note:
             'type assertions do not change runtime shapes. Splitting a call site can ' +
             'add branches and code size; a speedup is not established for this caller',
@@ -137,7 +136,6 @@ const detect: Rule = (ts, checker, body, add, mark) => {
 export function megamorphicCall(c: Call, add: Add): boolean {
   const d = c.dispatch;
   if (d.method === '' || d.count <= MAX_CACHED_MAPS || !d.typed) return false;
-  const listed = d.names.slice(0, 5).join(', ');
   add({
     file: c.file,
     line: c.line,
@@ -146,11 +144,11 @@ export function megamorphicCall(c: Call, add: Add): boolean {
     rule: NAME,
     message:
       `${d.recv} reaches this call as at least ${d.count} implementations built by ` +
-      `this program (${listed}${d.count > 5 ? ', …' : ''}) and .${d.method}() is ` +
+      `this program and .${d.method}() is ` +
       `called on it; ${megamorphicCandidate('call')}`,
     fix:
-      'inspect the named implementations and profile this call. If a runtime guard ' +
-      'can separate receiver kinds, test dedicated call sites; benchmark the full caller',
+      'inspect the implementations and profile this call. If a runtime guard ' +
+      'can separate receiver kinds, test dedicated call sites',
     note:
       'the count is a static lower bound on implementations, not proof they all run ' +
       'in this workload. Type assertions do not specialize a call. Library callers ' +

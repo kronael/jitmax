@@ -167,8 +167,7 @@ const detect: Rule = (ts, checker, body, add) => {
           note:
             'fusion can interleave callbacks that run in separate passes here. Preserve ' +
             'callback order, side effects, indices, array arguments and sparse-array holes; ' +
-            'for Object.entries, preserve own enumerable string keys and their order. ' +
-            'Benchmark construction in the caller before keeping the change',
+            'for Object.entries, preserve own enumerable string keys and their order',
         });
       }
     }

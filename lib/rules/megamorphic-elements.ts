@@ -228,9 +228,8 @@ const detect: Rule = (ts, checker, body, add, mark) => {
             'property sets, counted from the classes and builders that can reach it; ') +
         megamorphicCandidate('load'),
       fix:
-        'inspect where these elements are built, not just this parameter. If semantics ' +
-        'allow, use consistent own properties and insertion order; benchmark the full ' +
-        'caller including construction',
+        'inspect the element builders. If semantics allow, use consistent own properties ' +
+        'and insertion order',
       note:
         'type assertions do not change runtime shapes. Adding a missing property ' +
         'can change key enumeration and presence checks. Library callers may need ' +

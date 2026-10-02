@@ -5,6 +5,7 @@ import { load } from '../lib/ts.ts';
 import { createFlow } from '../lib/flow.ts';
 import { scan } from '../lib/scan.ts';
 import { check } from '../lib/rules.ts';
+import { render } from '../lib/report.ts';
 
 const ts = load(import.meta.dirname);
 const file = '/jitmax-provenance.ts';
@@ -181,6 +182,7 @@ test('a megamorphic read links its factory builders through the normal scan', ()
     assert.equal(builder.file, file);
     assert.match(sf.text.slice(pos), /^\{ value: [1-5], [a-e]: [1-5] \}/);
   }
-  assert.match(finding.relatedNote ?? '', /Representative sources/);
+  const out = render('/', [{ mark, findings }]);
+  assert.match(out, /Related locations are representative/);
   assert.doesNotMatch(finding.relatedNote ?? '', /partial|No builder/);
 });

@@ -374,7 +374,7 @@ const detect: Rule = (ts, checker, body, add, mark) => {
       const rebuild =
         `The own-property rebuild improves reads at ${N['ex.omit.sizes']}, ` +
         `but the whole call is slower (${N['ex.omit.whole']}, before/after time). ` +
-        'Benchmark construction and reads together. Rebuilding changes object identity; ' +
+        'Rebuilding changes object identity; ' +
         'preserve aliases, prototypes and property semantics';
       add({
         ...at(body.sf, node),

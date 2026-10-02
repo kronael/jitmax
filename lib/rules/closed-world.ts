@@ -73,14 +73,13 @@ const detect: EscapeRule = (mark, add) => {
       // definition in this rule's name (BUGS TC-109, TC-158).
       message:
         d.count >= 2
-          ? `calls ${c.text}, which we have no body for${reached(d)}; the promise stops here`
-          : `calls ${c.text}, which we have no body for; the promise stops here`,
+          ? `${c.text}: no readable implementation${reached(d)}`
+          : `${c.text}: no readable implementation`,
       fix:
         `resolve ${c.text} to its TypeScript implementation, or review the dependency ` +
         'separately and add -closed-world to this root\'s @jitmax annotation',
       note:
-        'missing source does not prove V8 failed to inline. A .d.ts declares an API, ' +
-        'not its implementation; copying declarations alone does not make a body readable',
+        'missing source does not prove V8 failed to inline. A .d.ts has no implementation to check',
     });
   }
 };

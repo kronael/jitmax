@@ -2,7 +2,6 @@ import path from 'node:path';
 import { BUILTINS } from './builtins.ts';
 import { siteKey, type Mark } from './scan.ts';
 import { DEFECT, EVIDENCE, type Finding } from './rules.ts';
-import { SOURCE } from './version.ts';
 
 // One spelling of the count-and-noun, because a hand-written plural beside a
 // derived numeral is how `1 cells` reached a published sentence (BUGS TC-70).
@@ -372,6 +371,7 @@ export function render(
 
   // Every defect code a finding below cites, for the legend after them.
   const cited = new Set<string>();
+  const coverageNotes = new Map<string, string>();
   for (const { mark, findings } of perSite) {
     if (findings.length === 0 && !mark.truncated) continue;
     out.push(
@@ -399,7 +399,7 @@ export function render(
       // nobody. A site reached only through a static initializer is not on it:
       // it runs when its class is defined, and is a warning (BUGS TC-107). Three
       // rules fire on programs their own benchmarks did not measure — they say
-      // so in the `known defect: TC-33` line below, and the way to quiet one is
+      // so in the verbose `known defect: TC-33` line, and the way to quiet one is
       // the `[rules]` table or a `-rulename` on the annotation (BUGS TC-33).
       // The walk follows callees, so a finding is often not in the annotated
       // function at all. Saying where it is is the difference between a report
@@ -426,25 +426,32 @@ export function render(
           )
         );
       }
+      out.push(...wrap('      next: ', f.fix));
+      if (f.note !== undefined) {
+        if (f.rule === 'closed-world' || f.rule === 'interface-dispatch') {
+          coverageNotes.set(f.rule, f.note);
+        } else out.push(...wrap('      note: ', f.note));
+      }
       const related = f.related ?? [];
-      const shownSources = verbose ? related : related.slice(0, 5);
+      const shownSources = verbose ? related : related.slice(0, 2);
       for (const source of shownSources) {
+        const name = source.name === `function (${path.basename(source.file)}:${source.line})`
+          ? 'function' : source.name;
         out.push(
           ...wrap('      related: ',
-            `${rel(cwd, source.file)}:${source.line}:${source.column} ${source.name}`)
+            `${rel(cwd, source.file)}:${source.line}:${source.column} ${name}`)
         );
       }
       if (related.length > shownSources.length) {
         out.push(...wrap('      ',
           `${plural(related.length - shownSources.length, 'more related source location')} omitted; ` +
-          'use --verbose to show all available locations'));
+          'use -v to show all'));
       }
       if (f.relatedNote) out.push(...wrap('      sources: ', f.relatedNote));
-      out.push(...wrap('      next: ', f.fix));
-      if (f.note !== undefined) out.push(...wrap('      note: ', f.note));
       const unbound = f.rule === 'megamorphic-dispatch' ? folded.get(siteKey(f)) : undefined;
       if (unbound) {
         out.push(...wrap('      note: ', `interface-dispatch at this call: ${unbound.message}`));
+        if (unbound.note) coverageNotes.set(unbound.rule, unbound.note);
       }
       // The sweep that priced the RULE, named — and no ratio. A ratio is a
       // property of the input: chained allocation is one number at n=1000 and
@@ -453,7 +460,7 @@ export function render(
       // size and shape the tool cannot see, which is the whole of BUGS TC-9.
       // `EVIDENCE` still binds each rule to its measurement; only the print
       // site moved. The numbers are in bench/README.md and in the file named here.
-      if (f.evidence) {
+      if (verbose && f.evidence) {
         const data = f.evidence.source.match(/bench\/[a-z-]+\.jl/g) ?? [];
         if (data.length > 0) out.push(`      measured in ${data.join(' and ')}`);
       }
@@ -461,10 +468,17 @@ export function render(
       // after the findings: TC-9's sentence went under twelve findings in one
       // run of demo/, and thirty of that run's lines were repeated defect prose.
       const codes = f.evidence?.defects ?? [];
-      if (codes.length > 0) {
+      if (verbose && codes.length > 0) {
         for (const code of codes) cited.add(code);
         out.push(`      known defect${codes.length === 1 ? '' : 's'}: ${codes.join(', ')}`);
       }
+    }
+  }
+
+  if (coverageNotes.size > 0) {
+    out.push('');
+    for (const [rule, note] of coverageNotes) {
+      out.push(...wrap(`  note (${rule}): `, note));
     }
   }
 
@@ -507,11 +521,16 @@ export function render(
       : all.length === 0 && partial.length > 0
       ? `  no findings, but ${plural(partial.length, 'walk')} truncated: this is not a clean run.`
       : '  Static findings are candidates, not measured costs in this workload.\n' +
-        '  Profile and benchmark the caller before keeping a change.\n' +
-        '  Rule evidence and limits: docs/rules.md; measurements: bench/README.md.\n' +
-        '  bench/ and docs/ paths are in the jitmax repository at\n' +
-        `  ${SOURCE}`
+        '  Profile and benchmark the caller before keeping a change.'
   );
+
+  if (all.length > 0) {
+    if (all.some((f) => f.related?.length)) {
+      out.push('  Related locations are representative; static counts are not runtime counts.');
+    }
+    if (!verbose) out.push('  Evidence, known defects and all related locations: -v.');
+    out.push('  Rule limits: docs/rules.md; benchmarks: bench/README.md (jitmax package).');
+  }
 
   // `clean` means no rule fired, which is not the same as nothing here being
   // slow. Four rules record an axis nothing static can separate — key order at
@@ -529,7 +548,7 @@ export function render(
       // The full text is long and a clean run is short; -v is where this tool
       // already puts detail a reader asks for rather than trips over.
       if (verbose) for (const [rule, text] of unchecked) out.push(...wrap('    ', `${rule} — ${text}`));
-      else out.push('  run with -v for what each one misses, or read docs/rules.md at', `  ${SOURCE}`);
+      else out.push(...wrap('  ', 'run with -v for what each one misses, or read docs/rules.md in the jitmax package.'));
     }
   }
   if (nothingChecked) {

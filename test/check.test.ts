@@ -368,7 +368,7 @@ test('five implementations reaching a receiver are a megamorphic-dispatch findin
   assert.deepStrictEqual(rules('runAll'), ['megamorphic-dispatch']);
   const f = rawFindings('runAll').find((x) => x.rule === 'megamorphic-dispatch');
   assert.match(f?.message ?? '', /at least 5 implementations/);
-  assert.match(f?.message ?? '', /OpA, OpB, OpC, OpD, OpE/);
+  assert.deepStrictEqual(f?.related?.map((site) => site.name), ['OpA', 'OpB', 'OpC', 'OpD', 'OpE']);
   assert.match(f?.note ?? '', /lower bound/);
 });
 
@@ -385,7 +385,15 @@ test('a call megamorphic-dispatch reports is one error, interface-dispatch a not
   const out = render(root, [{ mark: markFor('areaOfFive'), findings }]);
   assert.match(out, /1 annotated function, 1 error/);
   assert.doesNotMatch(out, /error {2}interface-dispatch/);
-  assert.match(unwrapped(out), /note: interface-dispatch at this call: calls x\.area through an interface/);
+  assert.match(unwrapped(out), /note: interface-dispatch at this call: x\.area: unknown receiver origin/);
+  assert.match(unwrapped(out), /the call is unchecked/);
+  const repeated = render(root, [
+    { mark: markFor('areaOfFive'), findings },
+    { mark: markFor('runTrio'), findings: rawFindings('runTrio') },
+  ]);
+  assert.strictEqual((repeated.match(/note \(interface-dispatch\):/g) ?? []).length, 1);
+  assert.match(unwrapped(repeated), /does not clear this call-site error/);
+  assert.match(unwrapped(repeated), /type assertion does not select a runtime implementation/);
 });
 
 // Inside V8's four-map budget: a note at most, never an error — and it names
@@ -404,8 +412,10 @@ test('two to four implementations are a note, not the megamorphic claim', () => 
 test('a receiver with no construction site to count says unknown origin, not a number', () => {
   assert.deepStrictEqual(rules('runParsed'), ['interface-dispatch']);
   const f = rawFindings('runParsed').find((x) => x.rule === 'interface-dispatch');
-  assert.match(f?.message ?? '', /unknown origin/);
-  assert.match(f?.message ?? '', /JSON\.parse/);
+  assert.match(f?.message ?? '', /unknown receiver origin/);
+  assert.match(f?.relatedNote ?? '', /JSON\.parse/);
+  const out = render(root, [{ mark: markFor('runParsed'), findings: rawFindings('runParsed') }]);
+  assert.match(unwrapped(out), /sources: .*JSON\.parse/);
 });
 
 // The follow claims coverage, so the report states the assumption it rests on
@@ -883,8 +893,9 @@ test('a method whose whole body throws is a declaration, not an implementation',
 test('a call the walk located two bodies for is not reported as bodiless', () => {
   assert.deepStrictEqual(rules('syncUniforms'), ['interface-dispatch']);
   const f = rawFindings('syncUniforms').find((x) => x.rule === 'interface-dispatch');
-  assert.doesNotMatch(f?.message ?? '', /we have no body for/);
-  assert.match(f?.message ?? '', /2 implementations reach this call \(uploadFloat\(\), uploadInt\(\)\)/);
+  assert.doesNotMatch(f?.message ?? '', /no readable implementation/);
+  assert.match(f?.message ?? '', /2 implementations reach this call/);
+  assert.deepStrictEqual(f?.related?.map((site) => site.name), ['uploadFloat()', 'uploadInt()']);
   assert.doesNotMatch(f?.message ?? '', /four-map budget|through an interface/);
   assert.doesNotMatch(f?.fix ?? '', /^inline what you need/);
 });
@@ -901,8 +912,10 @@ test('one located body is walked, and the call is interface-dispatch', () => {
   const found = byName.get('copyAll') ?? assert.fail('no mark copyAll');
   assert.deepStrictEqual(found.map((f) => f.rule).sort(), ['accumulating-spread', 'interface-dispatch']);
   const f = found.find((x) => x.rule === 'interface-dispatch');
-  assert.match(f?.message ?? '', /the callee has an unknown origin \(no visible caller of copyAll/);
-  assert.match(f?.message ?? '', /1 implementation reaches this call \(spread\(\)\)/);
+  assert.match(f?.message ?? '', /unknown callee origin/);
+  assert.match(f?.relatedNote ?? '', /no visible caller of copyAll/);
+  assert.match(f?.message ?? '', /1 implementation reaches this call/);
+  assert.deepStrictEqual(f?.related?.map((site) => site.name), ['spread()']);
   assert.match(f?.message ?? '', /only the one body located is walked/);
 });
 
@@ -1147,13 +1160,20 @@ test('the report says how many findings were suppressed and by what', () => {
   assert.match(out, /1 finding suppressed \(delete-property\)/);
 });
 
-// The code under the finding, the sentence once in a legend after the findings:
-// the sentence went under every finding that cited it, twelve times for TC-9
-// in one run of demo/.
-test('a finding prints the defects its rule carries', () => {
-  const out = render(root, [{ mark: markFor('drop'), findings: rawFindings('drop') }]);
+/** Verbose reports retain each defect code and one explanation, with a compact-mode pointer. */
+test('verbose findings print their evidence and defects with one legend', () => {
+  const results = ['drop', 'viaCallee'].map((name) => ({
+    mark: markFor(name), findings: rawFindings(name),
+  }));
+  const brief = render(root, results);
+  assert.doesNotMatch(brief, /measured in|known defect:|TC-9/);
+  assert.match(brief, /Evidence, known defects and all related locations: -v/);
+  const out = render(root, results, undefined, undefined, undefined, true);
   assert.match(out, /^ {6}known defect: TC-9$/m);
   assert.match(out, /^ {4}TC-9 +rules fire outside the conditions their own evidence establishes$/m);
+  assert.strictEqual((out.match(/^ {4}TC-9 /gm) ?? []).length, 1);
+  assert.strictEqual((out.match(/measured in bench\/delete.jl/g) ?? []).length, 2);
+  assert.strictEqual(out.split('\n')[0], brief.split('\n')[0]);
 });
 
 test('megamorphic findings locate the read and retain the collection location', () => {
@@ -1180,6 +1200,7 @@ test('the report prints exact finding positions and qualifies workload costs', (
     assert.ok(out.includes(`demo/lib.ts:${f.line}:${f.column}`));
   }
   assert.match(out, /Static findings are candidates, not measured costs in this workload/);
+  assert.match(out, /Rule limits: docs\/rules.md; benchmarks: bench\/README.md \(jitmax package\)/);
   assert.doesNotMatch(out, /Every rule is measured|No cost is printed/);
 });
 
@@ -1191,7 +1212,7 @@ test('dispatch and coverage findings link the implementations the walk already f
     assert.strictEqual(findings.length, 1);
     const related = findings[0]!.related ?? [];
     assert.strictEqual(related.length, name === 'runAll' ? 5 : name === 'runTrio' ? 3 : 2);
-    const out = render(root, [{ mark, findings }]);
+    const out = render(root, [{ mark, findings }], undefined, undefined, undefined, true);
     for (const site of related) {
       assert.strictEqual(site.file, mark.file);
       const pos = mark.sf.getPositionOfLineAndCharacter(site.line - 1, site.column - 1);
@@ -1216,12 +1237,17 @@ test('the report counts omitted related locations without hiding the finding', (
   const related = Array.from({ length: 8 }, (_, i) => ({
     file: mark.file, line: i + 1, column: 1, name: `source ${i + 1}`,
   }));
+  related[0]!.name = 'function (lib.ts:1)';
   const out = render(root, [{ mark, findings: [{ ...original, related }] }]);
-  assert.strictEqual((out.match(/related:/g) ?? []).length, 5);
-  assert.match(out, /3 more related source locations omitted/);
+  assert.strictEqual((out.match(/related:/g) ?? []).length, 2);
+  assert.match(out, /6 more related source locations omitted/);
   assert.match(out, /1 error/);
-  assert.match(out, /Representative receiver sources/);
-  assert.match(out, /use --verbose/);
+  assert.match(out, /Related locations are representative/);
+  assert.match(out, /use -v/);
+  assert.match(out, /related: demo\/lib.ts:1:1 function/);
+  assert.doesNotMatch(out, /function \(lib.ts:1\)/);
+  assert.ok(out.indexOf('next:') < out.indexOf('related:'));
+  assert.ok(out.indexOf('note:') < out.indexOf('related:'));
   const verbose = render(root, [{ mark, findings: [{ ...original, related }] }],
     undefined, undefined, undefined, true);
   assert.strictEqual((verbose.match(/related:/g) ?? []).length, 8);
@@ -1234,8 +1260,8 @@ test('CLI verbosity expands source locations without changing the result', () =>
   const baseline = spawnSync(process.execPath, [path.join(root, 'bin', 'cli.js'), input],
     { cwd: root, encoding: 'utf8' });
   assert.strictEqual(baseline.status, 1, baseline.stderr);
-  assert.strictEqual((baseline.stdout.match(/related:/g) ?? []).length, 5);
-  assert.match(baseline.stdout, /1 more related source location omitted/);
+  assert.strictEqual((baseline.stdout.match(/related:/g) ?? []).length, 2);
+  assert.match(baseline.stdout, /4 more related source locations omitted/);
   for (const flag of ['-v', '--verbose']) {
     const run = spawnSync(process.execPath, [
       path.join(root, 'bin', 'cli.js'), input, flag,
@@ -1244,6 +1270,8 @@ test('CLI verbosity expands source locations without changing the result', () =>
     assert.strictEqual(run.stdout.split('\n')[0], baseline.stdout.split('\n')[0]);
     assert.strictEqual((run.stdout.match(/related:/g) ?? []).length, 6);
     assert.doesNotMatch(run.stdout, /related source locations omitted/);
+    assert.match(run.stdout, /measured in/);
+    assert.match(run.stdout, /known defects:/);
   }
 });
 
@@ -1637,6 +1665,7 @@ test('a clean run names the axes no rule checks', () => {
   assert.match(unwrapped(plain.stdout), /clean means no rule fired\./);
   assert.match(unwrapped(plain.stdout), /megamorphic-elements/);
   assert.match(plain.stdout, /run with -v/);
+  assert.match(unwrapped(plain.stdout), /docs\/rules.md in the jitmax package/);
   // -v carries the sentence itself, key order named.
   assert.match(unwrapped(verbose.stdout), /five key ORDERS of one key set are five maps/);
   assert.ok(!/run with -v/.test(verbose.stdout), '-v still points at -v');
@@ -2511,7 +2540,7 @@ test('a capped caller walk says so, instead of reporting one implementation', ()
     [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'cap')],
     { cwd: root, encoding: 'utf8' }
   );
-  assert.match(run.stdout, /more than 64 visible callers of go — not all of them were read/);
+  assert.match(unwrapped(run.stdout), /more than 64 visible callers of go — not all of them were read/);
   assert.ok(
     !run.stdout.includes('resolved to the one implementation'),
     `a capped walk must not resolve a receiver to one body:\n${run.stdout}`
@@ -2526,14 +2555,17 @@ test('a capped caller walk says so, instead of reporting one implementation', ()
 test('an erased token does not change what the receiver is', () => {
   const run = spawnSync(
     process.execPath,
-    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'erased')],
+    [path.join(root, 'bin', 'jitmax.ts'), '-v', path.join(root, 'test', 'fixtures', 'erased')],
     { cwd: root, encoding: 'utf8' }
   );
   assert.match(run.stdout, /error {2}megamorphic-dispatch/);
   assert.match(
     unwrapped(run.stdout),
-    /at least 5 implementations built by this program \(A, B, C, D, E\)/
+    /at least 5 implementations built by this program/
   );
+  for (const name of ['A', 'B', 'C', 'D', 'E']) {
+    assert.match(run.stdout, new RegExp(`related: .*:\\d+:\\d+ ${name}$`, 'm'));
+  }
   assert.strictEqual(run.status, 1);
 });
 
@@ -2617,7 +2649,7 @@ test('a method read off an `any` value is blindness, not a callee nobody can rea
   );
   for (const call of ['a.entries', 'b.has', 'b.get']) {
     assert.ok(
-      !run.stdout.includes(`calls ${call}, which we have no body for`),
+      !run.stdout.includes(`${call}: no readable implementation`),
       `${call} was reported as somebody's unreadable code:\n${run.stdout}`
     );
   }
@@ -2628,7 +2660,7 @@ test('a method read off an `any` value is blindness, not a callee nobody can rea
     !run.stdout.includes('every annotated function is clean'),
     `a run that could not see three callees called itself clean:\n${run.stdout}`
   );
-  assert.match(run.stdout, /calls opaque, which we have no body for/);
+  assert.match(run.stdout, /opaque: no readable implementation/);
   assert.strictEqual(run.status, 1);
 });
 
@@ -2652,7 +2684,7 @@ test('the host is counted, not listed, and opaque application code still fires',
     1,
     `one finding for the opaque callee and none for the host:\n${run.stdout}`
   );
-  assert.match(run.stdout, /calls opaque/);
+  assert.match(run.stdout, /opaque: no readable implementation/);
   for (const host of ['hostHook', 'eval', 'hrtime']) {
     assert.ok(!run.stdout.includes(host), `${host} was reported as unreadable code`);
   }
@@ -2670,7 +2702,7 @@ test('the host is counted, not listed, and opaque application code still fires',
 test('an unreadable callee still counts what reaches its receiver', () => {
   const run = spawnSync(
     process.execPath,
-    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'escape')],
+    [path.join(root, 'bin', 'jitmax.ts'), '-v', path.join(root, 'test', 'fixtures', 'escape')],
     { cwd: root, encoding: 'utf8' }
   );
   // The sentence carrying that count is no longer "which we have no body for":
@@ -2679,15 +2711,19 @@ test('an unreadable callee still counts what reaches its receiver', () => {
   // TC-158).
   assert.match(
     unwrapped(run.stdout),
-    /interface-dispatch calls pickOne; 2 implementations reach this call \(left\(\), right\(\)\), and their bodies are not followed/
+    /interface-dispatch calls pickOne; 2 implementations reach this call; their bodies are not followed/
   );
+  for (const name of ['left()', 'right()']) assert.ok(run.stdout.includes(name));
   // Not megamorphic-dispatch's own body detector: P1 through P5 carry ONE
   // property set between them, so `objectShapes` counts 1 and that detector is
   // silent. The finding can only have come through the escape rule.
   assert.match(
     unwrapped(run.stdout),
-    /\S+escape\.ts:\d+:\d+\s+error\s+megamorphic-dispatch p reaches this call as at least 5 implementations built by this program \(P1, P2, P3, P4, P5\)/
+    /\S+escape\.ts:\d+:\d+\s+error\s+megamorphic-dispatch p reaches this call as at least 5 implementations built by this program/
   );
+  for (const name of ['P1', 'P2', 'P3', 'P4', 'P5']) {
+    assert.match(run.stdout, new RegExp(`related: .*:\\d+:\\d+ ${name}$`, 'm'));
+  }
   assert.strictEqual(run.status, 1);
 });
 
@@ -2718,7 +2754,7 @@ test('a platform call with no @types/node is still the platform, and opaque code
       1,
       `one finding for the opaque callee and none for the platform:\n${run.stdout}`
     );
-    assert.match(run.stdout, /calls opaque/);
+    assert.match(run.stdout, /opaque: no readable implementation/);
     assert.ok(!run.stdout.includes('path.join'), 'path.join was still reported');
     assert.ok(!run.stdout.includes('readFileSync'), 'readFileSync was still reported');
     // Math.max is not a platform CALL: TurboFan lowers it, so no call boundary
@@ -2786,21 +2822,24 @@ test('the derivation fails loudly on a source it cannot read a list from', () =>
 // The annotation is the filter: a user writes `/** @jitmax */` on a
 // function they need fast, so a finding on one is actionable by definition and
 // a second tier gates nobody. The gap that argued for the tier is still stated
-// — TC-33, printed under every finding of the three rules that carry it — and
+// — TC-33, printed with -v under findings of the three rules that carry it — and
 // tuning is the `[rules]` table and the per-function `-rulename` / `-TC-NN`
 // annotations (BUGS TC-33, TC-52).
 
 test('a run whose only finding is closed-world fails it', () => {
-  const run = spawnSync(
-    process.execPath,
-    [path.join(root, 'bin', 'jitmax.ts'), path.join(root, 'test', 'fixtures', 'opaque')],
-    { cwd: root, encoding: 'utf8' }
-  );
-  assert.match(run.stdout, /1 error/);
-  assert.match(run.stdout, /error {2}closed-world/);
-  assert.match(run.stdout, /known defect: TC-33/);
-  assert.ok(!/\bwarn/.test(run.stdout), `a warning survived:\n${run.stdout}`);
-  assert.strictEqual(run.status, 1);
+  for (const flags of [[], ['-v']]) {
+    const run = spawnSync(
+      process.execPath,
+      [path.join(root, 'bin', 'jitmax.ts'), ...flags, path.join(root, 'test', 'fixtures', 'opaque')],
+      { cwd: root, encoding: 'utf8' }
+    );
+    assert.match(run.stdout, /1 error/);
+    assert.match(run.stdout, /error {2}closed-world/);
+    if (flags.length) assert.match(run.stdout, /known defect: TC-33/);
+    assert.match(unwrapped(run.stdout), /missing source does not prove V8 failed to inline/);
+    assert.ok(!/\bwarn/.test(run.stdout), `a warning survived:\n${run.stdout}`);
+    assert.strictEqual(run.status, 1);
+  }
 });
 
 // TC-10. `new Foo()` is a NewExpression, so the walk stepped over it: a

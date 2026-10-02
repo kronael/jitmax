@@ -89,9 +89,8 @@ export function sourceHints(
   return {
     related,
     relatedNote:
-      (related.length ? 'Representative sources, not every allocation or runtime path.' :
-        'No builder located for this value.') +
-      (limits.length ? ` Source tracing is partial: ${limits.join('; ')}.` : ''),
+      (related.length ? '' : 'No builder located for this value. ') +
+      (limits.length ? `Source tracing is partial: ${limits.join('; ')}.` : ''),
   };
 }
 
@@ -99,9 +98,8 @@ export function dispatchHints(d: Dispatch): Pick<Finding, 'related' | 'relatedNo
   return {
     related: d.sources,
     relatedNote:
-      (d.sources.length ? 'Representative receiver sources; not every allocation or runtime path.' :
-        'No receiver source located.') +
-      (d.unknown.length ? ` Source tracing is partial: ${d.unknown.join('; ')}.` : ''),
+      (d.sources.length ? '' : 'No receiver source located. ') +
+      (d.unknown.length ? `Source tracing is partial: ${d.unknown.join('; ')}.` : ''),
   };
 }
 // The mark is the whole annotated call tree. Most rules are about one body and
@@ -199,7 +197,7 @@ export const reassignedInLoop = (ts: Ts, node: TS.Node, inLoop: boolean): node i
 export const MAX_CACHED_MAPS = 4;
 
 export const megamorphicCandidate = (site: 'load' | 'call'): string =>
-  `this is a candidate for megamorphic ${site} feedback, not an observed runtime map count`;
+  `candidate for megamorphic ${site} feedback, not an observed runtime map count`;
 
 // What the dataflow walk counted, in one clause, for a finding that is NOT
 // reporting a megamorphic site. Both escape rules print it and each had its own
@@ -212,25 +210,24 @@ export const megamorphicCandidate = (site: 'load' | 'call'): string =>
 // declared type checks that against what reaches this CALL (BUGS TC-111).
 export function reached(d: Dispatch): string {
   if (d.count === 0) return '';
-  const names = d.names.join(', ');
   // A bare call's origins are functions, and a function-valued call target has
   // no four-map budget — the legend's TC-13 says so under the same report — nor
   // a receiver to have a declared type (BUGS TC-158).
   if (d.method === '') {
     return (
       `; ${d.count} implementation${d.count === 1 ? '' : 's'} ` +
-      `reach${d.count === 1 ? 'es' : ''} this call (${names})`
+      `reach${d.count === 1 ? 'es' : ''} this call`
     );
   }
   if (d.count <= MAX_CACHED_MAPS) {
     return (
       `; ${d.count} implementation${d.count === 1 ? '' : 's'} reach${d.count === 1 ? 'es' : ''} ` +
-      `this receiver (${names}) — inside V8's four-map budget`
+      `this receiver — inside V8's four-map budget`
     );
   }
   return (
     `; the receiver has no declared type, and ${d.count} shapes reach the value across this ` +
-    `program (${names}) — which is not a count of what reaches this call`
+    `program — not a count at this call`
   );
 }
 

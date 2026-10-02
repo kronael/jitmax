@@ -53,7 +53,9 @@ const detect: EscapeRule = (mark, add) => {
     // One located body is walked (scan.ts), and the finding says so: what it
     // still reports is whatever else may reach the call.
     const walked =
-      d.located === 1 ? 'only the one body located is walked' : 'their bodies are not followed';
+      d.located === 1
+        ? 'only the one body located is walked; other targets remain unchecked'
+        : d.count > 0 ? 'their bodies are not followed' : 'the call is unchecked';
     add({
       file: c.file,
       line: c.line,
@@ -62,20 +64,17 @@ const detect: EscapeRule = (mark, add) => {
       rule: NAME,
       message:
         d.unknown.length > 0
-          ? `calls ${c.text}${via}, and the ${origin} has an unknown ` +
-            `origin (${d.unknown[0]})${reached(d)}${d.count > 0 ? ', a lower bound' : ''}` +
-            `${d.located === 1 ? `; ${walked}` : ''}; the promise stops here`
+          ? `${c.text}: unknown ${origin} origin` +
+            `${reached(d)}${d.count > 0 ? ', a lower bound' : ''}; ${walked}`
           : d.count >= 2
-          ? `calls ${c.text}${via}${reached(d)}, and ${walked}; the promise stops here`
-          : `calls ${c.text}${via}, but no single checkable ` +
-            'implementation was resolved; the promise stops here',
+          ? `calls ${c.text}${via}${reached(d)}; ${walked}`
+          : `${c.text}: no single checkable implementation resolved${via}`,
       fix:
-        `inspect the implementations of ${c.text}. Annotating one checks its body but does ` +
-        'not clear this call-site error; to clear it, review the implementations and add ' +
-        '-interface-dispatch to this root\'s @jitmax annotation',
+        `review the implementations of ${c.text}, then record the review with ` +
+        "-interface-dispatch on this root's @jitmax annotation",
       note:
-        'do not inline the abstraction away on this rule\'s account. A type assertion ' +
-        'does not select a runtime implementation; this finding describes unchecked code',
+        'annotating a target checks its body but does not clear this call-site error. ' +
+        'Keep the abstraction; a type assertion does not select a runtime implementation',
     });
   }
 };
