@@ -82,8 +82,9 @@ Every ratio comes from a microbenchmark on one machine, Node v22.23.2 with V8
 workload. [How a cell is measured](../bench/README.md#how-a-cell-is-measured)
 defines cells, sweeps and the tests below.
 
-- **No cell that failed replication is inside a published range.** Every cell
-  runs three times, and one whose three intervals share no value is withdrawn
+- **No cell that failed replication is inside a rule's evidence range.** The
+  current runner measures every cell three times, and one whose three intervals
+  share no value is withdrawn
   where the number is made; the generated table names it beside the number it
   left, in [the numbers table](../bench/README.md#derived-numbers-and-the-rows-they-are).
   A withdrawn triple is still printed, as a refutation, so no range reads

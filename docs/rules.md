@@ -378,8 +378,8 @@ call the walk cannot resolve to one body — several may be visible, or none.
 
 Both count first. The dataflow walk asks what reaches the receiver at every
 call it cannot follow. For a method called on a typed receiver, five or more
-implementations at one site is a megamorphic call, reported as
-`megamorphic-dispatch` with that rule's benchmark; two to four are printed as
+possible implementations at one site are reported as a `megamorphic-dispatch`
+candidate with that rule's benchmark — not proof that all of them run there; two to four are printed as
 a count. A bare function call keeps its coverage finding, whatever the count.
 
 ## Reading a finding

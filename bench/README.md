@@ -80,6 +80,9 @@ computed from them:
 - **A range with no `x`** spans the 95% intervals themselves, from the lowest
   lower bound to the highest upper bound.
 - **Ratios joined by `and`** are single sweeps, one by one.
+- **"not re-measured under runner r2"** marks rows from an earlier runner
+  that the current one (`r2`, the three-replication protocol below) has not
+  re-run. They stay published so a reader can see what was measured.
 - **A bare integer or an `n=` value** is a count of cells or an input size, as
   its row says.
 
@@ -196,7 +199,9 @@ The tables cite these rules by number.
    No extra samples when a result is close.
 5. **The ratio of mean process times, with a paired bootstrap 95% interval.**
    Every raw per-pair timing is published beside it, so the interval can be
-   recomputed. Never a best run.
+   recomputed: `base[i]` and `test[i]` are paired nanoseconds per operation, the
+   ratio is `mean(test) / mean(base)`, and `msBase` / `msTest` are the calibrated
+   region lengths, not inputs to the ratio. Never a best run.
 6. **Acceptance uses the three sweeps' shared interval**, the agreement of rule
    13. A number quoted as a rule's evidence needs that agreement's lower end above
    1.00; one sweep's own interval may include 1.00 while the agreement passes. A broad
@@ -219,12 +224,15 @@ The tables cite these rules by number.
    those in `bench/arrays.jl`, lack these fields.
 10. **Failures print in the same format as results**: `REJ`, and a void cell
     with its error.
-11. **Both halves, always**: reads only, and with construction counted.
-    Measuring one half can reverse a verdict.
+11. **Both halves, where a workload has two**: reads only, and with
+    construction counted; measuring one half can reverse a verdict. Call-only
+    workloads (`inline`, `arguments`) and late mutation use one mode, and any
+    allocation inside the call stays timed.
 12. **The working set is swept from L1 cache to RAM.** One size hides the point
     where memory bandwidth flattens an effect.
-13. **Every cell runs as three whole sweeps.** The interval in rule 5 resamples
-    the pairs of one sweep and cannot see what varies between sweeps. A cell's **agreement** is the range every one of its
+13. **The current runner measures every cell as three whole sweeps.** The
+    interval in rule 5 resamples the pairs of one sweep and cannot see what
+    varies between sweeps. A cell's **agreement** is the range every one of its
     three intervals contains. A cell with no agreement is **withdrawn as
     unreplicable**, and its three numbers are printed anyway.
 
@@ -265,8 +273,8 @@ A measurement that refutes a rule is published like one that supports it.
 - **Adding a property after construction: no rule.**
   `const o = { a: 1 }; o.b = 2;` ends at the same hidden class for every object
   built that way, so the code that reads them sees one shape. Against writing
-  both properties at once it costs 1.21-1.34x, an effect size this harness has
-  failed to reproduce. An optional property is no worse, and cheaper to build.
+  both properties at once, four single sweeps measured 1.21-1.34x on reads; the range has
+  no three-sweep replication and supports no rule. An optional property is no worse, and cheaper to build.
   `bench/addprop.jl`.
 - **Many keyed stores: large, with a threshold no rule can see.** Sixteen keyed
   adds to a one-field object push it into dictionary mode, and reading its
@@ -300,17 +308,12 @@ version = 15.3.0.0
 | `accumulating-spread` | **none** — quadratic work is quadratic on any engine | — |
 | *no rule* — the elements kind is decided by the values stored, one value at a time, which is why there is no boxed-array rule | | `src/objects/elements-kind.h:105` → `enum ElementsKind`, `src/objects/objects-inl.h:700` → `OptimalElementsKind` |
 
-Three citations say something the benchmarks alone could not:
+One citation says something the benchmarks alone could not:
 
 - **A call slot caches one target.** It has no polymorphic tier, so the
   four-map budget governs the method *load*, and the *call* has a budget of
   one. A method kept in a field is past its cliff at the second target, not
   the fifth (`TC-13`).
-- **The elements kind follows the values.** V8 picks it from the values
-  actually stored, one at a time. The last row above is that mechanism, kept as
-  the reason there is no boxed-array rule.
-- **Quadratic work needs no engine.** `accumulating-spread` has no citation,
-  and its effect, the largest measured here, would survive any engine rewrite.
 
 `make v8-check` compares every citation above with a pinned V8 checkout and
 fails with the line that drifted. Without the checkout it exits non-zero and

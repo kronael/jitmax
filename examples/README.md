@@ -74,7 +74,7 @@ not establish any of these behaviours.
 
 The three object examples come from the `kernel: "own-properties"` rows in
 [`bench/example.jl`](../bench/example.jl): both sizes, both halves, three
-accepted sweeps per cell, and all twelve cells replicate. Four rows over the
+valid sweeps per cell after the load gate, and all twelve cells replicate. Four rows over the
 load gate stay in the file, are excluded, and have replacement sweeps. The
 tier diagnostics in `bench/tiers.jl` report tier mismatches for some cells, so
 a ratio is not proof of an isolated storage-layout effect.
