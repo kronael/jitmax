@@ -167,9 +167,12 @@ symbols, getters and property order. See
 [CopyDataProperties](https://tc39.es/ecma262/multipage/abstract-operations.html#sec-copydataproperties)
 and [Object.assign](https://tc39.es/ecma262/multipage/fundamental-objects.html#sec-object.assign).
 
-**The cost.** 149-166x at n=1000 and 1766-1889x at n=10000, in
-`bench/spread.jl` and `bench/spread-object.jl`. End to end: radash `assign`
-and remeda `mergeAll` in the [examples](../examples/README.md).
+**The cost.** Array spread against `push`, construction counted: 149-166x at
+n=1000 and 1766-1889x at n=10000 (`bench/spread.jl`). The object-spread,
+`concat` and `Object.assign` comparisons are in
+[the benchmark table](../bench/README.md#derived-numbers-and-the-rows-they-are).
+End to end: radash `assign` and remeda `mergeAll` in the
+[examples](../examples/README.md).
 
 ## chained-allocation
 
@@ -207,8 +210,9 @@ interleaves callbacks that ran in separate passes.
 specifies what a callback sees. Benchmark construction in the caller before
 keeping the change.
 
-**The cost.** 1.44-1.52x for map-then-filter with construction counted, and
-3.67-3.76x for `Object.entries(o).map(f)` at n=1000, in `bench/chained.jl`.
+**The cost.** With construction counted, map-then-filter against one fused
+pass measured 1.44-1.52x at n=100000, and `Object.entries(o).map(f)` against a
+for-in walk 3.67-3.76x at n=1000 (`bench/chained.jl`).
 This is the one rule held to the broad-warning bar: a point estimate at or
 above 1.10x and a lower bound above 1.05x. End to end, zod `cleanEnum` clears
 it at a 16-member enum, 1.10-1.12x. At 256 members it measured 1.03-1.10x,
@@ -266,8 +270,10 @@ export function drop(o: Record<string, number>, k: string): void {
 It fires on a single delete too: one object with one delete costs 13.1-15.1x
 per read.
 
-**It is silent on** `dropElement`, a `delete` on an array element, which makes
-the array holey but not a dictionary; on `clearToken`, a `delete` on
+**It is silent on** `dropElement`, a `delete` on an array element: deletion
+leaves holes and can produce dictionary elements, but this rule skips arrays
+and does not assess that cost (see the sparse-array result in
+[the benchmark guide](../bench/README.md)); on `clearToken`, a `delete` on
 `process.env`, which Node implements without a hidden class; and on
 `evictSlot`, a `delete` on an object a `const`, `let` or class field
 initialises with `Object.create(null)`, which starts in dictionary mode. The

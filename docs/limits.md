@@ -19,8 +19,9 @@ tool as a whole.
 - **Exit `1` means a finding or incomplete coverage.** An unresolved import in a
   file that holds a selected function, or a body its walk reaches, reads as
   `any` and is a coverage gap, so the run exits `1`. Imports in other files are
-  outside this check; use your compiler to check the whole project. Install its dependencies
-  first; the report says which of the two it found.
+  outside this check; use your compiler to check the whole project.
+  Install the project's dependencies first; the report says which unresolved
+  imports match a configured path alias.
 - **A pattern split across functions goes unreported.** The walk reads every
   callee with source, but `accumulating-spread` needs the loop and the copy in
   one body: `acc = append(acc, x)` in a loop, with

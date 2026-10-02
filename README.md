@@ -51,7 +51,8 @@ every argument.
 Paths choose files and nothing else: compiler options come from the
 `tsconfig.json` found from the working directory upward. With no path, jitmax
 checks that config's file list. A single file brings in what it imports but
-not what imports it, so its callers read as `no visible caller`.
+not the files that import it, so callers in those files are invisible; pass the
+source directory when you need them.
 
 ## Aim
 
