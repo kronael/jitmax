@@ -22,6 +22,21 @@ notice that travels with them. All six come from the survey below. From a
 checkout, `node bin/jitmax.ts examples` reports every `.before.ts` and nothing
 on any `.after.ts`.
 
+All eight rules have a real upstream detection documented here. A vendored
+pair is a local change the checker accepts; a measured rewrite also carries
+caller-level timings. A detection alone establishes neither.
+
+| rule | upstream function | example status |
+|---|---|---|
+| `accumulating-spread` | radash `assign`, remeda `mergeAll` | vendored pairs, measured rewrites |
+| `delete-property` | es-toolkit `omit` | vendored pair, measured rewrite |
+| `chained-allocation` | Zod `cleanEnum` | vendored pair, measured rewrite |
+| `closed-world` | typescript-eslint `findLastIndex` | vendored annotation pair, no speed claim |
+| `interface-dispatch` | Vue `stringifyStyle` | vendored annotation pair, no speed claim |
+| `megamorphic-elements` | Zod `prefixIssues` | detection, no verified rewrite |
+| `megamorphic-dispatch` | date-fns `parse` | detection, no verified rewrite |
+| `allocating-select` | Babylon.js `updateSceneBounds` | detection, no verified rewrite |
+
 ## What each fix is worth
 
 The first four examples carry a rewrite, measured below: `accumulating-spread`,
@@ -158,16 +173,21 @@ Each prints `rules from jitmax.toml, found from the working directory` and
 exits `1` with its megamorphic finding. The preset switches the other six
 rules off, and the report counts what they would have found.
 
-No `.before.ts` and `.after.ts` pair exists for either rule, because the
-printed fix is not a change to the function the rule fired on. For
-`megamorphic-elements` it is a change to the builders of the elements, and
-zod's issues are built across its check functions, not in `prefixIssues`; for
-`megamorphic-dispatch` it is a guard that gives each receiver kind its own call
-site, and date-fns's thirty-one parser classes leave no guard to write. Every
-other site the two rules reach in the 22-codebase survey below is a compiler
-AST, a framework node type or a class hierarchy, where the shapes are the
-library's public API. A rewrite that pays would have to be written for the
-purpose, and that would be a benchmark, not an example.
+No `.before.ts` and `.after.ts` pair exists for either rule. Zod builds its
+issues across its check functions; `prefixIssues` receives those objects.
+date-fns has thirty-one parser classes, so a guard with dedicated call sites
+would need a caller-specific design. Class instances keep different maps
+even when their own properties match, because their prototypes differ.
+
+Three more builder candidates have no verified local rewrite:
+[css-what `parseSelector`](https://github.com/fb55/css-what/blob/8f424938010e7ac1e414a9109c5abf08ff4117dd/src/parse.ts)
+fills the `Selector[][]` returned by the public `parse` API;
+[Kordoc `buildOutline`](https://github.com/chrisryugj/kordoc/blob/467e4cddc104748ca163d94eace6d2259f35a3e9/src/hwpx/outline.ts)
+returns its exported `OutlineNode` union;
+[SVG-to-SwiftUI `pathValueCandidates`](https://github.com/bring-shrubbery/SVG-to-SwiftUI/blob/b362050966ebf4990199c82eeebce5d1389e1fcf/packages/svg-to-swiftui-core/src/renderTree/generateSwiftUI.ts)
+collects existing animation values built elsewhere. Giving these objects
+uniform properties needs checks of their callers and builders. None carries
+a vendored pair, a semantics check or a measured rewrite here.
 
 ## An allocating-select detection
 
@@ -290,23 +310,25 @@ place under the annotation.
 
 ## The survey
 
-The checker, at commit `de7bded`, ran on 22 open-source codebases: twelve
+The checker, at commit `0dc6b83`, ran on 22 open-source codebases: twelve
 libraries, two applications and eight other codebases, each cloned shallow.
 `examples/annotate.js` marked every function, not nested inside another, whose
 body holds a loop or an array-iteration call; radash was marked by hand. That
 is 2953 annotated functions in all.
 
-A count is distinct source lines per rule: a line reached from 28 annotated
-functions is one finding, so the counts measure work, not call-graph fan-in.
+A count is distinct source lines per rule, across errors and warnings. A
+line reached from 28 annotated functions is one finding, so the counts
+measure work, not call-graph fan-in.
 The report's own header counts line and column, so it can print more. Calls
 into the platform — Node's API, V8's builtins and anything reached off
 `globalThis` — are counted for the run and never listed.
 
-Most findings are coverage, not cost: in the twelve libraries, the two
-coverage rules make 790 of the 844 findings. The two applications had no
-`node_modules` installed, so each call to a function from a missing package is
-a `closed-world` finding there; read their totals as a limit of this run. The
-megamorphic rules fire on real code, `megamorphic-elements` at 19 lines in the
+The 22 runs report 8625 findings. The two coverage rules make 8425 of them;
+in the twelve libraries, they make 786 of the 840 findings. The two
+applications had no `node_modules` installed, so each call to a function
+from a missing package is a `closed-world` finding there; read their totals
+as a limit of this run. The megamorphic rules fire on real code,
+`megamorphic-elements` at 19 lines in the
 TypeScript compiler, vue and zod, but no megamorphic finding has a measured
 rewrite. Some mark polymorphism a library chose on purpose, such as date-fns's
 parsers and immutable's `Seq` subclasses: a finding there locates
@@ -314,11 +336,16 @@ polymorphism, not a mistake. `allocating-select` fired nowhere. It sees an
 allocation only in a callee whose body is in the program, so a packaged
 `Decimal.min` declared in a `.d.ts` can never trigger it.
 
+The walk stops at its body limit in 98 TypeScript roots, 80 TypeBox roots,
+three Vue roots and one Svelte root. Their counts, and the aggregate, are
+lower bounds. Missing modules and unresolved calls also limit what these
+runs can check; the tables count the findings the checker could report.
+
 ### Libraries
 
 | Library | annotated | findings | what fired |
 |---|---|---|---|
-| es-toolkit 1.50.0 | 286 | 171 | 119 `interface-dispatch`, 42 `closed-world`, 5 `delete-property`, 3 `chained-allocation`, 2 `accumulating-spread` |
+| es-toolkit 1.50.0 | 286 | 168 | 126 `closed-world`, 32 `interface-dispatch`, 5 `delete-property`, 3 `chained-allocation`, 2 `accumulating-spread` |
 | ramda 0.32.0 | 100 | 100 | 73 `closed-world`, 26 `interface-dispatch`, 1 `delete-property` (`_dissoc`) |
 | immutable 5.1.9 | 89 | 92 | 79 `closed-world`, 9 `interface-dispatch`, 2 `megamorphic-dispatch`, 1 each `chained-allocation` and `delete-property` |
 | remeda 2.0.0 | 79 | 66 | 63 `closed-world`, 2 `delete-property`, 1 `accumulating-spread` |
@@ -329,7 +356,7 @@ allocation only in a callee whose body is in the program, so a packaged
 | date-fns 4.4.0 (`core`) | 28 | 13 | 5 `closed-world`, 4 `interface-dispatch`, 1 each `megamorphic-dispatch`, `chained-allocation`, `delete-property` and `accumulating-spread` |
 | dinero.js 2.0.2 | 20 | 87 | 85 `closed-world`, 1 `chained-allocation`, 1 `accumulating-spread` |
 | big.js 7.0.1 | 13 | 15 | 15 `closed-world` |
-| radash 12.1.1 | 8 | 7 | 6 `interface-dispatch`, 1 `accumulating-spread` |
+| radash 12.1.1 | 8 | 6 | 5 `closed-world`, 1 `accumulating-spread` |
 
 ### Applications
 
@@ -342,11 +369,11 @@ allocation only in a callee whose body is in the program, so a packaged
 
 | Codebase | annotated | findings | what fired besides `closed-world` |
 |---|---|---|---|
-| svelte (`packages/svelte/src`) | 504 | 402 | 65 `interface-dispatch`, 13 `delete-property`, 12 `chained-allocation`, 2 `accumulating-spread` |
-| vue (`packages/*/src`) | 409 | 1764 | 547 `interface-dispatch`, 13 `delete-property`, 10 `megamorphic-dispatch`, 7 `megamorphic-elements`, 5 `chained-allocation`, 4 `accumulating-spread` |
+| svelte (`packages/svelte/src`) | 504 | 403 | 63 `interface-dispatch`, 13 `delete-property`, 12 `chained-allocation`, 2 `accumulating-spread` |
+| vue (`packages/*/src`) | 409 | 1750 | 523 `interface-dispatch`, 13 `delete-property`, 7 `megamorphic-elements`, 5 `chained-allocation`, 4 `accumulating-spread` |
 | typebox | 199 | 53 | 30 `accumulating-spread`, 16 `interface-dispatch`, 3 `delete-property` |
 | mobx | 49 | 64 | 32 `interface-dispatch`, 2 `delete-property` |
-| valibot | 87 | 107 | 60 `interface-dispatch`, 9 `chained-allocation`, 1 each `megamorphic-dispatch` and `delete-property` |
-| rxjs | 60 | 105 | 33 `interface-dispatch` |
+| valibot | 87 | 106 | 58 `interface-dispatch`, 9 `chained-allocation`, 1 each `megamorphic-dispatch` and `delete-property` |
+| rxjs | 60 | 105 | 32 `interface-dispatch` |
 | immer | 10 | 38 | 14 `interface-dispatch`, 2 `delete-property` |
 | ts-pattern | 9 | 22 | nothing |
