@@ -358,8 +358,8 @@ clears it are in [examples/README.md](../examples/README.md#the-coverage-rules-t
 **What it detects.** A call through an interface or a function value whose
 target the walk cannot resolve to one body: several bodies may be visible, or
 the receiver may come from a caller outside the program. `related:` lists the
-bodies it found; `sources:` says where an origin is missing. A method whose whole body
-throws counts as a declaration, and the walk does not follow its error path.
+bodies it found, and the message counts readable bodies checked. `sources:`
+says where an origin is missing. A method whose whole body throws counts as a declaration, and the walk does not follow its error path.
 
 **It fires on** `runTrio`, where three classes implement the interface the
 receiver is typed as:
@@ -390,8 +390,8 @@ implementations and add `-interface-dispatch` to the annotation. Do not remove
 an abstraction or add a type assertion to clear it: an assertion does not
 choose which implementation runs.
 
-**The cost.** None claimed, and no sweep. It reports what was not checked;
-read it as coverage, never as a price.
+**The cost.** None claimed, and no sweep. It reports unresolved target selection,
+even when located bodies were checked. Read it as coverage, never as a price.
 
 **A real finding.** Vue `stringifyStyle`, with one implementation annotated and
 the root suppressed, is in [examples/README.md](../examples/README.md#the-coverage-rules-the-finding-and-the-annotation-that-clears-it).

@@ -9,8 +9,8 @@ const NAME = 'interface-dispatch';
 const evidence: Evidence = {
   cost:
     'nothing this project has measured. A call through an interface has a body in this ' +
-    'checkout; what the walk cannot do is decide WHICH body runs, so it can neither follow ' +
-    'it nor price it',
+    'checkout; the walk checks located readable bodies but cannot decide which target runs ' +
+    'or price the call',
   source:
     'no sweep. Split out of closed-world, which was one name over three causes: a callee ' +
     'with no body anywhere, a call through an interface, and a receiver whose origin is ' +
@@ -50,12 +50,14 @@ const detect: EscapeRule = (mark, add) => {
     // thing that is not there (BUGS TC-158).
     const via = d.method === '' ? '' : ' through an interface';
     const origin = d.method === '' ? 'callee' : 'receiver';
-    // One located body is walked (scan.ts), and the finding says so: what it
-    // still reports is whatever else may reach the call.
-    const walked =
-      d.located === 1
-        ? 'only the one body located is walked; other targets remain unchecked'
-        : d.count > 0 ? 'their bodies are not followed' : 'the call is unchecked';
+    const walked = d.checked === 0
+      ? 'no readable body was checked at this call'
+      : d.checked === 1 && d.located === 1
+      ? 'only the one body located is walked; other targets remain unchecked'
+      : `${d.checked} readable ${d.checked === 1 ? 'body is' : 'bodies are'} checked; ` +
+        'runtime target selection remains unresolved' +
+        (d.checked < d.located ? '; some located bodies were not checked' : '') +
+        (d.unknown.length > 0 ? '; other targets remain unchecked' : '');
     add({
       file: c.file,
       line: c.line,

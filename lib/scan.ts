@@ -58,6 +58,8 @@ export interface Dispatch {
   // for" in the same sentence as the file and line of two bodies it had just
   // located, and offered to inline one of them (BUGS TC-109).
   located: number;
+  // Bodies admitted at this site and visited; the cap can exclude located bodies.
+  checked: number;
 }
 
 export interface Call extends Site {
@@ -720,6 +722,7 @@ function reach(
     reached.push({ node: to, sf: to.getSourceFile(), name: nameOf(ts, to), once: undefined });
   };
   const escapes: Call[] = [];
+  const checkedAt = new Map<Call, TS.Node[]>();
   const escapedFrom: Array<{ call: Call; body: TS.Node; closure: boolean }> = [];
   const untyped: (Site & { name: string })[] = [];
   let platform = 0;
@@ -1012,6 +1015,7 @@ function reach(
                     dispatch: {
                       count: r.origins.length,
                       located: located.length,
+                      checked: 0,
                       names: r.origins.map((o) => o.name).slice(0, 6),
                       sources: r.origins.map((origin) => ({
                         ...at(origin.node.getSourceFile(), origin.node),
@@ -1024,6 +1028,9 @@ function reach(
                     },
                     once: undefined,
                   };
+                  checkedAt.set(call, [...new Set([
+                    ...next, ...located.filter((target) => followable(ts, target)),
+                  ])]);
                   escapes.push(call);
                   escapedFrom.push({ call, body: body.node, closure });
                 }
@@ -1133,6 +1140,9 @@ function reach(
     if (via !== undefined) once.set(e.to, via);
   }
   for (const body of reached) body.once = once.get(body.node);
+  for (const [call, targets] of checkedAt) {
+    call.dispatch.checked = targets.filter((target) => seen.has(target)).length;
+  }
   for (const e of escapedFrom) e.call.once = e.closure ? undefined : once.get(e.body);
   return { reached, escapes, platform, lowered, followed, untyped, truncated };
 }

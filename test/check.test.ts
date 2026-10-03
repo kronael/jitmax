@@ -904,8 +904,8 @@ test('a method whose whole body throws is a declaration, not an implementation',
   assert.ok(mark.reached.every((body) => !body.node.getText().includes('slotUnimplemented')));
 });
 
-// The walk located both bodies — it prints their positions — and followed
-// neither. Stopping is defensible; "which we have no body for" in the same
+// The walk checks both located bodies, while their runtime selection stays
+// unresolved. "Which we have no body for" in the same
 // sentence as the file and line of two bodies is not, and neither is a fix line
 // offering to inline a callee the tool has just pointed at (BUGS TC-109). Two
 // located bodies the walk cannot pick between are interface-dispatch's case,
@@ -916,6 +916,8 @@ test('a call the walk located two bodies for is not reported as bodiless', () =>
   const f = rawFindings('syncUniforms').find((x) => x.rule === 'interface-dispatch');
   assert.doesNotMatch(f?.message ?? '', /no readable implementation/);
   assert.match(f?.message ?? '', /2 implementations reach this call/);
+  assert.match(f?.message ?? '', /2 readable bodies are checked/);
+  assert.doesNotMatch(f?.message ?? '', /bodies are not followed/);
   assert.deepStrictEqual(f?.related?.map((site) => site.name), ['uploadFloat()', 'uploadInt()']);
   assert.doesNotMatch(f?.message ?? '', /four-map budget|through an interface/);
   assert.doesNotMatch(f?.fix ?? '', /^inline what you need/);
@@ -2837,11 +2839,10 @@ test('an unreadable callee still counts what reaches its receiver', () => {
   );
   // The sentence carrying that count is no longer "which we have no body for":
   // the walk located both bodies and printed their names in the same breath, so
-  // it says that it did not follow them, as interface-dispatch (BUGS TC-109,
-  // TC-158).
+  // it distinguishes checked bodies from unresolved target selection.
   assert.match(
     unwrapped(run.stdout),
-    /interface-dispatch calls pickOne; 2 implementations reach this call; their bodies are not followed/
+    /interface-dispatch calls pickOne; 2 implementations reach this call; 2 readable bodies are checked; runtime target selection remains unresolved/
   );
   for (const name of ['left()', 'right()']) assert.ok(run.stdout.includes(name));
   // Not megamorphic-dispatch's own body detector: P1 through P5 carry ONE

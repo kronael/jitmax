@@ -8,7 +8,7 @@ below from the jitmax checkout with Node `>=22.18`.
 What the suite guards, and how to run one test.
 
 ```sh
-make test    # 277 unit tests, including the must-stay-silent cases
+make test    # 278 unit tests, including the must-stay-silent cases
 node --test --test-name-pattern '<name>' test/check.test.ts   # one test
 node --test test/*.test.ts
 ```
