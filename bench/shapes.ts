@@ -39,19 +39,20 @@ function sweep(rows: Row[]): number {
   return s;
 }
 
+const warmups = 3;
 let sink = 0;
 let t0: bigint, t1: bigint;
 if (mode === 'excl') {
   const rows = build();
-  for (let w = 0; w < 3; w++) sink += sweep(rows);
+  for (let w = 0; w < warmups; w++) sink += sweep(rows);
   t0 = process.hrtime.bigint();
   for (let i = 0; i < reps; i++) sink += sweep(rows);
   t1 = process.hrtime.bigint();
 } else {
-  for (let w = 0; w < 3; w++) sink += sweep(build());
+  for (let w = 0; w < warmups; w++) sink += sweep(build());
   t0 = process.hrtime.bigint();
   for (let i = 0; i < reps; i++) sink += sweep(build());
   t1 = process.hrtime.bigint();
 }
 
-emit({ t0, t1, reps, n, checksum: sweep(build()), sink });
+emit({ t0, t1, reps, n, checksum: sweep(build()), sink, warmups });

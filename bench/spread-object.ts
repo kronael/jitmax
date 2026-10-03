@@ -42,21 +42,22 @@ const total = (o: Record<string, number>): number => {
   return t;
 };
 
+const warmups = 3;
 let sink = 0;
 let t0: bigint;
 let t1: bigint;
 
 if (mode === 'excl') {
   const acc = build();
-  for (let w = 0; w < 3; w++) sink += total(acc);
+  for (let w = 0; w < warmups; w++) sink += total(acc);
   t0 = process.hrtime.bigint();
   for (let i = 0; i < reps; i++) sink += total(acc);
   t1 = process.hrtime.bigint();
 } else {
-  for (let w = 0; w < 3; w++) sink += total(build());
+  for (let w = 0; w < warmups; w++) sink += total(build());
   t0 = process.hrtime.bigint();
   for (let i = 0; i < reps; i++) sink += total(build());
   t1 = process.hrtime.bigint();
 }
 
-emit({ t0, t1, reps, n, checksum: total(build()), sink });
+emit({ t0, t1, reps, n, checksum: total(build()), sink, warmups });

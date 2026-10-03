@@ -6,7 +6,7 @@
 
 import fs from 'node:fs';
 import os from 'node:os';
-import { PIN_LABEL } from './driver.ts';
+import { CHILD_ENV, PIN_LABEL } from './driver.ts';
 
 export const CORES = os.availableParallelism();
 
@@ -95,6 +95,8 @@ export interface Environment {
   node: string;
   v8: string;
   flags: string;
+  nodeOptions: string;
+  nodeV8Coverage: boolean;
   pin: string;
   cores: number;
   cpu: string;
@@ -106,6 +108,8 @@ export function environment(maxRunnable: number): Environment {
     node: process.versions.node,
     v8: process.versions.v8,
     flags: '',
+    nodeOptions: CHILD_ENV.NODE_OPTIONS,
+    nodeV8Coverage: Boolean(CHILD_ENV.NODE_V8_COVERAGE),
     pin: PIN_LABEL,
     cores: CORES,
     cpu: os.cpus()[0]?.model ?? 'unknown',

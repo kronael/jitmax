@@ -158,6 +158,7 @@ const hash = (str: string): number => {
 
 const read = (family === 'splitjoin' ? hash : sum) as (v: string | number[]) => number;
 
+const warmups = 3;
 let sink = 0;
 let t0: bigint;
 let t1: bigint;
@@ -167,15 +168,15 @@ let t1: bigint;
 // verdicts in round 2, and that is now rule 11 of the protocol.
 if (mode === 'excl') {
   const acc = build();
-  for (let w = 0; w < 3; w++) sink += read(acc);
+  for (let w = 0; w < warmups; w++) sink += read(acc);
   t0 = process.hrtime.bigint();
   for (let i = 0; i < reps; i++) sink += read(acc);
   t1 = process.hrtime.bigint();
 } else {
-  for (let w = 0; w < 3; w++) sink += read(build());
+  for (let w = 0; w < warmups; w++) sink += read(build());
   t0 = process.hrtime.bigint();
   for (let i = 0; i < reps; i++) sink += read(build());
   t1 = process.hrtime.bigint();
 }
 
-emit({ t0, t1, reps, n, checksum: read(build()), sink });
+emit({ t0, t1, reps, n, checksum: read(build()), sink, warmups });

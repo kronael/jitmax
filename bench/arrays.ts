@@ -125,22 +125,23 @@ if (mode === 'kinds') {
   // Enough sweeps to put the read site past invocation_count_for_turbofan at
   // small n, and enough loop iterations for OSR to reach it at large n.
   const WARMS = Math.max(4, Math.ceil(2e6 / n));
+  const warmups = mode === 'excl' ? WARMS : 3;
 
   let t0;
   let t1;
 
   if (mode === 'excl') {
     const a = build();
-    for (let w = 0; w < WARMS; w++) sink += sum(a);
+    for (let w = 0; w < warmups; w++) sink += sum(a);
     t0 = process.hrtime.bigint();
     for (let i = 0; i < reps; i++) sink += sum(a);
     t1 = process.hrtime.bigint();
   } else {
-    for (let w = 0; w < 3; w++) sink += sum(build());
+    for (let w = 0; w < warmups; w++) sink += sum(build());
     t0 = process.hrtime.bigint();
     for (let i = 0; i < reps; i++) sink += sum(build());
     t1 = process.hrtime.bigint();
   }
 
-  emit({ t0, t1, reps, n, checksum: sum(build()), sink });
+  emit({ t0, t1, reps, n, checksum: sum(build()), sink, warmups });
 }

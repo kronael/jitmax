@@ -77,8 +77,9 @@ const sweep = () => {
   return t;
 };
 
+const warmups = 3;
 let sink = 0;
-for (let w = 0; w < 3; w++) sink += sweep();
+for (let w = 0; w < warmups; w++) sink += sweep();
 const t0 = process.hrtime.bigint();
 for (let i = 0; i < reps; i++) sink += sweep();
 const t1 = process.hrtime.bigint();
@@ -86,4 +87,4 @@ const t1 = process.hrtime.bigint();
 // 'excl' only: the arguments object is built inside the callee on every call,
 // so it is inside the timed region by construction and an 'incl' cell would be
 // the same measurement under a different name — as in bench/inline.ts.
-emit({ t0, t1, reps, n, checksum: sweep(), sink });
+emit({ t0, t1, reps, n, checksum: sweep(), sink, warmups });

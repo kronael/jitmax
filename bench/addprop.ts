@@ -306,12 +306,15 @@ const read = READ[family];
 const build = BUILD[variant];
 if (!build) throw new Error(`unknown variant ${variant}`);
 
+const warmupsRead = 3;
+let warmups = warmupsRead;
 let sink = 0;
 
 // Enough sweeps to put the read site past invocation_count_for_turbofan at
 // small n, and enough loop iterations for OSR to reach it at large n.
 const WARMS = Math.max(4, Math.ceil(2e6 / n));
 const warm = (rows: Row[]) => {
+  warmups += WARMS;
   for (let w = 0; w < WARMS; w++) sink += read(rows);
 };
 
@@ -349,27 +352,27 @@ if (variant === 'late') {
   // O(1) and a 120 ms region amortizes it to nothing. What is measured is the
   // steady state of a site that has seen the old map and the new one.
   warm(rows);
-  for (let w = 0; w < 3; w++) sink += read(rows);
+  for (let w = 0; w < warmupsRead; w++) sink += read(rows);
   t0 = process.hrtime.bigint();
   for (let i = 0; i < reps; i++) sink += read(rows);
   t1 = process.hrtime.bigint();
 } else if (mode === 'excl') {
   const rows = build();
   if (family === 'late') warm(rows);
-  for (let w = 0; w < 3; w++) sink += read(rows);
+  for (let w = 0; w < warmupsRead; w++) sink += read(rows);
   t0 = process.hrtime.bigint();
   for (let i = 0; i < reps; i++) sink += read(rows);
   t1 = process.hrtime.bigint();
 } else if (mode === 'build') {
-  for (let w = 0; w < 3; w++) sink += build()[n - 1].x;
+  for (let w = 0; w < warmupsRead; w++) sink += build()[n - 1].x;
   t0 = process.hrtime.bigint();
   for (let i = 0; i < reps; i++) sink += build()[n - 1].x;
   t1 = process.hrtime.bigint();
 } else {
-  for (let w = 0; w < 3; w++) sink += read(build());
+  for (let w = 0; w < warmupsRead; w++) sink += read(build());
   t0 = process.hrtime.bigint();
   for (let i = 0; i < reps; i++) sink += read(build());
   t1 = process.hrtime.bigint();
 }
 
-emit({ t0, t1, reps, n, checksum: read(build()), sink });
+emit({ t0, t1, reps, n, checksum: read(build()), sink, warmups });

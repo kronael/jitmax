@@ -1,7 +1,7 @@
 // The measurement protocol, shared by every workload. CLAUDE.md's numbered
 // protocol is the contract; this file implements it, and the rule numbers below
 // mark the code that enforces each one. A workload script is only a kernel plus
-// a printed { ns_per_op, checksum, sink } — see bench/kernel.ts.
+// a printed { ns_per_op, checksum, sink, warmups } — see bench/kernel.ts.
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -13,6 +13,7 @@ interface WorkloadOut {
   ns_per_op: number;
   checksum: string;
   sink: boolean;
+  warmups: number;
 }
 
 // The cell shape the runner hands in: which script, which pair, at what size.
@@ -39,6 +40,10 @@ export interface Measured {
   n: number;
   repsBase: number;
   repsTest: number;
+  warmupsBase: number;
+  warmupsTest: number;
+  calibrationSeed: number;
+  seeds: number[];
   msBase: number;
   msTest: number;
   ratio: number;
@@ -63,6 +68,8 @@ export type Replicated = CellResult & { replicate: number; protocol: 'replicated
 // cell. No opportunistic sampling when a result is close.
 const PAIRS = 20;
 const BOOT = 2000;
+const CALIBRATION_SEED = 1;
+const PAIR_SEED = 1000;
 
 // Rule 6: an interval that spans 1.0 is rejected. bench/run.ts prints REJ from
 // this while a human watches a sweep and lib/derive.ts applies it to what a
@@ -79,6 +86,8 @@ const PIN_CORE = 1;
 const PIN: [string, string[]] | [null, string[]] =
   fs.existsSync(TASKSET) ? [TASKSET, ['-c', String(PIN_CORE)]] : [null, []];
 export const PIN_LABEL = PIN[0] === null ? 'none' : `taskset -c ${PIN_CORE}`;
+
+export const CHILD_ENV = { NODE_OPTIONS: '', NODE_V8_COVERAGE: '' } as const;
 
 // The marker that says a row came from this runner. bench/run.ts writes it and
 // lib/derive.ts selects on it, and it was a `const RUNNER = 'r2'` in each with
@@ -97,10 +106,34 @@ function once(
 ): WorkloadOut {
   const args = [script, variant, n, mode, reps, seed].map(String);
   const [bin, pre] = PIN;
+  const options = {
+    encoding: 'utf8' as const,
+    env: { ...process.env, ...CHILD_ENV },
+  };
   const out = bin
-    ? execFileSync(bin, [...pre, process.execPath, ...args], { encoding: 'utf8' })
-    : execFileSync(process.execPath, args, { encoding: 'utf8' });
-  return JSON.parse(out);
+    ? execFileSync(bin, [...pre, process.execPath, ...args], options)
+    : execFileSync(process.execPath, args, options);
+  const parsed: unknown = JSON.parse(out);
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed))
+    throw new Error('invalid workload output: expected a JSON object');
+  if (!('ns_per_op' in parsed) || typeof parsed.ns_per_op !== 'number' ||
+    !Number.isFinite(parsed.ns_per_op) || parsed.ns_per_op <= 0)
+    throw new Error('invalid workload output: ns_per_op must be finite and positive');
+  if (!('checksum' in parsed) || typeof parsed.checksum !== 'string' ||
+    !/^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(parsed.checksum) ||
+    !Number.isFinite(Number(parsed.checksum)))
+    throw new Error('invalid workload output: checksum must be a finite numeric string');
+  if (!('sink' in parsed) || typeof parsed.sink !== 'boolean')
+    throw new Error('invalid workload output: sink must be boolean');
+  if (!('warmups' in parsed) || typeof parsed.warmups !== 'number' ||
+    !Number.isSafeInteger(parsed.warmups) || parsed.warmups < 0)
+    throw new Error('invalid workload output: warmups must be a nonnegative integer');
+  return {
+    ns_per_op: parsed.ns_per_op,
+    checksum: parsed.checksum,
+    sink: parsed.sink,
+    warmups: parsed.warmups,
+  };
 }
 
 const TARGET_NS = 120e6;
@@ -124,16 +157,22 @@ const TARGET_NS = 120e6;
 // to do with warmup. A fixed count cannot hang, and the achieved region is
 // asserted afterwards, which is the guard that decides whether a cell is
 // publishable.
-function calibrate(script: string, variant: string, n: number, mode: string): number {
+function calibrate(script: string, variant: string, n: number, mode: string) {
   const estimates: number[] = [];
   let reps = 1;
+  let warmups = 0;
   for (let i = 0; i < 6; i++) {
-    const r = once(script, variant, n, mode, reps, 1);
+    const r = once(script, variant, n, mode, reps, CALIBRATION_SEED);
+    if (i > 0 && r.warmups !== warmups)
+      throw new Error(`warmup count changed during calibration of ${variant}`);
+    warmups = r.warmups;
     reps = Math.max(1, Math.round(TARGET_NS / (r.ns_per_op * n)));
+    if (!Number.isFinite(reps))
+      throw new Error('invalid workload output: calibration repetition count is not finite');
     estimates.push(reps);
   }
   const last = estimates.slice(-3).sort((a, b) => a - b);
-  return last[1] ?? reps;
+  return { reps: last[1] ?? reps, warmups };
 }
 
 // A cell whose timed region missed the target is not a slightly noisy result,
@@ -151,7 +190,8 @@ function calibrate(script: string, variant: string, n: number, mode: string): nu
 function assertRegion(label: string, samples: number[], reps: number, n: number): number {
   const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
   const achieved = mean * reps * n;
-  if (achieved < TARGET_NS / 2 || achieved > TARGET_NS * 2) {
+  if (!Number.isFinite(achieved) ||
+    achieved < TARGET_NS / 2 || achieved > TARGET_NS * 2) {
     throw new Error(
       `${label}: timed region ${(achieved / 1e6).toFixed(1)} ms is outside 60-240 ms ` +
         `(reps=${reps}, n=${n}) — the cell is void, not slow`
@@ -186,14 +226,17 @@ function bootstrap(base: number[], test: number[]): [number, number] {
 // is measured: it is called between observations, never inside a timed region,
 // and never in a measured process.
 function cell({ script, baseline, variant, n, mode }: CellOpts, report: Report = () => {}): Measured {
-  const repsBase = calibrate(script, baseline, n, mode);
-  const repsTest = calibrate(script, variant, n, mode);
+  const calibratedBase = calibrate(script, baseline, n, mode);
+  const calibratedTest = calibrate(script, variant, n, mode);
+  const repsBase = calibratedBase.reps;
+  const repsTest = calibratedTest.reps;
   report({ event: 'calibrated', repsBase, repsTest });
   const base: number[] = [];
   const test: number[] = [];
+  const seeds: number[] = [];
   for (let p = 0; p < PAIRS; p++) {
     report({ event: 'pair', done: p, of: PAIRS });
-    const seed = 1000 + p;
+    const seed = PAIR_SEED + p;
     // Rule 2: AB on half the pairs, BA on the other half, same seed to both.
     // Order is a confound, and round 1 proved it is a large one.
     const first = rand() < 0.5;
@@ -205,6 +248,10 @@ function cell({ script, baseline, variant, n, mode }: CellOpts, report: Report =
     if (ra.checksum !== rb.checksum) {
       throw new Error(`checksum mismatch at ${variant} / n=${n} / ${mode}`);
     }
+    if (ra.warmups !== calibratedBase.warmups ||
+      rb.warmups !== calibratedTest.warmups)
+      throw new Error(`warmup count changed in pair ${p} at ${variant}`);
+    seeds.push(seed);
     base.push(ra.ns_per_op);
     test.push(rb.ns_per_op);
   }
@@ -224,6 +271,10 @@ function cell({ script, baseline, variant, n, mode }: CellOpts, report: Report =
     n,
     repsBase,
     repsTest,
+    warmupsBase: calibratedBase.warmups,
+    warmupsTest: calibratedTest.warmups,
+    calibrationSeed: CALIBRATION_SEED,
+    seeds,
     msBase: +(regionBase / 1e6).toFixed(1),
     msTest: +(regionTest / 1e6).toFixed(1),
     ratio: mean(test) / mean(base),

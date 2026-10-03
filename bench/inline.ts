@@ -285,15 +285,16 @@ const sweep = (a: number[]): number => {
   return t;
 };
 
+const warmups = 3;
 let sink = 0;
 let t0: bigint;
 let t1: bigint;
 
 // 'excl' is the only meaningful mode here: there is nothing to construct. It is
 // run in both so the cell shape matches every other sweep in this directory.
-for (let w = 0; w < 3; w++) sink += sweep(source);
+for (let w = 0; w < warmups; w++) sink += sweep(source);
 t0 = process.hrtime.bigint();
 for (let i = 0; i < reps; i++) sink += sweep(source);
 t1 = process.hrtime.bigint();
 
-emit({ t0, t1, reps, n, checksum: sweep(source), sink });
+emit({ t0, t1, reps, n, checksum: sweep(source), sink, warmups });

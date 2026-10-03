@@ -80,26 +80,27 @@ const hash = (str: string): number => {
   return t;
 };
 
+const warmups = 3;
 let sink = 0;
 let t0: bigint;
 let t1: bigint;
 
 if (mode === 'excl') {
   const acc = build();
-  for (let w = 0; w < 3; w++) sink += hash(acc);
+  for (let w = 0; w < warmups; w++) sink += hash(acc);
   t0 = process.hrtime.bigint();
   for (let i = 0; i < reps; i++) sink += hash(acc);
   t1 = process.hrtime.bigint();
 } else if (mode === 'build') {
-  for (let w = 0; w < 3; w++) sink += build().length;
+  for (let w = 0; w < warmups; w++) sink += build().length;
   t0 = process.hrtime.bigint();
   for (let i = 0; i < reps; i++) sink += build().length;
   t1 = process.hrtime.bigint();
 } else {
-  for (let w = 0; w < 3; w++) sink += hash(build());
+  for (let w = 0; w < warmups; w++) sink += hash(build());
   t0 = process.hrtime.bigint();
   for (let i = 0; i < reps; i++) sink += hash(build());
   t1 = process.hrtime.bigint();
 }
 
-emit({ t0, t1, reps, n, checksum: hash(build()), sink });
+emit({ t0, t1, reps, n, checksum: hash(build()), sink, warmups });

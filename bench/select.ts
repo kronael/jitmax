@@ -112,10 +112,11 @@ function scanNumber(): number {
 
 const run = mode === 'heap' ? scanHeap : mode === 'local' ? scanLocal : scanNumber;
 
+const warmups = 3;
 let sink = 0;
-for (let w = 0; w < 3; w++) sink += run();
+for (let w = 0; w < warmups; w++) sink += run();
 const t0 = process.hrtime.bigint();
 for (let i = 0; i < reps; i++) sink += run();
 const t1 = process.hrtime.bigint();
 
-emit({ t0, t1, reps, n, checksum: run(), sink });
+emit({ t0, t1, reps, n, checksum: run(), sink, warmups });

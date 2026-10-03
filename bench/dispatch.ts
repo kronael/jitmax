@@ -156,4 +156,4 @@ if (mode === 'excl') {
   t1 = process.hrtime.bigint();
 }
 
-emit({ t0, t1, reps, n, checksum: read(build()), sink });
+emit({ t0, t1, reps, n, checksum: read(build()), sink, warmups: WARMS });

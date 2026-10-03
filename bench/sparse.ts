@@ -61,10 +61,11 @@ const read = (arr: number[]): number => {
 // measuring one has reversed a verdict twice in this project.
 const sweep = mode === 'incl' ? () => read(build()) : ((arr: number[]) => () => read(arr))(build());
 
+const warmups = 3;
 let sink = 0;
-for (let w = 0; w < 3; w++) sink += sweep();
+for (let w = 0; w < warmups; w++) sink += sweep();
 const t0 = process.hrtime.bigint();
 for (let i = 0; i < reps; i++) sink += sweep();
 const t1 = process.hrtime.bigint();
 
-emit({ t0, t1, reps, n, checksum: sweep(), sink });
+emit({ t0, t1, reps, n, checksum: sweep(), sink, warmups });

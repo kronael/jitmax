@@ -82,18 +82,19 @@ const applyAll = (): unknown[] => {
   return outs;
 };
 
+const warmups = mode === 'excl' ? 5 : 3;
 let sink = 0;
 let t0;
 let t1;
 
 if (mode === 'excl') {
   const outs = applyAll();
-  for (let w = 0; w < 5; w++) sink += readAll(outs);
+  for (let w = 0; w < warmups; w++) sink += readAll(outs);
   t0 = process.hrtime.bigint();
   for (let i = 0; i < reps; i++) sink += readAll(outs);
   t1 = process.hrtime.bigint();
 } else {
-  for (let w = 0; w < 3; w++) sink += readAll(applyAll());
+  for (let w = 0; w < warmups; w++) sink += readAll(applyAll());
   t0 = process.hrtime.bigint();
   for (let i = 0; i < reps; i++) sink += readAll(applyAll());
   t1 = process.hrtime.bigint();
@@ -105,4 +106,4 @@ if (mode === 'excl') {
 let sum = 0;
 for (const out of applyAll()) sum = (sum + digest(out as never)) % 1e12;
 
-emit({ t0, t1, reps, n, checksum: sum, sink });
+emit({ t0, t1, reps, n, checksum: sum, sink, warmups });

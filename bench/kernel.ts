@@ -7,7 +7,7 @@
 //   the PRNG both sides of a pair draw their values from, seeded by the driver,
 //   so identical indices carry identical values and the compared checksum is a
 //   real test rather than a formality
-//   emit()   the { ns_per_op, checksum, sink } the driver parses back
+//   emit()   the { ns_per_op, checksum, sink, warmups } the driver parses back
 //
 // What is NOT here, and must not move here: the timed region. Each workload
 // keeps its own, because what counts as construction and what counts as a read
@@ -37,15 +37,19 @@ export function mulberry32(a: number): () => number {
   };
 }
 
-// One untimed verification pass produces the compared checksum; `sink` is
-// printed so the timed loop cannot be eliminated as dead.
-export function emit({ t0, t1, reps, n, checksum, sink }:
-  { t0: bigint; t1: bigint; reps: number; n: number; checksum: number; sink: number }): void {
+/** Prints timing in nanoseconds per operation and the untimed checksum.
+ * warmups counts untimed kernel passes before the region, including extra
+ * warm phases; zero is valid. The sink keeps the timed result observable.
+ */
+export function emit({ t0, t1, reps, n, checksum, sink, warmups }:
+  { t0: bigint; t1: bigint; reps: number; n: number;
+    checksum: number; sink: number; warmups: number }): void {
   process.stdout.write(
     JSON.stringify({
       ns_per_op: Number(t1 - t0) / (reps * n),
       checksum: checksum.toFixed(6),
       sink: sink > 0,
+      warmups,
     })
   );
 }

@@ -212,9 +212,11 @@ The tables cite these rules by number.
    fails is never evidence; where the docs quote one, they call it rejected.
 7. **Dead-code elimination is defeated**: input from a runtime seed, results
    folded into a checksum printed after timing, no I/O in the timed region. The
-   driver compares the checksums inside every pair.
+   driver validates every child's finite positive timing, numeric checksum,
+   boolean sink and warmup count. It compares the checksums inside every pair.
 8. **No tracing, profiling, forced GC or V8 natives syntax in an evidence
-   run.** Tiering is a separate diagnostic, below.
+   run.** The driver clears `NODE_OPTIONS` and `NODE_V8_COVERAGE` for every
+   measured child. Tiering is a separate diagnostic, below.
 9. **Every row records its environment**: Node and V8 versions, flags, seeds,
    warmup counts, core affinity, the machine load as the row was written, and
    the load gate it ran under. The gate counts runnable threads outside the
@@ -223,7 +225,11 @@ The tables cite these rules by number.
    to share it. It is checked before every cell and between the sweeps of a
    cell; a busy machine stops the sweep, which is resumed later. `--max-load`
    overrides the gate, and the row records the override. Older rows, such as
-   those in `bench/arrays.jl`, lack these fields.
+   those in `bench/arrays.jl`, lack these fields. New measured rows also record
+   `calibrationSeed`, the per-pair input `seeds`, and each side's `warmupsBase`
+   and `warmupsTest`. A warmup count is the number of untimed kernel passes
+   before the timed region, including extra warm phases in late mutation.
+   Each side must report the same count during calibration and measurement.
 10. **Failures print in the same format as results**: `REJ`, and a void cell
     with its error.
 11. **Both halves, where a workload has two**: reads only, and with
@@ -237,6 +243,14 @@ The tables cite these rules by number.
     varies between sweeps. A cell's **agreement** is the range every one of its
     three intervals contains. A cell with no agreement is **withdrawn as
     unreplicable**, and its three numbers are printed anyway.
+
+The writer records `env.nodeOptions: ""` and `env.nodeV8Coverage: false` to
+mark the clean child environment. Rows without these fields cannot establish
+whether a child inherited Node options or coverage. Their `env.flags: ""`
+records only the explicit flags on the child command line. The published
+rows remain unchanged; this writer check cannot prove their effective flags.
+Rows without seed or warmup fields cannot establish those values from the
+row itself; the writer adds no inferred values to published data.
 
 `make tiers` re-runs every published cell's shape under
 `--trace-opt --trace-deopt`, in its own processes, at the rep counts the cell
