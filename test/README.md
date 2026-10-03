@@ -2,7 +2,7 @@
 
 To scan your own code, use the [README quick start](../README.md#quick-start).
 It covers Bun and the TypeScript 5.x or 6.x requirement. To work on jitmax, complete the
-[development setup](../README.md#development-and-licence), then run the commands
+[development setup](../ARCHITECTURE.md#development), then run the commands
 below from the jitmax checkout with Node `>=22.18`.
 
 What the suite guards, and how to run one test.
