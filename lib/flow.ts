@@ -29,6 +29,7 @@ const MAX_DEPTH = 48;
 const LITERAL_LIMIT = 'more than 64 literal allocation sites share one property set';
 const ARRAY_LIMIT = 'more than 64 array allocation sites share one counted shape';
 const ACCESSOR_LIMIT = 'the bounded accessor key summary is incomplete';
+const FIELD_LIMIT = 'more than 64 returned-object field definitions';
 
 type AccessorPossibility = {get: boolean; set: boolean; ownGet: boolean};
 
@@ -47,6 +48,10 @@ export interface Origin {
   arrayCapped?: boolean;
   // Scalar accessor possibilities survive clipping without retaining more ASTs.
   arrayAccessors?: AccessorPossibility;
+  // Derived DefineField operations on a constructor's replacement allocation.
+  // Writes retain bounded value sources; masks are definite own data keys.
+  fieldWrites?: readonly TS.PropertyDeclaration[];
+  fieldMask?: readonly string[];
 }
 
 export interface Res {
@@ -64,6 +69,7 @@ export interface Res {
   starved: boolean;
   arrayCapped?: boolean;
   arrayAccessors?: AccessorPossibility;
+  accessorIncomplete?: boolean;
 }
 
 // What one receiver resolves to. `follow` is the one implementation's body
@@ -74,6 +80,7 @@ export interface Traced {
   unknown: string[];
   bodies: TS.Node[];
   incompleteAccessors?: boolean;
+  accessorAbsent?: boolean;
 }
 
 export interface Flow {
@@ -261,6 +268,7 @@ const mergeAccessors = (a?: AccessorPossibility, b?: AccessorPossibility): Acces
 // A further projection changes the value whose descriptors need proof. A
 // clipped parent's element summary cannot prove its field or element plain.
 function projectArrayProof(out: Res, base: Res): void {
+  out.accessorIncomplete ||= base.accessorIncomplete;
   if (base.arrayCapped) {
     out.arrayCapped = true;
     out.arrayAccessors = {get: true, set: true, ownGet: true};
@@ -271,10 +279,10 @@ function projectArrayProof(out: Res, base: Res): void {
 
 // Only concrete allocation declarations can prove that a type lacks accessors.
 // Structural types describe values' properties without their descriptors.
-function possibleAccessors(w: Walk, type: TS.Type): AccessorPossibility {
+function possibleAccessors(w: Walk, type: TS.Type, masked: readonly string[] = []): AccessorPossibility {
   const {ts, checker} = w;
   if (type.isUnionOrIntersection()) {
-    return type.types.reduce((out, part) => mergeAccessors(out, possibleAccessors(w, part)), mergeAccessors());
+    return type.types.reduce((out, part) => mergeAccessors(out, possibleAccessors(w, part, masked)), mergeAccessors());
   }
   if (!(type.flags & ts.TypeFlags.Object)) {
     const primitive = ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BigIntLike |
@@ -289,6 +297,7 @@ function possibleAccessors(w: Walk, type: TS.Type): AccessorPossibility {
   }
   const out = mergeAccessors();
   for (const property of checker.getPropertiesOfType(type)) {
+    if (masked.includes(property.name)) continue;
     for (const declaration of property.getDeclarations() ?? []) {
       if (ts.isGetAccessorDeclaration(declaration)) {
         out.get = true;
@@ -305,20 +314,20 @@ function possibleAccessors(w: Walk, type: TS.Type): AccessorPossibility {
 function sourceAccessors(w: Walk, source: Res): AccessorPossibility {
   // The bounded origin map cannot distinguish exactly 64 from a larger set
   // whose excess origins were dropped, so the boundary proves no absence.
-  if (source.tainted || source.starved || source.arrayCapped || source.origins.size >= 64 ||
+  if (source.tainted || source.starved || source.accessorIncomplete || source.arrayCapped || source.origins.size >= 64 ||
       [...source.unknown].some((reason) => reason !== LITERAL_LIMIT)) {
     return {get: true, set: true, ownGet: true};
   }
   let out = mergeAccessors();
   for (const origin of source.origins.values()) {
     if (origin.kind === 'literal') {
-      const get = !!origin.literalAccessors?.get.length;
-      const set = !!origin.literalAccessors?.set.length;
+      const get = !!origin.literalAccessors?.get.some((key) => key === undefined || !origin.fieldMask?.includes(key));
+      const set = !!origin.literalAccessors?.set.some((key) => key === undefined || !origin.fieldMask?.includes(key));
       out = mergeAccessors(out, {get, set, ownGet: get});
     } else if (origin.kind !== 'array') {
       let type = w.checker.getTypeAtLocation(origin.node);
       if (origin.kind === 'class') type = type.getConstructSignatures()[0]?.getReturnType() ?? type;
-      out = mergeAccessors(out, possibleAccessors(w, type));
+      out = mergeAccessors(out, possibleAccessors(w, type, origin.fieldMask));
     }
   }
   return out;
@@ -354,6 +363,15 @@ export const merge = (into: Res, from: Res): void => {
     } else {
       into.origins.set(k, v);
     }
+    if (prior && (prior.fieldWrites || v.fieldWrites)) {
+      const fields = [...new Set([...(prior.fieldWrites ?? []), ...(v.fieldWrites ?? [])])];
+      const fieldMask = (prior.fieldMask ?? []).filter((name) => v.fieldMask?.includes(name));
+      into.origins.set(k, {...into.origins.get(k)!, fieldWrites: fields.slice(-64), fieldMask});
+      if (fields.length > 64) {
+        into.accessorIncomplete = true;
+        into.unknown.add(FIELD_LIMIT);
+      }
+    }
   }
   for (const u of from.unknown) {
     if (into.unknown.size >= 8) break;
@@ -361,6 +379,7 @@ export const merge = (into: Res, from: Res): void => {
   }
   into.tainted ||= from.tainted;
   into.starved ||= from.starved;
+  into.accessorIncomplete ||= from.accessorIncomplete;
   if (from.arrayCapped) into.arrayCapped = true;
   if (from.arrayAccessors) into.arrayAccessors = mergeAccessors(into.arrayAccessors, from.arrayAccessors);
 };
@@ -520,12 +539,22 @@ export function compute(w: Walk, node: TS.Node, q: Query): Res {
   }
   if (ts.isNewExpression(e)) {
     const out = emptyRes();
-    for (const d of w.targets(e.expression)) {
-      if (ts.isClassDeclaration(d) || ts.isClassExpression(d)) {
-        merge(out, originOf(w, { kind: 'class', node: d, name: className(d) }));
+    const classes = w.valueOf(e.expression, q);
+    for (const o of classes.origins.values()) {
+      if (o.kind === 'classobj' && ts.isClassLike(o.node)) {
+        merge(out, constructorResult(w, o.node, o.node, q));
       }
     }
-    if (out.origins.size === 0) out.unknown.add(`new ${e.expression.getText()} resolves to no visible class`);
+    out.tainted ||= classes.tainted;
+    out.starved ||= classes.starved;
+    for (const reason of classes.unknown) out.unknown.add(reason);
+    if (classes.accessorIncomplete || classes.arrayCapped || classes.origins.size >= 64) {
+      out.unknown.add('the constructor target source proof is incomplete');
+    }
+    if (out.origins.size === 0 && out.unknown.size === 0) {
+      out.unknown.add(`new ${e.expression.getText()} resolves to no visible class`);
+    }
+    if (out.unknown.size || out.tainted || out.starved) out.accessorIncomplete = true;
     return out;
   }
   if (ts.isArrowFunction(e) || ts.isFunctionExpression(e)) {
@@ -563,6 +592,119 @@ export function compute(w: Walk, node: TS.Node, q: Query): Res {
   // Literals, template strings, unary arithmetic: primitives, which are
   // never a dispatch receiver the escape test lets through.
   return emptyRes();
+}
+
+// Object returns replace the receiver. Derived fields are then defined on the
+// receiver returned by super(); an explicit derived object return replaces it.
+function constructorResult(
+  w: Walk, cls: TS.ClassLikeDeclaration, instance: TS.ClassLikeDeclaration, q: Query, depth = 0
+): Res {
+  const {ts, checker} = w;
+  const key = `new${w.idOf(cls)}:${w.idOf(instance)}`;
+  if (q.reading.has(key) || depth >= 8 || --q.budget <= 0) {
+    const out = unknown('the constructor result proof is incomplete');
+    out.tainted = q.reading.has(key);
+    out.starved = q.budget <= 0;
+    out.accessorIncomplete = true;
+    return out;
+  }
+  q.reading.add(key);
+  try {
+    const receiver = (): Res => {
+      const bases = cls.heritageClauses?.filter((h) => h.token === ts.SyntaxKind.ExtendsKeyword)
+        .flatMap((h) => h.types) ?? [];
+      if (bases.length === 0) return originOf(w, {kind: 'class', node: instance, name: className(instance)});
+      const out = emptyRes();
+      for (const base of bases) {
+        const sources = w.valueOf(base.expression, q);
+        for (const origin of sources.origins.values()) {
+          if (origin.kind === 'classobj' && ts.isClassLike(origin.node)) {
+            merge(out, constructorResult(w, origin.node, instance, q, depth + 1));
+          }
+        }
+        for (const reason of sources.unknown) out.unknown.add(reason);
+        out.tainted ||= sources.tainted;
+        out.starved ||= sources.starved;
+      }
+      if (out.origins.size === 0 && out.unknown.size === 0) out.unknown.add('no visible base constructor');
+      const fields = cls.members.filter((m): m is TS.PropertyDeclaration => ts.isPropertyDeclaration(m) &&
+        !m.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword ||
+          modifier.kind === ts.SyntaxKind.DeclareKeyword) && !ts.isPrivateIdentifier(m.name));
+      for (const [key, origin] of out.origins) {
+        // Genuine instances already expose their field declarations through
+        // memberValue. Only a replacement allocation needs this overlay.
+        if (origin.kind === 'class' && origin.node === instance) continue;
+        const names = fields.map((field) => bindingKey(ts, checker, field.name));
+        const writes = [...(origin.fieldWrites ?? []).filter((field) => {
+          const name = bindingKey(ts, checker, field.name);
+          return name === undefined || !names.includes(name);
+        }), ...fields];
+        const mask = [...new Set([...(origin.fieldMask ?? []), ...names.filter((name) => name !== undefined)])];
+        if (writes.length > 64 || mask.length > 64) {
+          // A clipped override list cannot identify the surviving descriptor.
+          // Keep uncertainty rather than admit an overwritten getter body.
+          out.origins.delete(key);
+          out.accessorIncomplete = true;
+          out.unknown.add(FIELD_LIMIT);
+          continue;
+        }
+        out.origins.set(key, {...origin, fieldWrites: writes, fieldMask: mask});
+        if (names.includes(undefined)) {
+          out.accessorIncomplete = true;
+          out.unknown.add('a returned-object field has an unknown computed key');
+        }
+      }
+      return out;
+    };
+    const constructor = cls.members.find(ts.isConstructorDeclaration);
+    if (!constructor) return receiver();
+    if (!constructor.body) {
+      const out = unknown('the constructor has no readable body');
+      out.accessorIncomplete = true;
+      return out;
+    }
+    const objectOnly = (expression: TS.Expression): boolean => {
+      const value = strip(ts, expression);
+      if (value.kind === ts.SyntaxKind.ThisKeyword) return false;
+      if (ts.isObjectLiteralExpression(value) || ts.isArrayLiteralExpression(value) ||
+          ts.isNewExpression(value) || ts.isFunctionExpression(value) || ts.isArrowFunction(value)) return true;
+      const type = checker.getTypeAtLocation(expression);
+      const parts = type.isUnion() ? type.types : [type];
+      if (parts.some((part) => !!(part.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown |
+          ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void)))) return false;
+      return [checker.getStringType(), checker.getNumberType(), checker.getBigIntType(),
+        checker.getBooleanType(), checker.getESSymbolType()]
+        .every((primitive) => !checker.isTypeAssignableTo(primitive, type));
+    };
+    let receiverReturn = false;
+    const inspect = (node: TS.Node): void => {
+      if (node !== constructor && isFunctionLike(ts, node)) return;
+      if (ts.isReturnStatement(node) && (!node.expression || !objectOnly(node.expression))) receiverReturn = true;
+      ts.forEachChild(node, inspect);
+    };
+    inspect(constructor);
+    const terminatesWithObject = (statement: TS.Statement): boolean => {
+      if (ts.isReturnStatement(statement)) return !!statement.expression && objectOnly(statement.expression);
+      if (ts.isThrowStatement(statement)) return true;
+      if (ts.isBlock(statement)) return statement.statements.some(terminatesWithObject);
+      return ts.isIfStatement(statement) && !!statement.elseStatement &&
+        terminatesWithObject(statement.thenStatement) && terminatesWithObject(statement.elseStatement);
+    };
+    const out = emptyRes();
+    for (const returned of w.returnsOf(constructor)) {
+      const type = checker.getTypeAtLocation(returned);
+      const parts = type.isUnion() ? type.types : [type];
+      const primitive = ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BigIntLike |
+        ts.TypeFlags.BooleanLike | ts.TypeFlags.ESSymbolLike | ts.TypeFlags.Null |
+        ts.TypeFlags.Undefined | ts.TypeFlags.Void | ts.TypeFlags.Never;
+      if (strip(ts, returned).kind !== ts.SyntaxKind.ThisKeyword &&
+          !parts.every((part) => !!(part.flags & primitive))) merge(out, w.valueOf(returned, q));
+    }
+    if (receiverReturn || !terminatesWithObject(constructor.body)) merge(out, receiver());
+    return out;
+  } finally {
+    q.reading.delete(key);
+  }
 }
 
 export function symbolFlow(w: Walk, id: TS.Identifier, q: Query): Res {
@@ -841,6 +983,13 @@ export function readProperty(
   projectArrayProof(out, base);
   for (const u of base.unknown) out.unknown.add(u);
   for (const o of base.origins.values()) {
+    for (const field of o.fieldWrites ?? []) {
+      if (bindingKey(w.ts, w.checker, field.name) === name) {
+        if (field.initializer) merge(out, w.valueOf(field.initializer, q));
+        merge(out, writesTo(w, name, [field], q, true));
+      }
+    }
+    if (o.fieldMask?.includes(name)) continue;
     if (o.kind === 'literal') {
       for (const literal of literalNodes(o)) {
         merge(out, w.literalProperty(literal, name, q));
@@ -858,7 +1007,9 @@ export function readProperty(
   // Writes anywhere in the program to the SAME declared property — `this.f =
   // v` in a constructor, `{ f: v }` under a contextual type — reach a read
   // the base origins cannot explain.
-  if (propDecls.length > 0) merge(out, writesTo(w, name, propDecls, q));
+  const replaced = base.origins.size > 0 && base.unknown.size === 0 && !base.tainted && !base.starved &&
+    !base.accessorIncomplete && [...base.origins.values()].every((origin) => origin.fieldMask?.includes(name));
+  if (propDecls.length > 0) merge(out, writesTo(w, name, propDecls, q, replaced));
   if (out.origins.size === 0 && out.unknown.size === 0) {
     out.unknown.add(`no visible write to .${name}`);
   }
@@ -868,9 +1019,10 @@ export function readProperty(
 // Every value written to one declared property, wherever the write is.
 // Matched by declaration, not by name, or every `.type` field in a program
 // would pour into every other.
-export function writesTo(w: Walk, name: string, decls: TS.Node[], q: Query): Res {
+export function writesTo(w: Walk, name: string, decls: TS.Node[], q: Query, mutationsOnly = false): Res {
   const out = emptyRes();
   for (const wr of (w.index().writes.get(name) ?? []).slice(0, 128)) {
+    if (mutationsOnly && wr.kind !== 'assign') continue;
     if (!sameProperty(w.writeDecls(wr, name), decls)) continue;
     if (wr.kind === 'assign') merge(out, w.valueOf(wr.value, q));
     else if (wr.kind === 'propassign') merge(out, w.valueOf(wr.prop.initializer, q));
@@ -1441,13 +1593,13 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     const possibilities = completeSummary ? res.arrayAccessors : {get: true, set: true, ownGet: true};
     const incompleteArrayAccessor = !!res.arrayCapped && accessor !== undefined &&
       (possibilities?.[call.rest ? 'ownGet' : accessor] ?? true);
-    let incompleteAccessors = incompleteArrayAccessor;
+    let incompleteAccessors = incompleteArrayAccessor || !!res.accessorIncomplete;
     for (const o of res.origins.values()) {
       if (call.rest) {
         // Literal accessors are own and enumerable. Class accessors live on
         // the prototype (or are non-enumerable statics), so rest never reads them.
         if (o.kind === 'literal' && ts.isObjectLiteralExpression(o.node)) {
-          const excluded = new Set<string>();
+          const excluded = new Set<string>(o.fieldMask);
           if (call.binding) {
             const pattern = call.binding.parent;
             const members = ts.isObjectBindingPattern(pattern) ? pattern.elements :
@@ -1521,8 +1673,9 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
         }
         continue;
       }
-      if (o.kind === 'function' || !carries(ts, o, method)) continue;
+      if ((o.kind === 'function' && !o.fieldWrites) || !carries(ts, o, method)) continue;
       const incomplete = call.accessor !== undefined && o.literalCapped &&
+        !o.fieldMask?.includes(method) &&
         o.literalAccessors?.[call.accessor].some((key) => key === undefined || key === method);
       incompleteAccessors ||= !!incomplete;
       if (incomplete && call.accessor && o.literalAccessors?.[call.accessor].includes(undefined)) {
@@ -1560,7 +1713,14 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
       unknowns.add('the analysis budget ran out before every origin was found');
     }
     const out: Traced = { origins, unknown: [...unknowns], bodies: [...bodies],
-      ...(incompleteAccessors ? {incompleteAccessors: true} : {}) };
+      ...(incompleteAccessors ? {incompleteAccessors: true} : {}),
+      // Empty actual descriptor lookup can disprove a structural declaration's
+      // accessor only when every source and the exact key are known.
+      ...(call.accessor && !call.rest && method !== undefined && bodies.size === 0 &&
+        res.origins.size > 0 && res.origins.size < 64 && unknowns.size === 0 && !incompleteAccessors &&
+        [...res.origins.values()].every((o) => o.fieldMask?.includes(method!) ||
+          (o.kind === 'literal' && !o.literalAccessors?.[call.accessor!].includes(undefined)) ||
+          o.kind === 'class' || o.kind === 'array') ? {accessorAbsent: true} : {}) };
     if (cache) cache.set(key, out);
     else traced.set(site, new Map([[key, out]]));
     return out;
@@ -1572,6 +1732,7 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     q: Query,
     accessor?: 'get' | 'set'
   ): Res {
+    if (accessor && o.fieldMask?.includes(name)) return emptyRes();
     if (o.kind === 'literal' && o.literalNodes) {
       const out = emptyRes();
       for (const literal of o.literalNodes) {

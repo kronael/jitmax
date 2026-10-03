@@ -1059,6 +1059,7 @@ function reach(
         const selected = declarations.filter((decl) => accessor === 'get'
           ? ts.isGetAccessorDeclaration(decl) : ts.isSetAccessorDeclaration(decl));
         const traced = flow.receiver({ expression, accessor, member, binding, rest });
+        if (traced.accessorAbsent) return;
         if (selected.length === 0 && traced.bodies.length === 0 && !traced.incompleteAccessors) return;
         visitCall(site, expression, [], closure,
           selected.length > 0 ? selected : traced.bodies, accessor, member, binding, rest);
