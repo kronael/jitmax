@@ -454,15 +454,15 @@ const OBJECT_PROTOTYPE = new Set([
 // invisible to it: vue's `watch.ts:161` counted 34 object literals at a call
 // only an array can make, every one of them from a `.spec.ts`.
 //
-// Object literals only. A literal without a spread carries exactly the names
-// it spells plus Object.prototype's, which makes the test exact. A class can
+// Object literals only. A literal without a spread carries its spelled names,
+// retained field definitions and Object.prototype's names. A class can
 // merge declarations, inherit from an unread base and carry an index
 // signature, so classes are left alone rather than guessed at.
 export const carries = (ts: Ts, o: Origin, method: string): boolean => {
   if (o.kind !== 'literal') return true;
   const lit = o.node as TS.ObjectLiteralExpression;
   if (hasSpread(ts, lit) || OBJECT_PROTOTYPE.has(method)) return true;
-  return lit.properties.some((p) => {
+  return [...lit.properties, ...(o.fieldWrites ?? [])].some((p) => {
     const n = p.name;
     if (!n) return true;
     if (ts.isIdentifier(n) || ts.isStringLiteral(n)) return n.text === method;
@@ -519,6 +519,9 @@ export function compute(w: Walk, node: TS.Node, q: Query): Res {
   const e = ts.isExpression(node) ? strip(ts, node) : node;
   if (e !== node) return w.valueOf(e, q);
 
+  if (ts.isClassExpression(e)) {
+    return originOf(w, {kind: 'classobj', node: e, name: className(e)});
+  }
   if (ts.isObjectLiteralExpression(e)) {
     // The dedup key is the full shape; the printed name is not — a field
     // object can carry thirty properties and the message needs a handle,

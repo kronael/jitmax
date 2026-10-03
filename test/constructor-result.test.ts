@@ -58,6 +58,14 @@ class ExplicitOverride extends ReturnedGetter {
 }
 class DefaultBase {value = 2;}
 class DefaultChild extends DefaultBase {other = 3;}
+const ExpressionPlain = class PlainExpression {value = 2;};
+const ExpressionAlias = ExpressionPlain;
+const ExpressionReturned = class {value = 2; constructor() {return makeDirty();}};
+const ExpressionDerived = class extends ReturnedGetter {value = 4;};
+class PlainBase {value = 2; constructor() {return {value: 2};}}
+class AddedPlain extends PlainBase {run = () => 0;}
+class AddedDirty extends PlainBase {run = () => {delete row.key; return 1;};}
+class AddedMutation extends PlainBase {run = () => 0;}
 function initialize() {delete row.key; return 2;}
 class Initializer {value = initialize(); constructor() {return data;}}
 class ConstructorBody {value = 2; constructor() {delete row.key; return data;}}
@@ -81,6 +89,12 @@ const choices64 = [${Array.from({length: 64}, (_, index) => `[${index === 0 ? 's
 const choices65 = [${Array.from({length: 65}, (_, index) => `[${index === 0 ? 'selected' : 'data'}]`).join(',')}];
 const selectedBoth = new Both(true);
 const selectedDefault = new DefaultChild();
+const selectedExpression = new ExpressionReturned();
+const selectedExpressionDerived = new ExpressionDerived();
+const selectedAddedPlain = new AddedPlain();
+const selectedAddedDirty = new AddedDirty();
+const selectedAddedMutation = new AddedMutation();
+selectedAddedMutation.run = () => {delete row.key; return 1;};
 /** @jitmax */ function copyReturned() {return {...selected};}
 /** @jitmax */ function readReturned() {return selected.value;}
 /** @jitmax */ function callReturned() {return selectedMethod.run();}
@@ -109,6 +123,17 @@ const selectedDefault = new DefaultChild();
 /** @jitmax */ function constructorBody() {return new ConstructorBody();}
 /** @jitmax */ function array64(index: number) {return {...choices64[index]![0]!};}
 /** @jitmax */ function array65(index: number) {return {...choices65[index]![0]!};}
+/** @jitmax */ function declarationCopy() {return {...new DefaultBase()};}
+/** @jitmax */ function expressionCopy() {return {...new ExpressionPlain()};}
+/** @jitmax */ function expressionAliasCopy() {return {...new ExpressionAlias()};}
+/** @jitmax */ function directExpressionCopy() {return {...new (class {value = 2;})()};}
+/** @jitmax */ function directExpressionBody() {return new (class {constructor() {delete row.key;}})();}
+/** @jitmax */ function directExpressionInitializer() {return new (class {value = initialize();})();}
+/** @jitmax */ function expressionReturned() {return {...selectedExpression};}
+/** @jitmax */ function expressionDerived() {return {...selectedExpressionDerived};}
+/** @jitmax */ function addedPlain() {return selectedAddedPlain.run();}
+/** @jitmax */ function addedDirty() {return selectedAddedDirty.run();}
+/** @jitmax */ function addedMutation() {return selectedAddedMutation.run();}
 `;
 fs.writeFileSync(file, source);
 const ts = load(path.join(import.meta.dirname, '..'));
@@ -194,6 +219,40 @@ test('definite constructor object return has no fabricated class origin', () => 
   }
 });
 
+/** Plain declaration, expression and alias constructions copy only data. */
+test('visible class expressions retain plain constructor origins', () => {
+  for (const name of ['declarationCopy', 'expressionCopy', 'expressionAliasCopy', 'directExpressionCopy']) clean(name);
+});
+/** Direct class construction checks the constructor and its field initializer. */
+test('direct class expression construction checks readable bodies', () => {
+  for (const name of ['directExpressionBody', 'directExpressionInitializer']) {
+    assert.deepEqual([...new Set(rules(name))], ['delete-property'], name);
+    const mark = result.marks.find((mark) => mark.name === name)!;
+    assert.ok(mark.reached.some((body) => name === 'directExpressionBody'
+      ? ts.isConstructorDeclaration(body.node) : ts.isPropertyDeclaration(body.node)), name);
+  }
+});
+/** A class expression's replacement getter remains the actual result. */
+test('class expression returned getter remains reachable', () => dirty('expressionReturned'));
+/** A derived expression defines its field on the replacement receiver. */
+test('class expression derived field masks the returned getter', () => clean('expressionDerived'));
+/** An added field is callable even when the returned literal lacks its key. */
+test('clean method added to a constructor returned literal stays clean', () => clean('addedPlain'));
+/** The added function field's readable body executes during the call. */
+test('deleting method added to a constructor returned literal stays reachable', () => dirty('addedDirty'));
+/** A later assignment remains a callable source of the added field. */
+test('mutation of an added method retains its deleting body', () => dirty('addedMutation'));
+/** Without the assignment, the added field has one clean visible target. */
+test('added method stays clean before a later mutation', () => {
+  const pristine = path.join(dir, 'added-pristine.ts');
+  fs.writeFileSync(pristine, source.replace('selectedAddedMutation.run = () => {delete row.key; return 1;};', ''));
+  try {
+    const before = scan(ts, program(ts, dir, [pristine]));
+    const mark = before.marks.find((mark) => mark.name === 'addedMutation')!;
+    assert.deepEqual(check(ts, before.checker, mark), []);
+  } finally {fs.unlinkSync(pristine);}
+});
+
 test('constructor result runtime agrees with positive and silent controls', () => {
   const run = new Function('function externalData() {return {get value() {delete row.key; return 1;}};}\n' +
     ts.transpile(source, {target: ts.ScriptTarget.ES2022}) +
@@ -201,16 +260,20 @@ test('constructor result runtime agrees with positive and silent controls', () =
     'returnedData, returnedSetterData, returnedMethodData, primitive, bare, prototypeCopy, prototypeRead, conditional, ' +
     'both, inherited, fieldOverride, fieldKeep, methodField, dirtyMethodField, finalMethodField, changedField, otherField, ' +
     'explicitOverride, defaultChild, cappedFields, externalResult, ' +
-    'initializer, constructorBody, array64, array65};')();
+    'initializer, constructorBody, array64, array65, declarationCopy, expressionCopy, expressionAliasCopy, ' +
+    'directExpressionCopy, directExpressionBody, directExpressionInitializer, expressionReturned, expressionDerived, ' +
+    'addedPlain, addedDirty, addedMutation};')();
   for (const name of ['copyReturned', 'readReturned', 'callReturned', 'prototypeRead',
     'inherited', 'fieldKeep', 'dirtyMethodField', 'changedField', 'explicitOverride', 'initializer', 'constructorBody',
-    'array64', 'array65', 'externalResult']) {
+    'array64', 'array65', 'externalResult', 'directExpressionBody', 'directExpressionInitializer',
+    'expressionReturned', 'addedDirty', 'addedMutation']) {
     run.row.key = 1;
     run[name](0);
     assert.equal(Object.hasOwn(run.row, 'key'), false, name);
   }
   for (const name of ['returnedData', 'returnedSetterData', 'returnedMethodData', 'primitive', 'bare',
-    'prototypeCopy', 'fieldOverride', 'methodField', 'finalMethodField', 'otherField', 'defaultChild', 'cappedFields']) {
+    'prototypeCopy', 'fieldOverride', 'methodField', 'finalMethodField', 'otherField', 'defaultChild', 'cappedFields',
+    'declarationCopy', 'expressionCopy', 'expressionAliasCopy', 'directExpressionCopy', 'expressionDerived', 'addedPlain']) {
     run.row.key = 1;
     run[name]();
     assert.equal(Object.hasOwn(run.row, 'key'), true, name);

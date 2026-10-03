@@ -495,6 +495,8 @@ export function targetsOf(
 ): TS.Node[] {
   if (seen.has(callee)) return [];
   seen.add(callee);
+  const value = unwrap(ts, callee);
+  if (ts.isClassExpression(value)) return [value];
   const sym = symbolOf(ts, checker, callee);
   const decls: TS.Node[] = [...(sym?.getDeclarations() ?? [])];
 
