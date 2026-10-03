@@ -3674,10 +3674,10 @@ test('every published surface states this version and this many rules', () => {
   const suite = doc(path.join('test', 'README.md'));
   const claimedTests = suite.match(/make test\s+#\s*(\d+) unit tests/);
   assert.ok(claimedTests, 'test/README.md no longer prints a test count beside `make test`');
-  const real =
-    (fs.readFileSync(path.join(root, 'test', 'check.test.ts'), 'utf8').match(/^test\(/gm) ?? []).length +
-    (fs.readFileSync(path.join(root, 'test', 'tiers.test.ts'), 'utf8').match(/^test\(/gm) ?? []).length +
-    (fs.readFileSync(path.join(root, 'test', 'provenance.test.ts'), 'utf8').match(/^test\(/gm) ?? []).length;
+  const real = fs.readdirSync(path.join(root, 'test'))
+    .filter((name) => name.endsWith('.test.ts'))
+    .reduce((count, name) => count +
+      (fs.readFileSync(path.join(root, 'test', name), 'utf8').match(/^test\(/gm) ?? []).length, 0);
   assert.strictEqual(
     Number(claimedTests[1]),
     real,
