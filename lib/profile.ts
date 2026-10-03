@@ -23,17 +23,20 @@ export interface HotFrame {
   generated?: { file: string; line: number; column: number };
 }
 
-// Every field optional below `id`: this is somebody else's JSON, and a node
-// without a callFrame crashed the tool with an unattributed TypeError that
-// exit 2 then printed with no file and no line.
+// Validate call frames before attributing samples: malformed metadata must
+// fail with the profile path rather than absorb time as engine coverage.
 interface Node {
   id: number;
-  callFrame?: {
-    functionName?: string;
-    url?: string;
-    lineNumber?: number;
-    columnNumber?: number;
+  callFrame: {
+    functionName: string;
+    url: string;
+    lineNumber: number;
+    columnNumber: number;
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 // The transform between the source and the profile, undone. A frame's position
@@ -149,50 +152,103 @@ export function hotFrames(profilePath: string): { frames: HotFrame[]; node: numb
   } catch (e) {
     throw new Error(`cannot read ${profilePath}: ${(e as NodeJS.ErrnoException).code ?? 'failed'}`);
   }
-  let parsed: { nodes?: Node[]; samples?: number[]; timeDeltas?: number[] };
+  let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
     throw new Error(`${profilePath}: not JSON — expected a V8 --cpu-prof profile`);
   }
-  const { nodes, samples, timeDeltas } = parsed;
-  if (!nodes || !samples || !timeDeltas) {
+  if (!isRecord(parsed) || !Array.isArray(parsed.nodes) ||
+      !Array.isArray(parsed.samples) || !Array.isArray(parsed.timeDeltas)) {
     throw new Error(`${profilePath}: not a V8 --cpu-prof profile (no nodes/samples/timeDeltas)`);
   }
-
-  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const { nodes, samples, timeDeltas } = parsed;
+  const invalid = (detail: string): never => {
+    throw new Error(`${profilePath}: invalid V8 --cpu-prof profile (${detail})`);
+  };
+  if (samples.length !== timeDeltas.length)
+    invalid('samples and timeDeltas must have equal lengths');
+  const byId = new Map<number, Node>();
+  for (const value of nodes) {
+    if (!isRecord(value) || typeof value.id !== 'number' ||
+        !Number.isSafeInteger(value.id) || value.id <= 0)
+      invalid('every node must have a positive integer id');
+    const frame = value.callFrame;
+    if (!isRecord(frame) || typeof frame.functionName !== 'string' ||
+        typeof frame.url !== 'string' ||
+        typeof frame.lineNumber !== 'number' ||
+        !Number.isSafeInteger(frame.lineNumber) || frame.lineNumber < -1 ||
+        typeof frame.columnNumber !== 'number' ||
+        !Number.isSafeInteger(frame.columnNumber) || frame.columnNumber < -1)
+      invalid(`node ${value.id} has an invalid callFrame`);
+    if (byId.has(value.id)) invalid(`duplicate node id ${value.id}`);
+    byId.set(value.id, {
+      id: value.id,
+      callFrame: {
+        functionName: frame.functionName,
+        url: frame.url,
+        lineNumber: frame.lineNumber,
+        columnNumber: frame.columnNumber,
+      },
+    });
+  }
   const self = new Map<number, number>();
   let total = 0;
   // timeDeltas[i] is the time BEFORE samples[i], which is the interval that
   // sample stands for.
   for (let i = 0; i < samples.length; i++) {
-    const dt = timeDeltas[i] ?? 0;
-    if (dt <= 0) continue;
+    const dt = timeDeltas[i];
     const id = samples[i]!;
+    if (typeof id !== 'number' || !Number.isSafeInteger(id) || !byId.has(id))
+      invalid(`sample ${i} names an unknown node id`);
+    if (typeof dt !== 'number' || !Number.isFinite(dt) || dt < 0)
+      invalid(`timeDeltas[${i}] must be finite and nonnegative`);
     self.set(id, (self.get(id) ?? 0) + dt);
     total += dt;
+    if (!Number.isFinite(total)) invalid('total sampled time is not finite');
   }
   if (total === 0) throw new Error(`${profilePath}: the profile has no sampled time in it`);
 
-  const out: HotFrame[] = [];
+  const located = new Map<string, {
+    frame: Omit<HotFrame, 'pct'>;
+    time: number;
+  }>();
   let node = 0;
   let engine = 0;
   for (const [id, time] of self) {
     // A frame with no URL is the engine's own: (garbage collector), (program),
     // (idle). Real time, no source line, nothing this tool can report on.
-    const frame = byId.get(id)?.callFrame;
-    const pct = (time / total) * 100;
-    if (frame?.url?.startsWith('node:')) node += pct;
-    else if (!frame?.url) engine += pct;
-    if (!frame?.url?.startsWith('file://')) continue;
-    out.push({
-      file: fileURLToPath(frame.url),
-      // cpuprofile positions are 0-based; every Site in this project is 1-based.
-      line: (frame.lineNumber ?? 0) + 1,
-      column: (frame.columnNumber ?? 0) + 1,
+    const frame = byId.get(id)!.callFrame;
+    if (frame.url.startsWith('node:')) node += time;
+    else if (!frame.url) engine += time;
+    if (!frame.url.startsWith('file://') || time === 0) continue;
+    let file: string;
+    try {
+      file = fileURLToPath(frame.url);
+    } catch {
+      return invalid(`node ${id} has an invalid file URL`);
+    }
+    // cpuprofile positions are 0-based; every Site in this project is 1-based.
+    const line = frame.lineNumber + 1;
+    const column = frame.columnNumber + 1;
+    const key = JSON.stringify([file, line, column]);
+    const found = located.get(key);
+    if (found) {
+      found.time += time;
+      continue;
+    }
+    located.set(key, { frame: {
+      file,
+      line,
+      column,
       name: frame.functionName || '<anonymous>',
-      pct,
-    });
+    }, time });
   }
-  return { frames: ported(out).sort((a, b) => b.pct - a.pct), node, engine };
+  const out = Array.from(located.values(), ({ frame, time }) =>
+    ({ ...frame, pct: (time / total) * 100 }));
+  return {
+    frames: ported(out).sort((a, b) => b.pct - a.pct),
+    node: (node / total) * 100,
+    engine: (engine / total) * 100,
+  };
 }

@@ -394,7 +394,6 @@ export function marksFromProfile(
   const own = frames.filter((f) => !isDependency(f));
   const project = own.reduce((n, f) => n + f.pct, 0);
   const dependency = frames.reduce((n, f) => n + f.pct, 0) - project;
-  const hot = own.filter((f) => (f.pct / project) * 100 >= minSelfPct);
   const nodes = new Map<string, { node: TS.SignatureDeclaration; sf: TS.SourceFile }>();
   const put = (k: string, v: { node: TS.SignatureDeclaration; sf: TS.SourceFile }): void => {
     if (!nodes.has(k)) nodes.set(k, v);
@@ -427,17 +426,24 @@ export function marksFromProfile(
     ts.forEachChild(sf, visit);
   }
 
+  const grouped = new Map<TS.Node | string, HotFrame>();
+  for (const frame of own) {
+    const key = nodes.get(siteKey(frame))?.node ?? siteKey(frame);
+    const previous = grouped.get(key);
+    let position = previous ?? frame;
+    if (frame.generated && !position.generated) position = frame;
+    grouped.set(key, { ...position, pct: (previous?.pct ?? 0) + frame.pct });
+  }
+  const hot = Array.from(grouped.values())
+    .filter((frame) => (frame.pct / project) * 100 >= minSelfPct);
   const marks: Mark[] = [];
   const unmatched: HotFrame[] = [];
-  const seen = new Set<TS.Node>();
   for (const frame of hot) {
     const hit = nodes.get(siteKey(frame));
     if (!hit) {
       unmatched.push(frame);
       continue;
     }
-    if (seen.has(hit.node)) continue;
-    seen.add(hit.node);
     marks.push({
       // A profile chooses the root, not the rules: a `-rule` on the function's
       // own annotation applies here exactly as it does to an annotated run.
