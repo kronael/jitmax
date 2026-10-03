@@ -119,6 +119,80 @@ declare const unread: Unread;
   fn = next;
   return fn(row);
 }
+const changedMethod = { run(row: Row) {} };
+changedMethod.run = remove;
+const changedProperty = { run: (row: Row) => 0 };
+changedProperty.run = remove;
+/** @jitmax */ function methodWrite(row: Row) { changedMethod.run(row); }
+/** @jitmax */ function propertyWrite(row: Row) { return changedProperty.run(row); }
+const stableMethod = { run(row: Row) {} };
+/** @jitmax */ function stableMethodCall(row: Row) { stableMethod.run(row); }
+class CleanConstructor { constructor(row: Row) {} }
+class DeletingConstructor { constructor(row: Row) { delete row.key; } }
+let Constructor = CleanConstructor;
+Constructor = DeletingConstructor;
+/** @jitmax */ function constructorWrite(row: Row) { return new Constructor(row); }
+/** @jitmax */ function cleanConstructor(row: Row) { return new CleanConstructor(row); }
+function leave(row: Row) { return 0; }
+/** @jitmax */ function conditionalCallback(rows: Row[], choose: boolean) {
+  return rows.map(choose ? remove : leave);
+}
+/** @jitmax */ function conditionalParameter(rows: Row[], choose: boolean, cb: (row: Row) => number) {
+  return rows.map(choose ? cb : leave);
+}
+function pickCallback(cb: (row: Row) => number) { return cb; }
+/** @jitmax */ function factoryCallback(rows: Row[], cb: (row: Row) => number) {
+  return rows.map(pickCallback(cb));
+}
+/** @jitmax */ function typedCallback(rows: Float64Array, cb: (value: number) => number) {
+  return rows.map(cb);
+}
+/** @jitmax */ function stableTypedCallback(rows: Uint8Array) {
+  return rows.map((value) => value + 1);
+}
+class ImplicitBox {
+  row: Row = {};
+  get value() { delete this.row.key; return 1; }
+  set value(value: number) { delete this.row.key; }
+}
+/** @jitmax */ function bindingGetter(box: ImplicitBox) { const { value } = box; return value; }
+function pickBinding({ value }: ImplicitBox) { return value; }
+/** @jitmax */ function parameterGetter() { return pickBinding(new ImplicitBox()); }
+function pickData({ value }: DataBase) { return value; }
+/** @jitmax */ function parameterData() { return pickData(new DataBase()); }
+function pickStructural({ value }: DataBase) { return value; }
+/** @jitmax */ function parameterStructural() { return pickStructural(accessorReplacement); }
+function pickNested({ box: { value } }: { box: ImplicitBox }) { return value; }
+/** @jitmax */ function parameterNested() { return pickNested({ box: new ImplicitBox() }); }
+function pickClean({ value }: WriteOnly) { return value; }
+/** @jitmax */ function parameterClean() { return pickClean(new WriteOnly()); }
+/** @jitmax */ function patternSetter(box: ImplicitBox) { ({ value: box.value } = { value: 1 }); }
+/** @jitmax */ function arrayPatternSetter(box: WriteOnly) { [box.value] = [1]; }
+/** @jitmax */ function patternDoesNotRead(box: ReadOnly) { [box.value] = [1]; }
+/** @jitmax */ function loopSetter(box: WriteOnly) { for (box.value of [1]) {} }
+/** @jitmax */ function loopDoesNotRead(box: ReadOnly) { for (box.value of [1]) {} }
+/** @jitmax */ function callableAccumulator(rows: number[], initial: () => number) {
+  return rows.reduce((carry) => carry, initial);
+}
+class DeletingBase { run(row: Row) { delete row.key; return 0; } }
+class DeletingDerived extends DeletingBase {
+  run(row: Row) { return super.run(row); }
+}
+/** @jitmax */ function deletingSuper(row: Row) { return new DeletingDerived().run(row); }
+class StaticBase { run(row: Row) { return 0; } }
+class StaticBad extends StaticBase { run(row: Row) { return remove(row); } }
+class StaticOther extends StaticBase { run(row: Row) { return super.run(row); } }
+new StaticBad();
+/** @jitmax */ function boundSuper(row: Row) { return new StaticOther().run(row); }
+class StructuralBase { run(row: Row) { return 0; } }
+const replacement = { run(row: Row) { delete row.key; return 1; } };
+/** @jitmax */ function structuralMethod(base: StructuralBase, row: Row) { return base.run(row); }
+structuralMethod(replacement, {});
+class DataBase { row: Row = {}; value = 0; }
+const replacementRow: Row = {};
+const accessorReplacement = { row: replacementRow, get value() { delete this.row.key; return 1; } };
+/** @jitmax */ function structuralGetter(base: DataBase) { return base.value; }
+structuralGetter(accessorReplacement);
 `;
 fs.writeFileSync(file, source);
 const ts = load(root);
@@ -279,4 +353,120 @@ test('walk reports an overridable accessor with no visible receiver', () => {
   assert.ok(rules('unknownAccessor').includes('closed-world'));
   assert.ok(mark('unknownAccessor').escapes.some((call) =>
     call.dispatch.unknown.length > 0));
+});
+
+/** Writes to object methods expose the assigned implementation. */
+test('walk checks writes to object methods and function properties', () => {
+  assert.ok(rules('methodWrite').includes('delete-property'));
+  assert.ok(rules('propertyWrite').includes('delete-property'));
+  assert.deepEqual(rules('stableMethodCall'), []);
+});
+
+/** A reassigned constructor checks the assigned class. */
+test('walk follows writes to a constructor binding', () => {
+  assert.ok(rules('constructorWrite').includes('delete-property'));
+  assert.deepEqual(rules('cleanConstructor'), []);
+});
+
+/** A conditional native callback checks each visible function. */
+test('walk checks conditional callback expressions', () => {
+  assert.ok(rules('conditionalCallback').includes('delete-property'));
+  assert.ok(rules('conditionalParameter').includes('interface-dispatch'));
+});
+
+/** A callback returned by a factory preserves its unread-body finding. */
+test('walk checks a factory-returned native callback', () => {
+  assert.ok(rules('factoryCallback').includes('closed-world'));
+});
+
+/** A typed array map invokes its callback and known callbacks stay silent. */
+test('walk reports an unknown typed array callback', () => {
+  assert.ok(rules('typedCallback').includes('closed-world'));
+  assert.deepEqual(rules('stableTypedCallback'), []);
+  assert.deepEqual(rules('callableAccumulator'), []);
+});
+
+/** A destructuring binding reads and checks the selected getter. */
+test('walk follows a getter read by a destructuring binding', () => {
+  assert.ok(rules('bindingGetter').includes('delete-property'));
+});
+
+/** Parameter patterns read getters through their visible arguments. */
+test('walk follows getters read by destructured parameters', () => {
+  for (const name of ['parameterGetter', 'parameterStructural', 'parameterNested']) {
+    assert.ok(rules(name).includes('delete-property'), name);
+  }
+  assert.deepEqual(rules('parameterData'), []);
+  assert.deepEqual(rules('parameterClean'), []);
+});
+
+/** Destructuring targets invoke setters and do not read getters. */
+test('walk follows setters in destructuring assignments', () => {
+  assert.ok(rules('patternSetter').includes('delete-property'));
+  assert.ok(rules('arrayPatternSetter').includes('delete-property'));
+  assert.deepEqual(rules('patternDoesNotRead'), []);
+});
+
+/** A for-of assignment invokes its setter without reading a getter. */
+test('walk follows a setter used as a for-of assignment target', () => {
+  assert.ok(rules('loopSetter').includes('delete-property'));
+  assert.deepEqual(rules('loopDoesNotRead'), []);
+});
+
+/** A super method call stays bound to the base implementation. */
+test('walk keeps a super method call bound to its base', () => {
+  assert.deepEqual(rules('boundSuper'), []);
+  assert.ok(rules('deletingSuper').includes('delete-property'));
+});
+
+/** Structural replacement overrides a concrete declared method. */
+test('walk follows a structural replacement of a concrete class method', () => {
+  assert.ok(rules('structuralMethod').includes('delete-property'));
+});
+
+/** A structural getter can replace a declared data property. */
+test('walk follows a structural getter replacing a data field', () => {
+  assert.ok(rules('structuralGetter').includes('delete-property'));
+});
+
+/** Untimed execution confirms each newly exercised invocation path. */
+test('reassigned and implicit invocation paths execute at runtime', () => {
+  const run = new Function(ts.transpile(source) +
+    '; return { methodWrite, propertyWrite, constructorWrite, conditionalCallback, ' +
+    'conditionalParameter, factoryCallback, typedCallback, ImplicitBox, WriteOnly, ' +
+    'bindingGetter, pickBinding, pickNested, patternSetter, arrayPatternSetter, loopSetter, boundSuper, deletingSuper };')();
+  for (const name of ['methodWrite', 'propertyWrite', 'constructorWrite']) {
+    const row = { key: 1 };
+    run[name](row);
+    assert.equal(Object.hasOwn(row, 'key'), false);
+  }
+  for (const name of ['conditionalCallback', 'conditionalParameter', 'factoryCallback']) {
+    const row = { key: 1 };
+    const cb = (row: { key?: number }) => { delete row.key; return 0; };
+    if (name === 'conditionalCallback') run[name]([row], true);
+    else if (name === 'conditionalParameter') run[name]([row], true, cb);
+    else run[name]([row], cb);
+    assert.equal(Object.hasOwn(row, 'key'), false);
+  }
+  const row: { key?: number } = { key: 1 };
+  run.typedCallback(new Float64Array([1]), () => { delete row.key; return 0; });
+  assert.equal(Object.hasOwn(row, 'key'), false);
+  for (const name of ['bindingGetter', 'patternSetter', 'arrayPatternSetter', 'loopSetter']) {
+    const box = name === 'bindingGetter' || name === 'patternSetter'
+      ? new run.ImplicitBox() : new run.WriteOnly();
+    box.row = { key: 1 };
+    run[name](box);
+    assert.equal(Object.hasOwn(box.row, 'key'), false);
+  }
+  for (const name of ['pickBinding', 'pickNested']) {
+    const box = new run.ImplicitBox();
+    box.row = { key: 1 };
+    run[name](name === 'pickBinding' ? box : { box });
+    assert.equal(Object.hasOwn(box.row, 'key'), false);
+  }
+  const clean = { key: 1 };
+  run.boundSuper(clean);
+  assert.equal(Object.hasOwn(clean, 'key'), true);
+  run.deletingSuper(clean);
+  assert.equal(Object.hasOwn(clean, 'key'), false);
 });

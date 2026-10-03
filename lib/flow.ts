@@ -54,10 +54,17 @@ export interface Res {
 export interface Traced {
   origins: Array<{ name: string; node: TS.Node; follow: TS.Node | undefined }>;
   unknown: string[];
+  bodies: TS.Node[];
 }
 
 export interface Flow {
-  receiver(call: { expression: TS.Expression; accessor?: 'get' | 'set' }): Traced;
+  receiver(call: {
+    expression: TS.Expression;
+    accessor?: 'get' | 'set';
+    construct?: boolean;
+    member?: string;
+    binding?: TS.BindingElement;
+  }): Traced;
   sources(node: TS.Node, elements?: boolean): Res;
   constructedClasses(cls: TS.ClassLikeDeclaration): TS.ClassLikeDeclaration[];
 }
@@ -388,20 +395,23 @@ export function bindingFlow(w: Walk, d: TS.BindingElement, q: Query): Res {
   const { ts, checker } = w;
   const pattern = d.parent;
   if (!ts.isObjectBindingPattern(pattern)) return unknown('an array-destructured value');
-  const holder = pattern.parent;
   const name = ts.isIdentifier(d.propertyName ?? d.name) ? (d.propertyName ?? d.name) : undefined;
   if (!name || !ts.isIdentifier(name)) return unknown('a computed destructuring key');
-  let src: Res;
-  if (ts.isVariableDeclaration(holder) && holder.initializer) {
-    src = w.valueOf(holder.initializer, q);
-  } else if (ts.isParameter(holder)) {
-    src = paramFlow(w, holder, q);
-  } else {
-    return unknown('a destructuring the walk does not model');
-  }
+  const src = bindingSource(w, d, q);
   const out = readProperty(w, src, name.text, declsOf(checker, checker.getSymbolAtLocation(d.name)), q);
   if (d.initializer) merge(out, w.valueOf(d.initializer, q));
   return out;
+}
+
+// The object consumed by a pattern, shared with the implicit getter walk.
+function bindingSource(w: Walk, d: TS.BindingElement, q: Query): Res {
+  const holder = d.parent.parent;
+  if (w.ts.isVariableDeclaration(holder) && holder.initializer) {
+    return w.valueOf(holder.initializer, q);
+  }
+  if (w.ts.isParameter(holder)) return paramFlow(w, holder, q);
+  if (w.ts.isBindingElement(holder)) return bindingFlow(w, holder, q);
+  return unknown('a destructuring the walk does not model');
 }
 
 export function paramFlow(w: Walk, param: TS.ParameterDeclaration, q: Query): Res {
@@ -1078,13 +1088,11 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
   // The receiver of one call, traced to its origins. For `x.m()` the receiver
   // is x and `follow` is m's body on each origin; for a bare `f()` through a
   // call signature the receiver is f itself and `follow` is the function.
-  const traced = new Map<TS.Node, Traced>();
-  const getters = new Map<TS.Node, Traced>();
-  const setters = new Map<TS.Node, Traced>();
-  function receiver(call: { expression: TS.Expression; accessor?: 'get' | 'set' }): Traced {
-    const cache = call.accessor === 'get' ? getters :
-      call.accessor === 'set' ? setters : traced;
-    const have = cache.get(call.expression);
+  const traced = new Map<TS.Node, Map<string, Traced>>();
+  function receiver(call: Parameters<Flow['receiver']>[0]): Traced {
+    const key = `${call.accessor ?? (call.construct ? 'new' : 'call')}:${call.member ?? ''}`;
+    const cache = traced.get(call.expression);
+    const have = cache?.get(key);
     if (have) return have;
     const q: Query = { budget: VISIT_BUDGET, stack: new Set(), reading: new Set() };
     // The exported unwrap, not a fourth parentheses-only loop. scan.ts unwraps
@@ -1099,7 +1107,10 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
 
     let res: Res;
     let method: string | undefined;
-    if (ts.isPropertyAccessExpression(callee)) {
+    if (call.member !== undefined) {
+      res = call.binding ? bindingSource(w, call.binding, q) : w.valueOf(callee, q);
+      method = call.member;
+    } else if (ts.isPropertyAccessExpression(callee)) {
       res = w.valueOf(callee.expression, q);
       method = callee.name.text;
     } else if (ts.isElementAccessExpression(callee)) {
@@ -1113,26 +1124,38 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     }
 
     const origins: Traced['origins'] = [];
+    const bodies = new Set<TS.Node>();
+    const unknowns = new Set(res.unknown);
     for (const o of res.origins.values()) {
       if (method === undefined) {
-        // A bare call: only a function origin is a body to follow, and a
-        // non-function origin says nothing about the call target.
-        if (o.kind === 'function') {
-          origins.push({ name: o.name, node: o.node, follow: bodyOf(ts, o.node) });
+        const follow = o.kind === 'function' ? bodyOf(ts, o.node) :
+          call.construct && o.kind === 'classobj' ? o.node : undefined;
+        if (follow) {
+          origins.push({ name: o.name, node: o.node, follow });
+          bodies.add(follow);
         }
         continue;
       }
-      if (o.kind === 'function') continue;
-      if (!carries(ts, o, method)) continue;
-      origins.push({ name: o.name, node: o.node, follow: methodBody(o, method, q, call.accessor) });
+      if (o.kind === 'function' || !carries(ts, o, method)) continue;
+      const holder = methodBody(o, method, q, call.accessor);
+      const targets = [...holder.origins.values()].flatMap((target) => {
+        const body = target.kind === 'function' ? bodyOf(ts, target.node) : undefined;
+        return body ? [body] : [];
+      });
+      for (const body of targets) bodies.add(body);
+      for (const reason of holder.unknown) unknowns.add(reason);
+      if (holder.tainted) unknowns.add('the member value flow is cyclic');
+      if (holder.starved) unknowns.add('the member analysis budget ran out');
+      const follow = targets.length === 1 && holder.unknown.size === 0 &&
+        !holder.tainted && !holder.starved ? targets[0] : undefined;
+      origins.push({ name: o.name, node: o.node, follow });
     }
-    const unknowns = [...res.unknown];
     // A cycle-cut walk may have dropped origins flowing around the loop, so
     // its count is a lower bound like any other unknown — and a single origin
     // it reports is not proof of one implementation, so nothing is followed on
     // its word.
-    if (res.tainted && unknowns.length === 0) {
-      unknowns.push('the value flow is cyclic, so the count may be incomplete');
+    if (res.tainted && unknowns.size === 0) {
+      unknowns.add('the value flow is cyclic, so the count may be incomplete');
     }
     // The same statement for the other way origins go missing. `starved` is
     // set when a query ran out of budget, and `readProperty` drops the budget
@@ -1141,11 +1164,12 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     // MAX_DEPTH turned a two-implementation receiver into "the one
     // implementation this program builds, and followed": same program, longer
     // chain, stronger claim (BUGS TC-112).
-    if (res.starved && unknowns.length === 0) {
-      unknowns.push('the analysis budget ran out before every origin was found');
+    if (res.starved && unknowns.size === 0) {
+      unknowns.add('the analysis budget ran out before every origin was found');
     }
-    const out = { origins, unknown: unknowns };
-    cache.set(call.expression, out);
+    const out = { origins, unknown: [...unknowns], bodies: [...bodies] };
+    if (cache) cache.set(key, out);
+    else traced.set(call.expression, new Map([[key, out]]));
     return out;
   }
 
@@ -1154,28 +1178,24 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     name: string,
     q: Query,
     accessor?: 'get' | 'set'
-  ): TS.Node | undefined {
-    if (accessor !== undefined) {
-      let type = checker.getTypeAtLocation(o.node);
-      if (o.kind === 'classobj' && ts.isClassLike(o.node) && o.node.name) {
-        const symbol = symbolOf(ts, checker, o.node.name);
-        if (symbol) type = checker.getTypeOfSymbolAtLocation(symbol, o.node);
-      } else if (o.kind === 'class') {
-        type = type.getConstructSignatures()[0]?.getReturnType() ?? type;
-      }
-      const declarations = checker.getPropertyOfType(type, name)?.getDeclarations();
-      const declaration = declarations?.find((decl) => accessor === 'get'
-        ? ts.isGetAccessorDeclaration(decl) : ts.isSetAccessorDeclaration(decl));
-      return declaration ? bodyOf(ts, declaration) : undefined;
+  ): Res {
+    let type = checker.getTypeAtLocation(o.node);
+    if (o.kind === 'classobj' && ts.isClassLike(o.node) && o.node.name) {
+      const symbol = symbolOf(ts, checker, o.node.name);
+      if (symbol) type = checker.getTypeOfSymbolAtLocation(symbol, o.node);
+    } else if (o.kind === 'class') {
+      type = type.getConstructSignatures()[0]?.getReturnType() ?? type;
     }
-    let holder: Res;
-    if (o.kind === 'literal') holder = w.literalProperty(o.node as TS.ObjectLiteralExpression, name, q);
-    else if (o.kind === 'class' || o.kind === 'classobj') {
-      holder = w.memberValue(o.node as TS.ClassLikeDeclaration, name, o.kind === 'classobj', q);
-    } else return undefined;
-    const fns = [...holder.origins.values()].filter((x) => x.kind === 'function');
-    if (fns.length !== 1 || holder.unknown.size > 0) return undefined;
-    return bodyOf(ts, fns[0]!.node);
+    const declarations = checker.getPropertyOfType(type, name)?.getDeclarations() ?? [];
+    if (accessor !== undefined) {
+      const declaration = declarations.find((decl) => accessor === 'get'
+        ? ts.isGetAccessorDeclaration(decl) : ts.isSetAccessorDeclaration(decl));
+      if (!declaration) return emptyRes();
+      const body = bodyOf(ts, declaration);
+      return body ? originOf(w, { kind: 'function', node: body, name }) :
+        unknown(`the ${accessor} accessor .${name} has no readable body`);
+    }
+    return readProperty(w, originOf(w, o), name, [...declarations], q);
   }
 
   function sources(node: TS.Node, elements = false): Res {

@@ -745,7 +745,9 @@ function reach(
         args: readonly TS.Expression[],
         closure: boolean,
         declarations?: TS.Node[],
-        accessor?: 'get' | 'set'
+        accessor?: 'get' | 'set',
+        member?: string,
+        binding?: TS.BindingElement
       ): void => {
         const text = expression.getText(body.sf);
         const callee = unwrap(ts, expression);
@@ -754,22 +756,22 @@ function reach(
           targets.every((decl) =>
             program.isSourceFileDefaultLibrary(decl.getSourceFile()) &&
             ts.isInterfaceDeclaration(decl.parent) &&
-            (decl.parent.name.text === 'Array' || decl.parent.name.text === 'ReadonlyArray') &&
+            decl.parent.name.text.endsWith('Array') &&
             ts.isMethodSignature(decl) && ts.isIdentifier(decl.name) &&
             ELEMENT_PARAM.has(decl.name.text)
           );
         for (let index = 0; index < args.length; index++) {
           const arg = args[index]!;
           const argument = unwrap(ts, arg);
+          if (nativeArrayCallback && index === 0) {
+            visitCall(arg, argument, [], true);
+            continue;
+          }
           if (!ts.isIdentifier(argument) &&
             !ts.isPropertyAccessExpression(argument) &&
             !ts.isElementAccessExpression(argument)) continue;
-          if (nativeArrayCallback && index === 0) {
-            visitCall(arg, argument, [], true);
-          } else {
-            for (const target of targetsOf(ts, checker, argument)) {
-              if (followable(ts, target)) admit(body.node, target, undefined, true);
-            }
+          for (const target of targetsOf(ts, checker, argument)) {
+            if (followable(ts, target)) admit(body.node, target, undefined, true);
           }
         }
         const primitive = PRIMITIVES.has(text);
@@ -802,6 +804,19 @@ function reach(
             ts.isArrowFunction(callee) || ts.isFunctionExpression(callee)
               ? [callee as TS.Node]
               : targets;
+          const invocation = {
+            expression, accessor, member, binding, construct: ts.isNewExpression(node),
+          };
+          const baseBound = (ts.isPropertyAccessExpression(callee) ||
+            ts.isElementAccessExpression(callee)) &&
+            unwrap(ts, callee.expression).kind === ts.SyntaxKind.SuperKeyword;
+          const propertyTarget = raw.some((decl) =>
+            !decl.getSourceFile().isDeclarationFile &&
+            (ts.isMethodDeclaration(decl) || ts.isPropertyAssignment(decl) ||
+              ts.isPropertyDeclaration(decl) || ts.isGetAccessorDeclaration(decl)));
+          const receiver = !baseBound && propertyTarget
+            ? flow.receiver(invocation) : undefined;
+          const replacement = receiver?.bodies.some((target) => !raw.includes(target));
           const changesTarget = raw.some((decl) =>
             (ts.isVariableDeclaration(decl) &&
               !decl.getSourceFile().isDeclarationFile &&
@@ -812,15 +827,19 @@ function reach(
                 .some((cls) => cls !== decl.parent)) ||
             ts.isGetAccessorDeclaration(decl)
           );
-          const accessorOverride = accessor !== undefined && targets.some((decl) =>
-            ts.isClassLike(decl.parent) && flow.constructedClasses(decl.parent)
-              .some((cls) => cls !== decl.parent));
-          const dynamic = !ts.isNewExpression(node) &&
-            (declarations === undefined || accessorOverride) &&
-            (changesTarget || accessorOverride || (primitive && !nativeOwner));
-          const dispatch = dynamic ? flow.receiver({ expression, accessor }) : undefined;
+          const accessorOverride = accessor !== undefined && (replacement ||
+            targets.some((decl) => ts.isClassLike(decl.parent) &&
+              flow.constructedClasses(decl.parent).some((cls) => cls !== decl.parent)));
+          const dynamic = !baseBound &&
+            (declarations === undefined || accessorOverride || replacement) &&
+            (changesTarget || accessorOverride || replacement || (primitive && !nativeOwner));
+          const dispatch = dynamic ? receiver ?? flow.receiver(invocation) : undefined;
           if (dispatch) {
-            raw = dispatch.origins.flatMap((origin) => origin.follow ? [origin.follow] : []);
+            raw = dispatch.bodies;
+            const one = dispatch.origins.length === 1 && dispatch.unknown.length === 0
+              ? dispatch.origins[0]?.follow : undefined;
+            if (one && followable(ts, one) &&
+              !targets.some((decl) => followable(ts, decl))) followed++;
           }
           // `new Foo()` resolves to the CLASS, and what runs is its
           // constructor. A class that declares none does NOT run nothing: the
@@ -944,7 +963,7 @@ function reach(
               // The dataflow walk answers both, and what separates the two
               // rules is which body is missing, not which one got counted
               // (BUGS TC-110).
-              const r = flow.receiver({ expression, accessor });
+              const r = flow.receiver(invocation);
               const one =
                 r.origins.length === 1 && r.unknown.length === 0 ? r.origins[0] : undefined;
               if (one?.follow !== undefined && followable(ts, one.follow)) {
@@ -982,7 +1001,7 @@ function reach(
                   // walk found is checked rather than pointed at — arktype's
                   // `printable` was located at `path.ts:50` and left unread
                   // (BUGS TC-158).
-                  const located = r.origins.flatMap((o) => (o.follow ? [o.follow] : []));
+                  const located = r.bodies;
                   for (const target of located) {
                     if (followable(ts, target)) admit(body.node, target, undefined, closure);
                   }
@@ -1013,6 +1032,21 @@ function reach(
           }
         }
       };
+      const visitAccessor = (
+        site: TS.Node,
+        expression: TS.Expression,
+        declarations: TS.Node[],
+        accessor: 'get' | 'set',
+        member?: string,
+        binding?: TS.BindingElement
+      ): void => {
+        const selected = declarations.filter((decl) => accessor === 'get'
+          ? ts.isGetAccessorDeclaration(decl) : ts.isSetAccessorDeclaration(decl));
+        const traced = flow.receiver({ expression, accessor, member, binding });
+        if (selected.length === 0 && traced.bodies.length === 0) return;
+        visitCall(site, expression, [], closure,
+          selected.length > 0 ? selected : traced.bodies, accessor, member, binding);
+      };
       if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
         visitCall(node, node.expression, node.arguments ?? [], closure);
       } else if (ts.isTaggedTemplateExpression(node)) {
@@ -1025,21 +1059,40 @@ function reach(
         let access: TS.Expression = node;
         while (access.parent && ts.isExpression(access.parent) &&
           unwrap(ts, access.parent) === node) access = access.parent;
-        const parent = access.parent;
-        const assignment = ts.isBinaryExpression(parent) && parent.left === access &&
+        let target: TS.Node = access;
+        while (target.parent &&
+          (ts.isArrayLiteralExpression(target.parent) ||
+            ts.isObjectLiteralExpression(target.parent) ||
+            (ts.isPropertyAssignment(target.parent) &&
+              target.parent.initializer === target) ||
+            ts.isSpreadElement(target.parent) ||
+            ts.isSpreadAssignment(target.parent))) target = target.parent;
+        const parent = target.parent;
+        const assignment = ts.isBinaryExpression(parent) && parent.left === target &&
           parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
           parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment;
+        const iteration = (ts.isForOfStatement(parent) || ts.isForInStatement(parent)) &&
+          parent.initializer === target;
         const update = (ts.isPrefixUnaryExpression(parent) ||
           ts.isPostfixUnaryExpression(parent)) &&
           (parent.operator === ts.SyntaxKind.PlusPlusToken ||
             parent.operator === ts.SyntaxKind.MinusMinusToken);
-        const read = !ts.isDeleteExpression(parent) &&
+        const read = !ts.isDeleteExpression(parent) && !iteration &&
           !(assignment && parent.operatorToken.kind === ts.SyntaxKind.EqualsToken);
-        for (const decl of targetsOf(ts, checker, node)) {
-          const getter = read && ts.isGetAccessorDeclaration(decl);
-          const setter = (assignment || update) && ts.isSetAccessorDeclaration(decl);
-          if (getter || setter) {
-            visitCall(node, node, [], closure, [decl], getter ? 'get' : 'set');
+        const declarations = targetsOf(ts, checker, node);
+        if (read) visitAccessor(node, node, declarations, 'get');
+        if (assignment || update || iteration) {
+          visitAccessor(node, node, declarations, 'set');
+        }
+      } else if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
+        const holder = node.parent.parent;
+        const name = node.propertyName ?? node.name;
+        if (ts.isIdentifier(name) || ts.isStringLiteral(name)) {
+          const source = ts.isVariableDeclaration(holder) ? holder.initializer : name;
+          if (source) {
+            const type = checker.getTypeAtLocation(node.parent);
+            const declarations = checker.getPropertyOfType(type, name.text)?.getDeclarations();
+            visitAccessor(node, source, [...declarations ?? []], 'get', name.text, node);
           }
         }
       }
