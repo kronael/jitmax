@@ -48,7 +48,10 @@ code treat a profiled mark exactly as an annotated one.
 **Walk.** From each mark, `lib/scan.ts` follows every call whose callee has a
 body in the program, to a fixpoint, recording every edge it takes. A visited
 set stops cycles. Each annotation has a hard cap of 200 function bodies;
-hitting it prints `WALK TRUNCATED` and makes the run exit 1. A `new` is a call:
+hitting it prints `WALK TRUNCATED` and makes the run exit 1. The walk includes
+tagged-template calls and getter or setter bodies reached through a known
+property name. Known native array methods also follow their callback targets.
+A `new` is a call:
 the constructor is a body like any other and runs per call, as does an
 instance field. A `new` also admits the class's static field initializers,
 each as an edge that runs once, when the class is defined. A body that only
@@ -95,9 +98,10 @@ megamorphic rules ask `lib/flow.ts` what reaches a value across calls,
 the note under it, the sweep behind the rule where it has one, and every
 defect code the rule carries; what each code means is printed once, after the
 findings. It also prints what the run could not check: calls into the
-platform, calls lowered to inline code, and how many findings a config
-suppressed and from which rules. Related locations show five per finding, or
-all with `--verbose`; that is a display limit, separate from the flow walk's
+platform, calls eligible for inline reduction under the pinned V8 policy,
+and how many findings a config suppressed and from which rules. Related
+locations show five per finding, or all with `--verbose`; that is a display
+limit, separate from the flow walk's
 analysis limits.
 
 ## Which calls are not gaps
@@ -111,13 +115,18 @@ the run and never named.
 
 ## Profile mode
 
-Every function at or above `[profile] min_self_pct` of the project's sampled
-self time is marked, and the report says what marked it. The project's share
-leaves out frames in dependencies, Node's internals and the engine:
+Profile frames that match the same source function contribute to one self-time
+total before the `[profile] min_self_pct` threshold is applied. Every function
+at or above that threshold is marked, and the report says what marked it. The
+project's share leaves out frames in dependencies, Node's internals and the engine:
 
 ```
   src/hash.ts:8  compress() — 58.6% of samples, run.cpuprofile
 ```
+
+Malformed profiles stop the run at exit `2`, with the profile path and the
+validation error. The loader checks sample references, frame metadata and finite,
+nonnegative timing values before it attributes any time.
 
 A frame's position is a position in the file V8 **ran**, which is not the file
 you wrote once anything transforms it; one `enum` is enough, because type
@@ -146,7 +155,7 @@ min_self_pct = 2
 ```
 
 Then name it beside the profile:
-`bunx github:kronael/jitmax profile.toml run.cpuprofile src`. A config with
+`bunx github:kronael/jitmax#v0.17.1 profile.toml run.cpuprofile src`. A config with
 `[profile]` exits `2` on a run given no `.cpuprofile`, so keep it out of the
 `jitmax.toml` that annotation runs find. A named `.toml` replaces the found
 one, so copy any `[rules]` you need into it.
@@ -156,10 +165,10 @@ one, so copy any `[rules]` you need into it.
 Bun runs the checker, but the rules and their evidence concern V8. They do not
 predict performance under Bun's JavaScriptCore engine.
 
-`bunx github:kronael/jitmax` installs from the repository. The linked
-executable, `bin/cli.js`, selects Bun through its shebang, and Bun can run the
-TypeScript under `node_modules`, so an unbuilt Git install needs neither
-`dist/` nor permission to run `prepare`. Bun's
+`bunx github:kronael/jitmax#v0.17.1` installs source from the `v0.17.1` release
+tag. The linked executable, `bin/cli.js`, selects Bun through its shebang.
+Bun can run TypeScript under `node_modules`, so an unbuilt Git install needs
+neither `dist/` nor permission to run `prepare`. Bun's
 [shebang rules](https://bun.sh/docs/pm/bunx#shebangs) and
 [lifecycle policy](https://bun.sh/docs/pm/lifecycle) explain the runtime and
 script handling.

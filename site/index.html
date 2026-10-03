@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="krons:type" content="products">
-<meta name="krons:date" content="2026-10-02">
+<meta name="krons:date" content="2026-10-03">
 <meta name="krons:pin"  content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="A static checker for speed-sensitive TypeScript on V8 — numba's @njit, for V8. Mark a hot function and jitmax reports the patterns that measurably push V8 off its fast path, in that function and every function it calls, and the calls it cannot check.">
@@ -50,7 +50,7 @@
     next step, and an exit code a CI gate can read. Slowdown rules cite their
     benchmark; coverage rules report unchecked calls without claiming they are slow. It never runs or rewrites your code. Run it
     from your project root:
-    <code>bunx github:kronael/jitmax src</code>
+    <code>bunx github:kronael/jitmax#v0.17.1 src</code>
   </div>
 </div>
 
@@ -65,6 +65,10 @@
 <p class="cap">
   The middle is a real recording: the checker running against a function
   radash ships, vendored unchanged into <code>examples/</code>.
+  The cost range comes from a separate benchmark: reads through five property
+  sets versus one, from L1 cache to RAM.
+  The raw timings are in
+  <a href="https://github.com/kronael/jitmax/blob/v0.17.1/bench/shape-sets.jl"><code>bench/shape-sets.jl</code></a>.
 </p>
 
 <p id="media-error" role="alert" hidden>
@@ -99,7 +103,9 @@ export function total(rows: Row[]): number {
   return sum;
 }</code></pre>
 
-<pre><code>bunx github:kronael/jitmax shapes.ts</code></pre>
+<p>Then run this from the project root:</p>
+
+<pre><code>bunx github:kronael/jitmax#v0.17.1 shapes.ts</code></pre>
 
 <p>It exits <code>1</code>, and its finding reads:</p>
 
@@ -131,7 +137,7 @@ export function total(rows: Row[]): number {
 
 <p>
   Now install your project's dependencies, mark your own hot function and run
-  <code>bunx github:kronael/jitmax src</code>. <code>--help</code> lists every
+  <code>bunx github:kronael/jitmax#v0.17.1 src</code>. <code>--help</code> lists every
   argument.
 </p>
 
@@ -139,24 +145,24 @@ export function total(rows: Row[]): number {
 
 <ul>
   <li>
-    <a href="https://github.com/kronael/jitmax/blob/HEAD/README.md">README</a>:
+    <a href="https://github.com/kronael/jitmax/blob/v0.17.1/README.md">README</a>:
     setup, rule selection, CPU profiles and exit codes.
   </li>
   <li>
-    <a href="https://github.com/kronael/jitmax/blob/HEAD/docs/rules.md">Rules</a>:
+    <a href="https://github.com/kronael/jitmax/blob/v0.17.1/docs/rules.md">Rules</a>:
     what each rule detects and what it cost when measured, where it stays
     silent, and what to do about a finding.
   </li>
   <li>
-    <a href="https://github.com/kronael/jitmax/blob/HEAD/docs/limits.md">Limits</a>:
+    <a href="https://github.com/kronael/jitmax/blob/v0.17.1/docs/limits.md">Limits</a>:
     where jitmax is blind or wrong.
   </li>
   <li>
-    <a href="https://github.com/kronael/jitmax/blob/HEAD/examples/README.md">Examples</a>:
+    <a href="https://github.com/kronael/jitmax/blob/v0.17.1/examples/README.md">Examples</a>:
     four library fixes measured end to end, and the 22-codebase survey.
   </li>
   <li>
-    <a href="https://github.com/kronael/jitmax/blob/HEAD/bench/README.md">Benchmarks</a>:
+    <a href="https://github.com/kronael/jitmax/blob/v0.17.1/bench/README.md">Benchmarks</a>:
     how every number was measured, and how to re-run it.
   </li>
 </ul>
@@ -165,9 +171,8 @@ export function total(rows: Row[]): number {
   <p>
     v0.17.1, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
     those terms; a derivative work carries the same licence.
-    <a href="https://github.com/kronael/jitmax">Source on GitHub</a>; the
-    <code>bunx</code> command runs its <code>main</code> branch, which can be
-    ahead of the newest tag.
+    <a href="https://github.com/kronael/jitmax/tree/v0.17.1">Source on GitHub</a>.
+    The install commands and guides use the <code>v0.17.1</code> release tag.
   </p>
 </div>
 

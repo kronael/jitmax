@@ -477,7 +477,7 @@ this as `jitmax.toml` in your project root:
 "TC-9" = false
 ```
 
-Then run `bunx github:kronael/jitmax src` from that root. For a
+Then run `bunx github:kronael/jitmax#v0.17.1 src` from that root. For a
 megamorphic-only scan, copy the
 [megamorphic preset](../examples/megamorphic/jitmax.toml) there as
 `jitmax.toml` instead.

@@ -10,7 +10,7 @@ calls without claiming they are slow. It never runs,
 compiles or rewrites your code:
 
 ```sh
-bunx github:kronael/jitmax src
+bunx github:kronael/jitmax#v0.17.1 src
 ```
 
 ![jitmax reporting one line in a function radash ships](demo/demo.gif)
@@ -42,7 +42,7 @@ export function total(rows: { value: number }[]): number {
 ```
 
 ```sh
-bunx github:kronael/jitmax hot.ts
+bunx github:kronael/jitmax#v0.17.1 hot.ts
 ```
 
 It reports `every annotated function is clean.` and exits `0`. Now mark your
@@ -99,7 +99,7 @@ export function total(rows: Row[]): number {
 }
 ```
 
-`bunx github:kronael/jitmax shapes.ts` exits `1` and prints:
+`bunx github:kronael/jitmax#v0.17.1 shapes.ts` exits `1` and prints:
 
 ```text
 jitmax — 1 annotated function, 1 error
@@ -143,7 +143,7 @@ To report only megamorphic reads and calls, copy the
 `jitmax.toml`, then run as before:
 
 ```sh
-bunx github:kronael/jitmax src
+bunx github:kronael/jitmax#v0.17.1 src
 ```
 
 The preset also switches off `closed-world` and `interface-dispatch`, so the
@@ -159,7 +159,7 @@ Node and pass it:
 
 ```sh
 node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
-bunx github:kronael/jitmax run.cpuprofile src
+bunx github:kronael/jitmax#v0.17.1 run.cpuprofile src
 ```
 
 Every function with at least 1% of your project's sampled self time is
@@ -196,8 +196,9 @@ and fix. The exit code says how the run went:
   truncated walk, an unresolved module, an unmatched profile frame, an
   annotation on a function with no body, and a call through an `any`
   receiver. Suppressing a rule never clears a gap.
-- `2`: the tool failed — invalid arguments, configuration or source syntax, or
-  an unsupported TypeScript. `--help` exits `0` without loading the project.
+- `2`: the tool failed — invalid arguments, configuration, CPU profile or
+  source syntax, or an unsupported TypeScript. `--help` exits `0` without
+  loading the project.
 
 Type errors are your compiler's job; jitmax does not report them.
 
@@ -235,7 +236,7 @@ make verify
 ```
 
 To run a clone instead of the GitHub install, use
-`bun /path/to/jitmax/bin/cli.js` in place of `bunx github:kronael/jitmax`; it
+`bun /path/to/jitmax/bin/cli.js` in place of `bunx github:kronael/jitmax#v0.17.1`; it
 needs the clone's dependencies and no build.
 [Development](ARCHITECTURE.md#development) lists the main development commands.
 
@@ -246,5 +247,4 @@ notices. V8 is a trademark of Google LLC; this project is not affiliated with,
 endorsed by, or sponsored by Google.
 
 Status: v0.17.1, single machine, eight rules.
-`bunx github:kronael/jitmax` runs the `main` branch, which can be ahead of the
-newest tag.
+The install commands pin the source to the `v0.17.1` release tag.
