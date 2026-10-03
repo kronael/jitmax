@@ -55,7 +55,7 @@ bench/        README.md (every published number, the protocol, the V8 citation
               one workload + one .jl per measured claim
 docs/         rules.md (what each rule detects, its trigger and its fix) and
               limits.md (where the tool does not work)
-site/         index.html — the published page, its ONE source
+site/         hub-index.patch — the krons homepage card linking to GitHub
 README.md     what it is, how to start, and which file answers what
 ARCHITECTURE.md how it is built inside
 BUGS.md       the review queue. Found during audits, fixed only when asked

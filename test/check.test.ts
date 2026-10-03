@@ -3392,21 +3392,6 @@ test('every vendored example is covered by the MIT notice, and the notice covers
   }
 });
 
-// The published page is the surface most people read, and until this test it
-// was the only one where a number could go stale in silence. The docs' prose is
-// checked above and `EVIDENCE` interpolates `N` directly; site/index.html had
-// six figures typed by hand. That is the defect TC-28 was, on the page rather
-// than in a clause.
-//
-// Every ratio on the page must BE a value in the derived table — not merely
-// look like one. A sweep that moves therefore breaks the build instead of
-// leaving the page quoting a measurement that no longer exists.
-// The docs narrate history, so the page's rule — every ratio must BE a derived
-// value — would fail on honest sentences: a superseded range quoted AS
-// superseded, a withdrawn rule's cost, the three sweeps of a cell rule 13
-// refuses. The register below is the shape that works. Every ratio in the
-// published prose is either derived or listed here with the reason it is not,
-// so a NEW typed ratio fails the build while history stays sayable (TC-73).
 const HISTORICAL: Record<string, string> = {
   // Rules this project withdrew. Their costs are real and ship nothing — and
   // where the rows are still in the repo the cost is DERIVED like every other,
@@ -3577,36 +3562,11 @@ test('every number in the end-to-end tables is what bench/example.jl says', () =
   );
 });
 
-test('the bookmark page redirects to GitHub without stale ratios', () => {
-  const page = fs.readFileSync(path.join(root, 'site', 'index.html'), 'utf8')
-    .replace(/&ndash;|&mdash;|[–—]/g, '-');
-  // The derived strings, and the individual ratios inside them. A citation
-  // whose aggregate is `points` renders "6.48x and 6.58x and 7.51x" — three
-  // sweeps of a cell rule 13 withdrew — and prose quotes those three with
-  // commas and an "and", which no whole-string comparison can match. So the
-  // page may quote a derived string or any ratio the derived data contains,
-  // and nothing else.
-  const RATIO = /\b\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?x\b/g;
-  const values = new Set(Object.values(N));
-  for (const v of Object.values(N)) {
-    for (const m of v.matchAll(RATIO)) values.add(m[0]);
-  }
-
-  // A ratio is a number, or a range of them, followed by x: `4.4-11.5x`,
-  // `149-166x`, `0.03x`. Version strings and pixel counts have no x and do not
-  // match.
-  const quoted = [...page.matchAll(RATIO)].map((m) => m[0]);
-  const target = 'https://github.com/kronael/jitmax/tree/master';
-  assert.ok(page.includes(`content="0; url=${target}"`), 'the bookmark page must redirect to GitHub');
-  assert.ok(page.includes(`href="${target}"`), 'the bookmark page must provide a visible GitHub link');
-
-  const stale = [...new Set(quoted)].filter((q) => !values.has(q));
-  assert.deepStrictEqual(
-    stale,
-    [],
-    `site/index.html quotes ${stale.join(', ')}, which lib/numbers.ts does not contain — ` +
-      'run `make numbers` and update the page, or the page is quoting a sweep that is gone'
-  );
+test('the krons card links directly to the GitHub project', () => {
+  const patch = doc('site/hub-index.patch');
+  assert.ok(patch.includes('<a href="https://github.com/kronael/jitmax" class="index-card">'));
+  assert.strictEqual((patch.match(/\+\s*<h2>jitmax<\/h2>/g) ?? []).length, 1);
+  assert.ok(!fs.existsSync(path.join(root, 'site', 'index.html')));
 });
 
 // The version and the rule count are stated in prose on the published
@@ -3632,7 +3592,6 @@ test('every published surface states this version and this many rules', () => {
   assert.strictEqual(lock.version, pkg.version, 'package-lock.json root version');
   assert.strictEqual(lock.packages[''].version, pkg.version, 'package-lock.json package version');
   const readme = doc('README.md');
-  const page = fs.readFileSync(path.join(root, 'site', 'index.html'), 'utf8');
 
   const stated: [string, string, RegExp][] = [
     ['README.md', readme, /^Version: v(\d+\.\d+\.\d+)\./m],
@@ -3659,7 +3618,6 @@ test('every published surface states this version and this many rules', () => {
   ];
   for (const [name, text] of [
     ...DOCS.map((f) => [f, doc(f)] as const),
-    ['site/index.html', page] as const,
   ]) {
     const claimed = TOTALS.flatMap((re) => [...text.matchAll(re)].map((m) => m[1].toLowerCase()));
     if (claimed.length === 0) continue;

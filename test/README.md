@@ -76,9 +76,10 @@ clean, because a judged count of 0 has answered no question.
 
 **The version, the rule count and the test count.** `package.json` is the one
 statement of the version and `lib/rules/index.ts` the one register of the
-rules; `README.md`, `docs/rules.md`, `examples/README.md` and
-`site/index.html` are held to them. The count beside `make test` at the top of
-this file is compared against the top-level tests that `test/*.test.ts` defines.
+rules. `README.md`, `docs/rules.md` and `examples/README.md` are held to them.
+The krons card must link directly to the GitHub project. The count beside
+`make test` at the top of this file is compared against the top-level tests
+that `test/*.test.ts` defines.
 
 **The packaging contract.** The linked executable selects Bun, which can run
 an unbuilt Git install from TypeScript. An installed copy with `dist/` runs

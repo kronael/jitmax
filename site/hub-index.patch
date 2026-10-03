@@ -25,7 +25,7 @@
        </div>
        <p>Perpetuals exchange (v0). 49 spec documents before any code. 895+ Rust tests. Target: &lt;50μs GW-ME-GW round-trip. Zero heap on the hot path.</p>
 +    </a>
-+    <a href="https://github.com/kronael/jitmax/tree/master" class="index-card">
++    <a href="https://github.com/kronael/jitmax" class="index-card">
 +      <div class="card-header">
 +        <div class="card-icon">🔎</div>
 +        <h2>jitmax</h2>

@@ -4,7 +4,7 @@
 # before the drift assertions would leave them comparing fresh against fresh,
 # and a stale committed artifact could never fail again.
 .DEFAULT_GOAL := all
-.PHONY: all verify build builtins test lint check v8-check reality numbers bench bench-all bench-shape-sets bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-arguments bench-sparse bench-dispatch bench-delete bench-arrays bench-tc11 tiers example demo meme publish clean
+.PHONY: all verify build builtins test lint check v8-check reality numbers bench bench-all bench-shape-sets bench-spread bench-spread-object bench-strings bench-select bench-chained bench-inline bench-addprop bench-arguments bench-sparse bench-dispatch bench-delete bench-arrays bench-tc11 tiers example demo meme clean
 
 all: lint test check
 
@@ -214,14 +214,6 @@ meme: demo/meme/jitmax.mp4
 # `tmp/probe.cjs` used to be listed here and no target has ever written it: a
 # hand-run scratch file clean had no business deleting.
 clean:
-	rm -f demo/meme/fine.png demo/meme/jitmax.mp4 demo/meme/jitmax.gif demo/meme/jitmax-card.png
+	rm -f demo/meme/fine.png demo/meme/jitmax.mp4 demo/meme/jitmax.gif
 
-# site/index.html is the page's ONE source. Editing the copy under the webroot
-# instead leaves two versions of the same page and no way to tell which is
-# current — which happened, and is why this comment is here.
-publish: demo meme
-	cp site/index.html $(WEB)/index.html
-	cp demo/meme/jitmax.mp4 demo/meme/jitmax.gif demo/meme/jitmax-card.png $(WEB)/
-
-WEB = /srv/data/arizuko_krons/web/pub/jitmax
 space := $(subst ,, )
