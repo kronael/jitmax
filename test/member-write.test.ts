@@ -71,6 +71,15 @@ const cleanConstructors = { C: CleanConstructor };
 /** @jitmax */ function cleanPropertyConstructor(row: Row) { return new cleanConstructors.C(row); }
 /** @jitmax */ function directDirtyConstructor(row: Row) { return new DirtyConstructor(row); }
 /** @jitmax */ function directCleanConstructor(row: Row) { return new CleanConstructor(row); }
+class StableValue {
+  clone(): StableValue { return new StableValue(); }
+  static copy(value: StableValue): StableValue { return value.clone(); }
+}
+/** @jitmax */ function stableTypedInput(seed: StableValue) {
+  const box = { value: seed };
+  box.value = StableValue.copy(box.value);
+  return box.value;
+}
 `;
 fs.writeFileSync(file, source);
 const ts = load(process.cwd());
@@ -161,4 +170,29 @@ test('literal writes and constructor properties match their runtime controls', (
     run[name](row);
     assert.equal(Object.hasOwn(row, 'key'), true, name);
   }
+});
+
+/** Unknown input receivers do not imply writes to their stable concrete method. */
+test('stable concrete methods stay quiet with external and constructed receivers', () => {
+  assert.deepEqual(rules('stableTypedInput'), []);
+  const selected = mark('stableTypedInput');
+  assert.ok(selected.flow);
+  const copy = selected.reached.find(body =>
+    ts.isMethodDeclaration(body.node) && body.node.name.getText() === 'copy')?.node;
+  assert.ok(copy && ts.isMethodDeclaration(copy));
+  const returned = copy.body!.statements[0];
+  assert.ok(ts.isReturnStatement(returned) && returned.expression &&
+    ts.isCallExpression(returned.expression));
+  const traced = selected.flow.receiver({
+    expression: returned.expression.expression,
+  });
+  assert.ok(traced.unknown.length > 0);
+  assert.equal(traced.origins.length, 1);
+  assert.ok(traced.origins[0].follow);
+  assert.equal(traced.bodies.length, 1);
+  const run = new Function(ts.transpile(source) +
+    '; return { StableValue, stableTypedInput };')();
+  const seed = new run.StableValue();
+  assert.ok(run.stableTypedInput(seed) instanceof run.StableValue);
+  assert.notEqual(run.stableTypedInput(seed), seed);
 });

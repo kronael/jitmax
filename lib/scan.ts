@@ -823,7 +823,8 @@ function reach(
             ? flow.receiver(invocation) : undefined;
           const replacement = receiver !== undefined &&
             (receiver.bodies.some((target) => !raw.includes(target)) ||
-              (receiver.bodies.length > 0 && receiver.unknown.length > 0));
+              (receiver.bodies.length > 0 && receiver.unknown.length > 0 &&
+                receiver.origins.some((origin) => !origin.follow)));
           const changesTarget = raw.some((decl) =>
             (ts.isVariableDeclaration(decl) &&
               !decl.getSourceFile().isDeclarationFile &&
