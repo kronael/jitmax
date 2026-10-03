@@ -4,7 +4,7 @@ import type * as TS from 'typescript';
 import type { Ts } from './ts.ts';
 import type { HotFrame } from './profile.ts';
 import { BUILTINS } from './builtins.ts';
-import { className, createFlow, type Flow } from './flow.ts';
+import { className, createFlow, ELEMENT_PARAM, type Flow } from './flow.ts';
 
 // Calls that TurboFan lowers to inline machine code: there is no call boundary
 // at these sites at all, so reaching one is not a hole in the promise. The set
@@ -739,25 +739,49 @@ function reach(
     const body = reached[i];
     if (!body) continue;
     const visit = (node: TS.Node, closure: boolean): void => {
-      // `new Foo()` is a NewExpression, not a CallExpression. The walk visited
-      // only the second, so a constructor in your own source was never checked
-      // and a constructor from a typed dependency was never reported as an
-      // escape — the closed-world report said the world was closed when it was
-      // not, which is the failure the rule exists to prevent (BUGS TC-10).
-      if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
-        const text = node.expression.getText(body.sf);
-        // A function passed by name runs where the callee runs it, exactly as
-        // an inline arrow in the same place would — and the inline one is
-        // walked as a nested closure. `rows.map(grow)` left grow unchecked and
-        // unreported while `rows.map((r) => grow(r))` caught it.
-        for (const arg of node.arguments ?? []) {
-          const a = unwrap(ts, arg);
-          if (!ts.isIdentifier(a) && !ts.isPropertyAccessExpression(a)) continue;
-          for (const d of targetsOf(ts, checker, a)) {
-            if (followable(ts, d)) admit(body.node, d, undefined, true);
+      const visitCall = (
+        node: TS.Node,
+        expression: TS.Expression,
+        args: readonly TS.Expression[],
+        closure: boolean,
+        declarations?: TS.Node[],
+        accessor?: 'get' | 'set'
+      ): void => {
+        const text = expression.getText(body.sf);
+        const callee = unwrap(ts, expression);
+        const targets = declarations ?? targetsOf(ts, checker, callee);
+        const nativeArrayCallback = targets.length > 0 &&
+          targets.every((decl) =>
+            program.isSourceFileDefaultLibrary(decl.getSourceFile()) &&
+            ts.isInterfaceDeclaration(decl.parent) &&
+            (decl.parent.name.text === 'Array' || decl.parent.name.text === 'ReadonlyArray') &&
+            ts.isMethodSignature(decl) && ts.isIdentifier(decl.name) &&
+            ELEMENT_PARAM.has(decl.name.text)
+          );
+        for (let index = 0; index < args.length; index++) {
+          const arg = args[index]!;
+          const argument = unwrap(ts, arg);
+          if (!ts.isIdentifier(argument) &&
+            !ts.isPropertyAccessExpression(argument) &&
+            !ts.isElementAccessExpression(argument)) continue;
+          if (nativeArrayCallback && index === 0) {
+            visitCall(arg, argument, [], true);
+          } else {
+            for (const target of targetsOf(ts, checker, argument)) {
+              if (followable(ts, target)) admit(body.node, target, undefined, true);
+            }
           }
         }
-        if (PRIMITIVES.has(text)) {
+        const primitive = PRIMITIVES.has(text);
+        const owners = ts.isPropertyAccessExpression(callee)
+          ? symbolOf(ts, checker, callee.expression)?.getDeclarations() ?? []
+          : [];
+        const nativeOwner = owners.length > 0 && owners.every((decl) =>
+          program.isSourceFileDefaultLibrary(decl.getSourceFile()));
+        const nativePrimitive = primitive && nativeOwner && targets.length > 0 &&
+          targets.every((decl) =>
+            program.isSourceFileDefaultLibrary(decl.getSourceFile()));
+        if (nativePrimitive) {
           // No call boundary here at all — see PRIMITIVES. Counted, once per
           // site, so the report can say what was stepped over and under which
           // V8 the stepping-over is true (BUGS TC-126).
@@ -774,11 +798,30 @@ function reach(
           // One unwrap, the exported one. This had its own parentheses-only
           // loop, so `(0, eval)` and `(fn as F)()` reached `targetsOf` still
           // wrapped and resolved to nothing.
-          const callee = unwrap(ts, node.expression);
-          const raw =
+          let raw =
             ts.isArrowFunction(callee) || ts.isFunctionExpression(callee)
               ? [callee as TS.Node]
-              : targetsOf(ts, checker, callee);
+              : targets;
+          const changesTarget = raw.some((decl) =>
+            (ts.isVariableDeclaration(decl) &&
+              !decl.getSourceFile().isDeclarationFile &&
+              ts.isVariableDeclarationList(decl.parent) &&
+              !(decl.parent.flags & ts.NodeFlags.Const)) ||
+            (ts.isMethodDeclaration(decl) && ts.isClassLike(decl.parent) &&
+              followable(ts, decl) && flow.constructedClasses(decl.parent)
+                .some((cls) => cls !== decl.parent)) ||
+            ts.isGetAccessorDeclaration(decl)
+          );
+          const accessorOverride = accessor !== undefined && targets.some((decl) =>
+            ts.isClassLike(decl.parent) && flow.constructedClasses(decl.parent)
+              .some((cls) => cls !== decl.parent));
+          const dynamic = !ts.isNewExpression(node) &&
+            (declarations === undefined || accessorOverride) &&
+            (changesTarget || accessorOverride || (primitive && !nativeOwner));
+          const dispatch = dynamic ? flow.receiver({ expression, accessor }) : undefined;
+          if (dispatch) {
+            raw = dispatch.origins.flatMap((origin) => origin.follow ? [origin.follow] : []);
+          }
           // `new Foo()` resolves to the CLASS, and what runs is its
           // constructor. A class that declares none does NOT run nothing: the
           // implicit constructor runs every field initializer, and `extends`
@@ -860,7 +903,10 @@ function reach(
           // walk cannot bind to one implementation — fell through both branches
           // and vanished (BUGS TC-45, TC-31). A coverage report that silently
           // omits a case is the lie this rule exists to prevent.
-          const unchecked = next.length === 0 && !emptyCtor;
+          const unchecked = (next.length === 0 && !emptyCtor) ||
+            (dispatch !== undefined && (dispatch.unknown.length > 0 ||
+              dispatch.origins.length !== 1 ||
+              dispatch.origins.some((origin) => !origin.follow)));
           const site = at(body.sf, node);
           const key = siteKey(site);
           if (unchecked && !reported.has(key)) {
@@ -876,8 +922,8 @@ function reach(
                 const sf = d.getSourceFile();
                 return Boolean(sf) && program.isSourceFileDefaultLibrary(sf);
               }) ||
-              fromNodeImport(node.expression) ||
-              intoHost(node.expression);
+              fromNodeImport(expression) ||
+              intoHost(expression);
             if (native) {
               platform++;
             } else {
@@ -898,7 +944,7 @@ function reach(
               // The dataflow walk answers both, and what separates the two
               // rules is which body is missing, not which one got counted
               // (BUGS TC-110).
-              const r = flow.receiver(node);
+              const r = flow.receiver({ expression, accessor });
               const one =
                 r.origins.length === 1 && r.unknown.length === 0 ? r.origins[0] : undefined;
               if (one?.follow !== undefined && followable(ts, one.follow)) {
@@ -937,13 +983,13 @@ function reach(
                   // `printable` was located at `path.ts:50` and left unread
                   // (BUGS TC-158).
                   const located = r.origins.flatMap((o) => (o.follow ? [o.follow] : []));
-                  if (located.length === 1 && followable(ts, located[0]!)) {
-                    admit(body.node, located[0]!, undefined, closure);
+                  for (const target of located) {
+                    if (followable(ts, target)) admit(body.node, target, undefined, closure);
                   }
                   const call: Call = {
                     ...site,
                     text,
-                    viaInterface: decls.some(isDispatchDecl) || located.length > 0,
+                    viaInterface: targets.some(isDispatchDecl) || located.length > 0,
                     dispatch: {
                       count: r.origins.length,
                       located: located.length,
@@ -966,16 +1012,35 @@ function reach(
             }
           }
         }
+      };
+      if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+        visitCall(node, node.expression, node.arguments ?? [], closure);
+      } else if (ts.isTaggedTemplateExpression(node)) {
+        const args = ts.isTemplateExpression(node.template)
+          ? node.template.templateSpans.map((span) => span.expression)
+          : [];
+        visitCall(node, node.tag, args, closure);
       }
-      // Reading a property can run a getter. A read that resolves to an
-      // accessor with a body in the program is a call, and is followed as one;
-      // otherwise a getter's work ran under a clean report.
-      const callee =
-        ts.isCallExpression(node.parent) && unwrap(ts, node.parent.expression) === node;
-      if (ts.isPropertyAccessExpression(node) && !callee) {
-        const symbol = checker.getSymbolAtLocation(node.name);
-        for (const d of symbol?.declarations ?? []) {
-          if (ts.isGetAccessorDeclaration(d) && followable(ts, d)) admit(body.node, d, undefined, closure);
+      if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+        let access: TS.Expression = node;
+        while (access.parent && ts.isExpression(access.parent) &&
+          unwrap(ts, access.parent) === node) access = access.parent;
+        const parent = access.parent;
+        const assignment = ts.isBinaryExpression(parent) && parent.left === access &&
+          parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+          parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment;
+        const update = (ts.isPrefixUnaryExpression(parent) ||
+          ts.isPostfixUnaryExpression(parent)) &&
+          (parent.operator === ts.SyntaxKind.PlusPlusToken ||
+            parent.operator === ts.SyntaxKind.MinusMinusToken);
+        const read = !ts.isDeleteExpression(parent) &&
+          !(assignment && parent.operatorToken.kind === ts.SyntaxKind.EqualsToken);
+        for (const decl of targetsOf(ts, checker, node)) {
+          const getter = read && ts.isGetAccessorDeclaration(decl);
+          const setter = (assignment || update) && ts.isSetAccessorDeclaration(decl);
+          if (getter || setter) {
+            visitCall(node, node, [], closure, [decl], getter ? 'get' : 'set');
+          }
         }
       }
       ts.forEachChild(node, (c) => visit(c, closure || isClosure(ts, c)));

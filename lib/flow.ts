@@ -57,7 +57,7 @@ export interface Traced {
 }
 
 export interface Flow {
-  receiver(call: TS.CallExpression | TS.NewExpression): Traced;
+  receiver(call: { expression: TS.Expression; accessor?: 'get' | 'set' }): Traced;
   sources(node: TS.Node, elements?: boolean): Res;
   constructedClasses(cls: TS.ClassLikeDeclaration): TS.ClassLikeDeclaration[];
 }
@@ -1079,8 +1079,12 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
   // is x and `follow` is m's body on each origin; for a bare `f()` through a
   // call signature the receiver is f itself and `follow` is the function.
   const traced = new Map<TS.Node, Traced>();
-  function receiver(call: TS.CallExpression | TS.NewExpression): Traced {
-    const have = traced.get(call);
+  const getters = new Map<TS.Node, Traced>();
+  const setters = new Map<TS.Node, Traced>();
+  function receiver(call: { expression: TS.Expression; accessor?: 'get' | 'set' }): Traced {
+    const cache = call.accessor === 'get' ? getters :
+      call.accessor === 'set' ? setters : traced;
+    const have = cache.get(call.expression);
     if (have) return have;
     const q: Query = { budget: VISIT_BUDGET, stack: new Set(), reading: new Set() };
     // The exported unwrap, not a fourth parentheses-only loop. scan.ts unwraps
@@ -1098,6 +1102,12 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     if (ts.isPropertyAccessExpression(callee)) {
       res = w.valueOf(callee.expression, q);
       method = callee.name.text;
+    } else if (ts.isElementAccessExpression(callee)) {
+      const key = checker.getTypeAtLocation(callee.argumentExpression);
+      method = key.isStringLiteral() ? key.value :
+        key.isNumberLiteral() ? String(key.value) : undefined;
+      res = method === undefined ? w.valueOf(callee, q) :
+        w.valueOf(callee.expression, q);
     } else {
       res = w.valueOf(callee, q);
     }
@@ -1114,7 +1124,7 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
       }
       if (o.kind === 'function') continue;
       if (!carries(ts, o, method)) continue;
-      origins.push({ name: o.name, node: o.node, follow: methodBody(o, method, q) });
+      origins.push({ name: o.name, node: o.node, follow: methodBody(o, method, q, call.accessor) });
     }
     const unknowns = [...res.unknown];
     // A cycle-cut walk may have dropped origins flowing around the loop, so
@@ -1135,11 +1145,29 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
       unknowns.push('the analysis budget ran out before every origin was found');
     }
     const out = { origins, unknown: unknowns };
-    traced.set(call, out);
+    cache.set(call.expression, out);
     return out;
   }
 
-  function methodBody(o: Origin, name: string, q: Query): TS.Node | undefined {
+  function methodBody(
+    o: Origin,
+    name: string,
+    q: Query,
+    accessor?: 'get' | 'set'
+  ): TS.Node | undefined {
+    if (accessor !== undefined) {
+      let type = checker.getTypeAtLocation(o.node);
+      if (o.kind === 'classobj' && ts.isClassLike(o.node) && o.node.name) {
+        const symbol = symbolOf(ts, checker, o.node.name);
+        if (symbol) type = checker.getTypeOfSymbolAtLocation(symbol, o.node);
+      } else if (o.kind === 'class') {
+        type = type.getConstructSignatures()[0]?.getReturnType() ?? type;
+      }
+      const declarations = checker.getPropertyOfType(type, name)?.getDeclarations();
+      const declaration = declarations?.find((decl) => accessor === 'get'
+        ? ts.isGetAccessorDeclaration(decl) : ts.isSetAccessorDeclaration(decl));
+      return declaration ? bodyOf(ts, declaration) : undefined;
+    }
     let holder: Res;
     if (o.kind === 'literal') holder = w.literalProperty(o.node as TS.ObjectLiteralExpression, name, q);
     else if (o.kind === 'class' || o.kind === 'classobj') {
@@ -1163,7 +1191,7 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
 // `ITERATION`, which answers a different question — whether the callback is a
 // loop body — and under that answer `reduce`'s first parameter belongs on the
 // list, while the value it holds never came out of the array.
-const ELEMENT_PARAM = new Map<string, readonly number[]>([
+export const ELEMENT_PARAM = new Map<string, readonly number[]>([
   ['forEach', [0]],
   ['map', [0]],
   ['flatMap', [0]],
