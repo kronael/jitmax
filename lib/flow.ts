@@ -27,7 +27,7 @@ import { isFunctionLike, isOwnSource, isTestFile, symbolOf, targetsOf, unwrap } 
 const VISIT_BUDGET = 4000;
 const MAX_DEPTH = 48;
 const LITERAL_LIMIT = 'more than 64 literal allocation sites share one property set';
-const ACCESSOR_LIMIT = 'more than 64 accessor keys in a literal property set';
+const ACCESSOR_LIMIT = 'the bounded accessor key summary is incomplete';
 
 export interface Origin {
   kind: 'class' | 'classobj' | 'literal' | 'array' | 'function';
@@ -36,7 +36,8 @@ export interface Origin {
   // Allocation sites retained within one counted literal property set.
   literalNodes?: readonly TS.ObjectLiteralExpression[];
   // Scalar keys survive allocation-site clipping; undefined means a bounded
-  // summary cannot distinguish the remaining keys. No extra body is retained.
+  // summary cannot distinguish the remaining keys. This becomes coverage
+  // uncertainty only when allocation-site clipping also loses literal ASTs.
   literalAccessors?: {get: readonly (string | undefined)[]; set: readonly (string | undefined)[]};
   literalCapped?: boolean;
 }
@@ -259,9 +260,6 @@ export const merge = (into: Res, from: Res): void => {
       const setKeys = [...new Set([...(prior.literalAccessors?.set ?? []), ...(v.literalAccessors?.set ?? [])])];
       const get = accessorKeys(getKeys);
       const set = accessorKeys(setKeys);
-      if ((getKeys.length > 64 || setKeys.length > 64) && into.unknown.size < 8) {
-        into.unknown.add(ACCESSOR_LIMIT);
-      }
       into.origins.set(k, {...v, literalNodes: nodes.length === 1 ? undefined : nodes.slice(-64),
         literalAccessors: {get, set},
         literalCapped: prior.literalCapped || v.literalCapped || nodes.length > 64});
@@ -320,7 +318,6 @@ export const originOf = (w: Walk, o: Origin): Res => {
       if (!w.ts.isGetAccessorDeclaration(property) && !w.ts.isSetAccessorDeclaration(property)) continue;
       const key = bindingKey(w.ts, w.checker, property.name);
       const keys = [...new Set([...(w.ts.isGetAccessorDeclaration(property) ? get : set), key])];
-      if (keys.length > 64) r.unknown.add(ACCESSOR_LIMIT);
       if (w.ts.isGetAccessorDeclaration(property)) get = accessorKeys(keys);
       else set = accessorKeys(keys);
     }
@@ -1354,6 +1351,7 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
           const incomplete = o.literalCapped && o.literalAccessors?.get.some(
             (key) => key === undefined || !excluded.has(key));
           incompleteAccessors ||= !!incomplete;
+          if (incomplete && o.literalAccessors?.get.includes(undefined)) unknowns.add(ACCESSOR_LIMIT);
           const getters = new Set<TS.GetAccessorDeclaration>();
           for (const literal of literalNodes(o)) {
             const seen = new Set(excluded);
@@ -1414,6 +1412,9 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
       const incomplete = call.accessor !== undefined && o.literalCapped &&
         o.literalAccessors?.[call.accessor].some((key) => key === undefined || key === method);
       incompleteAccessors ||= !!incomplete;
+      if (incomplete && call.accessor && o.literalAccessors?.[call.accessor].includes(undefined)) {
+        unknowns.add(ACCESSOR_LIMIT);
+      }
       const holder = methodBody(o, method, q, call.accessor);
       const targets = [...holder.origins.values()].flatMap((target) => {
         const body = target.kind === 'function' ? bodyOf(ts, target.node) :

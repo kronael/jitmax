@@ -13,7 +13,11 @@ const root = path.join(import.meta.dirname, '..');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jitmax-accessor-limit-'));
 const file = path.join(dir, 'hot.ts');
 const plain = (count: number) => Array.from({length: count}, () => '{value: 0}').join(',');
+const getters = Array.from({length: 65}, (_, index) => `get key${index}() {getterReads++; return ${index};}`).join(',');
 const source = `
+let getterReads = 0;
+const many = {${getters}};
+/** @jitmax */ function allGetters() {return {...many};}
 const row: {key?: number} = {key: 1};
 const dirty = {get value() {delete row.key; return 1;}};
 const setter = {set value(value: number) {delete row.key;}};
@@ -83,7 +87,16 @@ test('rest exclusions do not duplicate the named getter coverage error', () => {
   assert.ok(!mark('excluded65').escapes[0]!.text.includes('copied'));
 });
 test('capped known data still masks an outer own getter', () => {assert.deepEqual(rules('masked65'), []);});
-test('accessor key summaries remain bounded and explicitly partial', () => {
+test('a single literal with 65 getter keys checks every body without coverage uncertainty', () => {
+  assert.deepEqual(rules('allGetters'), []);
+  assert.equal(mark('allGetters').escapes.length, 0);
+  assert.equal(mark('allGetters').reached.filter(body => ts.isGetAccessorDeclaration(body.node)).length, 65);
+  const run = new Function(ts.transpile(source, {target: ts.ScriptTarget.ES2022}) + ';const value = allGetters(); return {value, getterReads};')();
+  assert.equal(run.getterReads, 65);
+  assert.equal(Object.keys(run.value).length, 65);
+  for (let index = 0; index < 65; index++) assert.equal(run.value['key' + index], index);
+});
+test('bounded accessor summaries alone do not imply missing callable bodies', () => {
   const text = 'const value = {' + Array.from({length: 65}, (_, index) => `get key${index}() {return 0;}`).join(',') + '};';
   const sf = ts.createSourceFile('keys.ts', text, ts.ScriptTarget.Latest, true);
   const statement = sf.statements[0]!;
@@ -93,7 +106,8 @@ test('accessor key summaries remain bounded and explicitly partial', () => {
   const origin = [...value.origins.values()][0]!;
   assert.ok(origin.literalAccessors!.get.length <= 64);
   assert.ok(origin.literalAccessors!.get.includes(undefined));
-  assert.ok([...value.unknown].some(reason => reason.includes('accessor keys')));
+  assert.equal(value.unknown.size, 0);
+  assert.equal(origin.literalCapped, undefined);
 });
 test('boundary source is strict-valid and executes real getter and setter work', () => {
   assert.deepEqual(ts.getPreEmitDiagnostics(p).map(diagnostic => diagnostic.code), []);
