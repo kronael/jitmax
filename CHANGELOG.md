@@ -3,6 +3,22 @@
 For installation and commands, use the [README quick start](README.md#quick-start).
 Commands and guides pin the matching release tag. No npm registry publication is required.
 
+## [v0.17.4] — 20261003
+
+> jitmax v0.17.4 — shorter docs, direct GitHub links
+>
+> The README gives a small example, guides explain the details, and krons links directly to the project.
+>
+> • README — purpose, setup and one command make the first run easy to follow
+> • guides — navigation and report details match the checker
+> • krons — the project card opens GitHub, with readable text on small screens
+>
+> Full notes: https://github.com/kronael/jitmax/blob/v0.17.4/CHANGELOG.md
+
+- The README keeps setup, one sum example and links to complete references.
+- Guides sync navigation, report fields, severity and command pins.
+- The separate page, its publish recipe and unused poster are retired.
+
 ## [v0.17.3] — 20261003
 
 > jitmax v0.17.3 — simpler setup and guides

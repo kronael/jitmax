@@ -87,7 +87,7 @@ compiled JavaScript; a checkout runs source. The suite checks the entry point,
 package guide list and an actual Git archive. It requires runtime sources,
 licences and the preset, and rejects internal notes. This test guide belongs
 to the full clone, not the install archive. Public GitHub access is not covered
-by the suite: run `bunx github:kronael/jitmax#v0.17.3 --help` against the published
+by the suite: run `bunx github:kronael/jitmax#v0.17.4 --help` against the published
 repository to check it.
 
 ## What it does not do

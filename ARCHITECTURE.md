@@ -155,7 +155,7 @@ shows how to record a profile and change the threshold.
 Bun runs the checker, but the rules and their evidence concern V8. They do not
 predict performance under Bun's JavaScriptCore engine.
 
-`bunx github:kronael/jitmax#v0.17.3` installs source from the `v0.17.3` release
+`bunx github:kronael/jitmax#v0.17.4` installs source from the `v0.17.4` release
 tag. The linked executable, `bin/cli.js`, selects Bun through its shebang.
 Bun can run TypeScript under `node_modules`, so an unbuilt Git install needs
 neither `dist/` nor permission to run `prepare`. Bun's

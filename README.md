@@ -24,7 +24,7 @@ export function sum(values: number[]): number {
 Run from your project root:
 
 ```sh
-bunx github:kronael/jitmax#v0.17.3 hot.ts
+bunx github:kronael/jitmax#v0.17.4 hot.ts
 ```
 
 This example reports no findings and exits `0`. Now mark your own function
@@ -35,4 +35,4 @@ and replace `hot.ts` with its source file or directory.
 
 [GPL-2.0-only](LICENSE).
 
-Version: v0.17.3.
+Version: v0.17.4.

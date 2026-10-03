@@ -168,8 +168,8 @@ dependencies; date-fns needs its workspace installed so its inherited
 repository root and into date-fns's `pkgs/core`, then run from each:
 
 ```sh
-bunx github:kronael/jitmax#v0.17.3 packages/zod/src/v4/core/util.ts   # in zod
-bunx github:kronael/jitmax#v0.17.3 src/parse/index.ts                 # in date-fns/pkgs/core
+bunx github:kronael/jitmax#v0.17.4 packages/zod/src/v4/core/util.ts   # in zod
+bunx github:kronael/jitmax#v0.17.4 src/parse/index.ts                 # in date-fns/pkgs/core
 ```
 
 Each prints `rules from jitmax.toml, found from the working directory` and
@@ -216,7 +216,7 @@ directory holding a `tsconfig.json` that maps `core/*` to
 directories first:
 
 ```sh
-bunx github:kronael/jitmax#v0.17.3 \
+bunx github:kronael/jitmax#v0.17.4 \
   <babylon>/packages/dev/core/src/Rendering/IBLShadows/iblShadowsRenderPipeline.pure.ts \
   <babylon>/packages/dev/core/src/FrameGraph/Tasks/Rendering/iblShadows/iblShadowsVoxelizationTask.ts
 ```

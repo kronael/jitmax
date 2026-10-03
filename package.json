@@ -1,6 +1,6 @@
 {
   "name": "jitmax",
-  "version": "0.17.3",
+  "version": "0.17.4",
   "description": "Check speed-sensitive TypeScript for patterns that can slow V8.",
   "license": "GPL-2.0-only",
   "private": true,
