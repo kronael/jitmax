@@ -2,12 +2,12 @@
 
 First use is in the [README](README.md#quick-start).
 Options and config are in the [usage guide](docs/usage.md).
-This file explains how one run works inside.
+For contributor setup and checks, go to [Development](#development).
 
-One pass over a TypeScript program: load the project's own compiler, read the
-config, find the marked functions, walk what they call, run eight detectors
-over every body the walk reaches, and print. There is no cache, no daemon and
-no incremental mode.
+One run loads the project's compiler and config, then finds marked functions.
+The checker follows their calls and runs eight detectors over each reachable
+body. It prints findings and coverage gaps. There is no cache, daemon or
+incremental mode.
 
 ```
 bin/jitmax.ts        argv, then the pipeline below, then the exit code
@@ -96,12 +96,12 @@ megamorphic rules ask `lib/flow.ts` what reaches a value across calls,
 `delete-property` follows the deleted object through arguments and returns.
 
 **Report.** `lib/report.ts` prints one finding per site, with its next step,
-the note under it, the sweep behind the rule where it has one, and every
-defect code the rule carries; what each code means is printed once, after the
-findings. It also prints what the run could not check: calls into the
+and the note under it. With `-v`, it adds benchmark paths and known
+defect codes. A legend below the findings explains each cited code.
+The report also counts what the run could not check: calls into the
 platform, calls eligible for inline reduction under the pinned V8 policy,
 and how many findings a config suppressed and from which rules. Related
-locations show five per finding, or all with `--verbose`; that is a display
+locations show two per finding, or all with `--verbose`; that is a display
 limit, separate from the flow walk's
 analysis limits.
 

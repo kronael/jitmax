@@ -1,7 +1,8 @@
 # Usage
 
 Start with the [quick start](../README.md#quick-start). All rules run by default.
-A config file is optional.
+A config file is optional. For a finding's trigger and fix, use the
+[rule reference](rules.md). For incomplete coverage, use the [limits](limits.md).
 
 ## Choose files
 
@@ -15,7 +16,8 @@ bunx github:kronael/jitmax#v0.17.3              # the tsconfig file list
 
 Paths choose files. Compiler options come from the `tsconfig.json` found from
 the working directory upward. jitmax follows `extends` but does not build
-project `references`. Without paths or a config, it scans the working directory.
+project `references`. Without paths or a `tsconfig.json`, it scans the working
+directory.
 
 A file brings in its imports, but not files that import it. Pass the source
 directory when the checker needs to see callers in other files.
@@ -103,8 +105,8 @@ config, since it replaces `jitmax.toml`.
 ## Read the output
 
 Each finding names the selected function, the source position and the rule.
-The finding can occur in any function it calls. `next:` gives the next step. `note:`
-names risks to the program's behaviour. `related:` points to reads, builders
+The finding can occur in any function it calls. `next:` gives the next step.
+`note:` names risks to the program's behaviour. `related:` points to reads, builders
 or implementations. `sources:` names missing origins.
 
 ```sh
@@ -114,6 +116,8 @@ bunx github:kronael/jitmax#v0.17.3 -v src
 `-v` adds benchmark paths, known defects and all related locations the analysis
 kept. Locations and counts describe static possibilities, not runtime events.
 [Reading a finding](rules.md#reading-a-finding) explains the full report.
+A finding does not estimate the cost in your workload. Profile and benchmark
+your caller before keeping a change.
 
 ## Exit codes
 

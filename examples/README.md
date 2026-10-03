@@ -1,11 +1,14 @@
 # Examples
 
-What a printed fix gains on real library code, and what the rules find across
-real codebases. Each example is somebody else's function, vendored verbatim,
-with the fix jitmax printed and nothing else. `diff` a `.before.ts` against its
-`.after.ts` — [radash-assign.before.ts](radash-assign.before.ts) against
-[radash-assign.after.ts](radash-assign.after.ts), for one — and the fix is the
-whole change.
+Use these examples to inspect findings and fixes in real library code.
+Start with the [radash walkthrough](#reproduce-the-radash-fix). Setup is in the
+[README](../README.md#quick-start), and triggers are in the
+[rule reference](../docs/rules.md).
+
+Each `.before.ts` copies an upstream function unchanged. Its `.after.ts`
+contains only the fix jitmax printed. Compare
+[radash-assign.before.ts](radash-assign.before.ts) with
+[radash-assign.after.ts](radash-assign.after.ts) to inspect one complete change.
 
 | function | library | rules it triggers |
 |---|---|---|
@@ -104,7 +107,7 @@ The microbenchmark is no caller-level forecast. Object spread costs 186–200x
 at n=500 in its kernel; radash's calls plus one read pass move 1.18–3.54x,
 because the code around the copy still allocates, recurses and branches.
 
-`make example` checks the four examples, then measures only the cells
+`make example` checks all six vendored pairs, then measures only the cells
 `bench/example.jl` lacks. To measure all sixteen again without touching the
 published rows, run `node bench/run.ts example --force --scratch` on an idle
 machine; [re-run any claim](../bench/README.md#re-run-any-claim) lists the
@@ -113,7 +116,7 @@ options.
 ## Reproduce the radash fix
 
 From a jitmax clone after the
-[development setup](../README.md#development-and-licence):
+[development setup](../ARCHITECTURE.md#development):
 
 ```sh
 node bin/jitmax.ts examples/radash-assign.before.ts
@@ -165,8 +168,8 @@ dependencies; date-fns needs its workspace installed so its inherited
 repository root and into date-fns's `pkgs/core`, then run from each:
 
 ```sh
-bunx github:kronael/jitmax#v0.17.2 packages/zod/src/v4/core/util.ts   # in zod
-bunx github:kronael/jitmax#v0.17.2 src/parse/index.ts                 # in date-fns/pkgs/core
+bunx github:kronael/jitmax#v0.17.3 packages/zod/src/v4/core/util.ts   # in zod
+bunx github:kronael/jitmax#v0.17.3 src/parse/index.ts                 # in date-fns/pkgs/core
 ```
 
 Each prints `rules from jitmax.toml, found from the working directory` and
@@ -213,7 +216,7 @@ directory holding a `tsconfig.json` that maps `core/*` to
 directories first:
 
 ```sh
-bunx github:kronael/jitmax#v0.17.2 \
+bunx github:kronael/jitmax#v0.17.3 \
   <babylon>/packages/dev/core/src/Rendering/IBLShadows/iblShadowsRenderPipeline.pure.ts \
   <babylon>/packages/dev/core/src/FrameGraph/Tasks/Rendering/iblShadows/iblShadowsVoxelizationTask.ts
 ```
@@ -271,14 +274,14 @@ node bin/jitmax.ts examples/vue-stringify-style.before.ts
 
 ```text
 jitmax — 1 annotated function, 1 error
-  1 call into the platform, not listed: the body is native
-  1 interface call resolved to the one implementation this program builds, and
-  followed — sound only for a closed program
+  6 calls into the platform, not listed: the body is native
+  2 interface calls resolved to the one implementation this program builds,
+  and followed — sound only for a closed program
 
   examples/vue-stringify-style.before.ts:48  stringifyStyle()
     examples/vue-stringify-style.before.ts:17:33  error  interface-dispatch
-      calls fn; 4 implementations reach this call; their bodies are not
-      followed
+      calls fn; 4 implementations reach this call; 4 readable bodies are
+      checked; runtime target selection remains unresolved
       next: review the implementations of fn, then record the review with
             -interface-dispatch on this root's @jitmax annotation
       related: examples/vue-stringify-style.before.ts:23:3 function

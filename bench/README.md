@@ -2,14 +2,16 @@
 
 How every number jitmax publishes was measured, and how to re-run it. The
 benchmarks need a full Git clone after the
-[development setup](../README.md#development-and-licence), Node, and Linux:
+[development setup](../ARCHITECTURE.md#development), Node, and Linux:
 the runner's load gate reads `/proc/loadavg`. They measure V8 under Node, even
 when you run the checker with Bun.
 
 A rule can carry two kinds of evidence. **A benchmark** says what a pattern
 cost on this machine, and cannot say why. **A V8 citation** says what mechanism
-exists in the engine, and cannot say what it costs. Both are below, and both
-can be re-run. `accumulating-spread` has a benchmark and no citation, because
+exists in the engine, and cannot say what it costs. You can
+[re-run a benchmark](#re-run-any-claim) or
+[verify a source citation](#what-v8s-source-says). `accumulating-spread` has a
+benchmark and no citation, because
 quadratic copying is quadratic on any engine; `interface-dispatch` reports
 unchecked calls and has neither.
 
@@ -56,7 +58,8 @@ same sweeps without `--force`. They append to the published `.jl` files and
 skip a cell only when it already holds three sweep rows the current runner
 counts as complete, so a full checkout can still need measurements. `--plan`
 lists the selected cells, including ones a resumed run would skip; it does not
-preview pending work. `make example` also checks the four examples first. Two targets
+preview pending work. `make example` also checks all six vendored pairs before measuring the four
+rewrites. Two targets
 measure no cost:
 
 ```sh

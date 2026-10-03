@@ -1,7 +1,7 @@
 # The rules
 
-What each of the eight rules reports, what makes it fire, where it stays
-silent, what to do about a finding, and what the pattern cost when measured.
+Use this reference to understand each of the eight rules and choose a fix.
+Each entry gives the trigger, silent cases, known misses and measured cost.
 Setup is in the [README](../README.md#quick-start).
 Config and profiles are in the [usage guide](usage.md).
 
@@ -12,10 +12,9 @@ function the walk reaches from a marked function.
 
 ## Terms
 
-V8 is the JavaScript engine in Node, Chrome and Deno. It makes a hot function
-fast by compiling each property read for the object shapes it has seen there.
-A pattern that defeats this still returns the same values, only slower, and
-nothing warns you.
+V8 is the JavaScript engine in Node, Chrome and Deno. It can specialize
+property reads for object shapes seen at runtime. A change in those shapes
+can make a read slower without changing its result.
 
 - A **hidden class** is the shape V8 gives an object. Objects built the same
   way — by the same constructor or literal, with the same property names added
@@ -44,9 +43,9 @@ nothing warns you.
   On a clean run, `-v` prints each rule's misses.
 
 Every snippet below is an excerpt from [`demo/lib.ts`](../demo/lib.ts), the
-fixture file `make check` runs; the types and classes it uses are defined there,
-so copy the fixture, not the excerpt, to reproduce a finding: each rule has a fixture that fires and one for each
-silent case.
+fixture file `make check` runs. The required types and classes are defined
+there. Use that file to reproduce the snippets. Each rule has a fixture that
+fires and one for each silent case.
 
 ## megamorphic-elements
 
@@ -466,7 +465,7 @@ after construction, sparse arrays, the `arguments` object — are in
 
 ## Turning a rule off
 
-Use an annotation to switch off a rule for one function and its callees:
+Use an annotation to switch off a rule for one function and the functions it calls:
 
 ```ts
 /** @jitmax -megamorphic-elements */

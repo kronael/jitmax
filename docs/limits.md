@@ -1,8 +1,9 @@
 # Limits
 
-A clean run means no enabled rule fired and no tracked coverage gap remains.
-It does not prove fast execution. Each rule's own misses are in the
-[rule reference](rules.md).
+Exit `0` means at least one function was checked, with no enabled errors or
+tracked coverage gaps. A warning can still print. This does not prove fast
+execution. Each rule's own misses are in the [rule reference](rules.md).
+Setup and options are in the [usage guide](usage.md).
 
 ## What the walk sees
 
@@ -16,7 +17,7 @@ It does not prove fast execution. Each rule's own misses are in the
   named `tsconfig.json`, follows its `extends`, and does not build project
   `references`. Run it where a `tsconfig.json` holds or extends the options
   your code compiles with.
-- **TypeScript 6 reads a project the way 6 does.** An option 6 deprecates, such
+- **TypeScript 6 applies its own compiler defaults.** An option 6 deprecates, such
   as `baseUrl`, stops the run at exit `2`, as it stops `tsc`, unless the
   `tsconfig.json` sets `ignoreDeprecations`. With no `tsconfig.json` at all,
   6's own defaults apply where jitmax sets none: strict checking is on and no
@@ -39,7 +40,7 @@ It does not prove fast execution. Each rule's own misses are in the
 - **Nested functions are read even when nothing calls them.** A finding inside
   one can fail the run without describing work the marked function does.
 - **A pattern split across functions goes unreported.** The walk reads every
-  callee with source, but `accumulating-spread` needs the loop and the copy in
+  called function with source, but `accumulating-spread` needs the loop and copy in
   one body: `acc = append(acc, x)` in a loop, with
   `append = (a, x) => [...a, x]` beside it, is not reported.
   `chained-allocation` misses stages split across local bindings, such as

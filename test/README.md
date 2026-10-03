@@ -5,8 +5,6 @@ It covers Bun and the TypeScript 5.x or 6.x requirement. To work on jitmax, comp
 [development setup](../ARCHITECTURE.md#development), then run the commands
 below from the jitmax checkout with Node `>=22.18`.
 
-What the suite guards, and how to run one test.
-
 ```sh
 make test    # 439 unit tests, including the must-stay-silent cases
 node --test --test-name-pattern '<name>' test/check.test.ts   # one test
@@ -46,11 +44,11 @@ is the repository's central rule and not a style preference. `docs/rules.md`
 names the two fixtures for every rule.
 
 **The exit contract.** The exit code is what a CI gate reads, so it is tested
-through the binary rather than through the library: 0 clean, 1 a finding or a
-walk that could not see everything, 2 the tool failed. A truncated walk that
-printed `WALK TRUNCATED` and exited 0 told the gate the opposite of what the
-text said (`BUGS.md` TC-17), and that is the shape of failure these tests
-exist for.
+through the binary rather than through the library. Exit `0` requires a
+selected function, no enabled errors and no tracked coverage gaps. Warnings
+can still print. Exit `1` reports an error, incomplete coverage or no selected
+function. Exit `2` means the tool failed. A truncated walk must print
+`WALK TRUNCATED` and exit `1`.
 
 **Every published number, against its own rows.** `lib/numbers.ts` and the
 generated block in `bench/README.md` are re-derived from the `.jl` files and
@@ -88,7 +86,7 @@ compiled JavaScript; a checkout runs source. The suite checks the entry point,
 package guide list and an actual Git archive. It requires runtime sources,
 licences and the preset, and rejects internal notes. This test guide belongs
 to the full clone, not the install archive. Public GitHub access is not covered
-by the suite: run `bunx github:kronael/jitmax --help` against the published
+by the suite: run `bunx github:kronael/jitmax#v0.17.3 --help` against the published
 repository to check it.
 
 ## What it does not do
