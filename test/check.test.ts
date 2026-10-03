@@ -3562,10 +3562,12 @@ test('every number in the end-to-end tables is what bench/example.jl says', () =
   );
 });
 
-test('the krons card links directly to the GitHub project', () => {
-  const patch = doc('site/hub-index.patch');
-  assert.ok(patch.includes('<a href="https://github.com/kronael/jitmax" class="index-card">'));
-  assert.strictEqual((patch.match(/\+\s*<h2>jitmax<\/h2>/g) ?? []).length, 1);
+test('the public cards link directly to the GitHub project', () => {
+  for (const name of ['site/hub-index.patch', 'site/public-index.patch']) {
+    const patch = doc(name);
+    assert.ok(patch.includes('<a href="https://github.com/kronael/jitmax" class="index-card">'), name);
+    assert.strictEqual((patch.match(/\+\s*<h2>jitmax<\/h2>/g) ?? []).length, 1, name);
+  }
   assert.ok(!fs.existsSync(path.join(root, 'site', 'index.html')));
 });
 

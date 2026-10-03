@@ -1,0 +1,41 @@
+--- a/index.html
++++ b/index.html
+@@ -99,6 +99,10 @@
+   line-height: 1.5;
+   margin: 0;
+ }
++@media (max-width: 768px) {
++  .index-card { font-size: 16px; }
++  .theme-toggle { min-width: 44px; min-height: 44px; }
++}
+ </style>
+ </head>
+ <body>
+@@ -114,7 +118,7 @@
+   <div class="section-header">
+     <div class="section-nav">Products</div>
+   </div>
+-  <p class="section-teaser">Multi-tenant agent platform and low-latency perpetuals exchange.</p>
++  <p class="section-teaser">Agent platform, perpetuals exchange, TypeScript checker and benchmarks.</p>
+   <div class="card-grid">
+     <a href="/pub/arizuko/" class="index-card">
+       <div class="card-header">
+@@ -132,12 +136,12 @@
+       <p>Perpetuals exchange (v0). 49 spec documents before any code. 895+ Rust tests. Target: &lt;50μs GW-ME-GW round-trip, &lt;500ns match latency. Zero heap on the hot path.</p>
+     </a>
+
+-    <a href="/pub/turbocharge/" class="index-card">
+-      <div class="card-header">
+-        <div class="card-icon">🏎️</div>
+-        <h2>turbocharge</h2>
+-      </div>
+-      <p>Mark a TypeScript function <code>/** @turbocharge */</code> and a closed-world checker reports every measured V8 fast-path violation inside it. Numba's @njit, for TS. The fifth object shape costs 5x.</p>
++    <a href="https://github.com/kronael/jitmax" class="index-card">
++      <div class="card-header">
++        <div class="card-icon">🔎</div>
++        <h2>jitmax</h2>
++      </div>
++      <p>Check TypeScript for patterns that can slow V8. Mark a function and get source locations and next steps.</p>
+     </a>
+
+     <a href="/pub/benchmarks/" class="index-card">
