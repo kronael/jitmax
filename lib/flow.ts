@@ -30,6 +30,8 @@ const LITERAL_LIMIT = 'more than 64 literal allocation sites share one property 
 const ARRAY_LIMIT = 'more than 64 array allocation sites share one counted shape';
 const ACCESSOR_LIMIT = 'the bounded accessor key summary is incomplete';
 
+type AccessorPossibility = {get: boolean; set: boolean; ownGet: boolean};
+
 export interface Origin {
   kind: 'class' | 'classobj' | 'literal' | 'array' | 'function';
   node: TS.Node;
@@ -43,8 +45,8 @@ export interface Origin {
   literalCapped?: boolean;
   arrayNodes?: readonly TS.ArrayLiteralExpression[];
   arrayCapped?: boolean;
-  // Structural element types can hide accessors behind plain property signatures.
-  arrayStructural?: boolean;
+  // Scalar accessor possibilities survive clipping without retaining more ASTs.
+  arrayAccessors?: AccessorPossibility;
 }
 
 export interface Res {
@@ -61,7 +63,7 @@ export interface Res {
   // never cached.
   starved: boolean;
   arrayCapped?: boolean;
-  arrayStructural?: boolean;
+  arrayAccessors?: AccessorPossibility;
 }
 
 // What one receiver resolves to. `follow` is the one implementation's body
@@ -252,6 +254,41 @@ const literalNodes = (origin: Origin): readonly TS.ObjectLiteralExpression[] =>
 const arrayNodes = (origin: Origin): readonly TS.ArrayLiteralExpression[] =>
   origin.arrayNodes ?? [origin.node as TS.ArrayLiteralExpression];
 
+const mergeAccessors = (a?: AccessorPossibility, b?: AccessorPossibility): AccessorPossibility => ({
+  get: !!(a?.get || b?.get), set: !!(a?.set || b?.set), ownGet: !!(a?.ownGet || b?.ownGet),
+});
+
+// Only concrete allocation declarations can prove that a type lacks accessors.
+// Structural types describe values' properties without their descriptors.
+function possibleAccessors(w: Walk, type: TS.Type): AccessorPossibility {
+  const {ts, checker} = w;
+  if (type.isUnionOrIntersection()) {
+    return type.types.reduce((out, part) => mergeAccessors(out, possibleAccessors(w, part)), mergeAccessors());
+  }
+  if (!(type.flags & ts.TypeFlags.Object)) {
+    const primitive = ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BigIntLike |
+      ts.TypeFlags.BooleanLike | ts.TypeFlags.ESSymbolLike | ts.TypeFlags.Null |
+      ts.TypeFlags.Undefined | ts.TypeFlags.Void | ts.TypeFlags.Never;
+    return type.flags & primitive ? mergeAccessors() : {get: true, set: true, ownGet: true};
+  }
+  const declarations = type.symbol?.getDeclarations() ?? [];
+  if (declarations.length === 0 || !declarations.every((d) => ts.isObjectLiteralExpression(d) ||
+      ts.isClassDeclaration(d) || ts.isClassExpression(d)) || checker.getIndexInfosOfType(type).length > 0) {
+    return {get: true, set: true, ownGet: true};
+  }
+  const out = mergeAccessors();
+  for (const property of checker.getPropertiesOfType(type)) {
+    for (const declaration of property.getDeclarations() ?? []) {
+      if (ts.isGetAccessorDeclaration(declaration)) {
+        out.get = true;
+        out.ownGet ||= ts.isObjectLiteralExpression(declaration.parent);
+      }
+      if (ts.isSetAccessorDeclaration(declaration)) out.set = true;
+    }
+  }
+  return out;
+}
+
 const accessorKeys = (keys: readonly (string | undefined)[]): readonly (string | undefined)[] => {
   const unique = [...new Set(keys)];
   return unique.length > 64 ? [...unique.slice(0, 63), undefined] : unique;
@@ -278,7 +315,7 @@ export const merge = (into: Res, from: Res): void => {
       const capped = prior.arrayCapped || v.arrayCapped || nodes.length > 64;
       if (capped && into.unknown.size < 8) into.unknown.add(ARRAY_LIMIT);
       into.origins.set(k, {...v, arrayNodes: nodes.length === 1 ? undefined : nodes.slice(-64),
-        arrayCapped: capped, arrayStructural: prior.arrayStructural || v.arrayStructural});
+        arrayCapped: capped, arrayAccessors: mergeAccessors(prior.arrayAccessors, v.arrayAccessors)});
     } else {
       into.origins.set(k, v);
     }
@@ -290,7 +327,7 @@ export const merge = (into: Res, from: Res): void => {
   into.tainted ||= from.tainted;
   into.starved ||= from.starved;
   if (from.arrayCapped) into.arrayCapped = true;
-  if (from.arrayStructural) into.arrayStructural = true;
+  if (from.arrayAccessors) into.arrayAccessors = mergeAccessors(into.arrayAccessors, from.arrayAccessors);
 };
 
 export const unknown = (why: string): Res => {
@@ -341,16 +378,10 @@ export const originOf = (w: Walk, o: Origin): Res => {
     }
     o = {...o, literalAccessors: {get, set}};
   }
-  if (o.kind === 'array' && w.ts.isArrayLiteralExpression(o.node) && o.arrayStructural === undefined) {
-    const structural = o.node.elements.some((element) => {
-      const type = w.checker.getTypeAtLocation(element);
-      return (type.isUnion() ? type.types : [type]).some((part) =>
-        !!(part.flags & (w.ts.TypeFlags.Any | w.ts.TypeFlags.Unknown | w.ts.TypeFlags.TypeParameter)) ||
-        part.symbol?.getDeclarations()?.some((d) => w.ts.isTypeLiteralNode(d) || w.ts.isInterfaceDeclaration(d)) ||
-        w.checker.getPropertiesOfType(part).some((property) =>
-          property.getDeclarations()?.some(w.ts.isPropertySignature)));
-    });
-    o = {...o, arrayStructural: structural};
+  if (o.kind === 'array' && w.ts.isArrayLiteralExpression(o.node) && !o.arrayAccessors) {
+    const accessors = o.node.elements.reduce((out, element) =>
+      mergeAccessors(out, possibleAccessors(w, w.checker.getTypeAtLocation(element))), mergeAccessors());
+    o = {...o, arrayAccessors: accessors};
   }
   r.origins.set(key, o);
   return r;
@@ -773,7 +804,7 @@ export function readProperty(
   out.tainted = base.tainted;
   out.starved = base.starved;
   if (base.arrayCapped) out.arrayCapped = true;
-  if (base.arrayStructural) out.arrayStructural = true;
+  if (base.arrayAccessors) out.arrayAccessors = base.arrayAccessors;
   for (const u of base.unknown) out.unknown.add(u);
   for (const o of base.origins.values()) {
     if (o.kind === 'literal') {
@@ -910,7 +941,7 @@ export function elementsOf(w: Walk, base: Res, q: Query, index?: number, fallbac
   out.tainted = base.tainted;
   out.starved = base.starved;
   if (base.arrayCapped) out.arrayCapped = true;
-  if (base.arrayStructural) out.arrayStructural = true;
+  if (base.arrayAccessors) out.arrayAccessors = base.arrayAccessors;
   for (const o of base.origins.values()) {
     if (o.kind !== 'array') {
       out.unknown.add('an element of a collection the walk cannot enumerate');
@@ -919,7 +950,7 @@ export function elementsOf(w: Walk, base: Res, q: Query, index?: number, fallbac
     }
     if (o.arrayCapped) {
       out.arrayCapped = true;
-      if (o.arrayStructural) out.arrayStructural = true;
+      out.arrayAccessors = mergeAccessors(out.arrayAccessors, o.arrayAccessors);
       out.unknown.add(ARRAY_LIMIT);
     }
     for (const array of arrayNodes(o)) {
@@ -1369,19 +1400,16 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     const bodies = new Set<TS.Node>();
     const unknowns = new Set(res.unknown);
     // A clipped array can hide a getter source even when retained elements
-    // contain only data. Structural element types cannot prove absence, while
-    // concrete property declarations still exclude class prototype spread.
+    // contain only data. The source summary survives widened use-site types;
+    // concrete class declarations still exclude prototype getters from spread.
     const sourceType = call.binding ? bindingType(ts, checker, call.binding) : checker.getTypeAtLocation(callee);
     const accessor = call.rest ? 'get' : call.accessor;
-    const properties = sourceType && method !== undefined
-      ? [checker.getPropertyOfType(sourceType, method)].filter((symbol): symbol is TS.Symbol => !!symbol)
-      : sourceType ? checker.getPropertiesOfType(sourceType) : [];
+    const completeSummary = res.arrayAccessors && !res.tainted && !res.starved &&
+      [...res.unknown].every((reason) => reason === ARRAY_LIMIT);
+    const possibilities = res.arrayCapped ? (completeSummary ? res.arrayAccessors :
+      mergeAccessors(res.arrayAccessors, sourceType && possibleAccessors(w, sourceType))) : undefined;
     const incompleteArrayAccessor = !!res.arrayCapped && accessor !== undefined &&
-      (res.arrayStructural || !!(sourceType?.flags && (sourceType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown))) ||
-        properties.some((property) => property.getDeclarations()?.some((declaration) =>
-          ts.isPropertySignature(declaration) ||
-          ((accessor === 'get' ? ts.isGetAccessorDeclaration(declaration) : ts.isSetAccessorDeclaration(declaration)) &&
-          (!call.rest || ts.isObjectLiteralExpression(declaration.parent))))));
+      (possibilities?.[call.rest ? 'ownGet' : accessor] ?? true);
     let incompleteAccessors = incompleteArrayAccessor;
     for (const o of res.origins.values()) {
       if (call.rest) {

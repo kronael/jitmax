@@ -19,11 +19,28 @@ function alternatives(count: number, supplied: (index: number) => string) {
   }
   return tree(0, count);
 }
+const widenedCases = [
+  {name: 'objectClip', type: 'object', value: 'dirty', count: 65, at: 0, coverage: true},
+  {name: 'emptyClip', type: '{}', value: 'dirty', count: 65, at: 0, coverage: true},
+  {name: 'objectSourceClip', type: 'object', value: 'objectDirty', count: 65, at: 0, coverage: true},
+  {name: 'emptySourceClip', type: '{}', value: 'emptyDirty', count: 65, at: 0, coverage: true},
+  {name: 'mappedClip', type: "{[K in 'value']: number}", value: 'mappedDirty', count: 65, at: 0, coverage: true},
+  {name: 'indexedClip', type: 'Record<string, number>', value: 'indexedDirty', count: 65, at: 0, coverage: true},
+  {name: 'object64', type: 'object', value: 'dirty', count: 64, at: 0, coverage: false},
+  {name: 'objectReverse', type: 'object', value: 'dirty', count: 65, at: 64, coverage: true},
+  {name: 'objectPlain', type: 'object', value: 'data', count: 65, at: 0, coverage: false},
+  {name: 'emptyPlain', type: '{}', value: 'data', count: 65, at: 0, coverage: false},
+  {name: 'objectPrototype', type: 'object', value: 'prototype', count: 65, at: 0, coverage: false},
+];
 const source = `
 const row: {key?: number} = {key: 1};
 const dirty = {get value() { delete row.key; return 1; }};
 const data = {value: 2};
 const typedDirty: {value: number} = {get value() { delete row.key; return 1; }};
+const objectDirty: object = dirty;
+const emptyDirty: {} = dirty;
+const mappedDirty: {[K in 'value']: number} = dirty;
+const indexedDirty: Record<string, number> = dirty;
 /** @jitmax */ function conditionalDefault(flag: boolean) {
   const items = flag ? [dirty] : [data];
   let value = 0; ([{value} = data] = items); return value;
@@ -86,6 +103,13 @@ const prototype = new Prototype();
   const items = ${alternatives(65, () => 'prototype')};
   return {...items[0]};
 }
+${widenedCases.map(({name, type, value, count, at}) => `
+const ${name}Choices = [${Array.from({length: count}, (_, index) =>
+  `[${index === at ? value : 'data'}]`).join(',')}];
+/** @jitmax */ function ${name}(index: number) {
+  const items: (${type})[] = ${name}Choices[index]!;
+  return {...items[0]!};
+}`).join('\n')}
 `;
 fs.writeFileSync(file, source);
 const ts = load(path.join(import.meta.dirname, '..'));
@@ -227,12 +251,25 @@ test('array provenance retains at most 64 sites and marks clipping', () => {
   }
 });
 
+/** Source provenance controls coverage despite widened, mapped or indexed types. */
+for (const {name, coverage, value, count} of widenedCases) {
+  test(`array source evidence survives ${name}`, () => {
+    const found = rules(name);
+    const deletes = !['data', 'prototype'].includes(value);
+    assert.equal(found.includes('interface-dispatch'), coverage, name);
+    assert.equal(found.includes('delete-property'), deletes &&
+      (count === 64 || name === 'objectReverse'), name);
+    if (!deletes) assert.deepEqual(found, [], name);
+  });
+}
+
 /** Untimed runtime establishes both branches' actual reads and fallback choices. */
 test('conditional array runtime agrees with getter and silent controls', () => {
   const run = new Function(ts.transpile(source, {target: ts.ScriptTarget.ES2022}) +
     '; return {row, conditionalDefault, reverseDefault, conditionalRead, reverseRead, ' +
     'conditionalEmpty, conditionalUndefined, plain, unusedDefault, omittedGetter, ' +
-    'arrays64, clipped65, retained65, typedClipped65, plain65, prototype65};')();
+    'arrays64, clipped65, retained65, typedClipped65, plain65, prototype65, ' +
+    widenedCases.map(({name}) => name).join(',') + '};')();
   for (const name of ['conditionalDefault', 'reverseDefault', 'conditionalRead',
     'reverseRead', 'conditionalEmpty', 'conditionalUndefined']) {
     for (const flag of [true, false]) {
@@ -259,5 +296,12 @@ test('conditional array runtime agrees with getter and silent controls', () => {
     run.row.key = 1;
     run[name](0);
     assert.equal(Object.hasOwn(run.row, 'key'), true, name);
+  }
+  for (const {name, value, at} of widenedCases) {
+    run.row.key = 1;
+    const copied = run[name](at);
+    const deletes = !['data', 'prototype'].includes(value);
+    assert.deepEqual(copied, value === 'prototype' ? {} : {value: deletes ? 1 : 2}, name);
+    assert.equal(Object.hasOwn(run.row, 'key'), !deletes, name);
   }
 });
