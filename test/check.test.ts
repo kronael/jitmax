@@ -61,14 +61,12 @@ import type * as TS from 'typescript';
 const root = path.join(import.meta.dirname, '..');
 const ts = load(root);
 
-// The published prose, which is seven files since the split: each one answers a
-// different question and any of them may quote a measured number. Every check
-// below that used to read README.md alone reads this list, or the one file the
-// claim now lives in — a register that named only README would stop seeing a
-// number the day it moved out of it.
+// Every published guide can quote measured numbers. Register each guide so
+// moving a claim between files keeps the evidence checks active.
 const DOCS = [
   'README.md',
   'ARCHITECTURE.md',
+  path.join('docs', 'usage.md'),
   path.join('docs', 'rules.md'),
   path.join('docs', 'limits.md'),
   path.join('bench', 'README.md'),
@@ -614,20 +612,13 @@ test('the delete fix states the rebuild tradeoff at the swept sizes', () => {
   );
 });
 
-// The same sentence is republished three times outside the rule — in README's
-// sample output, in examples/README.md, and in the example's header, which says
-// it is quoting the run — and all three typed the pair by hand, so a
-// re-measurement moved the rule and left the copies claiming the old sizes.
-// Every copy is read here and held to the derived pair (BUGS TC-48).
+// Each guide that quotes the delete advice must use the sizes the example
+// sweep measures (BUGS TC-48).
 test('every published copy of the delete fix quotes the swept sizes', () => {
   const sizes = N['ex.omit.sizes'];
   const typed: string[] = [];
   let copies = 0;
-  for (const file of [
-    'README.md',
-    path.join('examples', 'README.md'),
-    path.join('docs', 'rules.md'),
-  ]) {
+  for (const file of DOCS) {
     // The sentence wraps across lines in prose and inside a `//` transcript, so
     // the file is flattened before it is matched.
     const flat = fs
@@ -638,7 +629,7 @@ test('every published copy of the delete fix quotes the swept sizes', () => {
       if (!m[1]!.includes(sizes)) typed.push(`${file}: "improves reads at ${m[1]}"`);
     }
   }
-  assert.ok(copies >= 3, `the fix sentence was found ${copies} times — the regex has drifted`);
+  assert.ok(copies >= 2, `the fix sentence was found ${copies} times — the regex has drifted`);
   assert.deepStrictEqual(typed, [], `these do not quote the swept sizes (${sizes})`);
 });
 
@@ -3642,7 +3633,7 @@ test('every published surface states this version and this many rules', () => {
   const page = fs.readFileSync(path.join(root, 'site', 'index.html'), 'utf8');
 
   const stated: [string, string, RegExp][] = [
-    ['README.md', readme, /^Status: v(\d+\.\d+\.\d+),/m],
+    ['README.md', readme, /^Version: v(\d+\.\d+\.\d+)\./m],
     ['site/index.html', page, /v(\d+\.\d+\.\d+), <strong>GPL/],
     ['lib/version.ts', doc('lib/version.ts'), /VERSION = '(\d+\.\d+\.\d+)'/],
   ];

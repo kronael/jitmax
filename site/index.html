@@ -4,26 +4,24 @@
 <meta charset="utf-8">
 <meta name="krons:type" content="products">
 <meta name="krons:date" content="2026-10-03">
-<meta name="krons:pin"  content="0">
+<meta name="krons:pin" content="1">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="A static checker for speed-sensitive TypeScript on V8 — numba's @njit, for V8. Mark a hot function and jitmax reports the patterns that measurably push V8 off its fast path, in that function and every function it calls, and the calls it cannot check.">
-<title>jitmax — @njit for TypeScript on V8</title>
+<meta name="description" content="Check speed-sensitive TypeScript for measured slowdown patterns on V8. Mark a function and get source locations, next steps and calls the checker could not follow.">
+<title>jitmax — check TypeScript for V8 slowdowns</title>
 <link rel="stylesheet" href="/pub/krons/assets/hub.css">
-<meta property="og:title" content="jitmax — @njit for TypeScript on V8">
-<meta property="og:description" content="Mark a hot TypeScript function. jitmax reports measured slowdown patterns and calls it cannot check, with source locations and next steps. Slowdown rules cite their benchmarks.">
+<meta property="og:title" content="jitmax — check TypeScript for V8 slowdowns">
+<meta property="og:description" content="Mark a TypeScript function. jitmax checks it and the functions it calls for measured slowdown patterns, then reports source locations and next steps.">
 <meta property="og:image" content="https://krons.fiu.wtf/pub/jitmax/jitmax-card.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:image" content="https://krons.fiu.wtf/pub/jitmax/jitmax-card.png">
 <meta name="twitter:card" content="summary_large_image">
 <style>
-/* Layout only. No color overrides — the palette is hub.css. */
+/* Layout only. The palette comes from hub.css. */
 .hub-container video,
 .hub-container img { width: 100%; height: auto; display: block;
                      margin: 1.5em 0; border: 1px solid var(--border);
                      border-radius: 3px; }
-.hub-container td { font-variant-numeric: tabular-nums; }
-.hub-container table { display: block; overflow-x: auto; }
 .cap { font-size: 0.9em; margin-top: -0.8em; }
 .hub-container .back-btn { position: static; display: inline-block;
                            margin-bottom: 1em; }
@@ -33,150 +31,72 @@
 
 <button class="theme-toggle" aria-label="Toggle theme"></button>
 
-<div class="hub-container">
+<main class="hub-container">
 
-<a href="/pub/" class="back-btn">&larr; back</a>
+<a href="/pub/krons/" class="back-btn">&larr; back</a>
 <h1>jitmax</h1>
-<p class="hub-subtitle">A static checker for speed-sensitive TypeScript on V8 — numba's <code>@njit</code>, for V8</p>
+<p class="hub-subtitle">Check speed-sensitive TypeScript for V8 slowdowns</p>
 
-<div class="tldr-box">
-  <div class="tldr-label">TL;DR</div>
-  <div class="tldr-text">
-    Mark a hot TypeScript function with <code>/** @jitmax */</code>. jitmax
-    checks it and every function it calls whose source it can read, and
-    reports the patterns that measurably push V8 off its fast path: a fifth
-    object shape at one property read or method call, a <code>delete</code>,
-    an array built per pipeline stage. You get findings with file and line, the
-    next step, and an exit code a CI gate can read. Slowdown rules cite their
-    benchmark; coverage rules report unchecked calls without claiming they are slow. It never runs or rewrites your code. Run it
-    from your project root:
-    <code>bunx github:kronael/jitmax#v0.17.2 src</code>
-  </div>
-</div>
+<p>
+  Mark a function <code>/** @jitmax */</code>. jitmax checks that function and
+  the functions it calls for patterns that benchmarks show can slow V8.
+  V8 is the JavaScript engine in Node, Chrome and Deno. You get source locations, next steps and
+  calls the checker could not follow.
+</p>
+
+<p>
+  <a class="jump-link" href="https://github.com/kronael/jitmax/blob/v0.17.2/README.md"><strong>Read the README &rarr;</strong></a>
+</p>
+<p>Start with Bun and TypeScript 5.x or 6.x. The README has a runnable example.</p>
 
 <video id="demo" src="jitmax.mp4" controls muted playsinline
        preload="metadata" poster="jitmax-card.png"
        onerror="document.getElementById('media-error').hidden = false"
        onloadeddata="document.getElementById('media-error').hidden = true"
-       aria-label="Three parts: a comic panel, a real terminal recording, and the word V8 with the measured cost.">
-  <img src="jitmax.gif" alt="Three parts: a comic panel, a real terminal recording, and the word V8 with the measured cost.">
+       aria-label="A comic panel, a real checker recording, and a V8 benchmark result.">
+  <img src="jitmax.gif" alt="A comic panel, a real checker recording, and a V8 benchmark result.">
 </video>
 
 <p class="cap">
-  The middle is a real recording: the checker running against a function
-  radash ships, vendored unchanged into <code>examples/</code>.
-  The cost range comes from a separate benchmark: reads through five property
-  sets versus one, from L1 cache to RAM.
-  The raw timings are in
-  <a href="https://github.com/kronael/jitmax/blob/v0.17.2/bench/shape-sets.jl"><code>bench/shape-sets.jl</code></a>.
+  The recording checks radash's <code>assign</code>, copied unchanged into
+  <code>examples/</code>. The 3.4&ndash;11.3x range comes from a separate
+  benchmark of property reads through five property sets versus one.
+  <a href="https://github.com/kronael/jitmax/blob/v0.17.2/bench/shape-sets.jl">Read the raw timings</a>.
 </p>
 
 <p id="media-error" role="alert" hidden>
   The recording could not load.
   <button type="button" onclick="document.getElementById('demo').load()">Retry video</button>
-  or <a href="#use">follow the text guide</a>.
+  or <a href="https://github.com/kronael/jitmax/blob/v0.17.2/README.md">read the README</a>.
 </p>
 
-<h2 id="use">Try it</h2>
+<h2>What it checks</h2>
 
 <p>
-  You need <a href="https://bun.sh/docs/installation">Bun</a> and TypeScript
-  5.x or 6.x in the project you check. <code>bun add typescript</code> installs
-  7.x, which lacks the compiler API jitmax uses, so a project without
-  TypeScript, or on 7.x, adds 6.x with <code>bun add --dev typescript@^6</code>.
-  Save this as
-  <code>shapes.ts</code> in the project root. The element type declares five
-  property sets:
-</p>
-
-<pre><code>type Row =
-  | { kind: 'a'; x: number }
-  | { kind: 'b'; x: number; y: number }
-  | { kind: 'c'; x: number; z: number }
-  | { kind: 'd'; x: number; w: number }
-  | { kind: 'e'; x: number; v: number };
-
-/** @jitmax */
-export function total(rows: Row[]): number {
-  let sum = 0;
-  for (const row of rows) sum += row.x;
-  return sum;
-}</code></pre>
-
-<p>Then run this from the project root:</p>
-
-<pre><code>bunx github:kronael/jitmax#v0.17.2 shapes.ts</code></pre>
-
-<p>It exits <code>1</code>, and its finding reads:</p>
-
-<pre><code>  shapes.ts:9  total()
-    shapes.ts:9:23  error  megamorphic-elements
-      rows has 5 distinct property sets in its element type; candidate for
-      megamorphic load feedback, not an observed runtime map count
-      next: inspect the element builders. If semantics allow, use consistent
-            own properties and insertion order
-      note: type assertions do not change runtime shapes. Adding a missing
-            property can change key enumeration and presence checks. Library
-            callers may need an upstream change; no automatic rewrite is
-            established here
-      related: shapes.ts:11:34 read: row.x
-      sources: No builder located for this value. Source tracing is partial:
-               no visible caller of total — its arguments come from outside
-               this program.</code></pre>
-
-<p>
-  The first line is the annotated function the walk started from; the finding
-  can sit in any function it calls. <code>next:</code> is what to try, and
-  <code>note:</code> what that change can break besides speed. On the
-  benchmark behind this rule, reads through five property sets ran
-  3.4&ndash;11.3x slower than through one. A finding is a measured candidate,
-  not a cost in your program: most input sizes are only known at runtime, and a printed fix can make the call slower. Benchmark your caller
-  before you keep a change. Bun runs the checker; every rule is about V8, not
-  Bun's engine.
+  jitmax reports mixed object shapes at property reads and method calls,
+  property deletion, repeated copying and avoidable allocations.
+  Each slowdown rule cites its benchmark. Coverage rules report unchecked
+  calls without claiming those calls are slow.
+  <a href="https://github.com/kronael/jitmax/blob/v0.17.2/docs/rules.md">See the rules and their limits</a>.
 </p>
 
 <p>
-  Now install your project's dependencies, mark your own hot function and run
-  <code>bunx github:kronael/jitmax#v0.17.2 src</code>. <code>--help</code> lists every
-  argument.
+  jitmax reads source without running or rewriting your code.
+  A clean run does not guarantee V8 optimization or fast execution.
+  The measurements come from one machine. A suggested change can make your
+  caller slower. Profile and benchmark your workload before keeping a change.
+  <a href="https://github.com/kronael/jitmax/blob/v0.17.2/examples/README.md">See the measured library fixes</a>.
 </p>
-
-<h2>Read next</h2>
-
-<ul>
-  <li>
-    <a href="https://github.com/kronael/jitmax/blob/v0.17.2/README.md">README</a>:
-    setup, rule selection, CPU profiles and exit codes.
-  </li>
-  <li>
-    <a href="https://github.com/kronael/jitmax/blob/v0.17.2/docs/rules.md">Rules</a>:
-    what each rule detects and what it cost when measured, where it stays
-    silent, and what to do about a finding.
-  </li>
-  <li>
-    <a href="https://github.com/kronael/jitmax/blob/v0.17.2/docs/limits.md">Limits</a>:
-    where jitmax is blind or wrong.
-  </li>
-  <li>
-    <a href="https://github.com/kronael/jitmax/blob/v0.17.2/examples/README.md">Examples</a>:
-    four library fixes measured end to end, and the 22-codebase survey.
-  </li>
-  <li>
-    <a href="https://github.com/kronael/jitmax/blob/v0.17.2/bench/README.md">Benchmarks</a>:
-    how every number was measured, and how to re-run it.
-  </li>
-</ul>
 
 <div class="hub-footer">
   <p>
-    v0.17.2, <strong>GPL-2.0-only</strong>. Use, modify and redistribute under
-    those terms; a derivative work carries the same licence.
+    v0.17.2, <strong>GPL-2.0-only</strong>.
     <a href="https://github.com/kronael/jitmax/tree/v0.17.2">Source on GitHub</a>.
-    The install commands and guides use the <code>v0.17.2</code> release tag.
+    Guides use the <code>v0.17.2</code> release tag.
   </p>
 </div>
 
-</div>
+</main>
 
 <script src="/pub/krons/assets/hub.js"></script>
 </body>

@@ -3,6 +3,7 @@
 What each of the eight rules reports, what makes it fire, where it stays
 silent, what to do about a finding, and what the pattern cost when measured.
 Setup is in the [README](../README.md#quick-start).
+Config and profiles are in the [usage guide](usage.md).
 
 The first six rules report a pattern a benchmark in this repository measured
 as slower. The last two, `closed-world` and `interface-dispatch`, report calls
@@ -410,8 +411,7 @@ a count. A bare function call keeps its coverage finding, whatever the count.
 
 ## Reading a finding
 
-The [README](../README.md#read-a-finding) shows one finding in full. Its
-lines, in order:
+Read a finding from top to bottom:
 
 - The function heading names the annotated function the walk started from.
   The finding under it can sit in any function it calls, in any file.
@@ -466,29 +466,16 @@ after construction, sparse arrays, the `arguments` object — are in
 
 ## Turning a rule off
 
-jitmax reads `jitmax.toml` from the working directory upward, the way it finds
-`tsconfig.json`, and prints `rules from <path>, found from the working
-directory` when it uses one. A `.toml` named on the command line wins. Save
-this as `jitmax.toml` in your project root:
+Use an annotation to switch off a rule for one function and its callees:
 
-```toml
-[rules]
-"megamorphic-elements" = false
-"TC-9" = false
+```ts
+/** @jitmax -megamorphic-elements */
 ```
 
-Then run `bunx github:kronael/jitmax#v0.17.2 src` from that root. For a
-megamorphic-only scan, copy the
-[megamorphic preset](../examples/megamorphic/jitmax.toml) there as
-`jitmax.toml` instead.
+Use `jitmax.toml` to switch it off for the run. The
+[config guide](usage.md#configure-rules) explains discovery, overrides, defect
+codes and the megamorphic preset.
 
-A key is a rule name or a defect code; a code selects every rule that carries
-it. `false` switches the selection off; `true` does not suppress anything. On
-an annotation, prefix the name with `-`:
-`/** @jitmax -megamorphic-elements -TC-9 */` switches those rules off for that
-function and everything its walk reaches, and nowhere else.
-
-An unknown name or code exits `2`. Suppression is never silent: the report
-says how many findings were removed and which rules they came from, such as
-`3 findings suppressed (megamorphic-elements)`. Suppressing a rule never clears
-a coverage gap.
+The report counts suppressed findings and names their rules. Switching off
+`closed-world` or `interface-dispatch` leaves their calls unchecked. Suppression
+does not clear other coverage gaps.

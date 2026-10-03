@@ -1,6 +1,7 @@
 *.md export-ignore
 /README.md -export-ignore
 /ARCHITECTURE.md -export-ignore
+/docs/usage.md -export-ignore
 /docs/rules.md -export-ignore
 /docs/limits.md -export-ignore
 /examples/README.md -export-ignore

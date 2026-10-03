@@ -1,7 +1,8 @@
 # How jitmax is built
 
-Usage is in the [README](README.md#quick-start). This file explains how one run
-works inside.
+First use is in the [README](README.md#quick-start).
+Options and config are in the [usage guide](docs/usage.md).
+This file explains how one run works inside.
 
 One pass over a TypeScript program: load the project's own compiler, read the
 config, find the marked functions, walk what they call, run eight detectors
@@ -143,22 +144,11 @@ covered them, and exits
 `<anonymous>` at a file's `:1:1` is that module's top-level code: no function
 holds it, so move that work into a function to have it checked.
 
-There is no static hotness estimate: an annotation selects a function by your
-judgement, a profile by sampled self time. `min_self_pct` defaults to 1. It
-is a selection threshold, not a measured boundary between hot and cold code,
-and every run prints the value it used. To change it, save this as
-`profile.toml`:
-
-```toml
-[profile]
-min_self_pct = 2
-```
-
-Then name it beside the profile:
-`bunx github:kronael/jitmax#v0.17.2 profile.toml run.cpuprofile src`. A config with
-`[profile]` exits `2` on a run given no `.cpuprofile`, so keep it out of the
-`jitmax.toml` that annotation runs find. A named `.toml` replaces the found
-one, so copy any `[rules]` you need into it.
+An annotation selects a function by your judgement. A profile selects it by
+sampled self time. The default `min_self_pct` threshold is 1, and each run
+prints the threshold it uses. It is a selection setting, not a measured
+boundary between hot and cold code. The [usage guide](docs/usage.md#select-functions-from-a-cpu-profile)
+shows how to record a profile and change the threshold.
 
 ## How it runs
 
@@ -179,8 +169,8 @@ builds `dist/` for compiled packages. Node can run such a package through
 `node bin/cli.js`, but it cannot strip types under `node_modules`. In a clone,
 `node bin/jitmax.ts` needs Node `>=22.18` and no build step.
 
-Git source archives and packages carry six guides: the README, this file, the
-rules, the limits, the examples and the benchmarks. `.gitattributes` excludes
+Git source archives and packages carry the README, usage, rules, limits,
+examples, benchmarks and architecture guides. `.gitattributes` excludes
 all other Markdown and the internal `.claude`, `.diary` and `.ship`
 directories, and `package.json` lists the same guides. Runtime sources, the
 rule preset and the licences ship; Git archives also keep the examples and the
@@ -204,9 +194,17 @@ quotes them, and `make test` fails when a quoted number and its data disagree.
 
 ## Development
 
-Run these in a full Git clone after the
-[development setup](README.md#development-and-licence). Node `>=22.18` runs
-the tests and benchmarks; Bun is needed only for the Bun launcher.
+Development needs a full Git clone, Node `>=22.18`, npm and Make.
+Bun is needed for the Bun launcher. Install dependencies first:
+
+```sh
+npm ci --ignore-scripts
+```
+
+To scan from a clone, use `bun /path/to/jitmax/bin/cli.js` in place of the
+`bunx` command. It needs the clone's dependencies and no build.
+
+Run these commands from the clone:
 
 ```sh
 make          # lint, test, check
@@ -223,8 +221,20 @@ make meme     # re-render the launch loop from demo/meme/
 ```
 
 `make verify` also needs the [pinned V8 source](bench/README.md#what-v8s-source-says)
-and a radash checkout at the revision CI uses; `.github/workflows/ci.yml` has
-the checkout steps. A missing checkout fails verification, and neither is
-needed for ordinary scans. A full clone also holds the contributor rules in
-`CLAUDE.md`, the issue queue in `BUGS.md` and the test guide in
+and a radash checkout at the revision CI uses:
+
+```sh
+git clone --filter=blob:none --sparse https://github.com/v8/v8 v8src
+git -C v8src sparse-checkout set src include
+git -C v8src checkout c635f0d160b6e988b5ea5a907511a2929beb5d5e
+git clone --filter=blob:none https://github.com/rayepps/radash tmp/demo-real
+git -C tmp/demo-real checkout 4cab1900d08e0997abc4f17aec3cbfe18958d766
+make verify
+```
+
+The reality gate prepares eight reviewed radash functions from pristine source.
+It requires seven findings: one `accumulating-spread` on `assign` and six
+callback coverage findings. A missing checkout fails verification.
+Ordinary scans need neither checkout. A full clone also holds the contributor
+rules in `CLAUDE.md`, the issue queue in `BUGS.md` and the test guide in
 `test/README.md`; none of them ships in an install.

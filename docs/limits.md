@@ -1,8 +1,8 @@
 # Limits
 
-Where jitmax is blind or wrong, and what its measurements cannot support. Each
-rule's own misses are in [the rule reference](rules.md); this file covers the
-tool as a whole.
+A clean run means no enabled rule fired and no tracked coverage gap remains.
+It does not prove fast execution. Each rule's own misses are in the
+[rule reference](rules.md).
 
 ## What the walk sees
 
