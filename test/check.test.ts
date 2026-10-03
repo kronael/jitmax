@@ -3577,7 +3577,7 @@ test('every number in the end-to-end tables is what bench/example.jl says', () =
   );
 });
 
-test('every ratio on the published page is a derived number', () => {
+test('the bookmark page redirects to GitHub without stale ratios', () => {
   const page = fs.readFileSync(path.join(root, 'site', 'index.html'), 'utf8')
     .replace(/&ndash;|&mdash;|[–—]/g, '-');
   // The derived strings, and the individual ratios inside them. A citation
@@ -3596,7 +3596,9 @@ test('every ratio on the published page is a derived number', () => {
   // `149-166x`, `0.03x`. Version strings and pixel counts have no x and do not
   // match.
   const quoted = [...page.matchAll(RATIO)].map((m) => m[0]);
-  assert.ok(quoted.length > 0, 'site/index.html quotes no ratios — the regex has stopped matching');
+  const target = 'https://github.com/kronael/jitmax/tree/master';
+  assert.ok(page.includes(`content="0; url=${target}"`), 'the bookmark page must redirect to GitHub');
+  assert.ok(page.includes(`href="${target}"`), 'the bookmark page must provide a visible GitHub link');
 
   const stale = [...new Set(quoted)].filter((q) => !values.has(q));
   assert.deepStrictEqual(
@@ -3634,7 +3636,6 @@ test('every published surface states this version and this many rules', () => {
 
   const stated: [string, string, RegExp][] = [
     ['README.md', readme, /^Version: v(\d+\.\d+\.\d+)\./m],
-    ['site/index.html', page, /v(\d+\.\d+\.\d+), <strong>GPL/],
     ['lib/version.ts', doc('lib/version.ts'), /VERSION = '(\d+\.\d+\.\d+)'/],
   ];
   for (const [name, text, re] of stated) {
@@ -3703,7 +3704,7 @@ test('every surface states the TypeScript majors package.json supports', () => {
   const majors: string[] = [];
   for (let m = Number(bounds[1]); m < Number(bounds[2]); m++) majors.push(`${m}.x`);
   const phrase = `TypeScript ${majors.join(' or ')}`;
-  for (const name of ['README.md', path.join('test', 'README.md'), path.join('site', 'index.html')]) {
+  for (const name of ['README.md', path.join('test', 'README.md'), path.join('docs', 'usage.md')]) {
     const text = doc(name).replace(/\s+/g, ' ');
     const stated = [...text.matchAll(/TypeScript \d+\.x(?: or \d+\.x)*/g)].map((m) => m[0]);
     assert.ok(stated.length > 0, `${name} no longer states the TypeScript it needs`);

@@ -1,103 +1,12 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="krons:type" content="products">
-<meta name="krons:date" content="2026-10-03">
-<meta name="krons:pin" content="1">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Check speed-sensitive TypeScript for measured slowdown patterns on V8. Mark a function and get source locations, next steps and calls the checker could not follow.">
-<title>jitmax — check TypeScript for V8 slowdowns</title>
-<link rel="stylesheet" href="/pub/krons/assets/hub.css">
-<meta property="og:title" content="jitmax — check TypeScript for V8 slowdowns">
-<meta property="og:description" content="Mark a TypeScript function. jitmax checks it and the functions it calls for measured slowdown patterns, then reports source locations and next steps.">
-<meta property="og:image" content="https://krons.fiu.wtf/pub/jitmax/jitmax-card.png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta name="twitter:image" content="https://krons.fiu.wtf/pub/jitmax/jitmax-card.png">
-<meta name="twitter:card" content="summary_large_image">
-<style>
-/* Layout only. The palette comes from hub.css. */
-.hub-container video,
-.hub-container img { width: 100%; height: auto; display: block;
-                     margin: 1.5em 0; border: 1px solid var(--border);
-                     border-radius: 3px; }
-.cap { font-size: 0.9em; margin-top: -0.8em; }
-.hub-container .back-btn { position: static; display: inline-block;
-                           margin-bottom: 1em; }
-</style>
+<meta http-equiv="refresh" content="0; url=https://github.com/kronael/jitmax/tree/master">
+<title>jitmax on GitHub</title>
 </head>
 <body>
-
-<button class="theme-toggle" aria-label="Toggle theme"></button>
-
-<main class="hub-container">
-
-<a href="/pub/krons/" class="back-btn">&larr; back</a>
-<h1>jitmax</h1>
-<p class="hub-subtitle">Check speed-sensitive TypeScript for V8 slowdowns</p>
-
-<p>
-  Mark a function <code>/** @jitmax */</code>. jitmax checks that function and
-  the functions it calls for patterns that benchmarks show can slow V8.
-  V8 is the JavaScript engine in Node, Chrome and Deno. You get source locations, next steps and
-  calls the checker could not follow.
-</p>
-
-<p>
-  <a class="jump-link" href="https://github.com/kronael/jitmax/blob/v0.17.3/README.md"><strong>Read the README &rarr;</strong></a>
-</p>
-<p>Start with Bun and TypeScript 5.x or 6.x. The README has a runnable example.</p>
-
-<video id="demo" src="jitmax.mp4" controls muted playsinline
-       preload="metadata" poster="jitmax-card.png"
-       onerror="document.getElementById('media-error').hidden = false"
-       onloadeddata="document.getElementById('media-error').hidden = true"
-       aria-label="A comic panel, a real checker recording, and a V8 benchmark result.">
-  <img src="jitmax.gif" alt="A comic panel, a real checker recording, and a V8 benchmark result.">
-</video>
-
-<p class="cap">
-  The recording checks radash's <code>assign</code>, copied unchanged into
-  <code>examples/</code>. The 3.4&ndash;11.3x range comes from a separate
-  benchmark of property reads through five property sets versus one.
-  <a href="https://github.com/kronael/jitmax/blob/v0.17.3/bench/shape-sets.jl">Read the raw timings</a>.
-</p>
-
-<p id="media-error" role="alert" hidden>
-  The recording could not load.
-  <button type="button" onclick="document.getElementById('demo').load()">Retry video</button>
-  or <a href="https://github.com/kronael/jitmax/blob/v0.17.3/README.md">read the README</a>.
-</p>
-
-<h2>What it checks</h2>
-
-<p>
-  jitmax reports mixed object shapes at property reads and method calls,
-  property deletion, repeated copying and avoidable allocations.
-  Each slowdown rule cites its benchmark. Coverage rules report unchecked
-  calls without claiming those calls are slow.
-  <a href="https://github.com/kronael/jitmax/blob/v0.17.3/docs/rules.md">See the rules and their limits</a>.
-</p>
-
-<p>
-  jitmax reads source without running or rewriting your code.
-  A clean run does not guarantee V8 optimization or fast execution.
-  The measurements come from one machine. A suggested change can make your
-  caller slower. Profile and benchmark your workload before keeping a change.
-  <a href="https://github.com/kronael/jitmax/blob/v0.17.3/examples/README.md">See the measured library fixes</a>.
-</p>
-
-<div class="hub-footer">
-  <p>
-    v0.17.3, <strong>GPL-2.0-only</strong>.
-    <a href="https://github.com/kronael/jitmax/tree/v0.17.3">Source on GitHub</a>.
-    Guides use the <code>v0.17.3</code> release tag.
-  </p>
-</div>
-
-</main>
-
-<script src="/pub/krons/assets/hub.js"></script>
+<p><a href="https://github.com/kronael/jitmax/tree/master">Read the jitmax README on GitHub</a>.</p>
 </body>
 </html>

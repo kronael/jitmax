@@ -1,6 +1,17 @@
 --- a/index.html
 +++ b/index.html
-@@ -70,7 +70,7 @@
+@@ -23,6 +23,10 @@
+ .card-header h2 { font-size: 1.15em; color: var(--fg); margin: 0; }
+ .index-card p { color: var(--dim); font-size: 0.9em; line-height: 1.5; margin: 0; }
++@media (max-width: 768px) {
++  .index-card { font-size: 16px; }
++  .theme-toggle { min-width: 44px; min-height: 44px; }
++}
+ </style>
+ </head>
+ <body>
+ <button class="theme-toggle" aria-label="Toggle theme"></button>
+@@ -70,7 +74,7 @@
    <div class="section-header">
      <div class="section-nav"><a href="archive/#products">Products</a></div>
    </div>
@@ -9,17 +20,17 @@
    <div class="card-grid">
      <a href="/pub/arizuko/" class="index-card">
        <div class="card-header">
-@@ -85,6 +85,13 @@
+@@ -85,6 +89,13 @@
          <h2>rsx</h2>
        </div>
        <p>Perpetuals exchange (v0). 49 spec documents before any code. 895+ Rust tests. Target: &lt;50μs GW-ME-GW round-trip. Zero heap on the hot path.</p>
 +    </a>
-+    <a href="/pub/jitmax/" class="index-card">
++    <a href="https://github.com/kronael/jitmax/tree/master" class="index-card">
 +      <div class="card-header">
 +        <div class="card-icon">🔎</div>
 +        <h2>jitmax</h2>
 +      </div>
-+      <p>Check speed-sensitive TypeScript for V8 slowdowns. Mark a function and get source locations, next steps and calls the checker could not follow.</p>
++      <p>Check TypeScript for patterns that can slow V8. Mark a function and get source locations and next steps.</p>
      </a>
    </div>
  </div>
