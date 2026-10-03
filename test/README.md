@@ -8,7 +8,7 @@ below from the jitmax checkout with Node `>=22.18`.
 What the suite guards, and how to run one test.
 
 ```sh
-make test    # 264 unit tests, including the must-stay-silent cases
+make test    # 277 unit tests, including the must-stay-silent cases
 node --test --test-name-pattern '<name>' test/check.test.ts   # one test
 node --test test/*.test.ts
 ```
@@ -21,6 +21,10 @@ run by name.
 `test/check.test.ts` holds the checker's tests and every register described
 below. `test/tiers.test.ts` holds the tier diagnostic's tests.
 `test/provenance.test.ts` checks representative builder sources and tracing limits.
+`test/walk.test.ts` checks visible replacements and implicit calls, with silent controls.
+`test/profile.test.ts` checks function hotness and rejects damaged profile accounting.
+`test/config.test.ts` checks duplicate policy rejection.
+`test/evidence.test.ts` checks child results and effective inputs without running evidence timings.
 `test/fixtures/` holds the TOML config a test loads and a call chain longer
 than the walk's cap, which is how the truncation contract is exercised.
 
