@@ -348,7 +348,7 @@ test('an interface call with one visible implementation is followed, not reporte
  * spread is in the bodies that run, so a finding there proves the walk read
  * them (BUGS TC-159).
  */
-test('a #private function field resolves as its public twin, writes included', () => {
+test('a #private function field resolves as its public twin, writes included', async () => {
   const byName = rulesByFunction(path.join('test', 'fixtures', 'private'));
   const of = (name: string): string[] => byName.get(name) ?? assert.fail(`no mark ${name}`);
   for (const held of ['Init', 'Both', 'Late']) {
@@ -356,7 +356,16 @@ test('a #private function field resolves as its public twin, writes included', (
   }
   assert.deepStrictEqual(of('privInit'), ['accumulating-spread']);
   assert.deepStrictEqual(of('privLate'), ['accumulating-spread']);
-  assert.deepStrictEqual(of('pubBoth'), ['interface-dispatch']);
+  assert.deepStrictEqual(of('pubBoth'), ['accumulating-spread', 'interface-dispatch']);
+  const { Priv, Pub, built } = await import('./fixtures/private/private.ts');
+  const xs = [1, 2, 3];
+  for (const item of built) {
+    const copied = item instanceof Priv ? item.privBoth(xs) : item.pubBoth(xs);
+    assert.deepStrictEqual(copied, xs);
+    assert.notStrictEqual(copied, xs);
+  }
+  assert.strictEqual(new Priv(false).privBoth(xs), xs);
+  assert.strictEqual(new Pub(false).pubBoth(xs), xs);
 });
 
 // Five classes behind ONE non-union interface: the type-based dispatch rule
