@@ -1097,7 +1097,8 @@ function reach(
         if (assignment || update || iteration) {
           visitAccessor(node, node, declarations, 'set');
         }
-      } else if (isBindingRead(ts, node)) {
+      } else if (isBindingRead(ts, node) || ts.isSpreadAssignment(node)) {
+        const binding = isBindingRead(ts, node) ? node : undefined;
         const rest = ts.isSpreadAssignment(node) || (ts.isBindingElement(node) && !!node.dotDotDotToken);
         const key = ts.isBindingElement(node) ? node.propertyName ?? node.name :
           ts.isSpreadAssignment(node) ? undefined : node.name;
@@ -1109,7 +1110,7 @@ function reach(
             ? key : undefined;
         if (expression) {
           if (rest) {
-            visitAccessor(node, expression, [], 'get', undefined, node, true);
+            visitAccessor(node, expression, [], 'get', undefined, binding, true);
           } else {
             const name = key && !ts.isObjectBindingPattern(key) && !ts.isArrayBindingPattern(key)
               ? bindingKey(ts, checker, key) : undefined;

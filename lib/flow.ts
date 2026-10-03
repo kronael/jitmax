@@ -91,8 +91,9 @@ export function isBindingRead(ts: Ts, node: TS.Node): node is BindingRead {
   if (!(ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node) ||
     ts.isSpreadAssignment(node)) || !ts.isObjectLiteralExpression(node.parent)) return false;
   let pattern: TS.Node = node.parent;
-  while (ts.isPropertyAssignment(pattern.parent) && pattern.parent.initializer === pattern) {
-    pattern = pattern.parent.parent;
+  while ((ts.isPropertyAssignment(pattern.parent) && pattern.parent.initializer === pattern) ||
+    ts.isArrayLiteralExpression(pattern.parent)) {
+    pattern = ts.isArrayLiteralExpression(pattern.parent) ? pattern.parent : pattern.parent.parent;
   }
   const holder = pattern.parent;
   return (ts.isBinaryExpression(holder) && holder.left === pattern &&
@@ -103,18 +104,36 @@ export function isBindingRead(ts: Ts, node: TS.Node): node is BindingRead {
 /** Assignment patterns take their property declarations from their source type. */
 export function bindingType(ts: Ts, checker: TS.TypeChecker, d: BindingRead): TS.Type | undefined {
   if (ts.isBindingElement(d)) return checker.getTypeAtLocation(d.parent);
-  const holder = d.parent.parent;
-  if (ts.isBinaryExpression(holder)) return checker.getTypeAtLocation(holder.right);
-  if (ts.isPropertyAssignment(holder) && isBindingRead(ts, holder)) {
-    const type = bindingType(ts, checker, holder);
-    const name = bindingKey(ts, checker, holder.name);
-    const symbol = type && name !== undefined ? checker.getPropertyOfType(type, name) : undefined;
-    return symbol ? checker.getTypeOfSymbolAtLocation(symbol, holder) : undefined;
+  return assignmentPatternType(d.parent);
+
+  function assignmentPatternType(pattern: TS.Node): TS.Type | undefined {
+    const holder = pattern.parent;
+    if (ts.isBinaryExpression(holder)) return checker.getTypeAtLocation(holder.right);
+    if (ts.isPropertyAssignment(holder) && isBindingRead(ts, holder)) {
+      const type = bindingType(ts, checker, holder);
+      const name = bindingKey(ts, checker, holder.name);
+      const symbol = type && name !== undefined ? checker.getPropertyOfType(type, name) : undefined;
+      return symbol ? checker.getTypeOfSymbolAtLocation(symbol, holder) : undefined;
+    }
+    if (ts.isForOfStatement(holder)) {
+      return checker.getIndexTypeOfType(checker.getTypeAtLocation(holder.expression), ts.IndexKind.Number);
+    }
+    if (ts.isArrayLiteralExpression(holder)) {
+      const index = holder.elements.indexOf(pattern as TS.Expression);
+      const parent = holder.parent;
+      const source = ts.isBinaryExpression(parent) ? unwrap(ts, parent.right) : undefined;
+      if (source && ts.isArrayLiteralExpression(source) &&
+        !source.elements.slice(0, index + 1).some(ts.isSpreadElement)) {
+        const element = source.elements[index];
+        return element ? checker.getTypeAtLocation(element) : undefined;
+      }
+      const type = assignmentPatternType(holder);
+      const symbol = type && checker.getPropertyOfType(type, String(index));
+      return symbol ? checker.getTypeOfSymbolAtLocation(symbol, pattern) :
+        type && checker.getIndexTypeOfType(type, ts.IndexKind.Number);
+    }
+    return undefined;
   }
-  if (ts.isForOfStatement(holder)) {
-    return checker.getIndexTypeOfType(checker.getTypeAtLocation(holder.expression), ts.IndexKind.Number);
-  }
-  return undefined;
 }
 
 export interface Query {
@@ -476,23 +495,31 @@ export function bindingFlow(w: Walk, d: BindingRead, q: Query): Res {
 
 // The object consumed by a pattern, shared with the implicit getter walk.
 function bindingSource(w: Walk, d: BindingRead, q: Query): Res {
-  const holder = d.parent.parent;
-  if (w.ts.isVariableDeclaration(holder) && holder.initializer) {
-    return w.valueOf(holder.initializer, q);
+  return patternSource(d.parent);
+
+  function patternSource(pattern: TS.Node): Res {
+    const holder = pattern.parent;
+    if (w.ts.isVariableDeclaration(holder) && holder.initializer) {
+      return w.valueOf(holder.initializer, q);
+    }
+    if (w.ts.isParameter(holder)) return paramFlow(w, holder, q);
+    if (w.ts.isBindingElement(holder)) return bindingFlow(w, holder, q);
+    if (w.ts.isArrayLiteralExpression(holder)) {
+      const index = holder.elements.indexOf(pattern as TS.Expression);
+      return elementsOf(w, patternSource(holder), q, index);
+    }
+    if (w.ts.isPropertyAssignment(holder) && isBindingRead(w.ts, holder)) {
+      return bindingFlow(w, holder, q);
+    }
+    if (w.ts.isBinaryExpression(holder) && holder.operatorToken.kind === w.ts.SyntaxKind.EqualsToken) {
+      return w.valueOf(holder.right, q);
+    }
+    const loop = w.ts.isVariableDeclaration(holder) && w.ts.isVariableDeclarationList(holder.parent)
+      ? holder.parent.parent : holder;
+    if (w.ts.isForOfStatement(loop)) return elementsOf(w, w.valueOf(loop.expression, q), q);
+    if (w.ts.isForInStatement(loop)) return unknown('a string key from for-in iteration');
+    return unknown('a destructuring the walk does not model');
   }
-  if (w.ts.isParameter(holder)) return paramFlow(w, holder, q);
-  if (w.ts.isBindingElement(holder)) return bindingFlow(w, holder, q);
-  if (w.ts.isPropertyAssignment(holder) && isBindingRead(w.ts, holder)) {
-    return bindingFlow(w, holder, q);
-  }
-  if (w.ts.isBinaryExpression(holder) && holder.operatorToken.kind === w.ts.SyntaxKind.EqualsToken) {
-    return w.valueOf(holder.right, q);
-  }
-  const loop = w.ts.isVariableDeclaration(holder) && w.ts.isVariableDeclarationList(holder.parent)
-    ? holder.parent.parent : holder;
-  if (w.ts.isForOfStatement(loop)) return elementsOf(w, w.valueOf(loop.expression, q), q);
-  if (w.ts.isForInStatement(loop)) return unknown('a string key from for-in iteration');
-  return unknown('a destructuring the walk does not model');
 }
 
 export function paramFlow(w: Walk, param: TS.ParameterDeclaration, q: Query): Res {
@@ -801,7 +828,7 @@ export function memberValueInner(
   return out;
 }
 
-export function elementsOf(w: Walk, base: Res, q: Query): Res {
+export function elementsOf(w: Walk, base: Res, q: Query, index?: number): Res {
   const ts = w.ts;
   const out = emptyRes();
   out.tainted = base.tainted;
@@ -811,14 +838,20 @@ export function elementsOf(w: Walk, base: Res, q: Query): Res {
       out.unknown.add('an element of a collection the walk cannot enumerate');
       continue;
     }
-    const key = `e${w.idOf(o.node)}`;
+    const key = `e${w.idOf(o.node)}:${index ?? '*'}`;
     if (q.reading.has(key)) {
       out.tainted = true;
       continue;
     }
     q.reading.add(key);
     try {
-      for (const el of (o.node as TS.ArrayLiteralExpression).elements) {
+      const elements = (o.node as TS.ArrayLiteralExpression).elements;
+      if (index !== undefined && elements.slice(0, index + 1).some(ts.isSpreadElement)) {
+        out.unknown.add('an indexed element after an array spread');
+        continue;
+      }
+      const selected = index === undefined ? elements : elements.slice(index, index + 1);
+      for (const el of selected) {
         if (ts.isSpreadElement(el)) merge(out, elementsOf(w, w.valueOf(el.expression, q), q));
         else merge(out, w.valueOf(el, q));
       }
@@ -1210,6 +1243,8 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     if (call.binding) {
       res = bindingSource(w, call.binding, q);
       method = call.member;
+    } else if (call.rest) {
+      res = w.valueOf(callee, q);
     } else if (call.member !== undefined) {
       res = w.valueOf(callee, q);
       method = call.member;
