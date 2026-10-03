@@ -395,7 +395,8 @@ test('a call megamorphic-dispatch reports is one error, interface-dispatch a not
   assert.match(out, /1 annotated function, 1 error/);
   assert.doesNotMatch(out, /error {2}interface-dispatch/);
   assert.match(unwrapped(out), /note: interface-dispatch at this call: x\.area: unknown receiver origin/);
-  assert.match(unwrapped(out), /the call is unchecked/);
+  assert.match(unwrapped(out), /no readable body was checked at this call/);
+  assert.equal(markFor('areaOfFive').reached.length, 1);
   const repeated = render(root, [
     { mark: markFor('areaOfFive'), findings },
     { mark: markFor('runTrio'), findings: rawFindings('runTrio') },
