@@ -221,13 +221,18 @@ Reality check before any release: `make reality`. It runs the tool against a
 radash checkout and reads the COMPOSITION of what comes back, because every
 finding is an error since 2026-08-31 and a count alone no longer separates the
 two kinds: exactly one error is `accumulating-spread` on `assign()`, and every
-other error is an escape rule — radash's callback parameters, which the walk
-reports rather than drops. A second `accumulating-spread`, or any third rule, is
-a false positive. The total is pinned as well, at the revision CI clones.
-Missing checkout exits 2 and says how to clone it.
+other error is an escape rule — radash's callback parameters and conditional
+callback targets, which the walk reports rather than drops. The allowed
+escapes are `closed-world` and `interface-dispatch`. A second
+`accumulating-spread`, or any other rule, is a false positive. The total is
+pinned as well, at the revision CI clones.
+The gate prepares eight reviewed roots from pristine pinned Git source in a
+scratch copy and requires seven errors. A missing checkout or wrong revision
+exits 2.
 
 ```sh
 git clone https://github.com/rayepps/radash tmp/demo-real
+git -C tmp/demo-real checkout 4cab1900d08e0997abc4f17aec3cbfe18958d766
 make reality
 ```
 

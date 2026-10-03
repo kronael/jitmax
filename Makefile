@@ -38,23 +38,28 @@ v8-check:
 # The tool against somebody else's library: radash. Every finding is an error
 # since 2026-08-31, so the gate reads the composition rather than the count
 # alone: exactly ONE error is accumulating-spread, on `assign`, and every other
-# error is an escape rule — radash's callback parameters, which the walk reports
-# rather than drops. A third rule anywhere in the log is a false positive, and so
-# is a second accumulating-spread. The total is pinned too, at the revision CI
-# clones: a local checkout at another revision fails here and the count it
-# printed is the message. A missing checkout exits 2 and says how to get it
+# error is an escape rule — radash's callback parameters or conditional callback
+# targets, which the walk reports rather than drops. An error outside those
+# three rules is a false positive, and so is a second accumulating-spread.
+# The helper copies pristine source from the revision CI clones, then marks
+# eight reviewed roots. A different revision or missing checkout exits 2
 # rather than passing quietly, the same rule as v8-check. This was prose nothing
 # ran, and it asked for a count that had been wrong for a release (TC-123).
 REAL = tmp/demo-real
-REAL_ERRORS = 6
+REAL_REV = 4cab1900d08e0997abc4f17aec3cbfe18958d766
+REAL_ERRORS = 7
 reality:
 	@test -d $(REAL)/src || { \
 	  echo "reality: $(REAL)/src is missing. git clone https://github.com/rayepps/radash $(REAL)"; \
 	  exit 2; }
 	@mkdir -p tmp
-	@node bin/jitmax.ts $(REAL)/src > tmp/reality.log 2>&1; \
+	@node test/reality-prepare.ts "$(REAL)" "$(REAL_REV)"
+	@node bin/jitmax.ts "$$(cat tmp/reality-path)/src" > tmp/reality.log 2>&1; \
 	  test $$? -le 1 || { echo "reality: the tool failed"; cat tmp/reality.log; exit 2; }
-	@head -1 tmp/reality.log | grep -q ", $(REAL_ERRORS) errors" || { \
+	@! grep -qE 'modules? could not be resolved' tmp/reality.log || { \
+	  echo "reality: source imports must resolve under the root config"; \
+	  cat tmp/reality.log; exit 1; }
+	@head -1 tmp/reality.log | grep -qx "jitmax — 8 annotated functions, $(REAL_ERRORS) errors" || { \
 	  echo "reality: expected $(REAL_ERRORS) errors at the pinned radash revision"; \
 	  head -1 tmp/reality.log; exit 1; }
 	@test "`grep -c 'error  accumulating-spread' tmp/reality.log`" = 1 || { \
@@ -68,6 +73,11 @@ reality:
 	  echo "reality: a rule other than assign's and the escapes fired — a false positive"; \
 	  grep 'error  ' tmp/reality.log \
 	    | grep -vE 'accumulating-spread|closed-world|interface-dispatch'; exit 1; }
+	@test "`grep -c 'error  interface-dispatch' tmp/reality.log`" = 1 && \
+	  grep -q 'array.ts:145:29  error  interface-dispatch' tmp/reality.log && \
+	  grep -q 'calls desc === true ? dsc : asc; 2 implementations reach this call' tmp/reality.log || { \
+	  echo "reality: sort's conditional callback dispatch is missing or changed"; \
+	  cat tmp/reality.log; exit 1; }
 	@head -1 tmp/reality.log
 
 # Every published ratio, re-derived from the .jl sweeps into lib/numbers.ts and

@@ -224,7 +224,11 @@ make          # lint, test, demo checks
 ```
 
 `make verify` adds the V8 citation check and the radash reality run, which need
-two pinned checkouts:
+two pinned checkouts. The reality gate prepares eight reviewed radash functions
+from pristine Git source in a scratch copy, then requires seven findings: one
+`accumulating-spread` on `assign` and six callback coverage findings.
+
+Prepare the checkouts:
 
 ```sh
 git clone --filter=blob:none --sparse https://github.com/v8/v8 v8src
