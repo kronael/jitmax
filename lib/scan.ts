@@ -819,7 +819,9 @@ function reach(
               ts.isPropertyDeclaration(decl) || ts.isGetAccessorDeclaration(decl)));
           const receiver = !baseBound && propertyTarget
             ? flow.receiver(invocation) : undefined;
-          const replacement = receiver?.bodies.some((target) => !raw.includes(target));
+          const replacement = receiver !== undefined &&
+            (receiver.bodies.some((target) => !raw.includes(target)) ||
+              (receiver.bodies.length > 0 && receiver.unknown.length > 0));
           const changesTarget = raw.some((decl) =>
             (ts.isVariableDeclaration(decl) &&
               !decl.getSourceFile().isDeclarationFile &&

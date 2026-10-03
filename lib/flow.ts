@@ -89,7 +89,11 @@ export interface Query {
 // implementations at `source.some()`, every one a value a `.spec.ts` passed
 // (BUGS TC-150).
 export type Write =
-  | { kind: 'assign'; access: TS.PropertyAccessExpression; value: TS.Expression }
+  | {
+      kind: 'assign';
+      access: TS.PropertyAccessExpression | TS.ElementAccessExpression;
+      value: TS.Expression;
+    }
   | { kind: 'propassign'; prop: TS.PropertyAssignment }
   | { kind: 'shorthand'; prop: TS.ShorthandPropertyAssignment }
   | { kind: 'propdecl'; member: TS.PropertyDeclaration };
@@ -825,6 +829,11 @@ export function makeIndex(ts: Ts, program: TS.Program): Walk['index'] {
       // silently lacks (BUGS TC-113).
       const n = unwrap(ts, e);
       if (ts.isPropertyAccessExpression(n)) return n.name.text;
+      if (ts.isElementAccessExpression(n)) {
+        const key = unwrap(ts, n.argumentExpression);
+        if (ts.isStringLiteralLike(key)) return key.text;
+        if (ts.isNumericLiteral(key)) return String(Number(key.text));
+      }
       if (ts.isIdentifier(n)) return n.text;
       return undefined;
     };
@@ -847,8 +856,11 @@ export function makeIndex(ts: Ts, program: TS.Program): Walk['index'] {
         ts.isBinaryExpression(node) &&
         node.operatorToken.kind === ts.SyntaxKind.EqualsToken
       ) {
-        if (ts.isPropertyAccessExpression(node.left)) {
-          push(writes, node.left.name.text, { kind: 'assign', access: node.left, value: node.right });
+        if (ts.isPropertyAccessExpression(node.left) ||
+            ts.isElementAccessExpression(node.left)) {
+          const name = calleeName(node.left);
+          if (name !== undefined)
+            push(writes, name, { kind: 'assign', access: node.left, value: node.right });
         } else if (ts.isIdentifier(node.left)) {
           push(varWrites, node.left.text, node);
         }
@@ -976,8 +988,11 @@ export function makeWriteDecls(ts: Ts, checker: TS.TypeChecker): Walk['writeDecl
     const have = writeDeclCache.get(node);
     if (have) return have;
     let out: TS.Node[];
-    if (w.kind === 'assign') out = declsOf(checker, checker.getSymbolAtLocation(w.access.name));
-    else if (w.kind === 'propdecl') out = declsOf(checker, checker.getSymbolAtLocation(w.member.name));
+    if (w.kind === 'assign') {
+      const key = ts.isPropertyAccessExpression(w.access)
+        ? w.access.name : w.access.argumentExpression;
+      out = declsOf(checker, checker.getSymbolAtLocation(key));
+    } else if (w.kind === 'propdecl') out = declsOf(checker, checker.getSymbolAtLocation(w.member.name));
     else {
       const lit = w.prop.parent;
       out = ts.isObjectLiteralExpression(lit)
@@ -1139,7 +1154,8 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
       if (o.kind === 'function' || !carries(ts, o, method)) continue;
       const holder = methodBody(o, method, q, call.accessor);
       const targets = [...holder.origins.values()].flatMap((target) => {
-        const body = target.kind === 'function' ? bodyOf(ts, target.node) : undefined;
+        const body = target.kind === 'function' ? bodyOf(ts, target.node) :
+          call.construct && target.kind === 'classobj' ? target.node : undefined;
         return body ? [body] : [];
       });
       for (const body of targets) bodies.add(body);
