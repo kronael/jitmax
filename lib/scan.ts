@@ -754,7 +754,7 @@ function reach(
         binding?: BindingRead,
         rest?: boolean
       ): void => {
-        const text = expression.getText(body.sf);
+        let text = expression.getText(body.sf);
         const callee = unwrap(ts, expression);
         const targets = declarations ?? targetsOf(ts, checker, callee);
         const nativeArrayCallback = targets.length > 0 &&
@@ -819,10 +819,10 @@ function reach(
             !decl.getSourceFile().isDeclarationFile &&
             (ts.isMethodDeclaration(decl) || ts.isPropertyAssignment(decl) ||
               ts.isPropertyDeclaration(decl) || ts.isGetAccessorDeclaration(decl)));
-          const receiver = !baseBound && propertyTarget
+          const receiver = !baseBound && (propertyTarget || accessor !== undefined)
             ? flow.receiver(invocation) : undefined;
           const replacement = receiver !== undefined &&
-            (receiver.bodies.some((target) => !raw.includes(target)) ||
+            (receiver.incompleteAccessors || receiver.bodies.some((target) => !raw.includes(target)) ||
               (receiver.bodies.length > 0 && receiver.unknown.length > 0 &&
                 receiver.origins.some((origin) => !origin.follow)));
           const changesTarget = raw.some((decl) =>
@@ -843,6 +843,9 @@ function reach(
             (changesTarget || accessorOverride || replacement || (primitive && !nativeOwner));
           const dispatch = dynamic ? receiver ?? flow.receiver(invocation) : undefined;
           if (dispatch) {
+            if (dispatch.incompleteAccessors && rest) {
+              text = `unknown getter targets copied ${binding ? 'into' : 'from'} ${text}`;
+            }
             raw = dispatch.bodies;
             const one = dispatch.origins.length === 1 && dispatch.unknown.length === 0
               ? dispatch.origins[0]?.follow : undefined;
@@ -1016,7 +1019,7 @@ function reach(
                   const call: Call = {
                     ...site,
                     text,
-                    viaInterface: targets.some(isDispatchDecl) || located.length > 0,
+                    viaInterface: targets.some(isDispatchDecl) || located.length > 0 || !!r.incompleteAccessors,
                     dispatch: {
                       count: r.origins.length,
                       located: located.length,
@@ -1056,7 +1059,7 @@ function reach(
         const selected = declarations.filter((decl) => accessor === 'get'
           ? ts.isGetAccessorDeclaration(decl) : ts.isSetAccessorDeclaration(decl));
         const traced = flow.receiver({ expression, accessor, member, binding, rest });
-        if (selected.length === 0 && traced.bodies.length === 0) return;
+        if (selected.length === 0 && traced.bodies.length === 0 && !traced.incompleteAccessors) return;
         visitCall(site, expression, [], closure,
           selected.length > 0 ? selected : traced.bodies, accessor, member, binding, rest);
       };

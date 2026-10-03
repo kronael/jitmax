@@ -26,6 +26,8 @@ import { isFunctionLike, isOwnSource, isTestFile, symbolOf, targetsOf, unwrap } 
 //   stand behind; this module only reports it.
 const VISIT_BUDGET = 4000;
 const MAX_DEPTH = 48;
+const LITERAL_LIMIT = 'more than 64 literal allocation sites share one property set';
+const ACCESSOR_LIMIT = 'more than 64 accessor keys in a literal property set';
 
 export interface Origin {
   kind: 'class' | 'classobj' | 'literal' | 'array' | 'function';
@@ -33,6 +35,10 @@ export interface Origin {
   name: string;
   // Allocation sites retained within one counted literal property set.
   literalNodes?: readonly TS.ObjectLiteralExpression[];
+  // Scalar keys survive allocation-site clipping; undefined means a bounded
+  // summary cannot distinguish the remaining keys. No extra body is retained.
+  literalAccessors?: {get: readonly (string | undefined)[]; set: readonly (string | undefined)[]};
+  literalCapped?: boolean;
 }
 
 export interface Res {
@@ -57,6 +63,7 @@ export interface Traced {
   origins: Array<{ name: string; node: TS.Node; follow: TS.Node | undefined }>;
   unknown: string[];
   bodies: TS.Node[];
+  incompleteAccessors?: boolean;
 }
 
 export interface Flow {
@@ -234,6 +241,11 @@ export const emptyRes = (): Res => ({
 const literalNodes = (origin: Origin): readonly TS.ObjectLiteralExpression[] =>
   origin.literalNodes ?? [origin.node as TS.ObjectLiteralExpression];
 
+const accessorKeys = (keys: readonly (string | undefined)[]): readonly (string | undefined)[] => {
+  const unique = [...new Set(keys)];
+  return unique.length > 64 ? [...unique.slice(0, 63), undefined] : unique;
+};
+
 export const merge = (into: Res, from: Res): void => {
   for (const [k, v] of from.origins) {
     if (into.origins.size >= 64 && !into.origins.has(k)) continue;
@@ -241,9 +253,18 @@ export const merge = (into: Res, from: Res): void => {
     if (prior?.kind === 'literal' && v.kind === 'literal') {
       const nodes = [...new Set([...literalNodes(prior), ...literalNodes(v)])];
       if (nodes.length > 64 && into.unknown.size < 8) {
-        into.unknown.add('more than 64 literal allocation sites share one property set');
+        into.unknown.add(LITERAL_LIMIT);
       }
-      into.origins.set(k, nodes.length === 1 ? v : {...v, literalNodes: nodes.slice(-64)});
+      const getKeys = [...new Set([...(prior.literalAccessors?.get ?? []), ...(v.literalAccessors?.get ?? [])])];
+      const setKeys = [...new Set([...(prior.literalAccessors?.set ?? []), ...(v.literalAccessors?.set ?? [])])];
+      const get = accessorKeys(getKeys);
+      const set = accessorKeys(setKeys);
+      if ((getKeys.length > 64 || setKeys.length > 64) && into.unknown.size < 8) {
+        into.unknown.add(ACCESSOR_LIMIT);
+      }
+      into.origins.set(k, {...v, literalNodes: nodes.length === 1 ? undefined : nodes.slice(-64),
+        literalAccessors: {get, set},
+        literalCapped: prior.literalCapped || v.literalCapped || nodes.length > 64});
     } else {
       into.origins.set(k, v);
     }
@@ -292,6 +313,19 @@ export const originOf = (w: Walk, o: Origin): Res => {
         o.kind === 'array'
         ? 'A'
         : `${o.kind}:${w.idOf(o.node)}`;
+  if (o.kind === 'literal' && w.ts.isObjectLiteralExpression(o.node) && !o.literalAccessors) {
+    let get: readonly (string | undefined)[] = [];
+    let set: readonly (string | undefined)[] = [];
+    for (const property of o.node.properties) {
+      if (!w.ts.isGetAccessorDeclaration(property) && !w.ts.isSetAccessorDeclaration(property)) continue;
+      const key = bindingKey(w.ts, w.checker, property.name);
+      const keys = [...new Set([...(w.ts.isGetAccessorDeclaration(property) ? get : set), key])];
+      if (keys.length > 64) r.unknown.add(ACCESSOR_LIMIT);
+      if (w.ts.isGetAccessorDeclaration(property)) get = accessorKeys(keys);
+      else set = accessorKeys(keys);
+    }
+    o = {...o, literalAccessors: {get, set}};
+  }
   r.origins.set(key, o);
   return r;
 };
@@ -1297,6 +1331,7 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     const origins: Traced['origins'] = [];
     const bodies = new Set<TS.Node>();
     const unknowns = new Set(res.unknown);
+    let incompleteAccessors = false;
     for (const o of res.origins.values()) {
       if (call.rest) {
         // Literal accessors are own and enumerable. Class accessors live on
@@ -1316,6 +1351,9 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
               }
             }
           }
+          const incomplete = o.literalCapped && o.literalAccessors?.get.some(
+            (key) => key === undefined || !excluded.has(key));
+          incompleteAccessors ||= !!incomplete;
           const getters = new Set<TS.GetAccessorDeclaration>();
           for (const literal of literalNodes(o)) {
             const seen = new Set(excluded);
@@ -1326,7 +1364,10 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
                 // even when that property's source is an accessor. Only keys
                 // present on every visible origin definitely replace a getter.
                 let definite: Set<string> | undefined;
-                if (spread.unknown.size === 0 && !spread.tainted && !spread.starved) {
+                // Clipping bodies within an equal property set loses callable
+                // provenance, but its known own keys still mask earlier getters.
+                if ([...spread.unknown].every((reason) => reason === LITERAL_LIMIT) &&
+                    !spread.tainted && !spread.starved) {
                   for (const source of spread.origins.values()) {
                     const keys = new Set<string>();
                     if (source.kind === 'literal' && ts.isObjectLiteralExpression(source.node)) {
@@ -1353,9 +1394,9 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
               }
             }
           }
-          if (getters.size > 0) {
+          if (getters.size > 0 || incomplete) {
             origins.push({name: o.name, node: o.node,
-              follow: getters.size === 1 ? [...getters][0] : undefined});
+              follow: getters.size === 1 && !incomplete ? [...getters][0] : undefined});
           }
         }
         continue;
@@ -1370,6 +1411,9 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
         continue;
       }
       if (o.kind === 'function' || !carries(ts, o, method)) continue;
+      const incomplete = call.accessor !== undefined && o.literalCapped &&
+        o.literalAccessors?.[call.accessor].some((key) => key === undefined || key === method);
+      incompleteAccessors ||= !!incomplete;
       const holder = methodBody(o, method, q, call.accessor);
       const targets = [...holder.origins.values()].flatMap((target) => {
         const body = target.kind === 'function' ? bodyOf(ts, target.node) :
@@ -1380,7 +1424,7 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
       for (const reason of holder.unknown) unknowns.add(reason);
       if (holder.tainted) unknowns.add('the member value flow is cyclic');
       if (holder.starved) unknowns.add('the member analysis budget ran out');
-      const follow = targets.length === 1 && holder.unknown.size === 0 &&
+      const follow = !incomplete && targets.length === 1 && holder.unknown.size === 0 &&
         !holder.tainted && !holder.starved ? targets[0] : undefined;
       origins.push({ name: o.name, node: o.node, follow });
     }
@@ -1401,7 +1445,8 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     if (res.starved && unknowns.size === 0) {
       unknowns.add('the analysis budget ran out before every origin was found');
     }
-    const out = { origins, unknown: [...unknowns], bodies: [...bodies] };
+    const out: Traced = { origins, unknown: [...unknowns], bodies: [...bodies],
+      ...(incompleteAccessors ? {incompleteAccessors: true} : {}) };
     if (cache) cache.set(key, out);
     else traced.set(site, new Map([[key, out]]));
     return out;
