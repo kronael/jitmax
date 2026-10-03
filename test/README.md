@@ -8,7 +8,7 @@ below from the jitmax checkout with Node `>=22.18`.
 What the suite guards, and how to run one test.
 
 ```sh
-make test    # 278 unit tests, including the must-stay-silent cases
+make test    # 306 unit tests, including the must-stay-silent cases
 node --test --test-name-pattern '<name>' test/check.test.ts   # one test
 node --test test/*.test.ts
 ```
@@ -25,6 +25,9 @@ below. `test/tiers.test.ts` holds the tier diagnostic's tests.
 `test/profile.test.ts` checks function hotness and rejects damaged profile accounting.
 `test/config.test.ts` checks duplicate policy rejection.
 `test/evidence.test.ts` checks child results and effective inputs without running evidence timings.
+`test/accessor.test.ts` checks destructuring reads and own-property rest semantics.
+`test/member-write.test.ts` checks literal writes, unknown replacements and constructor properties.
+`test/dispatch-report.test.ts` checks body reporting through the walk cap.
 `test/fixtures/` holds the TOML config a test loads and a call chain longer
 than the walk's cap, which is how the truncation contract is exercised.
 
@@ -71,7 +74,7 @@ clean, because a judged count of 0 has answered no question.
 statement of the version and `lib/rules/index.ts` the one register of the
 rules; `README.md`, `docs/rules.md`, `examples/README.md` and
 `site/index.html` are held to them. The count beside `make test` at the top of
-this file is compared against the tests the three files actually define.
+this file is compared against the top-level tests that `test/*.test.ts` defines.
 
 **The packaging contract.** The linked executable selects Bun, which can run
 an unbuilt Git install from TypeScript. An installed copy with `dist/` runs

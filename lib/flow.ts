@@ -63,10 +63,56 @@ export interface Flow {
     accessor?: 'get' | 'set';
     construct?: boolean;
     member?: string;
-    binding?: TS.BindingElement;
+    binding?: BindingRead;
+    rest?: boolean;
   }): Traced;
   sources(node: TS.Node, elements?: boolean): Res;
   constructedClasses(cls: TS.ClassLikeDeclaration): TS.ClassLikeDeclaration[];
+}
+
+export type BindingRead = TS.BindingElement | TS.PropertyAssignment |
+  TS.ShorthandPropertyAssignment | TS.SpreadAssignment;
+
+/** A fixed destructuring key denotes the same property as a dot read. */
+export function bindingKey(ts: Ts, checker: TS.TypeChecker, name: TS.PropertyName): string | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) return name.text;
+  if (ts.isComputedPropertyName(name)) {
+    const type = checker.getTypeAtLocation(name.expression);
+    return type.isStringLiteral() ? type.value : type.isNumberLiteral() ? String(type.value) : undefined;
+  }
+  return undefined;
+}
+
+/** Object literals are patterns only on a destructuring assignment's left side. */
+export function isBindingRead(ts: Ts, node: TS.Node): node is BindingRead {
+  if (ts.isBindingElement(node)) return ts.isObjectBindingPattern(node.parent);
+  if (!(ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node) ||
+    ts.isSpreadAssignment(node)) || !ts.isObjectLiteralExpression(node.parent)) return false;
+  let pattern: TS.Node = node.parent;
+  while (ts.isPropertyAssignment(pattern.parent) && pattern.parent.initializer === pattern) {
+    pattern = pattern.parent.parent;
+  }
+  const holder = pattern.parent;
+  return (ts.isBinaryExpression(holder) && holder.left === pattern &&
+    holder.operatorToken.kind === ts.SyntaxKind.EqualsToken) ||
+    ((ts.isForOfStatement(holder) || ts.isForInStatement(holder)) && holder.initializer === pattern);
+}
+
+/** Assignment patterns take their property declarations from their source type. */
+export function bindingType(ts: Ts, checker: TS.TypeChecker, d: BindingRead): TS.Type | undefined {
+  if (ts.isBindingElement(d)) return checker.getTypeAtLocation(d.parent);
+  const holder = d.parent.parent;
+  if (ts.isBinaryExpression(holder)) return checker.getTypeAtLocation(holder.right);
+  if (ts.isPropertyAssignment(holder) && isBindingRead(ts, holder)) {
+    const type = bindingType(ts, checker, holder);
+    const name = bindingKey(ts, checker, holder.name);
+    const symbol = type && name !== undefined ? checker.getPropertyOfType(type, name) : undefined;
+    return symbol ? checker.getTypeOfSymbolAtLocation(symbol, holder) : undefined;
+  }
+  if (ts.isForOfStatement(holder)) {
+    return checker.getIndexTypeOfType(checker.getTypeAtLocation(holder.expression), ts.IndexKind.Number);
+  }
+  return undefined;
 }
 
 export interface Query {
@@ -395,26 +441,43 @@ export function symbolFlow(w: Walk, id: TS.Identifier, q: Query): Res {
 // `const { Fp } = CURVE` and `function f({ Fp }: Opts)` are field reads
 // written as patterns: find what the pattern's source holds, then read the
 // one property.
-export function bindingFlow(w: Walk, d: TS.BindingElement, q: Query): Res {
+export function bindingFlow(w: Walk, d: BindingRead, q: Query): Res {
   const { ts, checker } = w;
   const pattern = d.parent;
-  if (!ts.isObjectBindingPattern(pattern)) return unknown('an array-destructured value');
-  const name = ts.isIdentifier(d.propertyName ?? d.name) ? (d.propertyName ?? d.name) : undefined;
-  if (!name || !ts.isIdentifier(name)) return unknown('a computed destructuring key');
+  if (!ts.isObjectBindingPattern(pattern) && !ts.isObjectLiteralExpression(pattern)) {
+    return unknown('an array-destructured value');
+  }
+  if (ts.isSpreadAssignment(d) || (ts.isBindingElement(d) && d.dotDotDotToken)) {
+    return unknown('an object-rest value');
+  }
+  const key = ts.isBindingElement(d) ? d.propertyName ?? d.name : d.name;
+  if (ts.isObjectBindingPattern(key) || ts.isArrayBindingPattern(key)) return unknown('a destructuring key');
+  const name = bindingKey(ts, checker, key);
+  if (name === undefined) return unknown('a computed destructuring key');
   const src = bindingSource(w, d, q);
-  const out = readProperty(w, src, name.text, declsOf(checker, checker.getSymbolAtLocation(d.name)), q);
-  if (d.initializer) merge(out, w.valueOf(d.initializer, q));
+  const out = readProperty(w, src, name, declsOf(checker, checker.getSymbolAtLocation(d.name)), q);
+  if (ts.isBindingElement(d) && d.initializer) merge(out, w.valueOf(d.initializer, q));
   return out;
 }
 
 // The object consumed by a pattern, shared with the implicit getter walk.
-function bindingSource(w: Walk, d: TS.BindingElement, q: Query): Res {
+function bindingSource(w: Walk, d: BindingRead, q: Query): Res {
   const holder = d.parent.parent;
   if (w.ts.isVariableDeclaration(holder) && holder.initializer) {
     return w.valueOf(holder.initializer, q);
   }
   if (w.ts.isParameter(holder)) return paramFlow(w, holder, q);
   if (w.ts.isBindingElement(holder)) return bindingFlow(w, holder, q);
+  if (w.ts.isPropertyAssignment(holder) && isBindingRead(w.ts, holder)) {
+    return bindingFlow(w, holder, q);
+  }
+  if (w.ts.isBinaryExpression(holder) && holder.operatorToken.kind === w.ts.SyntaxKind.EqualsToken) {
+    return w.valueOf(holder.right, q);
+  }
+  const loop = w.ts.isVariableDeclaration(holder) && w.ts.isVariableDeclarationList(holder.parent)
+    ? holder.parent.parent : holder;
+  if (w.ts.isForOfStatement(loop)) return elementsOf(w, w.valueOf(loop.expression, q), q);
+  if (w.ts.isForInStatement(loop)) return unknown('a string key from for-in iteration');
   return unknown('a destructuring the walk does not model');
 }
 
@@ -1105,8 +1168,9 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
   // call signature the receiver is f itself and `follow` is the function.
   const traced = new Map<TS.Node, Map<string, Traced>>();
   function receiver(call: Parameters<Flow['receiver']>[0]): Traced {
-    const key = `${call.accessor ?? (call.construct ? 'new' : 'call')}:${call.member ?? ''}`;
-    const cache = traced.get(call.expression);
+    const key = `${call.rest ? 'rest' : call.accessor ?? (call.construct ? 'new' : 'call')}:${call.member ?? ''}`;
+    const site = call.binding ?? call.expression;
+    const cache = traced.get(site);
     const have = cache?.get(key);
     if (have) return have;
     const q: Query = { budget: VISIT_BUDGET, stack: new Set(), reading: new Set() };
@@ -1122,8 +1186,11 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
 
     let res: Res;
     let method: string | undefined;
-    if (call.member !== undefined) {
-      res = call.binding ? bindingSource(w, call.binding, q) : w.valueOf(callee, q);
+    if (call.binding) {
+      res = bindingSource(w, call.binding, q);
+      method = call.member;
+    } else if (call.member !== undefined) {
+      res = w.valueOf(callee, q);
       method = call.member;
     } else if (ts.isPropertyAccessExpression(callee)) {
       res = w.valueOf(callee.expression, q);
@@ -1142,6 +1209,61 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     const bodies = new Set<TS.Node>();
     const unknowns = new Set(res.unknown);
     for (const o of res.origins.values()) {
+      if (call.rest) {
+        // Literal accessors are own and enumerable. Class accessors live on
+        // the prototype (or are non-enumerable statics), so rest never reads them.
+        if (o.kind === 'literal' && ts.isObjectLiteralExpression(o.node)) {
+          const excluded = new Set<string>();
+          if (call.binding) {
+            const pattern = call.binding.parent;
+            const members = ts.isObjectBindingPattern(pattern) ? pattern.elements :
+              ts.isObjectLiteralExpression(pattern) ? pattern.properties : [];
+            for (const member of members) {
+              if (member === call.binding || !isBindingRead(ts, member) || ts.isSpreadAssignment(member)) continue;
+              const name = ts.isBindingElement(member) ? member.propertyName ?? member.name : member.name;
+              if (!ts.isObjectBindingPattern(name) && !ts.isArrayBindingPattern(name)) {
+                const key = bindingKey(ts, checker, name);
+                if (key !== undefined) excluded.add(key);
+              }
+            }
+          }
+          const seen = new Set(excluded);
+          for (const property of [...o.node.properties].reverse()) {
+            if (ts.isSpreadAssignment(property)) {
+              const spread = w.valueOf(property.expression, q);
+              // Copying a known own property defines data on the destination,
+              // even when that property's source is an accessor. Only keys
+              // present on every visible origin definitely replace a getter.
+              let definite: Set<string> | undefined;
+              if (spread.unknown.size === 0 && !spread.tainted && !spread.starved) {
+                for (const source of spread.origins.values()) {
+                  const keys = new Set<string>();
+                  if (source.kind === 'literal' && ts.isObjectLiteralExpression(source.node)) {
+                    for (const member of source.node.properties) {
+                      if (!member.name) continue;
+                      const key = bindingKey(ts, checker, member.name);
+                      if (key !== undefined) keys.add(key);
+                    }
+                  }
+                  definite = definite === undefined ? keys :
+                    new Set([...definite].filter((key) => keys.has(key)));
+                }
+              }
+              for (const key of definite ?? []) seen.add(key);
+              continue;
+            }
+            if (!property.name) continue;
+            const name = bindingKey(ts, checker, property.name);
+            if (name === undefined || seen.has(name) || ts.isSetAccessorDeclaration(property)) continue;
+            seen.add(name);
+            if (ts.isGetAccessorDeclaration(property) && property.body) {
+              bodies.add(property);
+              origins.push({name: o.name, node: o.node, follow: property});
+            }
+          }
+        }
+        continue;
+      }
       if (method === undefined) {
         const follow = o.kind === 'function' ? bodyOf(ts, o.node) :
           call.construct && o.kind === 'classobj' ? o.node : undefined;
@@ -1185,7 +1307,7 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     }
     const out = { origins, unknown: [...unknowns], bodies: [...bodies] };
     if (cache) cache.set(key, out);
-    else traced.set(call.expression, new Map([[key, out]]));
+    else traced.set(site, new Map([[key, out]]));
     return out;
   }
 

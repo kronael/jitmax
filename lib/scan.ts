@@ -4,7 +4,8 @@ import type * as TS from 'typescript';
 import type { Ts } from './ts.ts';
 import type { HotFrame } from './profile.ts';
 import { BUILTINS } from './builtins.ts';
-import { className, createFlow, ELEMENT_PARAM, type Flow } from './flow.ts';
+import { bindingKey, bindingType, className, createFlow, ELEMENT_PARAM,
+  isBindingRead, type BindingRead, type Flow } from './flow.ts';
 
 // Calls that TurboFan lowers to inline machine code: there is no call boundary
 // at these sites at all, so reaching one is not a hole in the promise. The set
@@ -750,7 +751,8 @@ function reach(
         declarations?: TS.Node[],
         accessor?: 'get' | 'set',
         member?: string,
-        binding?: TS.BindingElement
+        binding?: BindingRead,
+        rest?: boolean
       ): void => {
         const text = expression.getText(body.sf);
         const callee = unwrap(ts, expression);
@@ -808,7 +810,7 @@ function reach(
               ? [callee as TS.Node]
               : targets;
           const invocation = {
-            expression, accessor, member, binding, construct: ts.isNewExpression(node),
+            expression, accessor, member, binding, rest, construct: ts.isNewExpression(node),
           };
           const baseBound = (ts.isPropertyAccessExpression(callee) ||
             ts.isElementAccessExpression(callee)) &&
@@ -1047,14 +1049,15 @@ function reach(
         declarations: TS.Node[],
         accessor: 'get' | 'set',
         member?: string,
-        binding?: TS.BindingElement
+        binding?: BindingRead,
+        rest?: boolean
       ): void => {
         const selected = declarations.filter((decl) => accessor === 'get'
           ? ts.isGetAccessorDeclaration(decl) : ts.isSetAccessorDeclaration(decl));
-        const traced = flow.receiver({ expression, accessor, member, binding });
+        const traced = flow.receiver({ expression, accessor, member, binding, rest });
         if (selected.length === 0 && traced.bodies.length === 0) return;
         visitCall(site, expression, [], closure,
-          selected.length > 0 ? selected : traced.bodies, accessor, member, binding);
+          selected.length > 0 ? selected : traced.bodies, accessor, member, binding, rest);
       };
       if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
         visitCall(node, node.expression, node.arguments ?? [], closure);
@@ -1093,15 +1096,27 @@ function reach(
         if (assignment || update || iteration) {
           visitAccessor(node, node, declarations, 'set');
         }
-      } else if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
-        const holder = node.parent.parent;
-        const name = node.propertyName ?? node.name;
-        if (ts.isIdentifier(name) || ts.isStringLiteral(name)) {
-          const source = ts.isVariableDeclaration(holder) ? holder.initializer : name;
-          if (source) {
-            const type = checker.getTypeAtLocation(node.parent);
-            const declarations = checker.getPropertyOfType(type, name.text)?.getDeclarations();
-            visitAccessor(node, source, [...declarations ?? []], 'get', name.text, node);
+      } else if (isBindingRead(ts, node)) {
+        const rest = ts.isSpreadAssignment(node) || (ts.isBindingElement(node) && !!node.dotDotDotToken);
+        const key = ts.isBindingElement(node) ? node.propertyName ?? node.name :
+          ts.isSpreadAssignment(node) ? undefined : node.name;
+        const expression = ts.isSpreadAssignment(node) ? node.expression :
+          ts.isPropertyAssignment(node) ? node.initializer :
+          ts.isIdentifier(node.name) ? node.name :
+          key && ts.isComputedPropertyName(key) ? key.expression :
+          key && (ts.isIdentifier(key) || ts.isStringLiteral(key) || ts.isNumericLiteral(key))
+            ? key : undefined;
+        if (expression) {
+          if (rest) {
+            visitAccessor(node, expression, [], 'get', undefined, node, true);
+          } else {
+            const name = key && !ts.isObjectBindingPattern(key) && !ts.isArrayBindingPattern(key)
+              ? bindingKey(ts, checker, key) : undefined;
+            if (name !== undefined) {
+              const type = bindingType(ts, checker, node);
+              const declarations = type && checker.getPropertyOfType(type, name)?.getDeclarations();
+              visitAccessor(node, expression, [...declarations ?? []], 'get', name, node);
+            }
           }
         }
       }
