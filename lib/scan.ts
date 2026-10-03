@@ -4,7 +4,7 @@ import type * as TS from 'typescript';
 import type { Ts } from './ts.ts';
 import type { HotFrame } from './profile.ts';
 import { BUILTINS } from './builtins.ts';
-import { bindingKey, bindingType, className, createFlow, ELEMENT_PARAM,
+import { bindingKey, className, createFlow, ELEMENT_PARAM,
   isBindingRead, type BindingRead, type Flow } from './flow.ts';
 
 // Calls that TurboFan lowers to inline machine code: there is no call boundary
@@ -1115,7 +1115,7 @@ function reach(
             const name = key && !ts.isObjectBindingPattern(key) && !ts.isArrayBindingPattern(key)
               ? bindingKey(ts, checker, key) : undefined;
             if (name !== undefined) {
-              const type = bindingType(ts, checker, node);
+              const type = flow.bindingType(node);
               const declarations = type && checker.getPropertyOfType(type, name)?.getDeclarations();
               visitAccessor(node, expression, [...declarations ?? []], 'get', name, node);
             }

@@ -69,6 +69,7 @@ export interface Flow {
     rest?: boolean;
   }): Traced;
   sources(node: TS.Node, elements?: boolean): Res;
+  bindingType(binding: BindingRead): TS.Type | undefined;
   constructedClasses(cls: TS.ClassLikeDeclaration): TS.ClassLikeDeclaration[];
 }
 
@@ -92,8 +93,11 @@ export function isBindingRead(ts: Ts, node: TS.Node): node is BindingRead {
     ts.isSpreadAssignment(node)) || !ts.isObjectLiteralExpression(node.parent)) return false;
   let pattern: TS.Node = node.parent;
   while ((ts.isPropertyAssignment(pattern.parent) && pattern.parent.initializer === pattern) ||
+    (ts.isBinaryExpression(pattern.parent) && pattern.parent.left === pattern &&
+      pattern.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isArrayLiteralExpression(pattern.parent.parent)) ||
     ts.isArrayLiteralExpression(pattern.parent)) {
-    pattern = ts.isArrayLiteralExpression(pattern.parent) ? pattern.parent : pattern.parent.parent;
+    pattern = ts.isPropertyAssignment(pattern.parent) ? pattern.parent.parent : pattern.parent;
   }
   const holder = pattern.parent;
   return (ts.isBinaryExpression(holder) && holder.left === pattern &&
@@ -108,6 +112,12 @@ export function bindingType(ts: Ts, checker: TS.TypeChecker, d: BindingRead): TS
 
   function assignmentPatternType(pattern: TS.Node): TS.Type | undefined {
     const holder = pattern.parent;
+    if (ts.isBinaryExpression(holder) && holder.left === pattern &&
+      holder.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isArrayLiteralExpression(holder.parent)) {
+      const supplied = assignmentPatternType(holder);
+      return supplied && !(supplied.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void))
+        ? supplied : checker.getTypeAtLocation(holder.right);
+    }
     if (ts.isBinaryExpression(holder)) return checker.getTypeAtLocation(holder.right);
     if (ts.isPropertyAssignment(holder) && isBindingRead(ts, holder)) {
       const type = bindingType(ts, checker, holder);
@@ -125,7 +135,7 @@ export function bindingType(ts: Ts, checker: TS.TypeChecker, d: BindingRead): TS
       if (source && ts.isArrayLiteralExpression(source) &&
         !source.elements.slice(0, index + 1).some(ts.isSpreadElement)) {
         const element = source.elements[index];
-        return element ? checker.getTypeAtLocation(element) : undefined;
+        return element ? checker.getTypeAtLocation(element) : checker.getUndefinedType();
       }
       const type = assignmentPatternType(holder);
       const symbol = type && checker.getPropertyOfType(type, String(index));
@@ -497,8 +507,12 @@ export function bindingFlow(w: Walk, d: BindingRead, q: Query): Res {
 function bindingSource(w: Walk, d: BindingRead, q: Query): Res {
   return patternSource(d.parent);
 
-  function patternSource(pattern: TS.Node): Res {
+  function patternSource(pattern: TS.Node, fallback?: TS.Expression): Res {
     const holder = pattern.parent;
+    if (w.ts.isBinaryExpression(holder) && holder.left === pattern &&
+      holder.operatorToken.kind === w.ts.SyntaxKind.EqualsToken && w.ts.isArrayLiteralExpression(holder.parent)) {
+      return patternSource(holder, holder.right);
+    }
     if (w.ts.isVariableDeclaration(holder) && holder.initializer) {
       return w.valueOf(holder.initializer, q);
     }
@@ -506,7 +520,7 @@ function bindingSource(w: Walk, d: BindingRead, q: Query): Res {
     if (w.ts.isBindingElement(holder)) return bindingFlow(w, holder, q);
     if (w.ts.isArrayLiteralExpression(holder)) {
       const index = holder.elements.indexOf(pattern as TS.Expression);
-      return elementsOf(w, patternSource(holder), q, index);
+      return elementsOf(w, patternSource(holder), q, index, fallback);
     }
     if (w.ts.isPropertyAssignment(holder) && isBindingRead(w.ts, holder)) {
       return bindingFlow(w, holder, q);
@@ -828,7 +842,7 @@ export function memberValueInner(
   return out;
 }
 
-export function elementsOf(w: Walk, base: Res, q: Query, index?: number): Res {
+export function elementsOf(w: Walk, base: Res, q: Query, index?: number, fallback?: TS.Expression): Res {
   const ts = w.ts;
   const out = emptyRes();
   out.tainted = base.tainted;
@@ -836,6 +850,7 @@ export function elementsOf(w: Walk, base: Res, q: Query, index?: number): Res {
   for (const o of base.origins.values()) {
     if (o.kind !== 'array') {
       out.unknown.add('an element of a collection the walk cannot enumerate');
+      if (fallback) merge(out, w.valueOf(fallback, q));
       continue;
     }
     const key = `e${w.idOf(o.node)}:${index ?? '*'}`;
@@ -848,10 +863,25 @@ export function elementsOf(w: Walk, base: Res, q: Query, index?: number): Res {
       const elements = (o.node as TS.ArrayLiteralExpression).elements;
       if (index !== undefined && elements.slice(0, index + 1).some(ts.isSpreadElement)) {
         out.unknown.add('an indexed element after an array spread');
+        if (fallback) merge(out, w.valueOf(fallback, q));
         continue;
       }
       const selected = index === undefined ? elements : elements.slice(index, index + 1);
+      if (fallback && selected.length === 0) merge(out, w.valueOf(fallback, q));
       for (const el of selected) {
+        if (fallback) {
+          const type = w.checker.getTypeAtLocation(el);
+          const alternatives = type.isUnion() ? type.types : [type];
+          const absent = (part: TS.Type) => !!(part.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void));
+          if (ts.isOmittedExpression(el) || alternatives.every(absent)) {
+            merge(out, w.valueOf(fallback, q));
+            continue;
+          }
+          if (alternatives.some((part) => absent(part) ||
+            !!(part.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)))) {
+            merge(out, w.valueOf(fallback, q));
+          }
+        }
         if (ts.isSpreadElement(el)) merge(out, elementsOf(w, w.valueOf(el.expression, q), q));
         else merge(out, w.valueOf(el, q));
       }
@@ -860,6 +890,9 @@ export function elementsOf(w: Walk, base: Res, q: Query, index?: number): Res {
     }
   }
   for (const u of base.unknown) out.unknown.add(u);
+  if (fallback && (base.unknown.size > 0 || base.tainted || base.starved)) {
+    merge(out, w.valueOf(fallback, q));
+  }
   return out;
 }
 
@@ -1387,13 +1420,7 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
       }
       return out;
     }
-    let type = checker.getTypeAtLocation(o.node);
-    if (o.kind === 'classobj' && ts.isClassLike(o.node) && o.node.name) {
-      const symbol = symbolOf(ts, checker, o.node.name);
-      if (symbol) type = checker.getTypeOfSymbolAtLocation(symbol, o.node);
-    } else if (o.kind === 'class') {
-      type = type.getConstructSignatures()[0]?.getReturnType() ?? type;
-    }
+    const type = originType(o);
     const declarations = checker.getPropertyOfType(type, name)?.getDeclarations() ?? [];
     if (accessor !== undefined) {
       const declaration = declarations.find((decl) => accessor === 'get'
@@ -1406,13 +1433,36 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     return readProperty(w, originOf(w, o), name, [...declarations], q);
   }
 
+  function originType(o: Origin): TS.Type {
+    let type = checker.getTypeAtLocation(o.node);
+    if (o.kind === 'classobj' && ts.isClassLike(o.node) && o.node.name) {
+      const symbol = symbolOf(ts, checker, o.node.name);
+      if (symbol) type = checker.getTypeOfSymbolAtLocation(symbol, o.node);
+    } else if (o.kind === 'class') {
+      type = type.getConstructSignatures()[0]?.getReturnType() ?? type;
+    }
+    return type;
+  }
+
+  function sourceBindingType(binding: BindingRead): TS.Type | undefined {
+    const q: Query = {budget: VISIT_BUDGET, stack: new Set(), reading: new Set()};
+    const source = bindingSource(w, binding, q);
+    const origin = source.origins.size === 1 ? [...source.origins.values()][0] : undefined;
+    // A complete single allocation supplies the property declarations. The
+    // static pattern type remains necessary for callers outside this program.
+    if (origin && source.unknown.size === 0 && !source.tainted && !source.starved &&
+      (origin.kind !== 'literal' || literalNodes(origin).length === 1)) return originType(origin);
+    return bindingType(ts, checker, binding);
+  }
+
   function sources(node: TS.Node, elements = false): Res {
     const q: Query = { budget: VISIT_BUDGET, stack: new Set(), reading: new Set() };
     const res = w.valueOf(node, q);
     return elements ? elementsOf(w, res, q) : res;
   }
 
-  return { receiver, sources, constructedClasses: (cls) => constructedClasses(w, cls) };
+  return { receiver, sources, bindingType: sourceBindingType,
+    constructedClasses: (cls) => constructedClasses(w, cls) };
 }
 
 // Which parameter of an array callback holds an ELEMENT. Not shared.ts's
