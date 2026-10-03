@@ -47,9 +47,11 @@ tool as a whole.
   follow values across calls: the megamorphic rules trace what reaches a
   receiver, `allocating-select` reads the callee's returned allocation, and
   `delete-property` follows the deleted object through arguments and returns.
-- **A call the walk cannot bind is reported, not checked.** `closed-world` and
-  `interface-dispatch` mark code nobody checked; read them as unchecked, not as
-  slow. Without `node_modules`, each missing package is an unresolved module,
+- **An unresolved call reports incomplete coverage, not cost.** The walk checks
+  located readable bodies even when it cannot select one runtime target.
+  `interface-dispatch` reports how many bodies were checked; unknown targets
+  and bodies refused by the walk cap remain unchecked. `closed-world` reports
+  calls with no readable body. Without `node_modules`, each missing package is an unresolved module,
   a coverage gap. A call to a function imported from it is a `closed-world`
   finding; a method called on a value from it is a call through an `any`
   receiver, another gap. Switching a rule off clears neither gap.
