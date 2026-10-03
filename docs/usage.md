@@ -8,9 +8,9 @@ A config file is optional.
 Run from the project root:
 
 ```sh
-bunx github:kronael/jitmax#v0.17.2 src          # a directory
-bunx github:kronael/jitmax#v0.17.2 src/hot.ts   # one file
-bunx github:kronael/jitmax#v0.17.2              # the tsconfig file list
+bunx github:kronael/jitmax#v0.17.3 src          # a directory
+bunx github:kronael/jitmax#v0.17.3 src/hot.ts   # one file
+bunx github:kronael/jitmax#v0.17.3              # the tsconfig file list
 ```
 
 Paths choose files. Compiler options come from the `tsconfig.json` found from
@@ -45,7 +45,7 @@ switch off. `false` suppresses a rule. `true` adds no suppression.
 To use another config for one run, pass its path:
 
 ```sh
-bunx github:kronael/jitmax#v0.17.2 review.toml src
+bunx github:kronael/jitmax#v0.17.3 review.toml src
 ```
 
 The named config replaces the discovered config. jitmax does not merge them.
@@ -74,7 +74,7 @@ Record your workload with Node:
 
 ```sh
 node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
-bunx github:kronael/jitmax#v0.17.2 run.cpuprofile src
+bunx github:kronael/jitmax#v0.17.3 run.cpuprofile src
 ```
 
 The profile selects functions with at least 1% of the project's sampled self
@@ -93,7 +93,7 @@ min_self_pct = 2
 ```
 
 ```sh
-bunx github:kronael/jitmax#v0.17.2 profile.toml run.cpuprofile src
+bunx github:kronael/jitmax#v0.17.3 profile.toml run.cpuprofile src
 ```
 
 The threshold must be greater than 0 and at most 100. A config that sets it
@@ -108,7 +108,7 @@ names risks to the program's behaviour. `related:` points to reads, builders
 or implementations. `sources:` names missing origins.
 
 ```sh
-bunx github:kronael/jitmax#v0.17.2 -v src
+bunx github:kronael/jitmax#v0.17.3 -v src
 ```
 
 `-v` adds benchmark paths, known defects and all related locations the analysis

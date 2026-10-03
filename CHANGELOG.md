@@ -3,6 +3,22 @@
 For installation and commands, use the [README quick start](README.md#quick-start).
 Commands and guides pin the matching release tag. No npm registry publication is required.
 
+## [v0.17.3] — 20261003
+
+> jitmax v0.17.3 — simpler setup and guides
+>
+> The README gives one runnable example, and the project page leads directly to it.
+>
+> • setup — Bun, supported TypeScript and one example show what a run reports
+> • config — a separate usage guide explains optional rule settings and CPU profiles
+> • page — plain wording, a top README link and a card for the krons Products list
+>
+> Full notes: https://github.com/kronael/jitmax/blob/v0.17.3/CHANGELOG.md
+
+- Packages and source archives include the usage guide.
+- Development setup lives in the architecture guide.
+- The checker, published timings and generated evidence remain unchanged.
+
 ## [v0.17.2] — 20261003
 
 > jitmax v0.17.2 — follow calls and reject damaged inputs

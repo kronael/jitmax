@@ -9,7 +9,7 @@ Run from your project root with [Bun](https://bun.sh/docs/installation) and
 TypeScript 5.x or 6.x installed:
 
 ```sh
-bunx github:kronael/jitmax#v0.17.2 src
+bunx github:kronael/jitmax#v0.17.3 src
 ```
 
 No config is needed. jitmax reads your project's `tsconfig.json` and uses its
@@ -43,7 +43,7 @@ export function total(rows: Row[]): number {
 ```
 
 ```sh
-bunx github:kronael/jitmax#v0.17.2 shapes.ts
+bunx github:kronael/jitmax#v0.17.3 shapes.ts
 ```
 
 The run exits `1`. Its output starts with:
@@ -64,7 +64,7 @@ Now mark your own speed-sensitive function and run the command on its source
 directory. Use `-v` to see benchmark evidence and every related location.
 Use `--help` to see all arguments.
 
-![jitmax checking radash's assign function](https://github.com/kronael/jitmax/releases/download/v0.17.2/jitmax-demo.gif)
+![jitmax checking radash's assign function](https://github.com/kronael/jitmax/releases/download/v0.17.3/jitmax-demo.gif)
 
 The recording checks radash's `assign`, copied unchanged into `examples/`.
 
@@ -97,4 +97,4 @@ Profile and benchmark your workload before keeping a change.
 [MIT licences and attribution](examples/LICENSE-MIT).
 V8 is a Google LLC trademark. Google does not sponsor or endorse jitmax.
 
-Version: v0.17.2.
+Version: v0.17.3.

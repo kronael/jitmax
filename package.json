@@ -1,7 +1,7 @@
 {
   "name": "jitmax",
-  "version": "0.17.2",
-  "description": "Annotation checker for TypeScript: mark a function, keep it on V8's fast path.",
+  "version": "0.17.3",
+  "description": "Check speed-sensitive TypeScript for patterns that can slow V8.",
   "license": "GPL-2.0-only",
   "private": true,
   "files": [
