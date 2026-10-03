@@ -1,0 +1,70 @@
+--- a/assets/hub.css
++++ b/assets/hub.css
+@@ -79,6 +79,8 @@
+   border-bottom: 1px solid var(--border);
+ }
+
++[data-theme="light"] h2 { color: var(--accent); }
++
+ h3 {
+   font-size: 1.05em;
+   color: var(--fg);
+@@ -735,17 +737,6 @@
+   border-radius: 3px;
+ }
+
+-/* ==================== EXTERNAL LINKS ==================== */
+-a[href^="http"]::after {
+-  content: ' \2197';
+-  font-size: 0.8em;
+-  opacity: 0.6;
+-}
+-a[href^="#"]::after { content: none; }
+-.cite::after { content: none; }
+-.nav-item::after { content: none; }
+-.jump-link::after { content: none; }
+-
+ /* ==================== BACK TO TOP ==================== */
+ .back-to-top {
+   position: fixed;
+@@ -763,7 +754,8 @@
+   transition: opacity 0.2s;
+   z-index: 100;
+ }
+-.back-to-top.visible {
++.back-to-top.visible,
++.back-to-top:focus-visible {
+   opacity: 1;
+   pointer-events: auto;
+ }
+@@ -1291,3 +1283,9 @@
+     gap: 1.2em;
+   }
+ }
++
++@media (prefers-reduced-motion: reduce) {
++  html { scroll-behavior: auto; }
++  *, *::before, *::after { transition: none !important; }
++  .theme-toggle:hover, .theme-toggle:active { transform: none; }
++}
+--- a/assets/hub.js
++++ b/assets/hub.js
+@@ -68,12 +68,16 @@
+     if (!btn) return;
+
+     function updateVisibility() {
+-      btn.classList.toggle('visible', window.scrollY > 400);
++      var visible = window.scrollY > 400 || document.activeElement === btn;
++      btn.disabled = !visible;
++      btn.classList.toggle('visible', visible);
+     }
+
+     window.addEventListener('scroll', updateVisibility, { passive: true });
++    btn.addEventListener('blur', updateVisibility);
+     btn.addEventListener('click', function() {
+-      window.scrollTo({ top: 0, behavior: 'smooth' });
++      var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
++      window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+     });
+     updateVisibility();
+   }
