@@ -27,6 +27,7 @@ import { isFunctionLike, isOwnSource, isTestFile, symbolOf, targetsOf, unwrap } 
 const VISIT_BUDGET = 4000;
 const MAX_DEPTH = 48;
 const LITERAL_LIMIT = 'more than 64 literal allocation sites share one property set';
+const ARRAY_LIMIT = 'more than 64 array allocation sites share one counted shape';
 const ACCESSOR_LIMIT = 'the bounded accessor key summary is incomplete';
 
 export interface Origin {
@@ -40,6 +41,10 @@ export interface Origin {
   // uncertainty only when allocation-site clipping also loses literal ASTs.
   literalAccessors?: {get: readonly (string | undefined)[]; set: readonly (string | undefined)[]};
   literalCapped?: boolean;
+  arrayNodes?: readonly TS.ArrayLiteralExpression[];
+  arrayCapped?: boolean;
+  // Structural element types can hide accessors behind plain property signatures.
+  arrayStructural?: boolean;
 }
 
 export interface Res {
@@ -55,6 +60,8 @@ export interface Res {
   // Ran out of budget: partial in a way a FRESH query might not be, so it is
   // never cached.
   starved: boolean;
+  arrayCapped?: boolean;
+  arrayStructural?: boolean;
 }
 
 // What one receiver resolves to. `follow` is the one implementation's body
@@ -242,6 +249,9 @@ export const emptyRes = (): Res => ({
 const literalNodes = (origin: Origin): readonly TS.ObjectLiteralExpression[] =>
   origin.literalNodes ?? [origin.node as TS.ObjectLiteralExpression];
 
+const arrayNodes = (origin: Origin): readonly TS.ArrayLiteralExpression[] =>
+  origin.arrayNodes ?? [origin.node as TS.ArrayLiteralExpression];
+
 const accessorKeys = (keys: readonly (string | undefined)[]): readonly (string | undefined)[] => {
   const unique = [...new Set(keys)];
   return unique.length > 64 ? [...unique.slice(0, 63), undefined] : unique;
@@ -263,6 +273,12 @@ export const merge = (into: Res, from: Res): void => {
       into.origins.set(k, {...v, literalNodes: nodes.length === 1 ? undefined : nodes.slice(-64),
         literalAccessors: {get, set},
         literalCapped: prior.literalCapped || v.literalCapped || nodes.length > 64});
+    } else if (prior?.kind === 'array' && v.kind === 'array') {
+      const nodes = [...new Set([...arrayNodes(prior), ...arrayNodes(v)])];
+      const capped = prior.arrayCapped || v.arrayCapped || nodes.length > 64;
+      if (capped && into.unknown.size < 8) into.unknown.add(ARRAY_LIMIT);
+      into.origins.set(k, {...v, arrayNodes: nodes.length === 1 ? undefined : nodes.slice(-64),
+        arrayCapped: capped, arrayStructural: prior.arrayStructural || v.arrayStructural});
     } else {
       into.origins.set(k, v);
     }
@@ -273,6 +289,8 @@ export const merge = (into: Res, from: Res): void => {
   }
   into.tainted ||= from.tainted;
   into.starved ||= from.starved;
+  if (from.arrayCapped) into.arrayCapped = true;
+  if (from.arrayStructural) into.arrayStructural = true;
 };
 
 export const unknown = (why: string): Res => {
@@ -322,6 +340,17 @@ export const originOf = (w: Walk, o: Origin): Res => {
       else set = accessorKeys(keys);
     }
     o = {...o, literalAccessors: {get, set}};
+  }
+  if (o.kind === 'array' && w.ts.isArrayLiteralExpression(o.node) && o.arrayStructural === undefined) {
+    const structural = o.node.elements.some((element) => {
+      const type = w.checker.getTypeAtLocation(element);
+      return (type.isUnion() ? type.types : [type]).some((part) =>
+        !!(part.flags & (w.ts.TypeFlags.Any | w.ts.TypeFlags.Unknown | w.ts.TypeFlags.TypeParameter)) ||
+        part.symbol?.getDeclarations()?.some((d) => w.ts.isTypeLiteralNode(d) || w.ts.isInterfaceDeclaration(d)) ||
+        w.checker.getPropertiesOfType(part).some((property) =>
+          property.getDeclarations()?.some(w.ts.isPropertySignature)));
+    });
+    o = {...o, arrayStructural: structural};
   }
   r.origins.set(key, o);
   return r;
@@ -743,6 +772,8 @@ export function readProperty(
   const out = emptyRes();
   out.tainted = base.tainted;
   out.starved = base.starved;
+  if (base.arrayCapped) out.arrayCapped = true;
+  if (base.arrayStructural) out.arrayStructural = true;
   for (const u of base.unknown) out.unknown.add(u);
   for (const o of base.origins.values()) {
     if (o.kind === 'literal') {
@@ -878,46 +909,55 @@ export function elementsOf(w: Walk, base: Res, q: Query, index?: number, fallbac
   const out = emptyRes();
   out.tainted = base.tainted;
   out.starved = base.starved;
+  if (base.arrayCapped) out.arrayCapped = true;
+  if (base.arrayStructural) out.arrayStructural = true;
   for (const o of base.origins.values()) {
     if (o.kind !== 'array') {
       out.unknown.add('an element of a collection the walk cannot enumerate');
       if (fallback) merge(out, w.valueOf(fallback, q));
       continue;
     }
-    const key = `e${w.idOf(o.node)}:${index ?? '*'}`;
-    if (q.reading.has(key)) {
-      out.tainted = true;
-      continue;
+    if (o.arrayCapped) {
+      out.arrayCapped = true;
+      if (o.arrayStructural) out.arrayStructural = true;
+      out.unknown.add(ARRAY_LIMIT);
     }
-    q.reading.add(key);
-    try {
-      const elements = (o.node as TS.ArrayLiteralExpression).elements;
-      if (index !== undefined && elements.slice(0, index + 1).some(ts.isSpreadElement)) {
-        out.unknown.add('an indexed element after an array spread');
-        if (fallback) merge(out, w.valueOf(fallback, q));
+    for (const array of arrayNodes(o)) {
+      const key = `e${w.idOf(array)}:${index ?? '*'}`;
+      if (q.reading.has(key)) {
+        out.tainted = true;
         continue;
       }
-      const selected = index === undefined ? elements : elements.slice(index, index + 1);
-      if (fallback && selected.length === 0) merge(out, w.valueOf(fallback, q));
-      for (const el of selected) {
-        if (fallback) {
-          const type = w.checker.getTypeAtLocation(el);
-          const alternatives = type.isUnion() ? type.types : [type];
-          const absent = (part: TS.Type) => !!(part.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void));
-          if (ts.isOmittedExpression(el) || alternatives.every(absent)) {
-            merge(out, w.valueOf(fallback, q));
-            continue;
-          }
-          if (alternatives.some((part) => absent(part) ||
-            !!(part.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)))) {
-            merge(out, w.valueOf(fallback, q));
-          }
+      q.reading.add(key);
+      try {
+        const elements = array.elements;
+        if (index !== undefined && elements.slice(0, index + 1).some(ts.isSpreadElement)) {
+          out.unknown.add('an indexed element after an array spread');
+          if (fallback) merge(out, w.valueOf(fallback, q));
+          continue;
         }
-        if (ts.isSpreadElement(el)) merge(out, elementsOf(w, w.valueOf(el.expression, q), q));
-        else merge(out, w.valueOf(el, q));
+        const selected = index === undefined ? elements : elements.slice(index, index + 1);
+        if (fallback && selected.length === 0) merge(out, w.valueOf(fallback, q));
+        for (const el of selected) {
+          if (fallback) {
+            const type = w.checker.getTypeAtLocation(el);
+            const alternatives = type.isUnion() ? type.types : [type];
+            const absent = (part: TS.Type) => !!(part.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void));
+            if (ts.isOmittedExpression(el) || alternatives.every(absent)) {
+              merge(out, w.valueOf(fallback, q));
+              continue;
+            }
+            if (alternatives.some((part) => absent(part) ||
+              !!(part.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)))) {
+              merge(out, w.valueOf(fallback, q));
+            }
+          }
+          if (ts.isSpreadElement(el)) merge(out, elementsOf(w, w.valueOf(el.expression, q), q));
+          else merge(out, w.valueOf(el, q));
+        }
+      } finally {
+        q.reading.delete(key);
       }
-    } finally {
-      q.reading.delete(key);
     }
   }
   for (const u of base.unknown) out.unknown.add(u);
@@ -1328,7 +1368,21 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     const origins: Traced['origins'] = [];
     const bodies = new Set<TS.Node>();
     const unknowns = new Set(res.unknown);
-    let incompleteAccessors = false;
+    // A clipped array can hide a getter source even when retained elements
+    // contain only data. Structural element types cannot prove absence, while
+    // concrete property declarations still exclude class prototype spread.
+    const sourceType = call.binding ? bindingType(ts, checker, call.binding) : checker.getTypeAtLocation(callee);
+    const accessor = call.rest ? 'get' : call.accessor;
+    const properties = sourceType && method !== undefined
+      ? [checker.getPropertyOfType(sourceType, method)].filter((symbol): symbol is TS.Symbol => !!symbol)
+      : sourceType ? checker.getPropertiesOfType(sourceType) : [];
+    const incompleteArrayAccessor = !!res.arrayCapped && accessor !== undefined &&
+      (res.arrayStructural || !!(sourceType?.flags && (sourceType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown))) ||
+        properties.some((property) => property.getDeclarations()?.some((declaration) =>
+          ts.isPropertySignature(declaration) ||
+          ((accessor === 'get' ? ts.isGetAccessorDeclaration(declaration) : ts.isSetAccessorDeclaration(declaration)) &&
+          (!call.rest || ts.isObjectLiteralExpression(declaration.parent))))));
+    let incompleteAccessors = incompleteArrayAccessor;
     for (const o of res.origins.values()) {
       if (call.rest) {
         // Literal accessors are own and enumerable. Class accessors live on
@@ -1348,8 +1402,8 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
               }
             }
           }
-          const incomplete = o.literalCapped && o.literalAccessors?.get.some(
-            (key) => key === undefined || !excluded.has(key));
+          const incomplete = incompleteArrayAccessor || (o.literalCapped && o.literalAccessors?.get.some(
+            (key) => key === undefined || !excluded.has(key)));
           incompleteAccessors ||= !!incomplete;
           if (incomplete && o.literalAccessors?.get.includes(undefined)) unknowns.add(ACCESSOR_LIMIT);
           const getters = new Set<TS.GetAccessorDeclaration>();
@@ -1496,8 +1550,9 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     const origin = source.origins.size === 1 ? [...source.origins.values()][0] : undefined;
     // A complete single allocation supplies the property declarations. The
     // static pattern type remains necessary for callers outside this program.
-    if (origin && source.unknown.size === 0 && !source.tainted && !source.starved &&
-      (origin.kind !== 'literal' || literalNodes(origin).length === 1)) return originType(origin);
+    if (origin && source.unknown.size === 0 && !source.tainted && !source.starved && !source.arrayCapped &&
+      (origin.kind !== 'literal' || literalNodes(origin).length === 1) &&
+      (origin.kind !== 'array' || (!origin.arrayCapped && arrayNodes(origin).length === 1))) return originType(origin);
     return bindingType(ts, checker, binding);
   }
 

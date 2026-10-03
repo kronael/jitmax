@@ -8,7 +8,7 @@ below from the jitmax checkout with Node `>=22.18`.
 What the suite guards, and how to run one test.
 
 ```sh
-make test    # 352 unit tests, including the must-stay-silent cases
+make test    # 371 unit tests, including the must-stay-silent cases
 node --test --test-name-pattern '<name>' test/check.test.ts   # one test
 node --test test/*.test.ts
 ```
@@ -32,6 +32,7 @@ below. `test/tiers.test.ts` holds the tier diagnostic's tests.
 `test/getter-spread.test.ts` checks array assignment and own getter copies.
 `test/getter-default.test.ts` checks supplied elements and reachable defaults.
 `test/accessor-limit.test.ts` keeps capped accessor coverage visible without inventing bodies.
+`test/array-provenance.test.ts` checks merged array sources, defaults and clipping.
 `test/fixtures/` holds the TOML config a test loads and a call chain longer
 than the walk's cap, which is how the truncation contract is exercised.
 
