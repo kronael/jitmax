@@ -2878,10 +2878,9 @@ test('a platform call with no @types/node is still the platform, and opaque code
     assert.match(run.stdout, /opaque: no readable implementation/);
     assert.ok(!run.stdout.includes('path.join'), 'path.join was still reported');
     assert.ok(!run.stdout.includes('readFileSync'), 'readFileSync was still reported');
-    // Math.max is not a platform CALL: TurboFan lowers it, so no call boundary
-    // exists at the site — a version-specific claim, so the line names the V8
-    // the list was derived from (BUGS TC-126).
-    assert.match(run.stdout, /1 call lowered to inline code, not listed/);
+    // Eligibility comes from the pinned reducer, not an observed engine tier.
+    assert.match(run.stdout, /1 call eligible for inline lowering/);
+    assert.doesNotMatch(run.stdout, /no call boundary exists there/);
     assert.ok(
       run.stdout.includes(`V8 ${BUILTINS.version} @ ${BUILTINS.revision.slice(0, 10)}`),
       `the lowered line names the pin:\n${run.stdout}`

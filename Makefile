@@ -165,20 +165,20 @@ DEMO_SIZE = --cols 120 --rows 27
 DEMO_THEME = 0a0a0a,f0fff0,0a0a0a,cc2936,cc2936,ff6b6b,888888,cc2936,888888,888888,\
 555555,ff6b6b,cc2936,ff6b6b,888888,ff6b6b,888888,f0fff0
 
-tmp/demo.cast: demo/cast.sh bin/jitmax.ts lib/rules.ts $(wildcard lib/rules/*.ts) examples/radash-assign.before.ts
+tmp/demo.cast: demo/cast.sh Makefile bin/cli.js bin/jitmax.ts $(wildcard lib/*.ts lib/rules/*.ts) examples/radash-assign.before.ts
 	mkdir -p tmp
 	COLUMNS=120 LINES=27 DEMO_TYPE=1 asciinema rec $@ --overwrite $(DEMO_SIZE) -c 'bash demo/cast.sh'
 
-demo/demo.gif: tmp/demo.cast
+demo/demo.gif: tmp/demo.cast Makefile
 	# --idle-time-limit must sit ABOVE the longest hold in cast.sh (4.5s) or
 	# every pause written for the viewer is silently trimmed back to it, which
 	# is what made the first cut unreadable.
 	agg --theme $(subst $(space),,$(DEMO_THEME)) --font-size 14 $(DEMO_SIZE) \
 	    --idle-time-limit 6 --last-frame-duration 3 $< $@
 
-demo/demo.mp4: demo/demo.gif
+demo/demo.mp4: demo/demo.gif Makefile
 	ffmpeg -y -loglevel error -i $< -movflags faststart -pix_fmt yuv420p \
-	    -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2' $@
+	    -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2,tpad=stop_mode=clone:stop_duration=12' $@
 
 demo: demo/demo.mp4
 

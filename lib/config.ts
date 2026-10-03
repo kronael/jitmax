@@ -58,7 +58,10 @@ function parseToml(text: string, path: string): Record<string, TomlTable> {
     const header = line.match(/^\[([^[\]]+)\]$/);
     if (header?.[1] !== undefined) {
       const name = header[1].trim();
-      current = tables[name] ??= Object.create(null);
+      if (Object.hasOwn(tables, name)) {
+        throw new Error(`${path}:${lineNo}: duplicate table: [${name}]`);
+      }
+      current = tables[name] = Object.create(null);
       continue;
     }
 
@@ -66,6 +69,9 @@ function parseToml(text: string, path: string): Record<string, TomlTable> {
     if (eq < 0) throw new Error(`${path}:${lineNo}: not a "key = value" line: ${line}`);
     if (!current) throw new Error(`${path}:${lineNo}: key outside any [table]: ${line}`);
     const key = parseKey(line.slice(0, eq).trim(), path, lineNo);
+    if (Object.hasOwn(current, key)) {
+      throw new Error(`${path}:${lineNo}: duplicate key: ${key}`);
+    }
     current[key] = parseValue(line.slice(eq + 1).trim(), path, lineNo);
   }
   return tables;

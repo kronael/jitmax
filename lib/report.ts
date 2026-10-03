@@ -334,9 +334,8 @@ export function render(
   if (platform > 0) {
     out.push(`  ${plural(platform, 'call')} into the platform, not listed: the body is native`);
   }
-  // Also once per run, and with the pin: "lowered" is a fact about one V8, and
-  // stating it without the version would be a version-specific claim in a
-  // general voice (BUGS TC-126). See Mark.lowered.
+  // Static source identifies a builtin eligible under the pinned policy,
+  // not the machine code the engine generated for this workload.
   const lowered = results.reduce((n, r) => n + r.mark.lowered, 0);
   // The pin is a line of its own: wrapped with the sentence, `(V8` ended one
   // line and the version began the next, and the pin is the token a reader
@@ -345,8 +344,8 @@ export function render(
     out.push(
       ...wrap(
         '  ',
-        `${plural(lowered, 'call')} lowered to inline code, not listed: no call ` +
-          'boundary exists there'
+        `${plural(lowered, 'call')} eligible for inline lowering, not listed ` +
+          'under this V8 policy'
       ),
       `  (V8 ${BUILTINS.version} @ ${BUILTINS.revision.slice(0, 10)})`
     );
