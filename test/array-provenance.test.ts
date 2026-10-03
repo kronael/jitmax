@@ -32,6 +32,27 @@ const widenedCases = [
   {name: 'emptyPlain', type: '{}', value: 'data', count: 65, at: 0, coverage: false},
   {name: 'objectPrototype', type: 'object', value: 'prototype', count: 65, at: 0, coverage: false},
 ];
+const sourceCases = [
+  {name: 'typeofClip', value: 'inferredDirty', count: 65, at: 0, coverage: true},
+  {name: 'typeof64', value: 'inferredDirty', count: 64, at: 0, coverage: false},
+  {name: 'typeofReverse', value: 'inferredDirty', count: 65, at: 64, coverage: true},
+  {name: 'typeofPlain', value: 'inferredData', count: 65, at: 0, coverage: false},
+  {name: 'classClip', value: 'classDirty', count: 65, at: 0, coverage: true},
+  {name: 'classPlain', value: 'actualData', count: 65, at: 0, coverage: false},
+  {name: 'returnClip', value: 'typedReturn()', count: 65, at: 0, coverage: true},
+  {name: 'returnTypeClip', value: 'returnDirty', count: 65, at: 0, coverage: true},
+  {name: 'propertyClip', value: 'holder.inner', count: 65, at: 0, coverage: true},
+  {name: 'aliasClip', value: 'inferredAlias', count: 65, at: 0, coverage: true},
+  {name: 'deepAliasClip', value: 'alias60', count: 65, at: 0, coverage: true},
+  {name: 'returnPlain', value: 'plainReturn()', count: 65, at: 0, coverage: false},
+  {name: 'prototypeAlias', value: 'typedPrototype', count: 65, at: 0, coverage: false},
+];
+const nestedCases = [
+  {name: 'nestedClip', count: 65, at: 0, dirty: true},
+  {name: 'nested64', count: 64, at: 0, dirty: true},
+  {name: 'nestedReverse', count: 65, at: 64, dirty: true},
+  {name: 'nestedPlain64', count: 64, at: 0, dirty: false},
+];
 const source = `
 const row: {key?: number} = {key: 1};
 const dirty = {get value() { delete row.key; return 1; }};
@@ -41,6 +62,18 @@ const objectDirty: object = dirty;
 const emptyDirty: {} = dirty;
 const mappedDirty: {[K in 'value']: number} = dirty;
 const indexedDirty: Record<string, number> = dirty;
+const inferredDirty: typeof data = dirty;
+const inferredData: typeof data = data;
+class Data { value = 2; }
+const classDirty: Data = dirty;
+const actualData = new Data();
+function typedReturn(): typeof data { return dirty; }
+function plainReturn(): typeof data { return data; }
+const returnDirty: ReturnType<typeof plainReturn> = dirty;
+const holder: {inner: typeof data} = {inner: dirty};
+const inferredAlias: typeof data = inferredDirty;
+const alias0 = dirty;
+${Array.from({length: 60}, (_, index) => `const alias${index + 1}: typeof data = alias${index};`).join('\n')}
 /** @jitmax */ function conditionalDefault(flag: boolean) {
   const items = flag ? [dirty] : [data];
   let value = 0; ([{value} = data] = items); return value;
@@ -79,6 +112,7 @@ const indexedDirty: Record<string, number> = dirty;
 }
 class Prototype { get value() { delete row.key; return 1; } }
 const prototype = new Prototype();
+const typedPrototype: typeof prototype = prototype;
 /** @jitmax */ function arrays64(flag: number) {
   const items = ${alternatives(64, (index) => index === 0 ? 'dirty' : 'data')};
   return {...items[0]};
@@ -109,6 +143,19 @@ const ${name}Choices = [${Array.from({length: count}, (_, index) =>
 /** @jitmax */ function ${name}(index: number) {
   const items: (${type})[] = ${name}Choices[index]!;
   return {...items[0]!};
+}`).join('\n')}
+${sourceCases.map(({name, value, count, at}) => `
+const ${name}Choices = [${Array.from({length: count}, (_, index) =>
+  `[${index === at ? value : 'data'}]`).join(',')}];
+/** @jitmax */ function ${name}(index: number) {
+  const items = ${name}Choices[index]!;
+  return {...items[0]!};
+}`).join('\n')}
+${nestedCases.map(({name, count, at, dirty}) => `
+const ${name}Choices = [${Array.from({length: count}, (_, index) =>
+  `[[${dirty && index === at ? 'dirty' : 'data'}]]`).join(',')}];
+/** @jitmax */ function ${name}(index: number) {
+  return {...${name}Choices[index]![0]![0]!};
 }`).join('\n')}
 `;
 fs.writeFileSync(file, source);
@@ -251,17 +298,65 @@ test('array provenance retains at most 64 sites and marks clipping', () => {
   }
 });
 
-/** Source provenance controls coverage despite widened, mapped or indexed types. */
-for (const {name, coverage, value, count} of widenedCases) {
-  test(`array source evidence survives ${name}`, () => {
-    const found = rules(name);
-    const deletes = !['data', 'prototype'].includes(value);
-    assert.equal(found.includes('interface-dispatch'), coverage, name);
-    assert.equal(found.includes('delete-property'), deletes &&
-      (count === 64 || name === 'objectReverse'), name);
-    if (!deletes) assert.deepEqual(found, [], name);
-  });
+function assertWidened(name: string) {
+  const {coverage, value, count} = widenedCases.find((item) => item.name === name)!;
+  const found = rules(name);
+  const deletes = !['data', 'prototype'].includes(value);
+  assert.equal(found.includes('interface-dispatch'), coverage, name);
+  assert.equal(found.includes('delete-property'), deletes &&
+    (count === 64 || name === 'objectReverse'), name);
+  if (!deletes) assert.deepEqual(found, [], name);
 }
+
+/** Each case registers directly so the documentation count matches runtime. */
+test('array source evidence survives objectClip', () => assertWidened('objectClip'));
+test('array source evidence survives emptyClip', () => assertWidened('emptyClip'));
+test('array source evidence survives objectSourceClip', () => assertWidened('objectSourceClip'));
+test('array source evidence survives emptySourceClip', () => assertWidened('emptySourceClip'));
+test('array source evidence survives mappedClip', () => assertWidened('mappedClip'));
+test('array source evidence survives indexedClip', () => assertWidened('indexedClip'));
+test('array source evidence survives object64', () => assertWidened('object64'));
+test('array source evidence survives objectReverse', () => assertWidened('objectReverse'));
+test('array source evidence survives objectPlain', () => assertWidened('objectPlain'));
+test('array source evidence survives emptyPlain', () => assertWidened('emptyPlain'));
+test('array source evidence survives objectPrototype', () => assertWidened('objectPrototype'));
+
+function assertSupplied(name: string) {
+  const {coverage, count, at} = sourceCases.find((item) => item.name === name)!;
+  const found = rules(name);
+  assert.equal(found.includes('interface-dispatch'), coverage, name);
+  assert.equal(found.includes('delete-property'), (coverage || count === 64) && (count === 64 || at === 64), name);
+  if (!coverage && count === 65) assert.deepEqual(found, [], name);
+}
+
+/** A source annotation does not replace the actual allocation's descriptor. */
+test('array supplied getter survives typeof annotation', () => assertSupplied('typeofClip'));
+test('array supplied getter survives typeof annotation below cap', () => assertSupplied('typeof64'));
+test('array supplied getter survives typeof annotation after cap', () => assertSupplied('typeofReverse'));
+test('array supplied data stays silent with typeof annotation', () => assertSupplied('typeofPlain'));
+test('array supplied getter survives class annotation', () => assertSupplied('classClip'));
+test('array supplied class data stays silent', () => assertSupplied('classPlain'));
+test('array supplied getter survives typed function return', () => assertSupplied('returnClip'));
+test('array supplied getter survives ReturnType annotation', () => assertSupplied('returnTypeClip'));
+test('array supplied getter survives typed property read', () => assertSupplied('propertyClip'));
+test('array supplied getter survives typed alias', () => assertSupplied('aliasClip'));
+test('array clipped source keeps uncertainty from a depth-limited alias', () => assertSupplied('deepAliasClip'));
+test('array supplied plain function return stays silent', () => assertSupplied('returnPlain'));
+test('array supplied prototype alias stays silent', () => assertSupplied('prototypeAlias'));
+
+function assertNested(name: string) {
+  const {count, at, dirty} = nestedCases.find((item) => item.name === name)!;
+  const found = rules(name);
+  assert.equal(found.includes('interface-dispatch'), dirty && count === 65, name);
+  assert.equal(found.includes('delete-property'), dirty && (count === 64 || at === 64), name);
+  if (!dirty) assert.deepEqual(found, [], name);
+}
+
+/** Each element projection needs proof about its own resulting value. */
+test('nested array clipping reports the discarded getter source', () => assertNested('nestedClip'));
+test('nested array below cap checks the getter source', () => assertNested('nested64'));
+test('nested array clipping checks a retained getter source', () => assertNested('nestedReverse'));
+test('nested plain arrays below cap stay silent', () => assertNested('nestedPlain64'));
 
 /** Untimed runtime establishes both branches' actual reads and fallback choices. */
 test('conditional array runtime agrees with getter and silent controls', () => {
@@ -269,7 +364,7 @@ test('conditional array runtime agrees with getter and silent controls', () => {
     '; return {row, conditionalDefault, reverseDefault, conditionalRead, reverseRead, ' +
     'conditionalEmpty, conditionalUndefined, plain, unusedDefault, omittedGetter, ' +
     'arrays64, clipped65, retained65, typedClipped65, plain65, prototype65, ' +
-    widenedCases.map(({name}) => name).join(',') + '};')();
+    [...widenedCases, ...sourceCases, ...nestedCases].map(({name}) => name).join(',') + '};')();
   for (const name of ['conditionalDefault', 'reverseDefault', 'conditionalRead',
     'reverseRead', 'conditionalEmpty', 'conditionalUndefined']) {
     for (const flag of [true, false]) {
@@ -297,11 +392,16 @@ test('conditional array runtime agrees with getter and silent controls', () => {
     run[name](0);
     assert.equal(Object.hasOwn(run.row, 'key'), true, name);
   }
-  for (const {name, value, at} of widenedCases) {
+  for (const {name, value, at} of [...widenedCases, ...sourceCases]) {
     run.row.key = 1;
     const copied = run[name](at);
-    const deletes = !['data', 'prototype'].includes(value);
-    assert.deepEqual(copied, value === 'prototype' ? {} : {value: deletes ? 1 : 2}, name);
+    const deletes = !['data', 'prototype', 'inferredData', 'actualData', 'plainReturn()', 'typedPrototype'].includes(value);
+    assert.deepEqual(copied, ['prototype', 'typedPrototype'].includes(value) ? {} : {value: deletes ? 1 : 2}, name);
     assert.equal(Object.hasOwn(run.row, 'key'), !deletes, name);
+  }
+  for (const {name, at, dirty} of nestedCases) {
+    run.row.key = 1;
+    assert.deepEqual(run[name](at), {value: dirty ? 1 : 2}, name);
+    assert.equal(Object.hasOwn(run.row, 'key'), !dirty, name);
   }
 });

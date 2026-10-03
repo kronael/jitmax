@@ -258,6 +258,17 @@ const mergeAccessors = (a?: AccessorPossibility, b?: AccessorPossibility): Acces
   get: !!(a?.get || b?.get), set: !!(a?.set || b?.set), ownGet: !!(a?.ownGet || b?.ownGet),
 });
 
+// A further projection changes the value whose descriptors need proof. A
+// clipped parent's element summary cannot prove its field or element plain.
+function projectArrayProof(out: Res, base: Res): void {
+  if (base.arrayCapped) {
+    out.arrayCapped = true;
+    out.arrayAccessors = {get: true, set: true, ownGet: true};
+  } else if (base.arrayAccessors) {
+    out.arrayAccessors = base.arrayAccessors;
+  }
+}
+
 // Only concrete allocation declarations can prove that a type lacks accessors.
 // Structural types describe values' properties without their descriptors.
 function possibleAccessors(w: Walk, type: TS.Type): AccessorPossibility {
@@ -284,6 +295,30 @@ function possibleAccessors(w: Walk, type: TS.Type): AccessorPossibility {
         out.ownGet ||= ts.isObjectLiteralExpression(declaration.parent);
       }
       if (ts.isSetAccessorDeclaration(declaration)) out.set = true;
+    }
+  }
+  return out;
+}
+
+// A declared type can describe a different allocation's data properties. Only
+// actual value origins prove descriptor absence; cut source queries prove none.
+function sourceAccessors(w: Walk, source: Res): AccessorPossibility {
+  // The bounded origin map cannot distinguish exactly 64 from a larger set
+  // whose excess origins were dropped, so the boundary proves no absence.
+  if (source.tainted || source.starved || source.arrayCapped || source.origins.size >= 64 ||
+      [...source.unknown].some((reason) => reason !== LITERAL_LIMIT)) {
+    return {get: true, set: true, ownGet: true};
+  }
+  let out = mergeAccessors();
+  for (const origin of source.origins.values()) {
+    if (origin.kind === 'literal') {
+      const get = !!origin.literalAccessors?.get.length;
+      const set = !!origin.literalAccessors?.set.length;
+      out = mergeAccessors(out, {get, set, ownGet: get});
+    } else if (origin.kind !== 'array') {
+      let type = w.checker.getTypeAtLocation(origin.node);
+      if (origin.kind === 'class') type = type.getConstructSignatures()[0]?.getReturnType() ?? type;
+      out = mergeAccessors(out, possibleAccessors(w, type));
     }
   }
   return out;
@@ -377,11 +412,6 @@ export const originOf = (w: Walk, o: Origin): Res => {
       else set = accessorKeys(keys);
     }
     o = {...o, literalAccessors: {get, set}};
-  }
-  if (o.kind === 'array' && w.ts.isArrayLiteralExpression(o.node) && !o.arrayAccessors) {
-    const accessors = o.node.elements.reduce((out, element) =>
-      mergeAccessors(out, possibleAccessors(w, w.checker.getTypeAtLocation(element))), mergeAccessors());
-    o = {...o, arrayAccessors: accessors};
   }
   r.origins.set(key, o);
   return r;
@@ -481,7 +511,12 @@ export function compute(w: Walk, node: TS.Node, q: Query): Res {
     return originOf(w, { kind: 'literal', node: e, name: `{${label}} (${where(e)})` });
   }
   if (ts.isArrayLiteralExpression(e)) {
-    return originOf(w, { kind: 'array', node: e, name: `array (${where(e)})` });
+    const arrayAccessors = e.elements.reduce((out, element) => {
+      const source = ts.isSpreadElement(element)
+        ? elementsOf(w, w.valueOf(element.expression, q), q) : w.valueOf(element, q);
+      return mergeAccessors(out, sourceAccessors(w, source));
+    }, mergeAccessors());
+    return originOf(w, { kind: 'array', node: e, name: `array (${where(e)})`, arrayAccessors });
   }
   if (ts.isNewExpression(e)) {
     const out = emptyRes();
@@ -803,8 +838,7 @@ export function readProperty(
   const out = emptyRes();
   out.tainted = base.tainted;
   out.starved = base.starved;
-  if (base.arrayCapped) out.arrayCapped = true;
-  if (base.arrayAccessors) out.arrayAccessors = base.arrayAccessors;
+  projectArrayProof(out, base);
   for (const u of base.unknown) out.unknown.add(u);
   for (const o of base.origins.values()) {
     if (o.kind === 'literal') {
@@ -940,8 +974,7 @@ export function elementsOf(w: Walk, base: Res, q: Query, index?: number, fallbac
   const out = emptyRes();
   out.tainted = base.tainted;
   out.starved = base.starved;
-  if (base.arrayCapped) out.arrayCapped = true;
-  if (base.arrayAccessors) out.arrayAccessors = base.arrayAccessors;
+  projectArrayProof(out, base);
   for (const o of base.origins.values()) {
     if (o.kind !== 'array') {
       out.unknown.add('an element of a collection the walk cannot enumerate');
@@ -1402,12 +1435,10 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     // A clipped array can hide a getter source even when retained elements
     // contain only data. The source summary survives widened use-site types;
     // concrete class declarations still exclude prototype getters from spread.
-    const sourceType = call.binding ? bindingType(ts, checker, call.binding) : checker.getTypeAtLocation(callee);
     const accessor = call.rest ? 'get' : call.accessor;
     const completeSummary = res.arrayAccessors && !res.tainted && !res.starved &&
       [...res.unknown].every((reason) => reason === ARRAY_LIMIT);
-    const possibilities = res.arrayCapped ? (completeSummary ? res.arrayAccessors :
-      mergeAccessors(res.arrayAccessors, sourceType && possibleAccessors(w, sourceType))) : undefined;
+    const possibilities = completeSummary ? res.arrayAccessors : {get: true, set: true, ownGet: true};
     const incompleteArrayAccessor = !!res.arrayCapped && accessor !== undefined &&
       (possibilities?.[call.rest ? 'ownGet' : accessor] ?? true);
     let incompleteAccessors = incompleteArrayAccessor;
