@@ -31,6 +31,8 @@ export interface Origin {
   kind: 'class' | 'classobj' | 'literal' | 'array' | 'function';
   node: TS.Node;
   name: string;
+  // Allocation sites retained within one counted literal property set.
+  literalNodes?: readonly TS.ObjectLiteralExpression[];
 }
 
 export interface Res {
@@ -200,10 +202,22 @@ export const emptyRes = (): Res => ({
 // Both sets are capped: past 64 origins every count reads "at least", and
 // past 8 unknown reasons no ninth says anything new. Uncapped, zod's spread
 // chains merged thousand-entry sets quadratically.
+const literalNodes = (origin: Origin): readonly TS.ObjectLiteralExpression[] =>
+  origin.literalNodes ?? [origin.node as TS.ObjectLiteralExpression];
+
 export const merge = (into: Res, from: Res): void => {
   for (const [k, v] of from.origins) {
     if (into.origins.size >= 64 && !into.origins.has(k)) continue;
-    into.origins.set(k, v);
+    const prior = into.origins.get(k);
+    if (prior?.kind === 'literal' && v.kind === 'literal') {
+      const nodes = [...new Set([...literalNodes(prior), ...literalNodes(v)])];
+      if (nodes.length > 64 && into.unknown.size < 8) {
+        into.unknown.add('more than 64 literal allocation sites share one property set');
+      }
+      into.origins.set(k, nodes.length === 1 ? v : {...v, literalNodes: nodes.slice(-64)});
+    } else {
+      into.origins.set(k, v);
+    }
   }
   for (const u of from.unknown) {
     if (into.unknown.size >= 8) break;
@@ -660,7 +674,14 @@ export function readProperty(
   for (const u of base.unknown) out.unknown.add(u);
   for (const o of base.origins.values()) {
     if (o.kind === 'literal') {
-      merge(out, w.literalProperty(o.node as TS.ObjectLiteralExpression, name, q));
+      for (const literal of literalNodes(o)) {
+        merge(out, w.literalProperty(literal, name, q));
+        if (o.literalNodes) {
+          const declarations = declsOf(w.checker,
+            w.checker.getPropertyOfType(w.checker.getTypeAtLocation(literal), name));
+          if (declarations.length > 0) merge(out, writesTo(w, name, declarations, q));
+        }
+      }
     } else if (o.kind === 'class' || o.kind === 'classobj') {
       merge(out, w.memberValue(o.node as TS.ClassLikeDeclaration, name, o.kind === 'classobj', q));
     }
@@ -1227,39 +1248,46 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
               }
             }
           }
-          const seen = new Set(excluded);
-          for (const property of [...o.node.properties].reverse()) {
-            if (ts.isSpreadAssignment(property)) {
-              const spread = w.valueOf(property.expression, q);
-              // Copying a known own property defines data on the destination,
-              // even when that property's source is an accessor. Only keys
-              // present on every visible origin definitely replace a getter.
-              let definite: Set<string> | undefined;
-              if (spread.unknown.size === 0 && !spread.tainted && !spread.starved) {
-                for (const source of spread.origins.values()) {
-                  const keys = new Set<string>();
-                  if (source.kind === 'literal' && ts.isObjectLiteralExpression(source.node)) {
-                    for (const member of source.node.properties) {
-                      if (!member.name) continue;
-                      const key = bindingKey(ts, checker, member.name);
-                      if (key !== undefined) keys.add(key);
+          const getters = new Set<TS.GetAccessorDeclaration>();
+          for (const literal of literalNodes(o)) {
+            const seen = new Set(excluded);
+            for (const property of [...literal.properties].reverse()) {
+              if (ts.isSpreadAssignment(property)) {
+                const spread = w.valueOf(property.expression, q);
+                // Copying a known own property defines data on the destination,
+                // even when that property's source is an accessor. Only keys
+                // present on every visible origin definitely replace a getter.
+                let definite: Set<string> | undefined;
+                if (spread.unknown.size === 0 && !spread.tainted && !spread.starved) {
+                  for (const source of spread.origins.values()) {
+                    const keys = new Set<string>();
+                    if (source.kind === 'literal' && ts.isObjectLiteralExpression(source.node)) {
+                      for (const member of source.node.properties) {
+                        if (!member.name) continue;
+                        const key = bindingKey(ts, checker, member.name);
+                        if (key !== undefined) keys.add(key);
+                      }
                     }
+                    definite = definite === undefined ? keys :
+                      new Set([...definite].filter((key) => keys.has(key)));
                   }
-                  definite = definite === undefined ? keys :
-                    new Set([...definite].filter((key) => keys.has(key)));
                 }
+                for (const key of definite ?? []) seen.add(key);
+                continue;
               }
-              for (const key of definite ?? []) seen.add(key);
-              continue;
+              if (!property.name) continue;
+              const name = bindingKey(ts, checker, property.name);
+              if (name === undefined || seen.has(name) || ts.isSetAccessorDeclaration(property)) continue;
+              seen.add(name);
+              if (ts.isGetAccessorDeclaration(property) && property.body) {
+                bodies.add(property);
+                getters.add(property);
+              }
             }
-            if (!property.name) continue;
-            const name = bindingKey(ts, checker, property.name);
-            if (name === undefined || seen.has(name) || ts.isSetAccessorDeclaration(property)) continue;
-            seen.add(name);
-            if (ts.isGetAccessorDeclaration(property) && property.body) {
-              bodies.add(property);
-              origins.push({name: o.name, node: o.node, follow: property});
-            }
+          }
+          if (getters.size > 0) {
+            origins.push({name: o.name, node: o.node,
+              follow: getters.size === 1 ? [...getters][0] : undefined});
           }
         }
         continue;
@@ -1317,6 +1345,13 @@ export function createFlow(ts: Ts, program: TS.Program, checker: TS.TypeChecker)
     q: Query,
     accessor?: 'get' | 'set'
   ): Res {
+    if (o.kind === 'literal' && o.literalNodes) {
+      const out = emptyRes();
+      for (const literal of o.literalNodes) {
+        merge(out, methodBody({...o, node: literal, literalNodes: undefined}, name, q, accessor));
+      }
+      return out;
+    }
     let type = checker.getTypeAtLocation(o.node);
     if (o.kind === 'classobj' && ts.isClassLike(o.node) && o.node.name) {
       const symbol = symbolOf(ts, checker, o.node.name);
