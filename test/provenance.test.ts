@@ -152,19 +152,24 @@ test('source queries preserve unknown, cyclic and exhausted results', () => {
   assert.match([...deep.unknown].join(' '), /budget/);
 });
 
-/** Retains the flow walk's representative origin identities.
- * Same-key literals and array literals share their existing origin keys.
- * The query does not claim to enumerate every allocation or collection member.
+/** Coalesces counted shapes while retaining visible element provenance.
+ * Same-key literals and array allocations each share one counted origin.
+ * Element queries preserve both distinct literal property sets.
  */
-test('source queries preserve coalesced literal and array representatives', () => {
+test('source queries coalesce array shapes and retain both element origins', () => {
   const flow = createFlow(ts, program, program.getTypeChecker());
   const literals = flow.sources(find(ts.isIdentifier, 'sameShape'));
   assert.equal(literals.origins.size, 1);
   const arrays = flow.sources(find(ts.isIdentifier, 'sameArrays'));
   assert.equal(arrays.origins.size, 1);
   const elements = flow.sources(find(ts.isIdentifier, 'sameArrays'), true);
-  assert.equal(elements.origins.size, 1);
-  assert.equal([...elements.origins.values()][0]?.node.getText(sf), '{ second: 2 }');
+  assert.equal(elements.origins.size, 2);
+  assert.deepEqual([...elements.origins.values()].map((origin) => origin.node.getText(sf)), [
+    '{ first: 1 }', '{ second: 2 }',
+  ]);
+  assert.equal(elements.unknown.size, 0);
+  assert.equal(elements.tainted, false);
+  assert.equal(elements.starved, false);
 });
 
 /** Checks that an annotated reader points through its caller to the actual factory literals. */
