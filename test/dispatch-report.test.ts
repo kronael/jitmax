@@ -38,3 +38,32 @@ test('dispatch reports checked bodies accurately across the walk cap', () => {
     fs.rmdirSync(dir);
   }
 });
+
+test('one receiver with multiple targets reports checked bodies', () => {
+  const ts = load(path.join(import.meta.dirname, '..'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jitmax-dispatch-report-'));
+  const file = path.join(dir, 'work.ts');
+  try {
+    fs.writeFileSync(file,
+      'const row: {x?: number} = {};\n' +
+      'const obj = {run(){return 0;}};\n' +
+      'function replacement(){delete row.x; return 1;}\n' +
+      '/** @jitmax */\n' +
+      'function hot(){obj.run = replacement; return obj.run();}\n');
+    const result = scan(ts, program(ts, dir, [file]));
+    const mark = result.marks[0] ?? assert.fail('missing hot root');
+    const findings = check(ts, result.checker, mark);
+    const finding = findings.find(f => f.rule === 'interface-dispatch');
+    assert.ok(finding);
+    assert.ok(findings.some(f => f.rule === 'delete-property'));
+    const dispatch = mark.escapes.find(c => c.dispatch.checked === 2)?.dispatch;
+    assert.ok(dispatch);
+    assert.equal(dispatch.count, 1);
+    assert.equal(dispatch.located, 2);
+    assert.match(finding.message, /2 readable bodies are checked/);
+    assert.match(finding.message, /runtime target selection remains unresolved/);
+  } finally {
+    fs.unlinkSync(file);
+    fs.rmdirSync(dir);
+  }
+});

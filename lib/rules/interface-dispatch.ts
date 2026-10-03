@@ -70,7 +70,7 @@ const detect: EscapeRule = (mark, add) => {
             `${reached(d)}${d.count > 0 ? ', a lower bound' : ''}; ${walked}`
           : d.count >= 2
           ? `calls ${c.text}${via}${reached(d)}; ${walked}`
-          : `${c.text}: no single checkable implementation resolved${via}`,
+          : `${c.text}: no single checkable implementation resolved${via}; ${walked}`,
       fix:
         `review the implementations of ${c.text}, then record the review with ` +
         "-interface-dispatch on this root's @jitmax annotation",
