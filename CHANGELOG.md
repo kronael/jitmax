@@ -1,10 +1,34 @@
 # Changelog
 
-For current installation and commands, use the [README quick start](README.md#quick-start).
-The Bun repository workflow needs no npm publication or release tag, and
-`bunx github:kronael/jitmax` resolves against the public repository today.
-Entries below record their versions' behavior and trials as they stood at the
-time, including access limits that no longer hold.
+For installation and commands, use the [README quick start](README.md#quick-start).
+Commands and guides pin the matching release tag. No npm registry publication is required.
+
+## [v0.17.2] — 20261003
+
+> jitmax v0.17.2 — follow calls and reject damaged inputs
+>
+> jitmax follows more visible callees, combines profile time by function, and rejects malformed inputs.
+>
+> • coverage — replacement methods, callback expressions and getter copies reach source checks
+> • profiles — one function keeps its combined sample time; malformed accounting exits 2
+> • evidence — malformed child output becomes void; new rows record effective inputs
+> • policy — duplicate config entries fail; native lowering remains an eligibility claim
+> • guides — install and manual links pin the tag; refreshed clips hold the final report
+>
+> Full notes: https://github.com/kronael/jitmax/blob/v0.17.2/CHANGELOG.md
+
+- The walk checks replacement methods, constructor object results, and distinct literal and array
+  allocations. It follows callback expressions, accessors, property copies, template tags and base-bound `super` calls. Unknown invoked targets and exhausted provenance retain coverage findings.
+  Runs that passed on a missed call can now fail.
+- Profile selection combines callgraph nodes and source aliases by function before thresholding.
+  Invalid profile structure and sample accounting exit 2 with an attributed error.
+- Benchmark children reject invalid result fields. New rows record seeds, warmups and effective Node
+  options/coverage; historical omissions remain unknown. Published timings and derived numbers are
+  unchanged.
+- Duplicate TOML keys and tables exit 2. Reports count readable bodies actually checked and describe
+  native inline-lowering eligibility without claiming observed machine code.
+- Setup and evidence links pin this release. The demo holds its final diagnostic. Shared page
+  controls have readable headings, visible keyboard focus and reduced-motion support.
 
 ## [v0.17.1] — 20261002
 

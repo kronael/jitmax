@@ -10,10 +10,10 @@ calls without claiming they are slow. It never runs,
 compiles or rewrites your code:
 
 ```sh
-bunx github:kronael/jitmax#v0.17.1 src
+bunx github:kronael/jitmax#v0.17.2 src
 ```
 
-![jitmax reporting one line in a function radash ships](demo/demo.gif)
+![jitmax reporting one line in a function radash ships](https://github.com/kronael/jitmax/releases/download/v0.17.2/jitmax-demo.gif)
 
 A real run against radash's `assign`, vendored unchanged into `examples/`.
 
@@ -42,7 +42,7 @@ export function total(rows: { value: number }[]): number {
 ```
 
 ```sh
-bunx github:kronael/jitmax#v0.17.1 hot.ts
+bunx github:kronael/jitmax#v0.17.2 hot.ts
 ```
 
 It reports `every annotated function is clean.` and exits `0`. Now mark your
@@ -99,7 +99,7 @@ export function total(rows: Row[]): number {
 }
 ```
 
-`bunx github:kronael/jitmax#v0.17.1 shapes.ts` exits `1` and prints:
+`bunx github:kronael/jitmax#v0.17.2 shapes.ts` exits `1` and prints:
 
 ```text
 jitmax — 1 annotated function, 1 error
@@ -143,7 +143,7 @@ To report only megamorphic reads and calls, copy the
 `jitmax.toml`, then run as before:
 
 ```sh
-bunx github:kronael/jitmax#v0.17.1 src
+bunx github:kronael/jitmax#v0.17.2 src
 ```
 
 The preset also switches off `closed-world` and `interface-dispatch`, so the
@@ -159,7 +159,7 @@ Node and pass it:
 
 ```sh
 node --cpu-prof --cpu-prof-name=run.cpuprofile your-workload.js
-bunx github:kronael/jitmax#v0.17.1 run.cpuprofile src
+bunx github:kronael/jitmax#v0.17.2 run.cpuprofile src
 ```
 
 Every function with at least 1% of your project's sampled self time is
@@ -240,7 +240,7 @@ make verify
 ```
 
 To run a clone instead of the GitHub install, use
-`bun /path/to/jitmax/bin/cli.js` in place of `bunx github:kronael/jitmax#v0.17.1`; it
+`bun /path/to/jitmax/bin/cli.js` in place of `bunx github:kronael/jitmax#v0.17.2`; it
 needs the clone's dependencies and no build.
 [Development](ARCHITECTURE.md#development) lists the main development commands.
 
@@ -250,5 +250,5 @@ copyright lines, versions and commits; [examples/LICENSE-MIT](examples/LICENSE-M
 notices. V8 is a trademark of Google LLC; this project is not affiliated with,
 endorsed by, or sponsored by Google.
 
-Status: v0.17.1, single machine, eight rules.
-The install commands pin the source to the `v0.17.1` release tag.
+Status: v0.17.2, single machine, eight rules.
+The install commands pin the source to the `v0.17.2` release tag.

@@ -155,7 +155,7 @@ min_self_pct = 2
 ```
 
 Then name it beside the profile:
-`bunx github:kronael/jitmax#v0.17.1 profile.toml run.cpuprofile src`. A config with
+`bunx github:kronael/jitmax#v0.17.2 profile.toml run.cpuprofile src`. A config with
 `[profile]` exits `2` on a run given no `.cpuprofile`, so keep it out of the
 `jitmax.toml` that annotation runs find. A named `.toml` replaces the found
 one, so copy any `[rules]` you need into it.
@@ -165,7 +165,7 @@ one, so copy any `[rules]` you need into it.
 Bun runs the checker, but the rules and their evidence concern V8. They do not
 predict performance under Bun's JavaScriptCore engine.
 
-`bunx github:kronael/jitmax#v0.17.1` installs source from the `v0.17.1` release
+`bunx github:kronael/jitmax#v0.17.2` installs source from the `v0.17.2` release
 tag. The linked executable, `bin/cli.js`, selects Bun through its shebang.
 Bun can run TypeScript under `node_modules`, so an unbuilt Git install needs
 neither `dist/` nor permission to run `prepare`. Bun's
